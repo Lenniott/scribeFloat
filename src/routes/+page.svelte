@@ -1,4 +1,19 @@
 <script lang="ts">
+	import ScribeScreen from "@lib/screens/scribe.svelte";
+</script>
+
+<main class="min-h-screen bg-surface px-4 py-6">
+	<ScribeScreen />
+</main>
+<!--
+<script lang="ts">
+	import ScribeScreen from "@lib/screens/scribe.svelte";
+</script>
+
+<main class="min-h-screen bg-surface px-4 py-6">
+	<ScribeScreen />
+</main>
+<script lang="ts">
 	import Accordion from "@components/accordion/Accordion.svelte";
 	import AccordionItem from "@components/accordion/AccordionItem.svelte";
 	import SettingsSection from "@components/accordion/SettingsSection.svelte";
@@ -7,11 +22,11 @@
 	import RecordingStatusDot from "@components/audio/RecordingStatusDot.svelte";
 	import RecordingTimer from "@components/audio/RecordingTimer.svelte";
 	import Button from "@components/Button.svelte";
-	import DeviceSelect from "@components/form/DeviceSelect.svelte";
+	import Checkbox from "@components/form/Checkbox.svelte";
+	import ConfigField from "@components/form/ConfigField.svelte";
 	import EditableTitleField from "@components/form/EditableTitleField.svelte";
 	import LabeledTextField from "@components/form/LabeledTextField.svelte";
 	import OptionGroup from "@components/form/OptionGroup.svelte";
-	import PathSelectorField from "@components/form/PathSelectorField.svelte";
 	import ProgressBar from "@components/form/ProgressBar.svelte";
 	import ToggleSwitch from "@components/form/ToggleSwitch.svelte";
 	import TabPage, { type TabPageItem } from "@components/layout/TabPage.svelte";
@@ -27,10 +42,12 @@
 
 	/** Local playground state — only for exercising controls, not a real screen */
 	let toggleA = $state(false);
+	let checkboxA = $state(true);
 	let selectValue = $state("a");
 	let textA = $state("");
 	let titleDemo = $state("Editable title");
 	let pathDemo = $state("~/example/path");
+	let hotkeyDemo = $state("Cmd+Shift+H");
 	let optionDemo = $state("one");
 	let notesDemo = $state<Note[]>([
 		{ id: "n1", text: "Example note body.", createdAt: Date.now() - 120_000 },
@@ -208,11 +225,15 @@
 			Form
 		</h2>
 		<div class="flex max-w-md flex-col gap-6 bg-surface-container-low p-6 rounded-md">
-			<DeviceSelect label="DeviceSelect" options={selectOptions} bind:value={selectValue} />
+			<ConfigField label="ConfigField (select)" mode="select" options={selectOptions} bind:value={selectValue} />
 			<LabeledTextField label="LabeledTextField" bind:value={textA} placeholder="Placeholder" />
 			<div class="flex items-center justify-between gap-4">
 				<span class="text-label-sm font-semibold tracking-wide text-on-surface/80 uppercase">ToggleSwitch</span>
 				<ToggleSwitch aria-label="Demo toggle" bind:checked={toggleA} />
+			</div>
+			<div class="flex items-center justify-between gap-4">
+				<span class="text-label-sm font-semibold tracking-wide text-on-surface/80 uppercase">Checkbox</span>
+				<Checkbox aria-label="Demo checkbox" bind:checked={checkboxA} />
 			</div>
 			<OptionGroup
 				name="ds-option"
@@ -223,7 +244,20 @@
 				]}
 				bind:selected={optionDemo}
 			/>
-			<PathSelectorField label="PathSelectorField" bind:path={pathDemo} onChange={() => {}} />
+			<ConfigField
+				label="ConfigField (path)"
+				mode="action"
+				bind:value={pathDemo}
+				buttonLabel="Change"
+				onButtonClick={() => {}}
+			/>
+			<ConfigField
+				label="ConfigField (hotkey)"
+				mode="action"
+				bind:value={hotkeyDemo}
+				buttonLabel="Capture"
+				onButtonClick={() => {}}
+			/>
 			<div>
 				<p class="text-label-sm text-on-surface/45 mb-2">EditableTitleField</p>
 				<EditableTitleField bind:value={titleDemo} />
@@ -433,3 +467,4 @@
 		</div>
 	</section>
 </main>
+-->

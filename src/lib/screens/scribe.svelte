@@ -11,16 +11,15 @@
 	import ToggleSwitch from "@components/form/ToggleSwitch.svelte";
 	import NoteComposer from "@components/notes/NoteComposer.svelte";
 	import NotesList from "@components/notes/NotesList.svelte";
+	import Bin from "lucide-svelte/icons/trash-2";
 	import type { Note } from "@components/notes/NoteCard.svelte";
 
-	let speakerEnabled = $state(true);
-	let micOn = $state(true);
-	let speakerOn = $state(true);
+	let speakerEnabled = $state(false);
 	let selectedMic = $state("macbook-pro-mic");
-	let micName = $state("Mic name");
-	let speakerName = $state("Speaker name");
-	let modelSmall = $state(false);
-	let modelMedium = $state(true);
+	let micName = $state("Mic");
+	let speakerName = $state("Speaker");
+	let modelSmall = $state(true);
+	let modelMedium = $state(false);
 	let savePath = $state("path/");
 	let sendEnabled = $state(false);
 	let fileName = $state("File name");
@@ -45,23 +44,22 @@
 	}
 </script>
 
-<div class="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-6 text-on-surface">
-	<h1 class="font-data text-display-sm text-on-surface">Scribe Pannel</h1>
-
-	<section class="overflow-hidden rounded-[22px] border-2 border-on-surface/75 bg-surface-container-lowest">
-		<header class="flex min-h-14 items-end justify-between border-b-2 border-on-surface/70 px-5 py-2">
+<div class="mx-auto flex max-w-5xl flex-col gap-4 text-on-surface">
+	<section class="flex h-screen flex-col overflow-hidden bg-surface-container-lowest">
+		<header class="flex min-h-14 items-end justify-between px-5 py-2 border-b border-b-surface-container-low">
 			<div class="min-w-0 flex-1">
 				<EditableTitleField bind:value={fileName} />
 			</div>
 			<div class="ml-4 flex items-center gap-2">
+				<Button variant="normal" iconOnly icon={Bin} class="text-error-container"/>
 				<RecordingTimer elapsedSeconds={0} />
 				<RecordingStatusDot status="recording" />
 			</div>
 		</header>
 
-		<div class="grid min-h-[700px] grid-cols-[1.05fr_0.95fr]">
-			<div class="flex min-h-0 flex-col border-r-2 border-on-surface/70">
-				<div class="border-b-2 border-on-surface/60 px-4 py-5">
+		<div class="grid min-h-0 flex-1 grid-cols-[1.05fr_0.95fr] items-stretch">
+			<div class="flex min-h-0 flex-col">
+				<div class="px-4 py-5">
 					<div class="mx-auto max-w-sm">
 						<CircularAudioVisualizer
 							micLevel={0.6}
@@ -75,8 +73,8 @@
 					</div>
 				</div>
 
-				<div class="min-h-0 flex-1 overflow-y-auto border-b-2 border-on-surface/60 px-4 py-3">
-					<Accordion>
+				<div class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+					<Accordion defaultOpenId="basic">
 						<AccordionItem id="basic" title="Basic">
 							<div class="space-y-4">
 								<ConfigField
@@ -85,7 +83,7 @@
 									options={micOptions}
 									bind:value={selectedMic}
 								/>
-								<div class="space-y-3 rounded-md border border-on-surface/25 p-3">
+								<div class="space-y-3 rounded-md">
 									<div class="flex items-center justify-between">
 										<span class="text-label-sm font-semibold tracking-stamped uppercase">Speaker on</span>
 										<ToggleSwitch bind:checked={speakerEnabled} aria-label="Toggle speaker layer" />
@@ -122,33 +120,25 @@
 									<span class="text-label-sm font-semibold tracking-stamped uppercase">Send</span>
 									<ToggleSwitch bind:checked={sendEnabled} aria-label="Toggle send option" />
 								</div>
-								{#if sendEnabled}
-									<div class="space-y-2">
-										<Checkbox bind:checked={micOn} label="Mic" />
-										<Checkbox bind:checked={speakerOn} label="Speaker" />
-									</div>
-								{/if}
 							</div>
+							<a href="/design-system">to design system</a>
 						</AccordionItem>
 					</Accordion>
 				</div>
 
 				<footer class="flex items-center justify-between px-4 py-3">
-					<Button variant="normal">Cancel</Button>
-					<Button variant="primary">Finished</Button>
+					<Button variant="primary">Stop and </Button>
 				</footer>
 			</div>
 
-			<div class="flex min-h-0 flex-col bg-surface-container-lowest">
-				<div class="min-h-0 flex-1 overflow-y-auto p-3">
-					<div class="h-full rounded-md border-2 border-on-surface/35 p-2">
+			<div class="flex min-h-0 flex-col bg-surface-container-lowest p-3 border-l border-l-surface-container-low">
+				<p class="mb-2 font-data text-label-md tracking-stamped uppercase text-on-surface/80">add notes</p>
+				<div class="min-h-0 flex-1 overflow-y-auto">
+					<div class="h-full rounded-md">
 						<NotesList notes={notes} bind:selectedId={selectedNoteId} />
 					</div>
 				</div>
-				<div class="border-t-2 border-on-surface/50 p-3">
-					<p class="mb-2 font-data text-label-md tracking-stamped uppercase text-on-surface/80">add notes</p>
-					<NoteComposer bind:value={noteDraft} onSubmit={addNote} />
-				</div>
+				<NoteComposer bind:value={noteDraft} onSubmit={addNote} />
 			</div>
 		</div>
 	</section>

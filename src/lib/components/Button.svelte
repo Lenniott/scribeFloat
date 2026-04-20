@@ -1,8 +1,14 @@
 <script lang="ts">
-	import type { ComponentType, Snippet, SvelteComponent } from "svelte";
+	import type { IconProps } from "lucide-svelte";
+	import type { Component, ComponentConstructorOptions, Snippet, SvelteComponent } from "svelte";
 
 	type Variant = "primary" | "secondary" | "destructive" | "tertiary" | "normal";
 	type Size = "normal" | "small";
+
+	/** lucide-svelte still types icons as class components; `Component` covers Svelte 5 function components only */
+	type LucideIcon =
+		| Component<IconProps>
+		| (new (options: ComponentConstructorOptions<IconProps>) => SvelteComponent<IconProps>);
 
 	let {
 		variant = "normal",
@@ -18,8 +24,8 @@
 	}: {
 		variant?: Variant;
 		size?: Size;
-		/** Lucide icon (class constructor from `lucide-svelte/icons/...`) */
-		icon?: ComponentType<SvelteComponent>;
+		/** Lucide icon component from `lucide-svelte/icons/...` */
+		icon?: LucideIcon;
 		iconOnly?: boolean;
 		type?: "button" | "submit" | "reset";
 		disabled?: boolean;

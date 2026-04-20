@@ -3,7 +3,7 @@
   import RecordingStatusDot from "@lib/components/audio/RecordingStatusDot.svelte";
   import RecordingTimer from "@lib/components/audio/RecordingTimer.svelte";
   import Button from "@lib/components/Button.svelte";
-  import Close from "lucide-svelte/icons/X";
+  import { X as Close } from "lucide-svelte";
   //not hooked up to real things
 </script>
 

@@ -30,7 +30,7 @@
 
 <div
     aria-disabled={disabled}
-    class="group relative flex gap-2 rounded-md border-b border-transparent bg-surface-container-lowest px-2 py-2 text-body-md text-on-surface transition
+    class="group relative flex gap-2 rounded-md border-b border-transparent bg-surface-container-high px-2 py-2 text-body-md text-on-surface transition
            focus-within:ring-primary
 		   focus-within:ring-1
            focus-within:bg-surface-container-high
@@ -43,8 +43,8 @@
         {placeholder}
         {disabled}
         rows="3"
-        class="min-h-[4.5rem] min-w-0 flex-1 resize-none bg-transparent outline-none placeholder:text-on-surface/40"
-        on:keydown={onkeydown}
+        class="min-h-18 min-w-0 flex-1 resize-none bg-transparent outline-none placeholder:text-on-surface/40"
+        onkeydown={onkeydown}
     ></textarea>
 
     <div class="flex flex-col justify-end">

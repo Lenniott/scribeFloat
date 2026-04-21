@@ -1,0 +1,258 @@
+use crate::services::{
+    audio::{AudioService, MicSession},
+    config::ConfigService,
+    model::ModelService,
+    output::OutputService,
+};
+use crate::types::{Note, ScribeState, ScribeStateEvent};
+use anyhow::{anyhow, Result};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+use tauri::{AppHandle, Emitter};
+
+struct ActiveSession {
+    mic: MicSession,
+    session_dir: PathBuf,
+    started_at: Instant,
+}
+
+struct Inner {
+    state: ScribeState,
+    session: Option<ActiveSession>,
+    notes: Vec<Note>,
+}
+
+pub struct ScribeController {
+    inner: Mutex<Inner>,
+    audio: Arc<AudioService>,
+    model: Arc<ModelService>,
+    output: Arc<OutputService>,
+    config: Arc<ConfigService>,
+    app: AppHandle,
+}
+
+impl ScribeController {
+    pub fn new(
+        audio: Arc<AudioService>,
+        model: Arc<ModelService>,
+        output: Arc<OutputService>,
+        config: Arc<ConfigService>,
+        app: AppHandle,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            inner: Mutex::new(Inner {
+                state: ScribeState::Idle,
+                session: None,
+                notes: Vec::new(),
+            }),
+            audio,
+            model,
+            output,
+            config,
+            app,
+        })
+    }
+
+    /// Transition IDLE → RECORDING. Opens mic and creates session directory.
+    pub fn start(&self) -> Result<()> {
+        let cfg = self.config.get();
+        let session_dir = self.output.make_session_dir(&cfg.save_folder)?;
+        let mic = self.audio.start_mic(None)?;
+
+        let mut inner = self.inner.lock().unwrap();
+        if inner.state != ScribeState::Idle {
+            return Err(anyhow!("cannot start: already in {:?}", inner.state));
+        }
+        inner.state = ScribeState::Recording;
+        inner.session = Some(ActiveSession {
+            mic,
+            session_dir,
+            started_at: Instant::now(),
+        });
+        inner.notes.clear();
+        self.emit_state(&inner);
+        Ok(())
+    }
+
+    /// Transition RECORDING → IDLE. Discards the audio buffer.
+    pub fn cancel(&self) -> Result<()> {
+        let mut inner = self.inner.lock().unwrap();
+        if inner.state != ScribeState::Recording {
+            return Err(anyhow!("cannot cancel: not recording"));
+        }
+        inner.session = None;
+        inner.state = ScribeState::Idle;
+        inner.notes.clear();
+        self.emit_state(&inner);
+        Ok(())
+    }
+
+    /// Transition RECORDING → TRANSCRIBING then → DONE / NO_MODEL.
+    /// Returns immediately; heavy work runs in a background spawn_blocking task.
+    pub fn stop_and_save(this: Arc<Self>, title: Option<String>) -> Result<()> {
+        // Extract session under lock then release immediately.
+        let session = {
+            let mut inner = this.inner.lock().unwrap();
+            if inner.state != ScribeState::Recording {
+                return Err(anyhow!("cannot stop: not recording"));
+            }
+            inner.state = ScribeState::Transcribing;
+            inner.session.take().expect("session exists when Recording")
+        };
+
+        this.app
+            .emit("scribe://state-changed", ScribeStateEvent::new(ScribeState::Transcribing))
+            .ok();
+
+        let title =
+            title.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d %H:%M").to_string());
+
+        tokio::spawn(async move {
+            let ctrl = Arc::clone(&this);
+            let result =
+                tokio::task::spawn_blocking(move || ctrl.do_transcription(session, &title))
+                    .await;
+
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    eprintln!("transcription error: {e}");
+                    {
+                        let mut inner = this.inner.lock().unwrap();
+                        inner.state = ScribeState::Error;
+                    }
+                    this.app
+                        .emit(
+                            "scribe://state-changed",
+                            ScribeStateEvent {
+                                error: Some(e.to_string()),
+                                ..ScribeStateEvent::new(ScribeState::Error)
+                            },
+                        )
+                        .ok();
+                }
+                Err(e) => eprintln!("transcription task panicked: {e}"),
+            }
+        });
+
+        Ok(())
+    }
+
+    /// Blocking transcription pipeline. Called inside spawn_blocking.
+    fn do_transcription(&self, session: ActiveSession, title: &str) -> Result<()> {
+        let (raw_pcm, native_rate) = session.mic.stop_and_take();
+
+        let pcm_16k = resample_linear(&raw_pcm, native_rate, 16_000);
+
+        let config = self.config.get();
+        let wav_path = session.session_dir.join("mic.wav");
+        self.output.write_wav(&pcm_16k, 16_000, &wav_path)?;
+
+        let model_path = match &config.scribe_model_path {
+            None => {
+                self.transition(ScribeState::NoModel);
+                self.app
+                    .emit(
+                        "scribe://state-changed",
+                        ScribeStateEvent {
+                            wav_path: Some(wav_path.to_string_lossy().into()),
+                            ..ScribeStateEvent::new(ScribeState::NoModel)
+                        },
+                    )
+                    .ok();
+                return Ok(());
+            }
+            Some(p) => PathBuf::from(p),
+        };
+
+        if !self.model.model_available(&model_path) {
+            self.transition(ScribeState::NoModel);
+            self.app
+                .emit(
+                    "scribe://state-changed",
+                    ScribeStateEvent {
+                        wav_path: Some(wav_path.to_string_lossy().into()),
+                        ..ScribeStateEvent::new(ScribeState::NoModel)
+                    },
+                )
+                .ok();
+            return Ok(());
+        }
+
+        let segments = self.model.transcribe_pcm(&model_path, &pcm_16k)?;
+
+        let transcript_path = self.output.transcript_path(&session.session_dir, &model_path);
+        self.output.write_transcript(&segments, title, &transcript_path)?;
+
+        if !config.keep_wav && !segments.is_empty() {
+            self.output.delete_wav(&wav_path)?;
+        }
+
+        self.transition(ScribeState::Done);
+        self.app
+            .emit(
+                "scribe://state-changed",
+                ScribeStateEvent {
+                    transcript_path: Some(transcript_path.to_string_lossy().into()),
+                    ..ScribeStateEvent::new(ScribeState::Done)
+                },
+            )
+            .ok();
+
+        Ok(())
+    }
+
+    pub fn get_state(&self) -> ScribeStateEvent {
+        let inner = self.inner.lock().unwrap();
+        ScribeStateEvent::new(inner.state.clone())
+    }
+
+    /// Add a timestamped note. Only valid while recording.
+    pub fn add_note(&self, text: String) -> Result<Note> {
+        let mut inner = self.inner.lock().unwrap();
+        if inner.state != ScribeState::Recording {
+            return Err(anyhow!("cannot add note: not recording"));
+        }
+        let elapsed = inner
+            .session
+            .as_ref()
+            .map(|s| s.started_at.elapsed().as_millis() as u64)
+            .unwrap_or(0);
+        let note = Note {
+            id: uuid::Uuid::new_v4().to_string(),
+            text,
+            recorded_at_ms: elapsed,
+        };
+        inner.notes.push(note.clone());
+        Ok(note)
+    }
+
+    fn transition(&self, state: ScribeState) {
+        self.inner.lock().unwrap().state = state;
+    }
+
+    fn emit_state(&self, inner: &Inner) {
+        self.app
+            .emit("scribe://state-changed", ScribeStateEvent::new(inner.state.clone()))
+            .ok();
+    }
+}
+
+/// Linear interpolation resampler. Good enough for speech at 16 kHz target.
+fn resample_linear(input: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
+    if from_rate == to_rate || input.is_empty() {
+        return input.to_vec();
+    }
+    let ratio = from_rate as f64 / to_rate as f64;
+    let out_len = (input.len() as f64 / ratio) as usize;
+    let mut out = Vec::with_capacity(out_len);
+    for i in 0..out_len {
+        let src = i as f64 * ratio;
+        let lo = src.floor() as usize;
+        let hi = (lo + 1).min(input.len() - 1);
+        let frac = (src - lo as f64) as f32;
+        out.push(input[lo] * (1.0 - frac) + input[hi] * frac);
+    }
+    out
+}

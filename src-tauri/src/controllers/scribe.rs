@@ -149,24 +149,14 @@ impl ScribeController {
         let wav_path = session.session_dir.join("mic.wav");
         self.output.write_wav(&pcm_16k, 16_000, &wav_path)?;
 
+        // Use the explicitly configured path, or fall back to the built-in default model.
         let model_path = match &config.scribe_model_path {
-            None => {
-                self.transition(ScribeState::NoModel);
-                self.app
-                    .emit(
-                        "scribe://state-changed",
-                        ScribeStateEvent {
-                            wav_path: Some(wav_path.to_string_lossy().into()),
-                            ..ScribeStateEvent::new(ScribeState::NoModel)
-                        },
-                    )
-                    .ok();
-                return Ok(());
-            }
             Some(p) => PathBuf::from(p),
+            None => self.model.default_model_path(),
         };
 
         if !self.model.model_available(&model_path) {
+            // Model not downloaded yet — keep the WAV and surface the path.
             self.transition(ScribeState::NoModel);
             self.app
                 .emit(

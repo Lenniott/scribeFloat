@@ -68,6 +68,15 @@ pub struct ScribeStateEvent {
     pub error: Option<String>,
 }
 
+/// Emitted on `model://download-progress` while the default model downloads.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelDownloadEvent {
+    pub model_name: String,
+    pub progress: f32,
+    pub bytes_downloaded: u64,
+    pub total_bytes: Option<u64>,
+}
+
 impl ScribeStateEvent {
     pub fn new(state: ScribeState) -> Self {
         Self {

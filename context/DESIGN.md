@@ -25,7 +25,7 @@ The palette is rooted in a "Void" state—using deep blacks and charcoals to min
  
 ### The "Glass & Gradient" Rule
 To prevent the UI from feeling "flat" or "cheap," use Glassmorphism for floating overlays (e.g., command palettes or tooltips). Utilize `surface-container-highest` at 70% opacity with a `20px` backdrop blur. 
-**Signature Texture:** For primary CTAs or active recording states, apply a subtle linear gradient from `primary` (#ffb693) to `primary-container` (#7a3000) at a 45-degree angle. This adds a metallic, illuminated "bulb" quality to the interface.
+**Signature Texture:** For primary CTAs or active recording states, apply a subtle linear gradient from `primary` (#ffb693)
  
 ---
  
@@ -70,7 +70,7 @@ Traditional drop shadows are forbidden. They feel "web-like" and soft. Instead, 
 - **Waveform Display:** Use `tertiary` (#ff9e65) for inactive audio segments and `primary` (#ffb693) for active segments.
  
 ### Status Chips
-- **Action Chips:** 4px radius. Background: `surface-variant`. Text: `label-md`.
+- **Action Chips:** 4px radius. Background: `surface-container-highest`. Text: `label-md`.
 - **Alert/Error:** Use `error_container` (#7e2b17) with `on_error_container` text. Keep it "burnt" and industrial, not bright "emergency" red.
  
 ---

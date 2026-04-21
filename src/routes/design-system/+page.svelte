@@ -7,6 +7,7 @@
 	import RecordingStatusDot from "@components/audio/RecordingStatusDot.svelte";
 	import RecordingTimer from "@components/audio/RecordingTimer.svelte";
 	import Button from "@components/Button.svelte";
+	import IconButton from "@components/IconButton.svelte";
 	import Checkbox from "@components/form/Checkbox.svelte";
 	import ConfigField from "@components/form/ConfigField.svelte";
 	import EditableTitleField from "@components/form/EditableTitleField.svelte";
@@ -63,17 +64,17 @@
 	const colorTokens: { token: string; class: string }[] = [
 		{ token: "void", class: "bg-void" },
 		{ token: "primary", class: "bg-primary" },
-		{ token: "primary-container", class: "bg-primary-container" },
 		{ token: "surface-container-lowest", class: "bg-surface-container-lowest" },
 		{ token: "surface-container-low", class: "bg-surface-container-low" },
 		{ token: "surface-container-high", class: "bg-surface-container-high" },
 		{ token: "surface-container-highest", class: "bg-surface-container-highest" },
-		{ token: "surface-variant", class: "bg-surface-variant" },
 		{ token: "tertiary", class: "bg-tertiary" },
 		{ token: "error-container", class: "bg-error-container" },
 	];
 
 	const variants = ["primary", "secondary", "destructive", "tertiary", "normal"] as const;
+	/** IconButton intentionally supports fewer variants than Button */
+	const iconButtonVariants = ["primary", "destructive", "normal"] as const;
 	const sizes = ["normal", "small"] as const;
 	const progressSequence = [
 		{ label: "model small", complete: true },
@@ -121,7 +122,6 @@
 		</div>
 		<p class="text-label-sm mt-4 text-on-surface/50">
 			Text: <span class="text-on-surface">on-surface</span> ·
-			<span class="text-on-primary-container">on-primary-container</span> ·
 			<span class="text-on-error-container">on-error-container</span>
 		</p>
 	</section>
@@ -155,7 +155,7 @@
 
 	<section class="mb-16" aria-labelledby="sec-geo">
 		<h2 id="sec-geo" class="font-data text-headline-sm mb-6 tracking-stamped text-on-surface/80 uppercase">
-			Geometry & depth
+			Geometry
 		</h2>
 		<div class="flex flex-wrap items-end gap-6">
 			<div class="flex flex-col gap-2">
@@ -165,10 +165,6 @@
 			<div class="flex flex-col gap-2">
 				<span class="text-label-sm text-on-surface/50">radius-sm (2px)</span>
 				<div class="h-16 w-16 rounded-sm bg-surface-container-highest"></div>
-			</div>
-			<div class="flex flex-col gap-2">
-				<span class="text-label-sm text-on-surface/50">shadow-ambient</span>
-				<div class="h-16 w-24 rounded-md bg-surface-container-high shadow-ambient"></div>
 			</div>
 		</div>
 	</section>
@@ -196,13 +192,34 @@
 					<Button variant="destructive" icon={Trash2}>Remove</Button>
 				</div>
 			</div>
-			<div>
-				<p class="text-label-sm text-on-surface/45 mb-3 uppercase">Icon only</p>
-				<div class="flex flex-wrap gap-3">
-					<Button variant="primary" icon={Plus} iconOnly aria-label="Add" />
-					<Button variant="normal" size="small" icon={ChevronRight} iconOnly aria-label="More" />
+		</div>
+	</section>
+
+	<section class="mb-16" aria-labelledby="sec-icon-buttons">
+		<h2 id="sec-icon-buttons" class="font-data text-headline-sm mb-6 tracking-stamped text-on-surface/80 uppercase">
+			IconButton
+		</h2>
+		<p class="text-body-md text-on-surface/65 mb-6 max-w-xl">
+			Icon-only control. Requires <code class="text-primary">aria-label</code>. Variants:
+			<code class="text-primary">primary</code>, <code class="text-primary">destructive</code>,
+			<code class="text-primary">normal</code>.
+		</p>
+		<div class="flex flex-col gap-8">
+			{#each sizes as size (size)}
+				<div>
+					<p class="text-label-sm text-on-surface/45 mb-3 uppercase">Size · {size}</p>
+					<div class="flex flex-wrap items-center gap-3">
+						{#each iconButtonVariants as v (v)}
+							<IconButton
+								variant={v}
+								{size}
+								icon={v === "destructive" ? Trash2 : Plus}
+								aria-label="{v} icon button"
+							/>
+						{/each}
+					</div>
 				</div>
-			</div>
+			{/each}
 		</div>
 	</section>
 
@@ -296,7 +313,7 @@
 		<h2 id="sec-acc" class="font-data text-headline-sm mb-6 tracking-stamped text-on-surface/80 uppercase">
 			Accordion
 		</h2>
-		<div class="max-w-md bg-surface-container-lowest rounded-md overflow-hidden">
+		<div class="max-w-md overflow-hidden">
 			<Accordion>
 				<AccordionItem id="ds-1" title="First section">
 					<SettingsSection title="Inner title">
@@ -376,7 +393,7 @@
 							{/snippet}
 						</CircularAudioVisualizer>
 						<div class="flex w-14 justify-end">
-						<Button variant="normal" iconOnly icon={Close}/>
+						<IconButton variant="normal" icon={Close} aria-label="Close" />
 						</div>
 					</div>
 				</div>

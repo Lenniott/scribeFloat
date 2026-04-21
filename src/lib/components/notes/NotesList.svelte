@@ -10,7 +10,7 @@
 	} = $props();
 </script>
 
-<div class="flex flex-col gap-4" role="list">
+<div class="flex flex-col gap-2" role="list">
 	{#each notes as note (note.id)}
 		<div role="listitem">
 			<NoteCard {note} selected={selectedId === note.id} onselect={(id) => (selectedId = id)} />

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import Button from "@components/Button.svelte";
+    import IconButton from "@components/IconButton.svelte";
     import Send from "lucide-svelte/icons/send";
 
     let {
@@ -48,11 +48,10 @@
     ></textarea>
 
     <div class="flex flex-col justify-end">
-        <Button
+        <IconButton
             variant="primary"
             size="normal"
             icon={Send}
-            iconOnly
             aria-label="Add note"
             disabled={disabled || !value.trim()}
             onclick={submit}

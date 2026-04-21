@@ -2,6 +2,7 @@
 	import Accordion from "@components/accordion/Accordion.svelte";
 	import AccordionItem from "@components/accordion/AccordionItem.svelte";
 	import Button from "@components/Button.svelte";
+	import IconButton from "@components/IconButton.svelte";
 	import CircularAudioVisualizer from "@components/audio/CircularAudioVisualizer.svelte";
 	import RecordingStatusDot from "@components/audio/RecordingStatusDot.svelte";
 	import RecordingTimer from "@components/audio/RecordingTimer.svelte";
@@ -51,7 +52,7 @@
 				<EditableTitleField bind:value={fileName} />
 			</div>
 			<div class="ml-4 flex items-center gap-2">
-				<Button variant="normal" iconOnly icon={Bin} class="text-error-container"/>
+				<IconButton variant="destructive" size="small" icon={Bin} aria-label="Delete note" />
 				<RecordingTimer elapsedSeconds={0} />
 				<RecordingStatusDot status="recording" />
 			</div>
@@ -59,24 +60,22 @@
 
 		<div class="grid min-h-0 flex-1 grid-cols-[1.05fr_0.95fr] items-stretch">
 			<div class="flex min-h-0 flex-col">
-				<div class="px-4 py-5">
-					<div class="mx-auto max-w-sm">
-						<CircularAudioVisualizer
-							micLevel={0.6}
-							speakerLevel={0.4}
-							speakerEnabled={speakerEnabled}
-							innerBaseScale={0.28}
-							ampInner={0.12}
-							outerScale={1.22}
-							ampOuter={0.12}
-						/>
-					</div>
+				<div class="mx-auto max-w-48 mb-4">
+					<CircularAudioVisualizer
+						micLevel={0.6}
+						speakerLevel={0.4}
+						speakerEnabled={speakerEnabled}
+						innerBaseScale={0.28}
+						ampInner={0.12}
+						outerScale={1.22}
+						ampOuter={0.12}
+					/>
 				</div>
 
 				<div class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
 					<Accordion defaultOpenId="basic">
 						<AccordionItem id="basic" title="Basic">
-							<div class="space-y-4 mt-4">
+							<div class="space-y-4">
 								<ConfigField
 									label="Selected mic"
 									mode="select"
@@ -101,7 +100,7 @@
 							</div>
 						</AccordionItem>
 						<AccordionItem id="advanced" title="Advanced">
-							<div class="space-y-4 mt-4">
+							<div class="space-y-4">
 								<div class="space-y-2">
 									<p class="text-label-sm font-semibold tracking-stamped text-on-surface/80 uppercase">Models</p>
 									<div class="flex items-center gap-4">
@@ -116,7 +115,7 @@
 									buttonLabel="Change"
 									onButtonClick={() => {}}
 								/>
-								<div class="flex items-center justify-between">
+								<div class="flex flex-col gap-1.5">
 									<span class="text-label-sm font-semibold tracking-stamped uppercase">Send</span>
 									<ToggleSwitch bind:checked={sendEnabled} aria-label="Toggle send option" />
 								</div>

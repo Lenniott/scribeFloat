@@ -8,7 +8,7 @@
 	} = $props();
 
 	const styles: Record<Status, string> = {
-		idle: "bg-surface-variant",
+		idle: "bg-surface-container-highest",
 		recording: "bg-error-container brightness-200 animate-pulse",
 		paused: "bg-tertiary",
 		error: "bg-primary",

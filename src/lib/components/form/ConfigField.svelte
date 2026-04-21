@@ -35,7 +35,7 @@
 		<select
 			id={fieldId}
 			bind:value
-			class="rounded-md border-0 border-b border-transparent bg-surface-container-high  py-2 pr-8 pl-2 text-body-md text-on-surface focus:ring-tertiary focus:bg-surface-container-high focus:ring-0 focus:outline-none"
+			class="h-8 rounded-md border-0 border-b border-transparent bg-surface-container-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:ring-tertiary focus:bg-surface-container-high focus:ring-0 focus:outline-none"
 		>
 			{#each options as opt (opt.value)}
 				<option value={opt.value}>{opt.label}</option>

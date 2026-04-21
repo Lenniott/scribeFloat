@@ -15,11 +15,11 @@
 </script>
 
 <fieldset class="flex flex-col gap-2 text-left">
-	<legend class="text-label-sm mb-1 font-semibold tracking-wide text-on-surface/80 uppercase">
+	<legend class="text-label-sm mb-1.5 font-semibold tracking-wide text-on-surface/80 uppercase">
 		{label}
 	</legend>
 	<div
-		class="inline-flex max-w-full rounded-md bg-surface-container-lowest p-0.5"
+		class="inline-flex max-w-full rounded-md gap-1"
 		role="radiogroup"
 		aria-label={label}
 	>
@@ -27,12 +27,12 @@
 			<label
 				class="flex cursor-pointer items-center justify-center rounded-sm px-3 py-1.5 text-label-md font-medium transition-colors {selected ===
 				opt.value
-					? 'bg-surface-container-highest text-on-surface'
-					: 'text-on-surface/70 hover:text-on-surface'}"
+					? 'bg-tertiary text-on-tertiary'
+					: 'text-on-surface hover:bg-tertiary/20'}"
 			>
 				<input
 					type="radio"
-					class="sr-only h-7 bg-surface-container-high border border-primary"
+					class="sr-only h-7 bg-surface-container-low border border-primary"
 					{name}
 					value={opt.value}
 					bind:group={selected}

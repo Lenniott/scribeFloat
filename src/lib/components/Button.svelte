@@ -14,25 +14,21 @@
 		variant = "normal",
 		size = "normal",
 		icon: Icon,
-		iconOnly = false,
 		type = "button",
 		disabled = false,
 		class: className = "",
 		children,
 		onclick,
-		"aria-label": ariaLabel,
 	}: {
 		variant?: Variant;
 		size?: Size;
 		/** Lucide icon component from `lucide-svelte/icons/...` */
 		icon?: LucideIcon;
-		iconOnly?: boolean;
 		type?: "button" | "submit" | "reset";
 		disabled?: boolean;
 		class?: string;
 		children?: Snippet;
 		onclick?: (e: MouseEvent) => void;
-		"aria-label"?: string;
 	} = $props();
 
 	const base =
@@ -49,18 +45,16 @@
 		normal: "bg-transparent text-on-surface hover:bg-surface-container-high",
 	};
 
-	const sizeClass: Record<Size, { pad: string; text: string; icon: string; iconOnly: string }> = {
+	const sizeClass: Record<Size, { pad: string; text: string; icon: string }> = {
 		normal: {
 			pad: "px-4 py-2",
 			text: "text-label-md",
 			icon: "size-4",
-			iconOnly: "size-10 p-0",
 		},
 		small: {
 			pad: "px-2.5 py-1.5",
 			text: "text-label-sm",
 			icon: "size-3.5",
-			iconOnly: "size-8 p-0",
 		},
 	};
 
@@ -68,7 +62,7 @@
 		[
 			base,
 			variantClass[variant],
-			iconOnly ? `${sizeClass[size].iconOnly} rounded-md` : `${sizeClass[size].pad} ${sizeClass[size].text} rounded-md`,
+			`${sizeClass[size].pad} ${sizeClass[size].text} rounded-md`,
 			className,
 		]
 			.filter(Boolean)
@@ -83,13 +77,9 @@
 	{type}
 	{disabled}
 	onclick={onclick}
-	aria-label={iconOnly ? ariaLabel : undefined}
-	title={iconOnly ? ariaLabel : undefined}
 >
 	{#if Icon}
 		<Icon class={iconClass} strokeWidth={2} />
 	{/if}
-	{#if !iconOnly}
-		{@render children?.()}
-	{/if}
+	{@render children?.()}
 </button>

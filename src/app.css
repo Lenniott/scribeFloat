@@ -4,55 +4,39 @@
 
 /* Scan design specs so utilities referenced in markdown are generated */
 @source "../context/**/*.md";
-root{
+
+@theme {
 	--color-black: oklch(0.20 0 0);
 	--color-white: oklch(0.9300 0.0044 286.28);
-	--color-grey-xxb: oklch(0.68 0 0);
-	--color-grey-xb: oklch(0.62 0 0);
-	--color-grey-b: oklch(0.56 0 0);
-	--color-grey-n: oklch(0.50 0 0);
-	--color-grey-xd: oklch(0.44 0 0);
-	--color-grey-xxd: oklch(0.38 0 0);
+	--color-grey-xxb: oklch(0.70 0 0);
+	--color-grey-xb: oklch(0.60 0 0);
+	--color-grey-b: oklch(0.40 0 0);
+	--color-grey-n: oklch(0.32 0 0);
+	--color-grey-xd: oklch(0.28 0 0);
+	--color-grey-xxd: oklch(0.24 0 0);
 	--color-orange:  oklch(0.70 0.1867 47.6);
 	--color-yellow: oklch(0.815 0.19 77);
 	--color-red: oklch(0.53 0.21 26.5);
 	--color-blue: oklch(0.72 0.16 240);
 	--color-green: oklch(0.609 0.2158 141.64);
-	/* Solid accent orange — vivid, not peach / pottery */
+
+	--color-void: var(--color-black);
 	--color-primary: var(--color-orange);
-	--color-primary-container: oklch(0.4431 0.1467 25.17);
 	--color-on-primary: var(--color-black);
-	--color-on-primary-container: oklch(0.8491 0.1867 47.6);
-	--color-surface-container-lowest: oklch(0.2338 0 0);
-	--color-surface-container-low: oklch(0.2838 0 0);
-	--color-surface-container-high: oklch(0.3138 0 0);
-	--color-surface-container-highest: oklch(0.3538 0 0);
-	--color-surface-variant: oklch(0.3058 0.0036 286.17);
-	--color-on-surface-low: oklch(0.6754 0.0035 286.19);
-	--color-on-surface-high: oklch(0.9318 0.0044 286.28);
-	--color-outline-variant: oklch(0.9318 0.0044 286.28);
-	--color-tertiary: #00B0FF;
-	--color-error-container: #7e1717;
-	--color-on-error-container: #f2e0e0;
-}
-@theme {
-	/* Colors — Precision Instrument (context/DESIGN.md) */
-	--color-void: #0e0e0e;
-	/* Solid accent orange — vivid, not peach / pottery */
-	--color-primary: #f97316;
-	--color-primary-container: #9a3412;
-	--color-on-primary: #0a0a0a;
-	--color-on-primary-container: #ffedd5;
-	--color-surface-container-lowest: #000000;
-	--color-surface-container-low: #131313;
-	--color-surface-container-high: #1c1c1c;
-	--color-surface-container-highest: #252626;
-	--color-surface-variant: #2a2a2c;
-	--color-on-surface: #e8e8e8;
-	--color-outline-variant: rgb(255 255 255 / 0.15);
-	--color-tertiary: #00B0FF;
-	--color-error-container: #7e1717;
-	--color-on-error-container: #f2e0e0;
+	--color-secondary: var(--color-yellow);
+	--color-on-secondary: var(--color-black);
+	--color-tertiary: var(--color-blue);
+	--color-on-tertiary: var(--color-black);
+	--color-error-container: var(--color-red);
+	--color-on-error-container: var(--color-white);
+	--color-surface-container-lowest: var(--color-grey-xxd);
+	--color-surface-container-low: var(--color-grey-xd);
+	--color-surface-container-high: var(--color-grey-n);
+	--color-surface-container-highest: var(--color-grey-b);
+	--color-surface-variant: var(--color-grey-xxb);
+	--color-on-surface-dim: var(--color-grey-xb);
+	--color-on-surface: var(--color-white);
+	--color-outline-variant: var(--color-white);
 
 	/* Typography */
 	--font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;

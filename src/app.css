@@ -4,7 +4,37 @@
 
 /* Scan design specs so utilities referenced in markdown are generated */
 @source "../context/**/*.md";
-
+root{
+	--color-black: oklch(0.20 0 0);
+	--color-white: oklch(0.9300 0.0044 286.28);
+	--color-grey-xxb: oklch(0.68 0 0);
+	--color-grey-xb: oklch(0.62 0 0);
+	--color-grey-b: oklch(0.56 0 0);
+	--color-grey-n: oklch(0.50 0 0);
+	--color-grey-xd: oklch(0.44 0 0);
+	--color-grey-xxd: oklch(0.38 0 0);
+	--color-orange:  oklch(0.70 0.1867 47.6);
+	--color-yellow: oklch(0.815 0.19 77);
+	--color-red: oklch(0.53 0.21 26.5);
+	--color-blue: oklch(0.72 0.16 240);
+	--color-green: oklch(0.609 0.2158 141.64);
+	/* Solid accent orange — vivid, not peach / pottery */
+	--color-primary: var(--color-orange);
+	--color-primary-container: oklch(0.4431 0.1467 25.17);
+	--color-on-primary: var(--color-black);
+	--color-on-primary-container: oklch(0.8491 0.1867 47.6);
+	--color-surface-container-lowest: oklch(0.2338 0 0);
+	--color-surface-container-low: oklch(0.2838 0 0);
+	--color-surface-container-high: oklch(0.3138 0 0);
+	--color-surface-container-highest: oklch(0.3538 0 0);
+	--color-surface-variant: oklch(0.3058 0.0036 286.17);
+	--color-on-surface-low: oklch(0.6754 0.0035 286.19);
+	--color-on-surface-high: oklch(0.9318 0.0044 286.28);
+	--color-outline-variant: oklch(0.9318 0.0044 286.28);
+	--color-tertiary: #00B0FF;
+	--color-error-container: #7e1717;
+	--color-on-error-container: #f2e0e0;
+}
 @theme {
 	/* Colors — Precision Instrument (context/DESIGN.md) */
 	--color-void: #0e0e0e;

@@ -1,4 +1,4 @@
-# Liscribe — Action Flows
+# scribefloat — Action Flows
 
 > Step-by-step flows for each workflow. These are implementation-agnostic.
 > Use these as the source of truth for Level 3 architecture and agent implementation.

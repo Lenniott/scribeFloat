@@ -1,4 +1,4 @@
-# Liscribe — Architecture
+# scribefloat — Architecture
 
 > C4 model: Context, Container, Component levels.
 > All diagrams in Mermaid — agent and human readable.
@@ -12,18 +12,18 @@ Who uses the system and what external systems it touches.
 
 ```mermaid
 graph LR
-    user["User\nMac or Windows\nUses Liscribe via GUI and hotkeys"]
-    liscribe["Liscribe\nLocal-first desktop transcription\nNo cloud. No accounts."]
+    user["User\nMac or Windows\nUses scribefloat via GUI and hotkeys"]
+    scribefloat["scribefloat\nLocal-first desktop transcription\nNo cloud. No accounts."]
     hf["Hugging Face\nPublic model repository\nOne-time download, no account"]
     audio["OS Audio Layer\nmacOS: Core Audio + BlackHole\nWindows: WASAPI loopback"]
     clipboard["Clipboard and Input\nOS paste mechanism\nDictate output target"]
     fs["Local File System\nTranscripts, WAV files, config\nUser-chosen folders"]
 
-    user -->|"records, transcribes, dictates"| liscribe
-    liscribe -->|"downloads models once"| hf
-    liscribe -->|"captures mic and system audio"| audio
-    liscribe -->|"pastes dictated text"| clipboard
-    liscribe -->|"saves transcripts and audio"| fs
+    user -->|"records, transcribes, dictates"| scribefloat
+    scribefloat -->|"downloads models once"| hf
+    scribefloat -->|"captures mic and system audio"| audio
+    scribefloat -->|"pastes dictated text"| clipboard
+    scribefloat -->|"saves transcripts and audio"| fs
 ```
 
 ---

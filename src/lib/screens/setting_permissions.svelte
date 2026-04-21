@@ -16,6 +16,6 @@ link to help page on how to install
 ]
 Speaker output device (multi-output) | Found
 Device name (must match Audio MIDI Setup)
-Liscribe {LabeledTextField}
+scribefloat {LabeledTextField}
 
 Required for speaker capture in Scribe.

@@ -26,6 +26,6 @@
 		bind:value
 		{placeholder}
 		{disabled}
-		class="rounded-md border-0 border-b border-transparent bg-surface-container-lowest px-2 py-2 text-body-md text-on-surface placeholder:text-on-surface/40 focus:border-primary focus:bg-surface-container-high focus:outline-none disabled:opacity-40"
+		class="rounded-md border-0 border-b border-transparent bg-sur px-2 py-2 text-body-md text-on-surface placeholder:text-on-surface/40 focus:ring-tertiary focus:bg-surface-container-highest focus:outline-none disabled:opacity-40"
 	/>
 </div>

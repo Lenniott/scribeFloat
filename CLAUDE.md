@@ -1,4 +1,4 @@
-# Liscribe — Working Guide
+# scribefloat — Working Guide
 
 > How to build, debug, and extend this codebase.
 > For what the app does and how it is designed, read `docs/context.md` first.
@@ -21,7 +21,7 @@ docs/action-flows.md     ← Step-by-step flows for each workflow.
 
 ```bash
 cargo tauri dev                          # Start dev build (full app)
-cargo test -p liscribe                   # Run unit tests
+cargo test -p scribefloat                   # Run unit tests
 cargo clippy -- -D warnings              # Must pass before committing
 cargo check                              # Fast compile check (no link step)
 ```
@@ -139,7 +139,7 @@ State lives entirely inside `Inner`. Methods on the controller lock, check the c
 ## Things to check before committing
 
 - `cargo clippy -- -D warnings` passes.
-- `cargo test -p liscribe` passes.
+- `cargo test -p scribefloat` passes.
 - If you changed a `#[tauri::command]` signature, verify the JS caller in the corresponding panel HTML uses matching argument names (they are camelCase on the JS side).
 - If you changed `Config`, verify a config file missing the new field still loads without panicking.
 - If you changed anything in `platform/`, verify the other platform still compiles with `cargo check --target x86_64-pc-windows-msvc` (or equivalent).

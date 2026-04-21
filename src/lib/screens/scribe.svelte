@@ -76,7 +76,7 @@
 				<div class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
 					<Accordion defaultOpenId="basic">
 						<AccordionItem id="basic" title="Basic">
-							<div class="space-y-4">
+							<div class="space-y-4 mt-4">
 								<ConfigField
 									label="Selected mic"
 									mode="select"
@@ -101,7 +101,7 @@
 							</div>
 						</AccordionItem>
 						<AccordionItem id="advanced" title="Advanced">
-							<div class="space-y-4">
+							<div class="space-y-4 mt-4">
 								<div class="space-y-2">
 									<p class="text-label-sm font-semibold tracking-stamped text-on-surface/80 uppercase">Models</p>
 									<div class="flex items-center gap-4">

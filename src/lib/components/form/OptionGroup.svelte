@@ -32,7 +32,7 @@
 			>
 				<input
 					type="radio"
-					class="sr-only"
+					class="sr-only h-7 bg-surface-container-high border border-primary"
 					{name}
 					value={opt.value}
 					bind:group={selected}

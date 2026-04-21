@@ -97,7 +97,7 @@
 <main class="mx-auto text-left p-4">
     <a href="/">scribe</a>
 	<header class="mb-14 max-w-2xl">
-		<p class="text-label-sm tracking-stamped text-on-surface/50 uppercase">Liscribe · tokens</p>
+		<p class="text-label-sm tracking-stamped text-on-surface/50 uppercase">scribefloat · tokens</p>
 		<h1 class="font-data text-display-lg text-on-surface">Design system</h1>
 		<p class="mt-3 text-body-md text-on-surface/65 leading-relaxed">
 			Surfaces, type, and components from <code class="text-primary">context/DESIGN.md</code>. This page is

@@ -2,7 +2,7 @@
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import Button from "@lib/components/Button.svelte";
-	import ConfigField from "@lib/components/form/ConfigField.svelte";
+	import HotkeyCaptureField from "@lib/components/form/HotkeyCaptureField.svelte";
 	import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	import PathSelectorField from "@lib/components/form/PathSelectorField.svelte";
 
@@ -40,8 +40,8 @@
 <section class="space-y-4">
 	<h2 class="text-title-sm font-semibold">General settings</h2>
 	<PathSelectorField label="Default save folder" bind:path={outputPath} />
-	<ConfigField label="Open Scribe hotkey" mode="action" bind:value={openHotkey} />
-	<ConfigField label="Dictate hotkey" mode="action" bind:value={dictateHotkey} />
+	<HotkeyCaptureField label="Open Scribe hotkey" bind:value={openHotkey} />
+	<HotkeyCaptureField label="Dictate hotkey" bind:value={dictateHotkey} allowModifierOnly={true} />
 	<LabeledTextField label="Input label" bind:value={inputLabel} />
 	<LabeledTextField label="Output label" bind:value={outputLabel} />
 	<div class="flex items-center gap-3">

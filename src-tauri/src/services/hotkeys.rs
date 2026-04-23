@@ -66,8 +66,8 @@ impl HotkeyService {
         open_scribe: &str,
         dictate: &str,
     ) -> Result<(String, String), String> {
-        let open_scribe = validate_hotkey("Open Scribe", open_scribe)?;
-        let dictate = validate_hotkey("Dictate", dictate)?;
+        let open_scribe = validate_hotkey("Open Scribe", open_scribe, true)?;
+        let dictate = validate_hotkey("Dictate", dictate, false)?;
         if open_scribe.conflict_key == dictate.conflict_key {
             return Err(
                 "Open Scribe and Dictate hotkeys conflict after normalization; choose distinct shortcuts."
@@ -87,7 +87,7 @@ struct ValidatedHotkey {
     conflict_key: String,
 }
 
-fn validate_hotkey(label: &str, raw: &str) -> Result<ValidatedHotkey, String> {
+fn validate_hotkey(label: &str, raw: &str, require_non_modifier_key: bool) -> Result<ValidatedHotkey, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err(format!("{label} hotkey cannot be empty."));
@@ -127,15 +127,23 @@ fn validate_hotkey(label: &str, raw: &str) -> Result<ValidatedHotkey, String> {
         key = Some(part.to_ascii_uppercase());
     }
 
-    let key = key.ok_or_else(|| {
-        format!("{label} hotkey `{trimmed}` is invalid: missing non-modifier key.")
-    })?;
+    let key = if let Some(key) = key {
+        key
+    } else if !require_non_modifier_key && !modifiers.is_empty() {
+        String::new()
+    } else {
+        return Err(format!(
+            "{label} hotkey `{trimmed}` is invalid: missing non-modifier key."
+        ));
+    };
 
     let mut canonical_parts = modifiers
         .iter()
         .map(|m| (*m).to_string())
         .collect::<Vec<_>>();
-    canonical_parts.push(key.clone());
+    if !key.is_empty() {
+        canonical_parts.push(key.clone());
+    }
     let canonical = canonical_parts.join("+");
 
     Ok(ValidatedHotkey {

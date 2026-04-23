@@ -196,6 +196,9 @@ mod tests {
             .unwrap_err();
         assert!(err.contains("missing non-modifier key"));
 
+        ctrl.set_hotkeys("CmdOrCtrl+P".to_string(), "Ctrl".to_string())
+            .expect("dictate should allow modifier-only hotkey");
+
         let err = ctrl
             .set_hotkeys("CmdOrCtrl+S".to_string(), "cmdorctrl+s".to_string())
             .unwrap_err();

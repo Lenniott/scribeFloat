@@ -71,6 +71,18 @@ pub fn permission_settings_url(_kind: &str) -> Option<&'static str> {
     None
 }
 
+/// Actively request the permission — triggers the OS dialog where available,
+/// or opens the relevant System Settings pane as a fallback.
+pub fn request_permission(kind: &str) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    if kind == "input_monitoring" {
+        macos::request_listen_event_access();
+        return Ok(());
+    }
+    open_permission_settings(kind)?;
+    Ok(())
+}
+
 pub fn open_permission_settings(kind: &str) -> Result<bool> {
     let Some(url) = permission_settings_url(kind) else {
         return Ok(false);
@@ -100,6 +112,7 @@ mod macos {
     unsafe extern "C" {
         fn AXIsProcessTrusted() -> bool;
         fn CGPreflightListenEventAccess() -> bool;
+        fn CGRequestListenEventAccess() -> bool;
     }
 
     #[link(name = "AVFoundation", kind = "framework")]
@@ -130,6 +143,10 @@ mod macos {
 
     pub fn input_monitoring_granted() -> bool {
         unsafe { CGPreflightListenEventAccess() }
+    }
+
+    pub fn request_listen_event_access() -> bool {
+        unsafe { CGRequestListenEventAccess() }
     }
 
     pub fn microphone_granted() -> bool {

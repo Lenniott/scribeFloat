@@ -24,6 +24,10 @@ impl PermissionsService {
     pub fn open_settings(&self, kind: &str) -> Result<bool> {
         permissions_impl::open_permission_settings(kind)
     }
+
+    pub fn request_permission(&self, kind: &str) -> Result<()> {
+        permissions_impl::request_permission(kind)
+    }
 }
 
 #[cfg(test)]

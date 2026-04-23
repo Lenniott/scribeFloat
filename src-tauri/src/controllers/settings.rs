@@ -143,6 +143,28 @@ impl SettingsController {
             .open_settings(kind)
             .map_err(|e| format!("failed to open permission settings: {e}"))
     }
+
+    pub fn request_permission(&self, kind: &str) -> Result<(), String> {
+        self.permissions
+            .request_permission(kind)
+            .map_err(|e| format!("failed to request permission for {kind}: {e}"))
+    }
+
+    pub fn is_onboarding_complete(&self) -> bool {
+        self.config.get().onboarding_complete
+    }
+
+    pub fn complete_onboarding(&self) -> Result<(), String> {
+        self.config
+            .update(|cfg| cfg.onboarding_complete = true)
+            .map_err(|e| format!("failed to save onboarding status: {e}"))
+    }
+
+    pub fn reset_onboarding(&self) -> Result<(), String> {
+        self.config
+            .update(|cfg| cfg.onboarding_complete = false)
+            .map_err(|e| format!("failed to reset onboarding status: {e}"))
+    }
 }
 
 #[cfg(test)]
@@ -285,5 +307,44 @@ mod tests {
         assert!(ctrl
             .set_input_labels("   ".to_string(), "Speaker".to_string())
             .is_err());
+    }
+
+    #[test]
+    fn onboarding_starts_incomplete_and_completes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("config.json");
+        let config = ConfigService::load(config_path.clone()).unwrap();
+        let ctrl = make_controller(config, None);
+
+        assert!(!ctrl.is_onboarding_complete());
+        ctrl.complete_onboarding().expect("complete onboarding");
+        assert!(ctrl.is_onboarding_complete());
+
+        let reloaded = ConfigService::load(config_path).unwrap();
+        let ctrl2 = make_controller(reloaded, None);
+        assert!(ctrl2.is_onboarding_complete(), "persisted across reload");
+    }
+
+    #[test]
+    fn reset_onboarding_reverts_to_incomplete() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
+        let ctrl = make_controller(config, None);
+
+        ctrl.complete_onboarding().unwrap();
+        assert!(ctrl.is_onboarding_complete());
+        ctrl.reset_onboarding().unwrap();
+        assert!(!ctrl.is_onboarding_complete());
+    }
+
+    #[test]
+    fn set_output_path_rejects_empty_and_relative_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
+        let ctrl = make_controller(config, None);
+
+        assert!(ctrl.set_output_path("".to_string()).is_err());
+        assert!(ctrl.set_output_path("   ".to_string()).is_err());
+        assert!(ctrl.set_output_path("relative/path".to_string()).is_err());
     }
 }

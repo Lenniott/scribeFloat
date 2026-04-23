@@ -64,3 +64,32 @@ pub fn settings_permissions_open(
 ) -> Result<bool, String> {
     ctrl.open_permission_settings(&kind)
 }
+
+#[tauri::command]
+pub fn settings_permissions_request(
+    ctrl: State<'_, Arc<SettingsController>>,
+    kind: String,
+) -> Result<(), String> {
+    ctrl.request_permission(&kind)
+}
+
+#[tauri::command]
+pub fn settings_onboarding_status(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<bool, String> {
+    Ok(ctrl.is_onboarding_complete())
+}
+
+#[tauri::command]
+pub fn settings_complete_onboarding(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<(), String> {
+    ctrl.complete_onboarding()
+}
+
+#[tauri::command]
+pub fn settings_reset_onboarding(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<(), String> {
+    ctrl.reset_onboarding()
+}

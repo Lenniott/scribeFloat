@@ -87,3 +87,4 @@ Traditional drop shadows are forbidden. They feel "web-like" and soft. Instead, 
 - **Don't** use blues, purples, or "SaaS Blue." The palette is strictly monochromatic + Technical Orange.
 - **Don't** use center-alignment for headers. Everything should be left-aligned to mimic a technical log or ledger.
 - **Don't** use standard 1px dividers. If you feel the need for a line, try a 4px background color shift instead.
+- **Don't** Use disabled button workflows, they suck.

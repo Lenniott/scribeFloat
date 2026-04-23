@@ -1,22 +1,18 @@
 <script lang="ts">
-	import Button from "@lib/components/Button.svelte";
-	import SettingGeneral from "@lib/screens/setting_general.svelte";
-	import SettingPermissions from "@lib/screens/setting_permissions.svelte";
-	import SettingModels from "@lib/screens/setting_models.svelte";
-	import SettingReplace from "@lib/screens/setting_replace.svelte";
-	import SettingWebhook from "@lib/screens/setting_webhook.svelte";
+	import Button from '@lib/components/Button.svelte';
+	import SettingGeneral from '@lib/screens/setting_general.svelte';
+	import SettingPermissions from '@lib/screens/setting_permissions.svelte';
+	import SettingModels from '@lib/screens/setting_models.svelte';
 
-	type SettingsTab = "general" | "permissions" | "models" | "replace" | "webhook";
+	type SettingsTab = 'general' | 'permissions' | 'models';
 
 	let { onClose }: { onClose?: () => void } = $props();
-	let activeTab = $state<SettingsTab>("general");
+	let activeTab = $state<SettingsTab>('general');
 
 	const tabs: Array<{ id: SettingsTab; label: string }> = [
-		{ id: "general", label: "General" },
-		{ id: "permissions", label: "Permissions" },
-		{ id: "models", label: "Models" },
-		{ id: "replace", label: "Replace" },
-		{ id: "webhook", label: "Webhook" },
+		{ id: 'general', label: 'General' },
+		{ id: 'permissions', label: 'Permissions' },
+		{ id: 'models', label: 'Models' },
 	];
 </script>
 
@@ -32,7 +28,7 @@
 				<div class="flex flex-col gap-1">
 					{#each tabs as tab (tab.id)}
 						<Button
-							variant={activeTab === tab.id ? "primary" : "normal"}
+							variant={activeTab === tab.id ? 'primary' : 'normal'}
 							onclick={() => (activeTab = tab.id)}
 						>
 							{tab.label}
@@ -42,16 +38,12 @@
 			</nav>
 
 			<section class="min-h-0 flex-1 overflow-y-auto p-4">
-				{#if activeTab === "general"}
+				{#if activeTab === 'general'}
 					<SettingGeneral />
-				{:else if activeTab === "permissions"}
+				{:else if activeTab === 'permissions'}
 					<SettingPermissions />
-				{:else if activeTab === "models"}
-					<SettingModels />
-				{:else if activeTab === "replace"}
-					<SettingReplace />
 				{:else}
-					<SettingWebhook />
+					<SettingModels />
 				{/if}
 			</section>
 		</div>

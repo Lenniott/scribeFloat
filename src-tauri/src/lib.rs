@@ -57,7 +57,6 @@ pub fn run() {
             commands::scribe::scribe_start,
             commands::scribe::scribe_stop_and_save,
             commands::scribe::scribe_cancel,
-            commands::scribe::scribe_get_state,
             commands::scribe::scribe_add_note,
             commands::scribe::scribe_get_include_timestamps,
             commands::scribe::scribe_set_include_timestamps,
@@ -73,6 +72,10 @@ pub fn run() {
             commands::settings::settings_set_input_labels,
             commands::settings::settings_permissions_status,
             commands::settings::settings_permissions_open,
+            commands::settings::settings_permissions_request,
+            commands::settings::settings_onboarding_status,
+            commands::settings::settings_complete_onboarding,
+            commands::settings::settings_reset_onboarding,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -90,7 +90,7 @@ impl ModelService {
 
         let client = reqwest::Client::builder()
             .user_agent("liscribe_v8/0.1")
-            .timeout(Duration::from_secs(60))
+            .connect_timeout(Duration::from_secs(15))
             .build()
             .context("failed to build download client")?;
 

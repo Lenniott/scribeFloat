@@ -12,6 +12,13 @@ pub struct Config {
 
     #[serde(default)]
     pub keep_wav: bool,
+
+    #[serde(default = "default_true")]
+    pub include_timestamps: bool,
+
+    /// Active model id selected by user in model setup.
+    #[serde(default)]
+    pub selected_model_id: Option<String>,
 }
 
 impl Default for Config {
@@ -20,8 +27,14 @@ impl Default for Config {
             save_folder: default_save_folder(),
             scribe_model_path: None,
             keep_wav: false,
+            include_timestamps: true,
+            selected_model_id: None,
         }
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_save_folder() -> String {
@@ -71,10 +84,19 @@ pub struct ScribeStateEvent {
 /// Emitted on `model://download-progress` while the default model downloads.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelDownloadEvent {
-    pub model_name: String,
+    pub model_id: String,
     pub progress: f32,
     pub bytes_downloaded: u64,
     pub total_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelListItem {
+    pub id: String,
+    pub label: String,
+    pub file_name: String,
+    pub downloaded: bool,
+    pub selected: bool,
 }
 
 impl ScribeStateEvent {

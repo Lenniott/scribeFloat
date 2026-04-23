@@ -21,29 +21,16 @@ pub fn run() {
             std::fs::create_dir_all(&models_dir)?;
             let model = services::model::ModelService::new(models_dir);
 
-            // Auto-download the small model on first launch.
-            // Runs in the background; the frontend listens on model://download-progress.
-            if !model.default_model_ready() {
-                let m = Arc::clone(&model);
-                let handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Err(e) = m.download_default(&handle).await {
-                        eprintln!("model auto-download failed: {e}");
-                        use tauri::Emitter;
-                        handle.emit("model://download-error", e.to_string()).ok();
-                    }
-                });
-            }
-
             let ctrl = controllers::scribe::ScribeController::new(
                 Arc::clone(&audio),
                 Arc::clone(&model),
                 Arc::clone(&output),
-                config,
+                Arc::clone(&config),
                 app.handle().clone(),
             );
 
             app.manage(model); // for model commands
+            app.manage(config); // for config-aware model commands
             app.manage(ctrl);  // for scribe commands
             Ok(())
         })
@@ -53,8 +40,14 @@ pub fn run() {
             commands::scribe::scribe_cancel,
             commands::scribe::scribe_get_state,
             commands::scribe::scribe_add_note,
+            commands::scribe::scribe_get_include_timestamps,
+            commands::scribe::scribe_set_include_timestamps,
             commands::model::model_status,
+            commands::model::model_setup_status,
+            commands::model::model_list,
             commands::model::model_download_default,
+            commands::model::model_download,
+            commands::model::model_select,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

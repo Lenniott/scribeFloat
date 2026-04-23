@@ -4,7 +4,7 @@
 	export type Note = {
 		id: string;
 		text: string;
-		createdAt: number;
+		recordedAtMs: number;
 	};
 
 	let {
@@ -28,7 +28,7 @@
 		class="w-full text-left"
 		onclick={() => onselect?.(note.id)}
 	>
-		<TimestampLabel at={note.createdAt} class="mb-1 block" />
+		<TimestampLabel at={note.recordedAtMs} class="mb-1 block" />
 		<p class="text-body-md whitespace-pre-wrap text-on-surface">{note.text}</p>
 	</button>
 </article>

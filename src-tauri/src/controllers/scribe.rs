@@ -58,7 +58,13 @@ impl ScribeController {
     pub fn start(&self) -> Result<()> {
         let cfg = self.config.get();
         let session_dir = self.output.make_session_dir(&cfg.save_folder)?;
-        let mic = self.audio.start_mic(None)?;
+        let app = self.app.clone();
+        let mic = self.audio.start_mic(
+            None,
+            Some(Arc::new(move |level| {
+                app.emit("scribe://audio-level", level).ok();
+            })),
+        )?;
 
         let mut inner = self.inner.lock().unwrap();
         if matches!(inner.state, ScribeState::Recording | ScribeState::Transcribing) {
@@ -92,13 +98,16 @@ impl ScribeController {
     /// Returns immediately; heavy work runs in a background spawn_blocking task.
     pub fn stop_and_save(this: Arc<Self>, title: Option<String>) -> Result<()> {
         // Extract session under lock then release immediately.
-        let session = {
+        let (session, notes) = {
             let mut inner = this.inner.lock().unwrap();
             if inner.state != ScribeState::Recording {
                 return Err(anyhow!("cannot stop: not recording"));
             }
             inner.state = ScribeState::Transcribing;
-            inner.session.take().expect("session exists when Recording")
+            (
+                inner.session.take().expect("session exists when Recording"),
+                inner.notes.clone(),
+            )
         };
 
         this.app
@@ -111,7 +120,7 @@ impl ScribeController {
         tauri::async_runtime::spawn(async move {
             let ctrl = Arc::clone(&this);
             let result =
-                tokio::task::spawn_blocking(move || ctrl.do_transcription(session, &title))
+                tokio::task::spawn_blocking(move || ctrl.do_transcription(session, notes, &title))
                     .await;
 
             match result {
@@ -140,7 +149,7 @@ impl ScribeController {
     }
 
     /// Blocking transcription pipeline. Called inside spawn_blocking.
-    fn do_transcription(&self, session: ActiveSession, title: &str) -> Result<()> {
+    fn do_transcription(&self, session: ActiveSession, notes: Vec<Note>, title: &str) -> Result<()> {
         let (raw_pcm, native_rate) = session.mic.stop_and_take();
 
         let pcm_16k = resample_linear(&raw_pcm, native_rate, 16_000);
@@ -149,10 +158,15 @@ impl ScribeController {
         let wav_path = session.session_dir.join("mic.wav");
         self.output.write_wav(&pcm_16k, 16_000, &wav_path)?;
 
-        // Use the explicitly configured path, or fall back to the built-in default model.
-        let model_path = match &config.scribe_model_path {
-            Some(p) => PathBuf::from(p),
-            None => self.model.default_model_path(),
+        // Use configured path, then selected model id, then built-in default path.
+        let model_path = if let Some(p) = &config.scribe_model_path {
+            PathBuf::from(p)
+        } else if let Some(model_id) = &config.selected_model_id {
+            self.model
+                .model_path_for_id(model_id)
+                .unwrap_or_else(|| self.model.default_model_path())
+        } else {
+            self.model.default_model_path()
         };
 
         if !self.model.model_available(&model_path) {
@@ -173,7 +187,18 @@ impl ScribeController {
         let segments = self.model.transcribe_pcm(&model_path, &pcm_16k)?;
 
         let transcript_path = self.output.transcript_path(&session.session_dir, &model_path);
-        self.output.write_transcript(&segments, title, &transcript_path)?;
+        let model_name = model_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().replace("ggml-", ""))
+            .unwrap_or_else(|| "model".to_string());
+        self.output.write_transcript(
+            &segments,
+            &notes,
+            title,
+            &model_name,
+            config.include_timestamps,
+            &transcript_path,
+        )?;
 
         if !config.keep_wav && !segments.is_empty() {
             self.output.delete_wav(&wav_path)?;
@@ -196,6 +221,16 @@ impl ScribeController {
     pub fn get_state(&self) -> ScribeStateEvent {
         let inner = self.inner.lock().unwrap();
         ScribeStateEvent::new(inner.state.clone())
+    }
+
+    pub fn get_include_timestamps(&self) -> bool {
+        self.config.get().include_timestamps
+    }
+
+    pub fn set_include_timestamps(&self, enabled: bool) -> Result<()> {
+        self.config
+            .update(|cfg| cfg.include_timestamps = enabled)
+            .map_err(|e| anyhow!("failed to update config: {e}"))
     }
 
     /// Add a timestamped note. Only valid while recording.

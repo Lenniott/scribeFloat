@@ -6,9 +6,42 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
-const SMALL_MODEL_URL: &str =
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin";
 pub const SMALL_MODEL_FILENAME: &str = "ggml-small.bin";
+
+#[derive(Clone, Copy)]
+pub struct ModelCatalogItem {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub file_name: &'static str,
+    pub url: &'static str,
+}
+
+const MODEL_CATALOG: [ModelCatalogItem; 4] = [
+    ModelCatalogItem {
+        id: "tiny",
+        label: "Tiny",
+        file_name: "ggml-tiny.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
+    },
+    ModelCatalogItem {
+        id: "base",
+        label: "Base",
+        file_name: "ggml-base.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+    },
+    ModelCatalogItem {
+        id: "small",
+        label: "Small",
+        file_name: SMALL_MODEL_FILENAME,
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
+    },
+    ModelCatalogItem {
+        id: "medium",
+        label: "Medium",
+        file_name: "ggml-medium.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
+    },
+];
 
 pub struct ModelService {
     models_dir: PathBuf,
@@ -24,12 +57,27 @@ impl ModelService {
         self.models_dir.join(SMALL_MODEL_FILENAME)
     }
 
+    pub fn model_catalog(&self) -> &'static [ModelCatalogItem] {
+        &MODEL_CATALOG
+    }
+
+    pub fn model_path_for_id(&self, model_id: &str) -> Option<PathBuf> {
+        self.catalog_item(model_id)
+            .map(|item| self.models_dir.join(item.file_name))
+    }
+
     pub fn default_model_ready(&self) -> bool {
         self.default_model_path().exists()
     }
 
     pub fn model_available(&self, path: &Path) -> bool {
-        path.exists()
+        path.exists() && std::fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false)
+    }
+
+    pub fn model_downloaded(&self, model_id: &str) -> bool {
+        self.model_path_for_id(model_id)
+            .map(|p| self.model_available(&p))
+            .unwrap_or(false)
     }
 
     /// Download ggml-small.bin into the models directory.
@@ -37,7 +85,14 @@ impl ModelService {
     /// never leaves a corrupt model on disk.
     /// Emits `model://download-progress` events throughout.
     pub async fn download_default(&self, app: &AppHandle) -> Result<()> {
-        let dest = self.default_model_path();
+        self.download_model("small", app).await
+    }
+
+    pub async fn download_model(&self, model_id: &str, app: &AppHandle) -> Result<()> {
+        let item = self
+            .catalog_item(model_id)
+            .ok_or_else(|| anyhow!("unknown model id: {model_id}"))?;
+        let dest = self.models_dir.join(item.file_name);
         let tmp = dest.with_extension("tmp");
 
         std::fs::create_dir_all(&self.models_dir).context("create models dir")?;
@@ -51,7 +106,7 @@ impl ModelService {
         let mut response = None;
         let mut last_err = None;
         for attempt in 1..=3 {
-            match client.get(SMALL_MODEL_URL).send().await {
+            match client.get(item.url).send().await {
                 Ok(r) if r.status().is_success() => {
                     response = Some(r);
                     break;
@@ -96,7 +151,7 @@ impl ModelService {
             app.emit(
                 "model://download-progress",
                 ModelDownloadEvent {
-                    model_name: "small".to_string(),
+                    model_id: item.id.to_string(),
                     progress: total.map(|t| downloaded as f32 / t as f32).unwrap_or(0.0),
                     bytes_downloaded: downloaded,
                     total_bytes: total,
@@ -116,7 +171,7 @@ impl ModelService {
         app.emit(
             "model://download-progress",
             ModelDownloadEvent {
-                model_name: "small".to_string(),
+                model_id: item.id.to_string(),
                 progress: 1.0,
                 bytes_downloaded: downloaded,
                 total_bytes: total,
@@ -125,6 +180,10 @@ impl ModelService {
         .ok();
 
         Ok(())
+    }
+
+    fn catalog_item(&self, model_id: &str) -> Option<ModelCatalogItem> {
+        MODEL_CATALOG.iter().find(|m| m.id == model_id).copied()
     }
 
     /// Transcribe mono f32 PCM at 16 kHz. Must be called from spawn_blocking.

@@ -1,4 +1,4 @@
-use crate::types::Segment;
+use crate::types::{Note, Segment};
 use anyhow::{Context, Result};
 use hound::{SampleFormat, WavSpec, WavWriter};
 use std::path::{Path, PathBuf};
@@ -51,13 +51,55 @@ impl OutputService {
     pub fn write_transcript(
         &self,
         segments: &[Segment],
+        notes: &[Note],
         title: &str,
+        model_name: &str,
+        include_timestamps: bool,
         dest: &Path,
     ) -> Result<PathBuf> {
-        let mut md = format!("# {}\n\n", title);
-        for seg in segments {
-            md.push_str(&format!("[{}] {}\n\n", format_ms(seg.start_ms), seg.text));
+        let transcript_body = segments
+            .iter()
+            .map(|seg| {
+                if include_timestamps {
+                    format!("[{}] {}", format_ms(seg.start_ms), seg.text)
+                } else {
+                    seg.text.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        let duration_seconds = segments
+            .last()
+            .map(|s| s.end_ms.max(0) as f64 / 1000.0)
+            .unwrap_or(0.0);
+        let word_count = transcript_body.split_whitespace().count();
+        let token_estimate = ((word_count as f64) * 1.3).round() as usize;
+
+        let mut md = String::new();
+        md.push_str("---\n");
+        md.push_str(&format!("title: '{}'\n", title.replace('\'', "’")));
+        md.push_str(&format!("duration_seconds: {:.1}\n", duration_seconds));
+        md.push_str(&format!("word_count: {word_count}\n"));
+        md.push_str(&format!("token_estimate: {token_estimate}\n"));
+        md.push_str(&format!("model: {model_name}\n"));
+        md.push_str("---\n\n");
+        md.push_str("## Transcript\n\n");
+        md.push_str(&transcript_body);
+
+        if !notes.is_empty() {
+            md.push_str("\n\n## Notes\n");
+            for (i, note) in notes.iter().enumerate() {
+                md.push_str(&format!(
+                    "[{}] ({}) {}\n",
+                    i + 1,
+                    format_ms(note.recorded_at_ms as i64),
+                    note.text
+                ));
+            }
         }
+
+        md.push('\n');
         std::fs::write(dest, &md).context("failed to write transcript")?;
         if std::fs::metadata(dest)?.len() == 0 {
             return Err(anyhow::anyhow!("transcript was written empty"));

@@ -35,3 +35,18 @@ pub fn scribe_add_note(
 ) -> Result<Note, String> {
     ctrl.add_note(text).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn scribe_get_include_timestamps(
+    ctrl: State<'_, Arc<ScribeController>>,
+) -> Result<bool, String> {
+    Ok(ctrl.get_include_timestamps())
+}
+
+#[tauri::command]
+pub fn scribe_set_include_timestamps(
+    ctrl: State<'_, Arc<ScribeController>>,
+    enabled: bool,
+) -> Result<(), String> {
+    ctrl.set_include_timestamps(enabled).map_err(|e| e.to_string())
+}

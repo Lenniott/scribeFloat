@@ -4,11 +4,13 @@
 		disabled = false,
 		id,
 		"aria-label": ariaLabel,
+		onchange,
 	}: {
 		checked?: boolean;
 		disabled?: boolean;
 		id?: string;
 		"aria-label"?: string;
+		onchange?: (next: boolean) => void;
 	} = $props();
 </script>
 
@@ -23,7 +25,10 @@
 		: 'bg-surface-container-lowest'}"
 	{disabled}
 	onclick={() => {
-		if (!disabled) checked = !checked;
+		if (!disabled) {
+			checked = !checked;
+			onchange?.(checked);
+		}
 	}}
 >
 	<span

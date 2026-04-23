@@ -35,7 +35,11 @@ impl AudioService {
 
     /// Open a mic input stream. Uses preferred_name if provided and available,
     /// otherwise falls back to the system default input device.
-    pub fn start_mic(&self, preferred_name: Option<&str>) -> Result<MicSession> {
+    pub fn start_mic(
+        &self,
+        preferred_name: Option<&str>,
+        on_level: Option<Arc<dyn Fn(f32) + Send + Sync>>,
+    ) -> Result<MicSession> {
         let host = cpal::default_host();
 
         let device = match preferred_name {
@@ -60,21 +64,31 @@ impl AudioService {
         let stream = match supported.sample_format() {
             cpal::SampleFormat::F32 => {
                 let buf = Arc::clone(&buffer);
+                let level_cb = on_level.clone();
                 device.build_input_stream(
                     &config,
-                    move |data: &[f32], _| push_mono(&buf, data, channels),
+                    move |data: &[f32], _| {
+                        push_mono(&buf, data, channels);
+                        if let Some(cb) = &level_cb {
+                            cb(level_from_chunk(data, channels));
+                        }
+                    },
                     err_fn,
                     None,
                 )?
             }
             cpal::SampleFormat::I16 => {
                 let buf = Arc::clone(&buffer);
+                let level_cb = on_level.clone();
                 device.build_input_stream(
                     &config,
                     move |data: &[i16], _| {
                         let f32s: Vec<f32> =
                             data.iter().map(|&s| s as f32 / 32768.0).collect();
                         push_mono(&buf, &f32s, channels);
+                        if let Some(cb) = &level_cb {
+                            cb(level_from_chunk(&f32s, channels));
+                        }
                     },
                     err_fn,
                     None,
@@ -107,4 +121,24 @@ fn push_mono(buf: &Mutex<Vec<f32>>, data: &[f32], channels: usize) {
             );
         }
     }
+}
+
+fn level_from_chunk(data: &[f32], channels: usize) -> f32 {
+    if data.is_empty() {
+        return 0.0;
+    }
+    let rms = if channels <= 1 {
+        let sum = data.iter().map(|s| s * s).sum::<f32>();
+        (sum / data.len() as f32).sqrt()
+    } else {
+        let mut sum = 0.0f32;
+        let mut n = 0usize;
+        for frame in data.chunks(channels) {
+            let mono = frame.iter().copied().sum::<f32>() / channels as f32;
+            sum += mono * mono;
+            n += 1;
+        }
+        if n == 0 { 0.0 } else { (sum / n as f32).sqrt() }
+    };
+    (rms * 4.0).clamp(0.0, 1.0)
 }

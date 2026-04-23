@@ -3,18 +3,16 @@
 		at,
 		class: className = "",
 	}: {
-		at: number | Date;
+		at: number;
 		class?: string;
 	} = $props();
 
-	function format(ts: number | Date) {
-		const d = ts instanceof Date ? ts : new Date(ts);
-		return d.toLocaleTimeString(undefined, {
-			hour: "2-digit",
-			minute: "2-digit",
-			second: "2-digit",
-			hour12: false,
-		});
+	function format(ms: number) {
+		const totalSeconds = Math.floor(ms / 1000);
+		const hours = Math.floor(totalSeconds / 3600);
+		const minutes = Math.floor((totalSeconds % 3600) / 60);
+		const seconds = totalSeconds % 60;
+		return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 	}
 
 	let text = $derived(format(at));

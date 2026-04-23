@@ -36,7 +36,7 @@
 	let hotkeyDemo = $state("Cmd+Shift+H");
 	let optionDemo = $state("one");
 	let notesDemo = $state<Note[]>([
-		{ id: "n1", text: "Example note body.", createdAt: Date.now() - 120_000 },
+		{ id: "n1", text: "Example note body.", recordedAtMs: 120_000 },
 	]);
 	let selectedNoteId = $state<string | null>(null);
 	let draft = $state("");
@@ -49,7 +49,7 @@
 	];
 
 	function appendDemoNote(text: string) {
-		notesDemo = [...notesDemo, { id: crypto.randomUUID(), text, createdAt: Date.now() }];
+		notesDemo = [...notesDemo, { id: crypto.randomUUID(), text, recordedAtMs: 45_000 }];
 	}
 
 	function onComposerDone() {
@@ -450,12 +450,12 @@
 		<div class="flex max-w-md flex-col gap-6">
 			<div>
 				<p class="text-label-sm text-on-surface/45 mb-2">TimestampLabel</p>
-				<TimestampLabel at={Date.now()} />
+				<TimestampLabel at={94_000} />
 			</div>
 			<div>
 				<p class="text-label-sm text-on-surface/45 mb-2">NoteCard</p>
 				<NoteCard
-					note={{ id: "x", text: "Standalone card.", createdAt: Date.now() }}
+					note={{ id: "x", text: "Standalone card.", recordedAtMs: 73_000 }}
 					selected={false}
 				/>
 			</div>

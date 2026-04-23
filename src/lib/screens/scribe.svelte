@@ -13,10 +13,13 @@
 	import RecordingTimer from '@components/audio/RecordingTimer.svelte';
 	import ConfigField from '@components/form/ConfigField.svelte';
 	import EditableTitleField from '@components/form/EditableTitleField.svelte';
+	import LabeledTextField from '@components/form/LabeledTextField.svelte';
 	import ToggleSwitch from '@components/form/ToggleSwitch.svelte';
+	import ProgressBar from '@components/form/ProgressBar.svelte';
 	import ModelSetupModal, { type ModelListItem } from '@components/model/ModelSetupModal.svelte';
 	import NoteComposer from '@components/notes/NoteComposer.svelte';
 	import NotesList from '@components/notes/NotesList.svelte';
+	import SettingsScreen from '@lib/screens/settings.svelte';
 	import Bin from 'lucide-svelte/icons/trash-2';
 	import Cog from 'lucide-svelte/icons/settings-2';
 	import type { Note } from '@components/notes/NoteCard.svelte';
@@ -34,6 +37,7 @@
 	let modelSetupError = $state('');
 	let models = $state<ModelListItem[]>([]);
 	let progressByModel = $state<Record<string, number>>({});
+	let settingsOpen = $state(false);
 
 	// ── Recording ─────────────────────────────────────────────────────────────
 	let elapsedSeconds = $state(0);
@@ -65,6 +69,12 @@
 	let selectedNoteId = $state<string | null>(null);
 	let includeTimestamps = $state(true);
 	let micLevel = $state(0);
+	let transcribeProgress = $state(0);
+	const transcribeSteps = [
+		{ label: 'Loading model', complete: false },
+		{ label: 'Transcribing audio', complete: false },
+		{ label: 'Writing transcript', complete: false }
+	];
 
 	const micOptions = [{ value: '', label: 'System Default' }];
 
@@ -98,11 +108,13 @@
 				break;
 			case 'TRANSCRIBING':
 				phase = 'transcribing';
+				transcribeProgress = p.progress ? Math.round(p.progress * 100) : Math.max(transcribeProgress, 33);
 				stopTimer();
 				micLevel = 0;
 				break;
 			case 'DONE':
 				phase = 'done';
+				transcribeProgress = 100;
 				transcriptPath = p.transcript_path ?? '';
 				break;
 			case 'NO_MODEL':
@@ -113,6 +125,7 @@
 				break;
 			case 'ERROR':
 				phase = 'error';
+				transcribeProgress = 0;
 				errorMessage = p.error ?? 'Unknown error';
 				stopTimer();
 				micLevel = 0;
@@ -169,6 +182,14 @@
 		modelSetupError = '';
 		modelSetupOpen = true;
 		await refreshModels();
+	}
+
+	function openSettings() {
+		settingsOpen = true;
+	}
+
+	function closeSettings() {
+		settingsOpen = false;
 	}
 
 	async function downloadModel(modelId: string) {
@@ -273,8 +294,8 @@
 					variant="normal"
 					size="small"
 					icon={Cog}
-					aria-label="Open model settings"
-					onclick={openModelSetup}
+					aria-label="Open settings"
+					onclick={openSettings}
 				/>
 				{#if !modelReady}
 					<span class="font-data text-label-sm text-on-surface/60 uppercase tracking-stamped">
@@ -330,18 +351,11 @@
 										<ToggleSwitch bind:checked={speakerEnabled} aria-label="Toggle speaker" />
 									</div>
 									{#if speakerEnabled}
-										<ConfigField
-											label="Mic name"
-											mode="action"
-											bind:value={micName}
-											buttonLabel="Edit"
-										/>
-										<ConfigField
-											label="Speaker name"
-											mode="action"
-											bind:value={speakerName}
-											buttonLabel="Edit"
-										/>
+										<p class="text-label-sm text-on-surface/60">
+											Speaker routing setup is a follow-up slice; visual ring is preview-only for now.
+										</p>
+										<LabeledTextField label="Mic name" bind:value={micName} />
+										<LabeledTextField label="Speaker name" bind:value={speakerName} />
 									{/if}
 									<div class="flex items-center justify-between">
 										<span class="text-label-sm font-semibold tracking-stamped uppercase"
@@ -376,9 +390,18 @@
 						<Button variant="primary" onclick={stopAndSave}>Stop and Save</Button>
 
 					{:else if phase === 'transcribing'}
-						<span class="font-data text-label-sm text-on-surface/60 uppercase tracking-stamped">
-							Transcribing…
-						</span>
+						<ProgressBar
+							progress={transcribeProgress}
+							sequence={transcribeSteps.map((step, index) => ({
+								...step,
+								complete:
+									(index === 0 && transcribeProgress >= 20) ||
+									(index === 1 && transcribeProgress >= 70) ||
+									(index === 2 && transcribeProgress >= 100)
+							}))}
+							sequenceMode="window"
+							uiSize="sm"
+						/>
 
 					{:else if phase === 'done'}
 						<div class="flex min-w-0 flex-1 flex-col gap-2">
@@ -441,3 +464,7 @@
 	onSelect={selectModel}
 	onClose={closeModelSetup}
 />
+
+{#if settingsOpen}
+	<SettingsScreen onClose={closeSettings} />
+{/if}

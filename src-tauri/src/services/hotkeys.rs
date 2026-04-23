@@ -37,17 +37,24 @@ impl HotkeyRegistrar for TauriHotkeyRegistrar {
             ));
         }
 
-        if let Err(err) = self.app.global_shortcut().register(dictate) {
-            let _ = self.app.global_shortcut().unregister_all();
-            for shortcut in &previous {
-                let _ = self.app.global_shortcut().register(shortcut.as_str());
+        let should_register_dictate = hotkey_has_non_modifier_key(dictate);
+        if should_register_dictate {
+            if let Err(err) = self.app.global_shortcut().register(dictate) {
+                let _ = self.app.global_shortcut().unregister_all();
+                for shortcut in &previous {
+                    let _ = self.app.global_shortcut().register(shortcut.as_str());
+                }
+                return Err(format!(
+                    "failed to register Dictate hotkey `{dictate}`: {err}"
+                ));
             }
-            return Err(format!(
-                "failed to register Dictate hotkey `{dictate}`: {err}"
-            ));
         }
 
-        *registered = vec![open_scribe.to_string(), dictate.to_string()];
+        *registered = if should_register_dictate {
+            vec![open_scribe.to_string(), dictate.to_string()]
+        } else {
+            vec![open_scribe.to_string()]
+        };
         Ok(())
     }
 }
@@ -66,8 +73,8 @@ impl HotkeyService {
         open_scribe: &str,
         dictate: &str,
     ) -> Result<(String, String), String> {
-        let open_scribe = validate_hotkey("Open Scribe", open_scribe)?;
-        let dictate = validate_hotkey("Dictate", dictate)?;
+        let open_scribe = validate_hotkey("Open Scribe", open_scribe, true)?;
+        let dictate = validate_hotkey("Dictate", dictate, false)?;
         if open_scribe.conflict_key == dictate.conflict_key {
             return Err(
                 "Open Scribe and Dictate hotkeys conflict after normalization; choose distinct shortcuts."
@@ -87,7 +94,7 @@ struct ValidatedHotkey {
     conflict_key: String,
 }
 
-fn validate_hotkey(label: &str, raw: &str) -> Result<ValidatedHotkey, String> {
+fn validate_hotkey(label: &str, raw: &str, require_non_modifier_key: bool) -> Result<ValidatedHotkey, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err(format!("{label} hotkey cannot be empty."));
@@ -127,21 +134,36 @@ fn validate_hotkey(label: &str, raw: &str) -> Result<ValidatedHotkey, String> {
         key = Some(part.to_ascii_uppercase());
     }
 
-    let key = key.ok_or_else(|| {
-        format!("{label} hotkey `{trimmed}` is invalid: missing non-modifier key.")
-    })?;
+    let key = if let Some(key) = key {
+        key
+    } else if !require_non_modifier_key && !modifiers.is_empty() {
+        String::new()
+    } else {
+        return Err(format!(
+            "{label} hotkey `{trimmed}` is invalid: missing non-modifier key."
+        ));
+    };
 
     let mut canonical_parts = modifiers
         .iter()
         .map(|m| (*m).to_string())
         .collect::<Vec<_>>();
-    canonical_parts.push(key.clone());
+    if !key.is_empty() {
+        canonical_parts.push(key.clone());
+    }
     let canonical = canonical_parts.join("+");
 
     Ok(ValidatedHotkey {
         canonical: canonical.clone(),
         conflict_key: canonical,
     })
+}
+
+fn hotkey_has_non_modifier_key(hotkey: &str) -> bool {
+    hotkey
+        .split('+')
+        .map(str::trim)
+        .any(|part| !part.is_empty() && parse_modifier(part).is_none())
 }
 
 fn parse_modifier(token: &str) -> Option<&'static str> {
@@ -185,4 +207,16 @@ fn is_valid_key(token: &str) -> bool {
         .strip_prefix('F')
         .and_then(|n| n.parse::<u8>().ok())
         .is_some_and(|n| (1..=24).contains(&n))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hotkey_has_non_modifier_key;
+
+    #[test]
+    fn detects_modifier_only_hotkey() {
+        assert!(!hotkey_has_non_modifier_key("Ctrl"));
+        assert!(!hotkey_has_non_modifier_key("Command+Shift"));
+        assert!(hotkey_has_non_modifier_key("CmdOrCtrl+P"));
+    }
 }

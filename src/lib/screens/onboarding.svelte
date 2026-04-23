@@ -28,6 +28,8 @@
 	let inputLabel = $state("Mic");
 	let outputLabel = $state("Speaker");
 	let saveError = $state("");
+	let gateError = $state("");
+	let isRefreshing = $state(false);
 
 	let step = $state<1 | 2 | 3 | 4>(1);
 
@@ -36,38 +38,90 @@
 	const outputPathReady = $derived(Boolean(outputPath.trim()));
 	const hotkeysReady = $derived(Boolean(openHotkey.trim() && dictateHotkey.trim()));
 	const allReady = $derived(modelReady && permissionsReady && outputPathReady && hotkeysReady);
+	const stepStatuses = $derived([
+		{
+			id: 1 as const,
+			title: "Model",
+			description: modelReady ? "Ready" : "Download and select one model",
+			complete: modelReady,
+		},
+		{
+			id: 2 as const,
+			title: "Permissions",
+			description: permissionsReady ? "Ready" : "Grant required system permissions",
+			complete: permissionsReady,
+		},
+		{
+			id: 3 as const,
+			title: "Output",
+			description: outputPathReady ? "Ready" : "Choose output folder",
+			complete: outputPathReady,
+		},
+		{
+			id: 4 as const,
+			title: "Hotkeys",
+			description: hotkeysReady ? "Ready" : "Set scribe and dictate hotkeys",
+			complete: hotkeysReady,
+		},
+	]);
+
+	function getErrorMessage(error: unknown, fallback: string): string {
+		if (typeof error === "string" && error.trim()) return error;
+		if (error instanceof Error && error.message.trim()) return error.message;
+		if (typeof error === "object" && error !== null) {
+			const maybeMessage = (error as { message?: unknown }).message;
+			if (typeof maybeMessage === "string" && maybeMessage.trim()) return maybeMessage;
+		}
+		return fallback;
+	}
 
 	async function refreshModels() {
-		models = await invoke<ModelListItem[]>("model_list").catch(() => []);
+		models = await invoke<ModelListItem[]>("model_list").catch((error) => {
+			gateError = getErrorMessage(error, "Could not load model status.");
+			return [];
+		});
 		modelReady = models.some((m) => m.downloaded && m.selected);
 	}
 
 	async function refreshPermissions() {
-		permissions = await invoke<PermissionStatus[]>("settings_permissions_status").catch(() => []);
+		permissions = await invoke<PermissionStatus[]>("settings_permissions_status").catch((error) => {
+			gateError = getErrorMessage(error, "Could not load permission status.");
+			return [];
+		});
 	}
 
 	async function refreshConfig() {
-		outputPath = await invoke<string>("settings_get_output_path").catch(() => "");
-		const [open, dictate] = await invoke<[string, string]>("settings_get_hotkeys").catch(() => ["", ""]);
+		outputPath = await invoke<string>("settings_get_output_path").catch((error) => {
+			gateError = getErrorMessage(error, "Could not load output path.");
+			return "";
+		});
+		const [open, dictate] = await invoke<[string, string]>("settings_get_hotkeys").catch((error) => {
+			gateError = getErrorMessage(error, "Could not load hotkeys.");
+			return ["", ""];
+		});
 		openHotkey = open;
 		dictateHotkey = dictate;
-		const [inLabel, outLabel] = await invoke<[string, string]>("settings_get_input_labels").catch(() => [
-			"Mic",
-			"Speaker",
-		]);
+		const [inLabel, outLabel] = await invoke<[string, string]>("settings_get_input_labels").catch(
+			(error) => {
+				gateError = getErrorMessage(error, "Could not load labels.");
+				return ["Mic", "Speaker"];
+			},
+		);
 		inputLabel = inLabel;
 		outputLabel = outLabel;
 	}
 
 	async function openPermissionSettings(kind: string) {
-		await invoke("settings_permissions_open", { kind }).catch(() => {});
+		await invoke("settings_permissions_open", { kind }).catch((error) => {
+			saveError = getErrorMessage(error, `Could not open settings for ${kind.replace("_", " ")}.`);
+		});
 		await refreshPermissions();
 	}
 
 	async function saveOutputPath() {
 		saveError = "";
 		await invoke("settings_set_output_path", { path: outputPath }).catch((e) => {
-			saveError = String(e);
+			saveError = getErrorMessage(e, "Could not save output path.");
 		});
 		await refreshConfig();
 	}
@@ -78,13 +132,13 @@
 			openScribe: openHotkey,
 			dictate: dictateHotkey,
 		}).catch((e) => {
-			saveError = String(e);
+			saveError = getErrorMessage(e, "Could not save hotkeys.");
 		});
 		await invoke("settings_set_input_labels", {
 			inputLabel,
 			outputLabel,
 		}).catch((e) => {
-			saveError = String(e);
+			saveError = getErrorMessage(e, "Could not save labels.");
 		});
 		await refreshConfig();
 	}
@@ -92,20 +146,27 @@
 	async function downloadModel(modelId: string) {
 		modelSetupError = "";
 		await invoke("model_download", { modelId }).catch((e) => {
-			modelSetupError = String(e);
+			modelSetupError = getErrorMessage(e, "Could not start model download.");
 		});
 	}
 
 	async function selectModel(modelId: string) {
 		modelSetupError = "";
 		await invoke("model_select", { modelId }).catch((e) => {
-			modelSetupError = String(e);
+			modelSetupError = getErrorMessage(e, "Could not select model.");
 		});
 		await refreshModels();
 	}
 
-	onMount(async () => {
+	async function refreshAllStatus() {
+		isRefreshing = true;
+		gateError = "";
 		await Promise.all([refreshModels(), refreshPermissions(), refreshConfig()]);
+		isRefreshing = false;
+	}
+
+	onMount(async () => {
+		await refreshAllStatus();
 	});
 </script>
 
@@ -117,13 +178,30 @@
 		</p>
 	</header>
 
-	<nav class="flex gap-2">
-		<Button variant={step === 1 ? "primary" : "secondary"} onclick={() => (step = 1)}>1. Model</Button>
-		<Button variant={step === 2 ? "primary" : "secondary"} onclick={() => (step = 2)}
-			>2. Permissions</Button
-		>
-		<Button variant={step === 3 ? "primary" : "secondary"} onclick={() => (step = 3)}>3. Output</Button>
-		<Button variant={step === 4 ? "primary" : "secondary"} onclick={() => (step = 4)}>4. Hotkeys</Button>
+	<nav class="grid gap-2 sm:grid-cols-2">
+		{#each stepStatuses as stepStatus (stepStatus.id)}
+			<button
+				type="button"
+				class={`rounded-md border px-3 py-2 text-left transition ${
+					stepStatus.id === step
+						? "border-primary bg-primary/10"
+						: stepStatus.complete
+							? "border-green-500/40 bg-green-500/10"
+							: "border-surface-container bg-surface"
+				}`}
+				onclick={() => (step = stepStatus.id)}
+			>
+				<div class="flex items-center justify-between gap-3">
+					<p class="text-label-sm font-semibold">
+						{stepStatus.id}. {stepStatus.title}
+					</p>
+					<span class={`text-label-sm ${stepStatus.complete ? "text-green-500" : "text-on-surface/70"}`}>
+						{stepStatus.complete ? "Done" : "Pending"}
+					</span>
+				</div>
+				<p class="text-label-sm text-on-surface/70">{stepStatus.description}</p>
+			</button>
+		{/each}
 	</nav>
 
 	<section class="rounded-md border border-surface-container p-4">
@@ -136,6 +214,8 @@
 				}}>Open model setup</Button>
 				{#if modelReady}
 					<p class="text-label-sm text-on-surface/70">Model setup complete.</p>
+				{:else}
+					<p class="text-label-sm text-on-surface/70">Choose a downloaded model to continue.</p>
 				{/if}
 			</div>
 		{:else if step === 2}
@@ -176,15 +256,18 @@
 				<Button variant="primary" onclick={saveHotkeysAndLabels}>Save hotkeys and labels</Button>
 			</div>
 		{/if}
+		{#if gateError}
+			<p class="text-label-sm text-error">{gateError}</p>
+		{/if}
 		{#if saveError}
 			<p class="text-label-sm text-error">{saveError}</p>
 		{/if}
 	</section>
 
 	<footer class="mt-auto flex items-center justify-between">
-		<Button variant="secondary" onclick={async () => {
-			await Promise.all([refreshModels(), refreshPermissions(), refreshConfig()]);
-		}}>Refresh status</Button>
+		<Button variant="secondary" disabled={isRefreshing} onclick={refreshAllStatus}>
+			{isRefreshing ? "Refreshing..." : "Refresh status"}
+		</Button>
 		<Button variant="primary" disabled={!allReady} onclick={() => onComplete?.()}>Enter Scribe</Button>
 	</footer>
 </div>

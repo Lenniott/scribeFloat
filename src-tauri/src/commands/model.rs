@@ -24,9 +24,6 @@ pub fn model_download(
 }
 
 #[tauri::command]
-pub fn model_select(
-    model_id: String,
-    ctrl: State<'_, Arc<ModelController>>,
-) -> Result<(), String> {
+pub fn model_select(model_id: String, ctrl: State<'_, Arc<ModelController>>) -> Result<(), String> {
     ctrl.select_model(model_id)
 }

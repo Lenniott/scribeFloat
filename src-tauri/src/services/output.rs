@@ -37,8 +37,7 @@ impl OutputService {
             bits_per_sample: 16,
             sample_format: SampleFormat::Int,
         };
-        let mut writer =
-            WavWriter::create(dest, spec).context("failed to create WAV writer")?;
+        let mut writer = WavWriter::create(dest, spec).context("failed to create WAV writer")?;
         for &s in pcm {
             let sample = (s * 32767.0).clamp(-32768.0, 32767.0) as i16;
             writer.write_sample(sample)?;
@@ -118,5 +117,57 @@ impl OutputService {
 
 fn format_ms(ms: i64) -> String {
     let total = ms / 1000;
-    format!("{:02}:{:02}:{:02}", total / 3600, (total % 3600) / 60, total % 60)
+    format!(
+        "{:02}:{:02}:{:02}",
+        total / 3600,
+        (total % 3600) / 60,
+        total % 60
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_file(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("liscribe-output-tests-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir.join(name)
+    }
+
+    #[test]
+    fn transcript_renders_timestamps_when_enabled() {
+        let svc = OutputService;
+        let file = temp_file("with-timestamps.md");
+        let segments = vec![Segment {
+            start_ms: 12_000,
+            end_ms: 14_000,
+            text: "hello world".to_string(),
+        }];
+
+        svc.write_transcript(&segments, &[], "Test", "tiny", true, &file)
+            .expect("write transcript");
+
+        let content = std::fs::read_to_string(&file).expect("read transcript");
+        assert!(content.contains("[00:00:12] hello world"));
+    }
+
+    #[test]
+    fn transcript_omits_timestamps_when_disabled() {
+        let svc = OutputService;
+        let file = temp_file("without-timestamps.md");
+        let segments = vec![Segment {
+            start_ms: 12_000,
+            end_ms: 14_000,
+            text: "hello world".to_string(),
+        }];
+
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &file)
+            .expect("write transcript");
+
+        let content = std::fs::read_to_string(&file).expect("read transcript");
+        assert!(content.contains("hello world"));
+        assert!(!content.contains("[00:00:12]"));
+    }
 }

@@ -29,11 +29,14 @@ impl ModelController {
             .map(|item| {
                 let path = self.model.model_path_for_id(item.id);
                 let selected = cfg.selected_model_id.as_deref() == Some(item.id)
-                    || cfg.scribe_model_path.as_ref().is_some_and(|configured_path| {
-                        path.as_ref()
-                            .map(|p| p.to_string_lossy().as_ref() == configured_path)
-                            .unwrap_or(false)
-                    });
+                    || cfg
+                        .scribe_model_path
+                        .as_ref()
+                        .is_some_and(|configured_path| {
+                            path.as_ref()
+                                .map(|p| p.to_string_lossy().as_ref() == configured_path)
+                                .unwrap_or(false)
+                        });
 
                 ModelListItem {
                     id: item.id.to_string(),
@@ -70,5 +73,54 @@ impl ModelController {
                 cfg.scribe_model_path = Some(chosen_path);
             })
             .map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::config::ConfigService;
+    use std::path::PathBuf;
+
+    fn temp_dir(prefix: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("{prefix}-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[test]
+    fn select_model_requires_downloaded_file() {
+        let models_dir = temp_dir("liscribe-model-controller-models");
+        let config_path = temp_dir("liscribe-model-controller-config").join("config.json");
+        let model = ModelService::new(models_dir);
+        let config = ConfigService::load(config_path).expect("load config");
+        let ctrl = ModelController::new(model, config);
+
+        let err = ctrl
+            .select_model("tiny".to_string())
+            .expect_err("should reject missing model");
+        assert!(err.contains("not downloaded"));
+    }
+
+    #[test]
+    fn select_model_persists_selected_id_and_path() {
+        let models_dir = temp_dir("liscribe-model-controller-models");
+        let config_path = temp_dir("liscribe-model-controller-config").join("config.json");
+        let tiny_path = models_dir.join("ggml-tiny.bin");
+        std::fs::write(&tiny_path, [1, 2, 3]).expect("write model file");
+
+        let model = ModelService::new(models_dir.clone());
+        let config = ConfigService::load(config_path).expect("load config");
+        let ctrl = ModelController::new(Arc::clone(&model), Arc::clone(&config));
+
+        ctrl.select_model("tiny".to_string())
+            .expect("select downloaded model");
+
+        let cfg = config.get();
+        assert_eq!(cfg.selected_model_id.as_deref(), Some("tiny"));
+        assert_eq!(
+            cfg.scribe_model_path.as_deref(),
+            Some(tiny_path.to_string_lossy().as_ref())
+        );
     }
 }

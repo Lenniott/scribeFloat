@@ -51,5 +51,6 @@ pub fn scribe_set_include_timestamps(
     ctrl: State<'_, Arc<ScribeController>>,
     enabled: bool,
 ) -> Result<(), String> {
-    ctrl.set_include_timestamps(enabled).map_err(|e| e.to_string())
+    ctrl.set_include_timestamps(enabled)
+        .map_err(|e| e.to_string())
 }

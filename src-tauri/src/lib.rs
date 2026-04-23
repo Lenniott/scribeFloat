@@ -14,10 +14,14 @@ pub fn run() {
     let permissions = services::permissions::PermissionsService::new();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
             let data_dir = app.path().app_data_dir()?;
             let config = services::config::ConfigService::load(data_dir.join("config.json"))?;
+            let hotkeys = services::hotkeys::HotkeyService::new(
+                services::hotkeys::TauriHotkeyRegistrar::new(app.handle().clone()),
+            );
 
             let models_dir = data_dir.join("models");
             std::fs::create_dir_all(&models_dir)?;
@@ -26,8 +30,12 @@ pub fn run() {
                 controllers::model::ModelController::new(Arc::clone(&model), Arc::clone(&config));
             let settings_ctrl = controllers::settings::SettingsController::new(
                 Arc::clone(&config),
+                Arc::clone(&hotkeys),
                 Arc::clone(&permissions),
             );
+            if let Err(err) = settings_ctrl.rehydrate_hotkeys() {
+                eprintln!("hotkey rehydration skipped: {err}");
+            }
 
             let ctrl = controllers::scribe::ScribeController::new(
                 Arc::clone(&audio),

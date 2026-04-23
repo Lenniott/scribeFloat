@@ -149,3 +149,29 @@ impl ScribeStateEvent {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scribe_state_event_serializes_ui_expected_keys() {
+        let mut event = ScribeStateEvent::new(ScribeState::Done);
+        event.transcript_path = Some("/tmp/result.md".to_string());
+        event.progress = Some(0.75);
+
+        let json = serde_json::to_value(&event).expect("serialize state event");
+        assert_eq!(json["state"], "DONE");
+        assert_eq!(json["transcript_path"], "/tmp/result.md");
+        assert_eq!(json["progress"], 0.75);
+    }
+
+    #[test]
+    fn scribe_transcribing_event_carries_progress_lifecycle_field() {
+        let mut event = ScribeStateEvent::new(ScribeState::Transcribing);
+        event.progress = Some(0.25);
+        let json = serde_json::to_value(&event).expect("serialize transcribing event");
+        assert_eq!(json["state"], "TRANSCRIBING");
+        assert_eq!(json["progress"], 0.25);
+    }
+}

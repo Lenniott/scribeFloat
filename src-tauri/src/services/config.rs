@@ -12,8 +12,7 @@ impl ConfigService {
     /// Load config from disk, or create with defaults if the file doesn't exist.
     pub fn load(path: PathBuf) -> Result<Arc<Self>> {
         let config = if path.exists() {
-            let data = std::fs::read_to_string(&path)
-                .context("failed to read config file")?;
+            let data = std::fs::read_to_string(&path).context("failed to read config file")?;
             serde_json::from_str::<Config>(&data).unwrap_or_default()
         } else {
             Config::default()
@@ -48,5 +47,46 @@ impl ConfigService {
         std::fs::write(&tmp, data)?;
         std::fs::rename(&tmp, &self.path)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_config_path() -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("liscribe-config-tests-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir.join("config.json")
+    }
+
+    #[test]
+    fn update_persists_input_labels_across_reload() {
+        let path = temp_config_path();
+        let service = ConfigService::load(path.clone()).expect("load config");
+        service
+            .update(|cfg| {
+                cfg.input_label = "Desk Mic".to_string();
+                cfg.output_label = "Room Speaker".to_string();
+            })
+            .expect("update labels");
+
+        let reloaded = ConfigService::load(path).expect("reload config");
+        let cfg = reloaded.get();
+        assert_eq!(cfg.input_label, "Desk Mic");
+        assert_eq!(cfg.output_label, "Room Speaker");
+    }
+
+    #[test]
+    fn update_persists_timestamp_toggle_across_reload() {
+        let path = temp_config_path();
+        let service = ConfigService::load(path.clone()).expect("load config");
+        service
+            .update(|cfg| cfg.include_timestamps = false)
+            .expect("update timestamp flag");
+
+        let reloaded = ConfigService::load(path).expect("reload config");
+        assert!(!reloaded.get().include_timestamps);
     }
 }

@@ -4,7 +4,9 @@ use std::sync::Arc;
 use tauri::State;
 
 #[tauri::command]
-pub fn settings_get_output_path(ctrl: State<'_, Arc<SettingsController>>) -> Result<String, String> {
+pub fn settings_get_output_path(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<String, String> {
     Ok(ctrl.get_output_path())
 }
 

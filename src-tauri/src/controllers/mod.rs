@@ -1,3 +1,3 @@
 pub mod model;
-pub mod settings;
 pub mod scribe;
+pub mod settings;

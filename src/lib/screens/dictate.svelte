@@ -1,5 +1,5 @@
 <script>
-  import CircularAudioVisualizer from "@lib/components/audio/CircularAudioVisualizer.svelte";
+  import AudioWaveFormVisualizer from "@lib/components/audio/AudioWaveFormVisualizer.svelte";
   import RecordingStatusDot from "@lib/components/audio/RecordingStatusDot.svelte";
   import RecordingTimer from "@lib/components/audio/RecordingTimer.svelte";
   import IconButton from "@lib/components/IconButton.svelte";
@@ -10,25 +10,15 @@
 
 
 <div class="flex gap-2 items-center">
-    <CircularAudioVisualizer
-        size={120}
+    <div class="flex items-center gap-1.5 mr-4">
+        <RecordingStatusDot status="recording" />
+        <RecordingTimer elapsedSeconds={94} />
+    </div>
+    <AudioWaveFormVisualizer
         micLevel={0.55}
         speakerLevel={0.35}
-        innerBaseScale={0.25}
-        ampInner={0.12}
-        outerScale={1.2}
-        ampOuter={0.13}
         speakerEnabled={false}
-        showLegend={false}
-    >
-        {#snippet children()}
-            <div class="flex items-center gap-1.5">
-                <RecordingStatusDot status="recording" />
-                <RecordingTimer elapsedSeconds={94} />
-            </div>
-        {/snippet}
-    </CircularAudioVisualizer>
-    <div class="flex w-14 justify-end">
+        size="small"
+    />
     <IconButton variant="normal" icon={Close} aria-label="Close" />
-    </div>
 </div>

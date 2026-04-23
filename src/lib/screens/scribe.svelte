@@ -8,9 +8,9 @@
 	import AccordionItem from '@components/accordion/AccordionItem.svelte';
 	import Button from '@components/Button.svelte';
 	import IconButton from '@components/IconButton.svelte';
-	import CircularAudioVisualizer from '@components/audio/CircularAudioVisualizer.svelte';
 	import RecordingStatusDot from '@components/audio/RecordingStatusDot.svelte';
 	import RecordingTimer from '@components/audio/RecordingTimer.svelte';
+	import AudioWaveFormVisualizer from '@lib/components/audio/AudioWaveFormVisualizer.svelte';
 	import ConfigField from '@components/form/ConfigField.svelte';
 	import EditableTitleField from '@components/form/EditableTitleField.svelte';
 	import LabeledTextField from '@components/form/LabeledTextField.svelte';
@@ -23,6 +23,7 @@
 	import Bin from 'lucide-svelte/icons/trash-2';
 	import Cog from 'lucide-svelte/icons/settings-2';
 	import type { Note } from '@components/notes/NoteCard.svelte';
+
 
 	// ── State machine ─────────────────────────────────────────────────────────
 	type Phase = 'idle' | 'recording' | 'transcribing' | 'done' | 'no_model' | 'error';
@@ -320,20 +321,15 @@
 		<div class="grid min-h-0 flex-1 grid-cols-[1.05fr_0.95fr] items-stretch">
 
 			<!-- Left: visualizer + settings -->
-			<div class="flex min-h-0 flex-col">
-				<div class="mx-auto mb-4 max-w-48">
-					<CircularAudioVisualizer
-						micLevel={phase === 'recording' ? micLevel : 0}
-						speakerLevel={phase === 'recording' && speakerEnabled ? 0.4 : 0}
-						{speakerEnabled}
-						innerBaseScale={0.28}
-						ampInner={0.12}
-						outerScale={1.22}
-						ampOuter={0.12}
-					/>
-				</div>
+			<div class="flex min-h-0 flex-col px-4 py-3">
+				<AudioWaveFormVisualizer
+					micLevel={phase === 'recording' ? micLevel : 0}
+					speakerLevel={phase === 'recording' && speakerEnabled ? 0.4 : 0}
+					{speakerEnabled}
+					size="normal"
+				/>
 
-				<div class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+				<div class="min-h-0 flex-1 overflow-y-auto">
 					<Accordion defaultOpenId="basic">
 						<AccordionItem id="basic" title="Basic">
 							<div class="space-y-4">

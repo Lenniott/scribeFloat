@@ -31,6 +31,9 @@ pub struct Config {
 
     #[serde(default = "default_output_label")]
     pub output_label: String,
+
+    #[serde(default)]
+    pub onboarding_complete: bool,
 }
 
 impl Default for Config {
@@ -45,6 +48,7 @@ impl Default for Config {
             dictate_hotkey: default_dictate_hotkey(),
             input_label: default_input_label(),
             output_label: default_output_label(),
+            onboarding_complete: false,
         }
     }
 }

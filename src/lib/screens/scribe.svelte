@@ -13,17 +13,16 @@
 	import AudioWaveFormVisualizer from '@lib/components/audio/AudioWaveFormVisualizer.svelte';
 	import ConfigField from '@components/form/ConfigField.svelte';
 	import EditableTitleField from '@components/form/EditableTitleField.svelte';
-	import LabeledTextField from '@components/form/LabeledTextField.svelte';
 	import ToggleSwitch from '@components/form/ToggleSwitch.svelte';
 	import ProgressBar from '@components/form/ProgressBar.svelte';
-	import ModelSetupModal, { type ModelListItem } from '@components/model/ModelSetupModal.svelte';
+	import ModelSetupModal from '@components/model/ModelSetupModal.svelte';
 	import NoteComposer from '@components/notes/NoteComposer.svelte';
 	import NotesList from '@components/notes/NotesList.svelte';
 	import SettingsScreen from '@lib/screens/settings.svelte';
+	import { createModelDownloadStore } from '$lib/stores/modelDownload.svelte';
 	import Bin from 'lucide-svelte/icons/trash-2';
 	import Cog from 'lucide-svelte/icons/settings-2';
 	import type { Note } from '@components/notes/NoteCard.svelte';
-
 
 	// ── State machine ─────────────────────────────────────────────────────────
 	type Phase = 'idle' | 'recording' | 'transcribing' | 'done' | 'no_model' | 'error';
@@ -32,13 +31,13 @@
 	let transcriptPath = $state('');
 
 	// ── Model download ─────────────────────────────────────────────────────────
-	let modelReady = $state(true);
-	let downloadProgress = $state(0);
+	const modelStore = createModelDownloadStore();
+	let modelUnlisteners: (() => void)[] = [];
 	let modelSetupOpen = $state(false);
-	let modelSetupError = $state('');
-	let models = $state<ModelListItem[]>([]);
-	let progressByModel = $state<Record<string, number>>({});
 	let settingsOpen = $state(false);
+
+	const modelReady = $derived(modelStore.models.some((m) => m.downloaded));
+	const canCloseModelSetup = $derived(modelStore.models.some((m) => m.selected && m.downloaded));
 
 	// ── Recording ─────────────────────────────────────────────────────────────
 	let elapsedSeconds = $state(0);
@@ -61,20 +60,18 @@
 
 	// ── Session metadata ──────────────────────────────────────────────────────
 	let fileName = $state('Recording');
-	let speakerEnabled = $state(false);
 	let selectedMic = $state('');
-	let micName = $state('Mic');
-	let speakerName = $state('Speaker');
 	let noteDraft = $state('');
 	let notes = $state<Note[]>([]);
 	let selectedNoteId = $state<string | null>(null);
 	let includeTimestamps = $state(true);
 	let micLevel = $state(0);
 	let transcribeProgress = $state(0);
+
 	const transcribeSteps = [
 		{ label: 'Loading model', complete: false },
 		{ label: 'Transcribing audio', complete: false },
-		{ label: 'Writing transcript', complete: false }
+		{ label: 'Writing transcript', complete: false },
 	];
 
 	const micOptions = [{ value: '', label: 'System Default' }];
@@ -86,13 +83,6 @@
 		transcript_path?: string;
 		wav_path?: string;
 		error?: string;
-	};
-
-	type ModelProgressPayload = {
-		model_id: string;
-		progress: number;
-		bytes_downloaded: number;
-		total_bytes?: number;
 	};
 
 	type BackendNote = {
@@ -174,44 +164,9 @@
 		await startRecording();
 	}
 
-	async function refreshModels() {
-		models = await invoke<ModelListItem[]>('model_list').catch(() => []);
-		modelReady = models.some((m) => m.downloaded);
-	}
-
-	async function openModelSetup() {
-		modelSetupError = '';
-		modelSetupOpen = true;
-		await refreshModels();
-	}
-
-	function openSettings() {
-		settingsOpen = true;
-	}
-
-	function closeSettings() {
-		settingsOpen = false;
-	}
-
-	async function downloadModel(modelId: string) {
-		modelSetupError = '';
-		await invoke('model_download', { modelId }).catch((e) => {
-			modelSetupError = String(e);
-		});
-	}
-
-	async function selectModel(modelId: string) {
-		modelSetupError = '';
-		await invoke('model_select', { modelId }).catch((e) => {
-			modelSetupError = String(e);
-		});
-		await refreshModels();
-	}
-
 	async function closeModelSetup() {
-		if (!canCloseModelSetup) return;
 		modelSetupOpen = false;
-		if (phase !== 'recording' && phase !== 'transcribing') {
+		if (canCloseModelSetup && phase !== 'recording' && phase !== 'transcribing') {
 			await startRecording();
 		}
 	}
@@ -225,11 +180,7 @@
 		if (!created) return;
 		notes = [
 			...notes,
-			{
-				id: created.id,
-				text: created.text,
-				recordedAtMs: created.recorded_at_ms
-			}
+			{ id: created.id, text: created.text, recordedAtMs: created.recorded_at_ms },
 		];
 	}
 
@@ -239,37 +190,23 @@
 
 	// ── Lifecycle ─────────────────────────────────────────────────────────────
 	let unlisteners: UnlistenFn[] = [];
-	let canCloseModelSetup = $derived(models.some((m) => m.selected && m.downloaded));
 
 	onMount(async () => {
-		modelReady = await invoke<boolean>('model_setup_status').catch(() => false);
 		includeTimestamps = await invoke<boolean>('scribe_get_include_timestamps').catch(() => true);
-		const [savedMicLabel, savedSpeakerLabel] = await invoke<[string, string]>(
-			'settings_get_input_labels'
-		).catch(() => ['Mic', 'Speaker']);
-		micName = savedMicLabel;
-		speakerName = savedSpeakerLabel;
-		await refreshModels();
+		modelUnlisteners = await modelStore.subscribe();
+		await modelStore.refresh();
+
 		if (!modelReady) {
 			modelSetupOpen = true;
 		}
 
 		const ul1 = await listen<ScribePayload>('scribe://state-changed', (e) =>
-			handleScribeEvent(e.payload)
+			handleScribeEvent(e.payload),
 		);
-		const ul2 = await listen<ModelProgressPayload>('model://download-progress', (e) => {
-			downloadProgress = e.payload.progress;
-			progressByModel = { ...progressByModel, [e.payload.model_id]: e.payload.progress };
-			if (e.payload.progress >= 1.0) modelReady = true;
-			refreshModels();
-		});
-		const ul3 = await listen<string>('model://download-error', (e) => {
-			modelSetupError = e.payload ?? 'Model download failed';
-		});
-		const ul4 = await listen<number>('scribe://audio-level', (e) => {
+		const ul2 = await listen<number>('scribe://audio-level', (e) => {
 			micLevel = e.payload ?? 0;
 		});
-		unlisteners = [ul1, ul2, ul3, ul4];
+		unlisteners = [ul1, ul2];
 
 		if (modelReady) {
 			await startRecording();
@@ -278,6 +215,7 @@
 
 	onDestroy(() => {
 		unlisteners.forEach((u) => u());
+		modelUnlisteners.forEach((u) => u());
 		stopTimer();
 	});
 </script>
@@ -296,11 +234,11 @@
 					size="small"
 					icon={Cog}
 					aria-label="Open settings"
-					onclick={openSettings}
+					onclick={() => (settingsOpen = true)}
 				/>
-				{#if !modelReady}
+				{#if modelStore.activeDownloadModelId}
 					<span class="font-data text-label-sm text-on-surface/60 uppercase tracking-stamped">
-						Model {Math.round(downloadProgress * 100)}%
+						Model {Math.round((modelStore.progressByModel[modelStore.activeDownloadModelId] ?? 0) * 100)}%
 					</span>
 				{/if}
 				{#if phase === 'recording'}
@@ -324,8 +262,8 @@
 			<div class="flex min-h-0 flex-col px-4 py-3">
 				<AudioWaveFormVisualizer
 					micLevel={phase === 'recording' ? micLevel : 0}
-					speakerLevel={phase === 'recording' && speakerEnabled ? 0.4 : 0}
-					{speakerEnabled}
+					speakerLevel={0}
+					speakerEnabled={false}
 					size="normal"
 				/>
 
@@ -339,36 +277,21 @@
 									options={micOptions}
 									bind:value={selectedMic}
 								/>
-								<div class="space-y-3 rounded-md">
-									<div class="flex items-center justify-between">
-										<span class="text-label-sm font-semibold tracking-stamped uppercase"
-											>Speaker on</span
-										>
-										<ToggleSwitch bind:checked={speakerEnabled} aria-label="Toggle speaker" />
-									</div>
-									{#if speakerEnabled}
-										<p class="text-label-sm text-on-surface/60">
-											Speaker routing setup is a follow-up slice; visual ring is preview-only for now.
-										</p>
-										<LabeledTextField label="Mic name" bind:value={micName} />
-										<LabeledTextField label="Speaker name" bind:value={speakerName} />
-									{/if}
-									<div class="flex items-center justify-between">
-										<span class="text-label-sm font-semibold tracking-stamped uppercase"
-											>Transcript timestamps</span
-										>
-										<ToggleSwitch
-											checked={includeTimestamps}
-											aria-label="Toggle transcript timestamps"
-											onchange={async (next) => {
-												const prev = includeTimestamps;
-												includeTimestamps = next;
-												await invoke('scribe_set_include_timestamps', { enabled: next }).catch(() => {
-													includeTimestamps = prev;
-												});
-											}}
-										/>
-									</div>
+								<div class="flex items-center justify-between">
+									<span class="text-label-sm font-semibold tracking-stamped uppercase">
+										Transcript timestamps
+									</span>
+									<ToggleSwitch
+										checked={includeTimestamps}
+										aria-label="Toggle transcript timestamps"
+										onchange={async (next) => {
+											const prev = includeTimestamps;
+											includeTimestamps = next;
+											await invoke('scribe_set_include_timestamps', { enabled: next }).catch(() => {
+												includeTimestamps = prev;
+											});
+										}}
+									/>
 								</div>
 							</div>
 						</AccordionItem>
@@ -393,7 +316,7 @@
 								complete:
 									(index === 0 && transcribeProgress >= 20) ||
 									(index === 1 && transcribeProgress >= 70) ||
-									(index === 2 && transcribeProgress >= 100)
+									(index === 2 && transcribeProgress >= 100),
 							}))}
 							sequenceMode="window"
 							uiSize="sm"
@@ -416,9 +339,9 @@
 					{:else if phase === 'no_model'}
 						<div class="flex flex-col gap-2">
 							<p class="text-label-sm text-on-surface/80">
-								No model selected. Open model settings to download/select a model.
+								No model selected. Open model settings to download and select a model.
 							</p>
-							<Button variant="secondary" onclick={openModelSetup}>Open model settings</Button>
+							<Button variant="secondary" onclick={() => (modelSetupOpen = true)}>Open model settings</Button>
 						</div>
 
 					{:else if phase === 'error'}
@@ -452,15 +375,17 @@
 
 <ModelSetupModal
 	open={modelSetupOpen}
-	{models}
-	{progressByModel}
-	errorMessage={modelSetupError}
-	canClose={canCloseModelSetup}
-	onDownload={downloadModel}
-	onSelect={selectModel}
+	models={modelStore.models}
+	progressByModel={modelStore.progressByModel}
+	downloadingByModel={modelStore.downloadingByModel}
+	statusByModel={modelStore.statusByModel}
+	errorMessage={modelStore.error}
+	canClose={true}
+	onDownload={modelStore.download}
+	onSelect={modelStore.select}
 	onClose={closeModelSetup}
 />
 
 {#if settingsOpen}
-	<SettingsScreen onClose={closeSettings} />
+	<SettingsScreen onClose={() => (settingsOpen = false)} />
 {/if}

@@ -19,8 +19,7 @@ pub fn model_download(
     ctrl: State<'_, Arc<ModelController>>,
     app: AppHandle,
 ) -> Result<(), String> {
-    Arc::clone(&ctrl).download_model(model_id, app);
-    Ok(())
+    Arc::clone(&ctrl).download_model(model_id, app)
 }
 
 #[tauri::command]

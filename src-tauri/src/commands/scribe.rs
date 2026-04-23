@@ -1,5 +1,5 @@
 use crate::controllers::scribe::ScribeController;
-use crate::types::{Note, ScribeStateEvent};
+use crate::types::Note;
 use std::sync::Arc;
 use tauri::State;
 
@@ -22,13 +22,6 @@ pub fn scribe_stop_and_save(
 #[tauri::command]
 pub fn scribe_cancel(ctrl: State<'_, Arc<ScribeController>>) -> Result<(), String> {
     ctrl.cancel().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn scribe_get_state(
-    ctrl: State<'_, Arc<ScribeController>>,
-) -> Result<ScribeStateEvent, String> {
-    Ok(ctrl.get_state())
 }
 
 #[tauri::command]

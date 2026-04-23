@@ -1,18 +1,15 @@
 <script lang="ts">
 	import Button from '@components/Button.svelte';
+	import type { ModelListItem } from '$lib/types';
 
-	export type ModelListItem = {
-		id: string;
-		label: string;
-		file_name: string;
-		downloaded: boolean;
-		selected: boolean;
-	};
+	export type { ModelListItem };
 
 	let {
 		open = false,
 		models = [],
 		progressByModel = {},
+		downloadingByModel = {},
+		statusByModel = {},
 		errorMessage = '',
 		canClose = false,
 		onDownload,
@@ -22,6 +19,8 @@
 		open?: boolean;
 		models?: ModelListItem[];
 		progressByModel?: Record<string, number>;
+		downloadingByModel?: Record<string, boolean>;
+		statusByModel?: Record<string, string>;
 		errorMessage?: string;
 		canClose?: boolean;
 		onDownload?: (modelId: string) => void;
@@ -54,8 +53,7 @@
 					<div class="rounded-md border border-surface-container-high px-3 py-3">
 						<div class="mb-2 flex items-center justify-between gap-2">
 							<div class="min-w-0">
-								<p class="text-label-md font-semibold text-on-surface">{model.label}</p>
-								<p class="truncate text-body-sm text-on-surface/60">{model.file_name}</p>
+						<p class="text-label-md font-semibold text-on-surface">{model.label}</p>
 							</div>
 							<div class="flex items-center gap-2">
 								{#if model.downloaded}
@@ -63,14 +61,18 @@
 										{model.selected ? 'Selected' : 'Use model'}
 									</Button>
 								{:else}
-									<Button variant="primary" onclick={() => onDownload?.(model.id)}>
-										Download
+									<Button
+										variant="primary"
+										disabled={!!downloadingByModel[model.id]}
+										onclick={() => onDownload?.(model.id)}
+									>
+										{downloadingByModel[model.id] ? 'Installing…' : 'Install'}
 									</Button>
 								{/if}
 							</div>
 						</div>
 
-						{#if !model.downloaded}
+						{#if !model.downloaded && (downloadingByModel[model.id] || (progressByModel[model.id] ?? 0) > 0)}
 							<div class="h-2 w-full overflow-hidden rounded bg-surface-container-high">
 								<div
 									class="h-full bg-primary transition-all"
@@ -80,6 +82,9 @@
 							<p class="mt-1 text-label-sm text-on-surface/70">
 								{Math.round((progressByModel[model.id] ?? 0) * 100)}%
 							</p>
+						{/if}
+						{#if statusByModel[model.id]}
+							<p class="mt-1 text-label-sm text-on-surface/70">{statusByModel[model.id]}</p>
 						{/if}
 					</div>
 				{/each}

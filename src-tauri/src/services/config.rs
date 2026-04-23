@@ -89,4 +89,57 @@ mod tests {
         let reloaded = ConfigService::load(path).expect("reload config");
         assert!(!reloaded.get().include_timestamps);
     }
+
+    #[test]
+    fn loads_defaults_when_config_file_is_missing() {
+        let path = temp_config_path();
+        // Do not create the file — simulates first-run.
+        let service = ConfigService::load(path).expect("load from missing file");
+        let cfg = service.get();
+        assert!(cfg.include_timestamps);
+        assert!(!cfg.onboarding_complete);
+        assert!(!cfg.keep_wav);
+        assert!(cfg.save_folder.contains("Liscribe") || cfg.save_folder.contains("liscribe"));
+    }
+
+    #[test]
+    fn loads_defaults_for_missing_fields_in_old_config() {
+        let path = temp_config_path();
+        // Write a minimal config that predates newer fields.
+        std::fs::write(&path, r#"{"save_folder": "/tmp/old-liscribe"}"#)
+            .expect("write old config");
+
+        let service = ConfigService::load(path).expect("load partial config");
+        let cfg = service.get();
+        assert_eq!(cfg.save_folder, "/tmp/old-liscribe");
+        assert!(cfg.include_timestamps, "should default to true");
+        assert!(!cfg.onboarding_complete, "should default to false");
+        assert_eq!(cfg.open_scribe_hotkey, "CmdOrCtrl+Shift+S");
+        assert_eq!(cfg.input_label, "Mic");
+        assert_eq!(cfg.output_label, "Speaker");
+    }
+
+    #[test]
+    fn falls_back_to_defaults_when_config_is_corrupt() {
+        let path = temp_config_path();
+        std::fs::write(&path, b"not valid json at all!!!").expect("write corrupt config");
+
+        let service = ConfigService::load(path).expect("load should not fail on corrupt config");
+        let cfg = service.get();
+        assert!(cfg.include_timestamps);
+    }
+
+    #[test]
+    fn onboarding_complete_persists_across_reload() {
+        let path = temp_config_path();
+        let service = ConfigService::load(path.clone()).expect("load config");
+        assert!(!service.get().onboarding_complete);
+
+        service
+            .update(|cfg| cfg.onboarding_complete = true)
+            .expect("mark onboarding complete");
+
+        let reloaded = ConfigService::load(path).expect("reload");
+        assert!(reloaded.get().onboarding_complete);
+    }
 }

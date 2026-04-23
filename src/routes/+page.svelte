@@ -4,41 +4,28 @@
 	import Button from "@lib/components/Button.svelte";
 	import OnboardingScreen from "@lib/screens/onboarding.svelte";
 	import ScribeScreen from "@lib/screens/scribe.svelte";
+	import { extractErrorMessage } from "$lib/types";
+
+	const forceOnboarding = import.meta.env.VITE_FORCE_ONBOARDING === "1";
 
 	let onboardingComplete = $state(false);
 	let gateLoading = $state(true);
 	let gateError = $state("");
 
-	function getErrorMessage(error: unknown, fallback: string): string {
-		if (typeof error === "string" && error.trim()) return error;
-		if (error instanceof Error && error.message.trim()) return error.message;
-		if (typeof error === "object" && error !== null) {
-			const maybeMessage = (error as { message?: unknown }).message;
-			if (typeof maybeMessage === "string" && maybeMessage.trim()) return maybeMessage;
-		}
-		return fallback;
-	}
-
 	async function refreshGate() {
+		if (forceOnboarding) {
+			onboardingComplete = false;
+			gateError = "";
+			gateLoading = false;
+			return;
+		}
 		gateLoading = true;
 		gateError = "";
 		try {
-			const [modelReady, permissions, outputPath, hotkeys] = await Promise.all([
-				invoke<boolean>("model_setup_status"),
-				invoke<Array<{ granted: boolean; can_request: boolean }>>("settings_permissions_status"),
-				invoke<string>("settings_get_output_path"),
-				invoke<[string, string]>("settings_get_hotkeys"),
-			]);
-			const [openHotkey, dictateHotkey] = hotkeys;
-			const permissionsReady = permissions.every((p) => p.granted || !p.can_request);
-			onboardingComplete =
-				modelReady &&
-				permissionsReady &&
-				Boolean(outputPath.trim()) &&
-				Boolean(openHotkey.trim() && dictateHotkey.trim());
+			onboardingComplete = await invoke<boolean>("settings_onboarding_status");
 		} catch (error) {
 			onboardingComplete = false;
-			gateError = getErrorMessage(error, "Could not verify onboarding status.");
+			gateError = extractErrorMessage(error, "Could not verify onboarding status.");
 		} finally {
 			gateLoading = false;
 		}

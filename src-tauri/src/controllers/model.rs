@@ -49,13 +49,17 @@ impl ModelController {
             .collect()
     }
 
-    pub fn download_model(self: Arc<Self>, model_id: String, app: AppHandle) {
+    pub fn download_model(self: Arc<Self>, model_id: String, app: AppHandle) -> Result<(), String> {
+        if self.model.model_path_for_id(&model_id).is_none() {
+            return Err(format!("unknown model id: {model_id}"));
+        }
         tauri::async_runtime::spawn(async move {
             if let Err(e) = self.model.download_model(&model_id, &app).await {
                 eprintln!("model download failed: {e}");
                 app.emit("model://download-error", e.to_string()).ok();
             }
         });
+        Ok(())
     }
 
     pub fn select_model(&self, model_id: String) -> Result<(), String> {

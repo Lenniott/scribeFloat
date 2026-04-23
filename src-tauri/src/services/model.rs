@@ -66,10 +66,6 @@ impl ModelService {
             .map(|item| self.models_dir.join(item.file_name))
     }
 
-    pub fn default_model_ready(&self) -> bool {
-        self.default_model_path().exists()
-    }
-
     pub fn model_available(&self, path: &Path) -> bool {
         path.exists() && std::fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false)
     }
@@ -78,14 +74,6 @@ impl ModelService {
         self.model_path_for_id(model_id)
             .map(|p| self.model_available(&p))
             .unwrap_or(false)
-    }
-
-    /// Download ggml-small.bin into the models directory.
-    /// Writes to a .tmp file and renames on success so a failed download
-    /// never leaves a corrupt model on disk.
-    /// Emits `model://download-progress` events throughout.
-    pub async fn download_default(&self, app: &AppHandle) -> Result<()> {
-        self.download_model("small", app).await
     }
 
     pub async fn download_model(&self, model_id: &str, app: &AppHandle) -> Result<()> {

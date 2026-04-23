@@ -4,8 +4,11 @@ use std::sync::Arc;
 use tauri::State;
 
 #[tauri::command]
-pub fn scribe_start(ctrl: State<'_, Arc<ScribeController>>) -> Result<(), String> {
-    ctrl.start().map_err(|e| e.to_string())
+pub fn scribe_start(
+    ctrl: State<'_, Arc<ScribeController>>,
+    preferred_mic: Option<String>,
+) -> Result<(), String> {
+    ctrl.start(preferred_mic).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -48,5 +51,6 @@ pub fn scribe_set_include_timestamps(
     ctrl: State<'_, Arc<ScribeController>>,
     enabled: bool,
 ) -> Result<(), String> {
-    ctrl.set_include_timestamps(enabled).map_err(|e| e.to_string())
+    ctrl.set_include_timestamps(enabled)
+        .map_err(|e| e.to_string())
 }

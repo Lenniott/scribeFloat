@@ -19,6 +19,18 @@ pub struct Config {
     /// Active model id selected by user in model setup.
     #[serde(default)]
     pub selected_model_id: Option<String>,
+
+    #[serde(default = "default_open_scribe_hotkey")]
+    pub open_scribe_hotkey: String,
+
+    #[serde(default = "default_dictate_hotkey")]
+    pub dictate_hotkey: String,
+
+    #[serde(default = "default_input_label")]
+    pub input_label: String,
+
+    #[serde(default = "default_output_label")]
+    pub output_label: String,
 }
 
 impl Default for Config {
@@ -29,6 +41,10 @@ impl Default for Config {
             keep_wav: false,
             include_timestamps: true,
             selected_model_id: None,
+            open_scribe_hotkey: default_open_scribe_hotkey(),
+            dictate_hotkey: default_dictate_hotkey(),
+            input_label: default_input_label(),
+            output_label: default_output_label(),
         }
     }
 }
@@ -41,6 +57,22 @@ fn default_save_folder() -> String {
     std::env::var("HOME")
         .map(|h| format!("{}/Documents/Liscribe", h))
         .unwrap_or_else(|_| "/tmp/liscribe".to_string())
+}
+
+fn default_open_scribe_hotkey() -> String {
+    "CmdOrCtrl+Shift+S".to_string()
+}
+
+fn default_dictate_hotkey() -> String {
+    "Ctrl".to_string()
+}
+
+fn default_input_label() -> String {
+    "Mic".to_string()
+}
+
+fn default_output_label() -> String {
+    "Speaker".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,6 +131,13 @@ pub struct ModelListItem {
     pub selected: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PermissionStatus {
+    pub kind: String,
+    pub granted: bool,
+    pub can_request: bool,
+}
+
 impl ScribeStateEvent {
     pub fn new(state: ScribeState) -> Self {
         Self {
@@ -108,5 +147,31 @@ impl ScribeStateEvent {
             wav_path: None,
             error: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scribe_state_event_serializes_ui_expected_keys() {
+        let mut event = ScribeStateEvent::new(ScribeState::Done);
+        event.transcript_path = Some("/tmp/result.md".to_string());
+        event.progress = Some(0.75);
+
+        let json = serde_json::to_value(&event).expect("serialize state event");
+        assert_eq!(json["state"], "DONE");
+        assert_eq!(json["transcript_path"], "/tmp/result.md");
+        assert_eq!(json["progress"], 0.75);
+    }
+
+    #[test]
+    fn scribe_transcribing_event_carries_progress_lifecycle_field() {
+        let mut event = ScribeStateEvent::new(ScribeState::Transcribing);
+        event.progress = Some(0.25);
+        let json = serde_json::to_value(&event).expect("serialize transcribing event");
+        assert_eq!(json["state"], "TRANSCRIBING");
+        assert_eq!(json["progress"], 0.25);
     }
 }

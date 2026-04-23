@@ -66,26 +66,17 @@ impl ModelService {
             .map(|item| self.models_dir.join(item.file_name))
     }
 
-    pub fn default_model_ready(&self) -> bool {
-        self.default_model_path().exists()
-    }
-
     pub fn model_available(&self, path: &Path) -> bool {
-        path.exists() && std::fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false)
+        path.exists()
+            && std::fs::metadata(path)
+                .map(|m| m.len() > 0)
+                .unwrap_or(false)
     }
 
     pub fn model_downloaded(&self, model_id: &str) -> bool {
         self.model_path_for_id(model_id)
             .map(|p| self.model_available(&p))
             .unwrap_or(false)
-    }
-
-    /// Download ggml-small.bin into the models directory.
-    /// Writes to a .tmp file and renames on success so a failed download
-    /// never leaves a corrupt model on disk.
-    /// Emits `model://download-progress` events throughout.
-    pub async fn download_default(&self, app: &AppHandle) -> Result<()> {
-        self.download_model("small", app).await
     }
 
     pub async fn download_model(&self, model_id: &str, app: &AppHandle) -> Result<()> {
@@ -236,5 +227,52 @@ impl ModelService {
         }
 
         Ok(segments)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_models_dir() -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("liscribe-model-tests-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[test]
+    fn model_path_for_known_id_is_stable() {
+        let dir = temp_models_dir();
+        let service = ModelService::new(dir.clone());
+        assert_eq!(
+            service.model_path_for_id("small"),
+            Some(dir.join(SMALL_MODEL_FILENAME))
+        );
+        assert!(service.model_path_for_id("unknown").is_none());
+    }
+
+    #[test]
+    fn model_available_requires_non_empty_file() {
+        let dir = temp_models_dir();
+        let service = ModelService::new(dir.clone());
+        let path = dir.join("ggml-tiny.bin");
+
+        std::fs::write(&path, []).expect("write empty model file");
+        assert!(!service.model_available(&path));
+
+        std::fs::write(&path, [1, 2, 3]).expect("write non-empty model file");
+        assert!(service.model_available(&path));
+    }
+
+    #[test]
+    fn model_downloaded_reflects_disk_state_for_catalog_item() {
+        let dir = temp_models_dir();
+        let service = ModelService::new(dir.clone());
+        let tiny_path = dir.join("ggml-tiny.bin");
+
+        assert!(!service.model_downloaded("tiny"));
+        std::fs::write(&tiny_path, [1]).expect("write tiny model");
+        assert!(service.model_downloaded("tiny"));
     }
 }

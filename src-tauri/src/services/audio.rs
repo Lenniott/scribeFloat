@@ -23,7 +23,6 @@ impl MicSession {
         let buf = self.buffer.lock().unwrap().clone();
         (buf, rate)
     }
-
 }
 
 pub struct AudioService;
@@ -83,8 +82,7 @@ impl AudioService {
                 device.build_input_stream(
                     &config,
                     move |data: &[i16], _| {
-                        let f32s: Vec<f32> =
-                            data.iter().map(|&s| s as f32 / 32768.0).collect();
+                        let f32s: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
                         push_mono(&buf, &f32s, channels);
                         if let Some(cb) = &level_cb {
                             cb(level_from_chunk(&f32s, channels));
@@ -105,7 +103,6 @@ impl AudioService {
             sample_rate,
         })
     }
-
 }
 
 /// Append samples to buffer, mixing down to mono if needed.
@@ -138,7 +135,43 @@ fn level_from_chunk(data: &[f32], channels: usize) -> f32 {
             sum += mono * mono;
             n += 1;
         }
-        if n == 0 { 0.0 } else { (sum / n as f32).sqrt() }
+        if n == 0 {
+            0.0
+        } else {
+            (sum / n as f32).sqrt()
+        }
     };
     (rms * 4.0).clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_mono_keeps_single_channel_samples() {
+        let buf = Mutex::new(Vec::new());
+        push_mono(&buf, &[0.1, -0.2, 0.3], 1);
+        assert_eq!(buf.lock().unwrap().as_slice(), &[0.1, -0.2, 0.3]);
+    }
+
+    #[test]
+    fn push_mono_averages_multichannel_frames() {
+        let buf = Mutex::new(Vec::new());
+        // Two stereo frames: (0.2, 0.6) and (-0.4, 0.2)
+        push_mono(&buf, &[0.2, 0.6, -0.4, 0.2], 2);
+        assert_eq!(buf.lock().unwrap().as_slice(), &[0.4, -0.1]);
+    }
+
+    #[test]
+    fn level_from_chunk_tracks_signal_strength_and_clamps() {
+        let quiet = level_from_chunk(&[0.01, -0.01, 0.01, -0.01], 1);
+        let loud = level_from_chunk(&[0.5, -0.5, 0.5, -0.5], 1);
+        let clipped = level_from_chunk(&[2.0, -2.0], 1);
+
+        assert!(quiet > 0.0);
+        assert!(loud > quiet);
+        assert!((0.0..=1.0).contains(&loud));
+        assert_eq!(clipped, 1.0);
+    }
 }

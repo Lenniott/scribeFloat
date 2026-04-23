@@ -123,7 +123,7 @@
 	// ── Actions ───────────────────────────────────────────────────────────────
 	async function startRecording() {
 		try {
-			await invoke('scribe_start');
+			await invoke('scribe_start', { preferredMic: selectedMic || null });
 		} catch (e) {
 			phase = 'error';
 			errorMessage = String(e);
@@ -222,6 +222,11 @@
 	onMount(async () => {
 		modelReady = await invoke<boolean>('model_setup_status').catch(() => false);
 		includeTimestamps = await invoke<boolean>('scribe_get_include_timestamps').catch(() => true);
+		const [savedMicLabel, savedSpeakerLabel] = await invoke<[string, string]>(
+			'settings_get_input_labels'
+		).catch(() => ['Mic', 'Speaker']);
+		micName = savedMicLabel;
+		speakerName = savedSpeakerLabel;
 		await refreshModels();
 		if (!modelReady) {
 			modelSetupOpen = true;

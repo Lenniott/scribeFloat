@@ -4,6 +4,7 @@ use crate::services::{
     model::ModelService,
     output::OutputService,
 };
+use crate::types::Config;
 use crate::types::{Note, ScribeState, ScribeStateEvent};
 use anyhow::{anyhow, Result};
 use std::path::PathBuf;
@@ -55,21 +56,24 @@ impl ScribeController {
     }
 
     /// Transition IDLE → RECORDING. Opens mic and creates session directory.
-    pub fn start(&self) -> Result<()> {
+    pub fn start(&self, preferred_mic: Option<String>) -> Result<()> {
+        {
+            let inner = self.inner.lock().unwrap();
+            Self::ensure_start_allowed(&inner.state)?;
+        }
+
         let cfg = self.config.get();
         let session_dir = self.output.make_session_dir(&cfg.save_folder)?;
         let app = self.app.clone();
         let mic = self.audio.start_mic(
-            None,
+            preferred_mic.as_deref(),
             Some(Arc::new(move |level| {
                 app.emit("scribe://audio-level", level).ok();
             })),
         )?;
 
         let mut inner = self.inner.lock().unwrap();
-        if matches!(inner.state, ScribeState::Recording | ScribeState::Transcribing) {
-            return Err(anyhow!("cannot start: already in {:?}", inner.state));
-        }
+        Self::ensure_start_allowed(&inner.state)?;
         inner.state = ScribeState::Recording;
         inner.session = Some(ActiveSession {
             mic,
@@ -111,7 +115,10 @@ impl ScribeController {
         };
 
         this.app
-            .emit("scribe://state-changed", ScribeStateEvent::new(ScribeState::Transcribing))
+            .emit(
+                "scribe://state-changed",
+                ScribeStateEvent::new(ScribeState::Transcribing),
+            )
             .ok();
 
         let title =
@@ -149,7 +156,12 @@ impl ScribeController {
     }
 
     /// Blocking transcription pipeline. Called inside spawn_blocking.
-    fn do_transcription(&self, session: ActiveSession, notes: Vec<Note>, title: &str) -> Result<()> {
+    fn do_transcription(
+        &self,
+        session: ActiveSession,
+        notes: Vec<Note>,
+        title: &str,
+    ) -> Result<()> {
         let (raw_pcm, native_rate) = session.mic.stop_and_take();
 
         let pcm_16k = resample_linear(&raw_pcm, native_rate, 16_000);
@@ -159,15 +171,7 @@ impl ScribeController {
         self.output.write_wav(&pcm_16k, 16_000, &wav_path)?;
 
         // Use configured path, then selected model id, then built-in default path.
-        let model_path = if let Some(p) = &config.scribe_model_path {
-            PathBuf::from(p)
-        } else if let Some(model_id) = &config.selected_model_id {
-            self.model
-                .model_path_for_id(model_id)
-                .unwrap_or_else(|| self.model.default_model_path())
-        } else {
-            self.model.default_model_path()
-        };
+        let model_path = resolve_model_path(&config, &self.model);
 
         if !self.model.model_available(&model_path) {
             // Model not downloaded yet — keep the WAV and surface the path.
@@ -186,7 +190,9 @@ impl ScribeController {
 
         let segments = self.model.transcribe_pcm(&model_path, &pcm_16k)?;
 
-        let transcript_path = self.output.transcript_path(&session.session_dir, &model_path);
+        let transcript_path = self
+            .output
+            .transcript_path(&session.session_dir, &model_path);
         let model_name = model_path
             .file_stem()
             .map(|s| s.to_string_lossy().replace("ggml-", ""))
@@ -259,8 +265,18 @@ impl ScribeController {
 
     fn emit_state(&self, inner: &Inner) {
         self.app
-            .emit("scribe://state-changed", ScribeStateEvent::new(inner.state.clone()))
+            .emit(
+                "scribe://state-changed",
+                ScribeStateEvent::new(inner.state.clone()),
+            )
             .ok();
+    }
+
+    fn ensure_start_allowed(state: &ScribeState) -> Result<()> {
+        if matches!(state, ScribeState::Recording | ScribeState::Transcribing) {
+            return Err(anyhow!("cannot start: already in {:?}", state));
+        }
+        Ok(())
     }
 }
 
@@ -280,4 +296,76 @@ fn resample_linear(input: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
         out.push(input[lo] * (1.0 - frac) + input[hi] * frac);
     }
     out
+}
+
+fn resolve_model_path(config: &Config, model: &ModelService) -> PathBuf {
+    if let Some(p) = &config.scribe_model_path {
+        PathBuf::from(p)
+    } else if let Some(model_id) = &config.selected_model_id {
+        model
+            .model_path_for_id(model_id)
+            .unwrap_or_else(|| model.default_model_path())
+    } else {
+        model.default_model_path()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::model::SMALL_MODEL_FILENAME;
+    use std::path::PathBuf;
+
+    #[test]
+    fn start_guard_rejects_recording_and_transcribing_states() {
+        assert!(ScribeController::ensure_start_allowed(&ScribeState::Idle).is_ok());
+        assert!(ScribeController::ensure_start_allowed(&ScribeState::Done).is_ok());
+        assert!(ScribeController::ensure_start_allowed(&ScribeState::NoModel).is_ok());
+
+        assert!(ScribeController::ensure_start_allowed(&ScribeState::Recording).is_err());
+        assert!(ScribeController::ensure_start_allowed(&ScribeState::Transcribing).is_err());
+    }
+
+    #[test]
+    fn resolve_model_path_prefers_explicit_path() {
+        let models_dir =
+            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
+        let model = ModelService::new(models_dir.clone());
+        let config = Config {
+            scribe_model_path: Some("/tmp/custom-model.bin".to_string()),
+            selected_model_id: Some("tiny".to_string()),
+            ..Config::default()
+        };
+
+        let chosen = resolve_model_path(&config, model.as_ref());
+        assert_eq!(chosen, PathBuf::from("/tmp/custom-model.bin"));
+    }
+
+    #[test]
+    fn resolve_model_path_uses_selected_model_id_when_present() {
+        let models_dir =
+            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
+        let model = ModelService::new(models_dir.clone());
+        let config = Config {
+            selected_model_id: Some("tiny".to_string()),
+            ..Config::default()
+        };
+
+        let chosen = resolve_model_path(&config, model.as_ref());
+        assert_eq!(chosen, models_dir.join("ggml-tiny.bin"));
+    }
+
+    #[test]
+    fn resolve_model_path_falls_back_to_default_when_unknown_selected_id() {
+        let models_dir =
+            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
+        let model = ModelService::new(models_dir.clone());
+        let config = Config {
+            selected_model_id: Some("not-a-real-model".to_string()),
+            ..Config::default()
+        };
+
+        let chosen = resolve_model_path(&config, model.as_ref());
+        assert_eq!(chosen, models_dir.join(SMALL_MODEL_FILENAME));
+    }
 }

@@ -1,42 +1,25 @@
-<script>
-  import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
-import ToggleSwitch from "@lib/components/form/ToggleSwitch.svelte";
+<script lang="ts">
+	import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
+	import ToggleSwitch from "@lib/components/form/ToggleSwitch.svelte";
 
+	let webhookUrl = $state("https://n8n.lenniott.uk/webhook/ob-doc");
+	let authHeaderName = $state("x-ob-key");
+	let authHeaderValue = $state("");
+	let autoSendScribe = $state(false);
+	let autoSendDictate = $state(false);
 </script>
-WEBHOOK URL
-https://n8n.lenniott.uk/webhook/ob-doc
-POST transcripts and dictations to this URL when
-processing finishes.
-AUTH HEADER NAME
-x-ob-key
-AUTH HEADER VALUE
-••• .{LabeledTextField}
 
-AUTO-SEND SCRIBE & TRANSCRIBE
-OFFOFF{ToggleSwitch}
-When ON, Scribe and Transcribe automatically POST the
-md file on completion. When OFF, a Send button appears
-on the done screen.
-AUTO-SEND DICTATE
-OFF{ToggleSwitch}
-When ON, Dictate automatically POSTs the transcribed
-text to the webhook on completion.
-
-PAYLOAD SHAPES
-
-Dictate sends JSON:
----------------
-{ "source": "dictate", "text": "..", "word_coun
-t": 12, "duration _seconds": 4.2, "timestamp": "2
-026-01-01T12:00:00" }
-------------------
-
-Scribe & Transcribe send multipart/form-data:
--------------------
-source: "scribe"
-file: transcript.md
-word _count: 84
-duration_seconds: 62.3
-model: base
-created_at: 2026-01-01T12:00:00
------------------------
+<section class="space-y-4">
+	<h2 class="text-title-sm font-semibold">Webhook</h2>
+	<LabeledTextField label="Webhook URL" bind:value={webhookUrl} />
+	<LabeledTextField label="Auth header name" bind:value={authHeaderName} />
+	<LabeledTextField label="Auth header value" bind:value={authHeaderValue} />
+	<div class="flex items-center justify-between">
+		<span class="text-body-sm">Auto-send Scribe &amp; Transcribe</span>
+		<ToggleSwitch bind:checked={autoSendScribe} />
+	</div>
+	<div class="flex items-center justify-between">
+		<span class="text-body-sm">Auto-send Dictate</span>
+		<ToggleSwitch bind:checked={autoSendDictate} />
+	</div>
+</section>

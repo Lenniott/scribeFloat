@@ -19,7 +19,7 @@ pub fn model_download_default(
         return Ok(());
     }
     let m = Arc::clone(&model);
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         if let Err(e) = m.download_default(&app).await {
             eprintln!("model download failed: {e}");
             app.emit("model://download-error", e.to_string()).ok();

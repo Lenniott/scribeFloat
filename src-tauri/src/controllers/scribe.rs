@@ -61,7 +61,7 @@ impl ScribeController {
         let mic = self.audio.start_mic(None)?;
 
         let mut inner = self.inner.lock().unwrap();
-        if inner.state != ScribeState::Idle {
+        if matches!(inner.state, ScribeState::Recording | ScribeState::Transcribing) {
             return Err(anyhow!("cannot start: already in {:?}", inner.state));
         }
         inner.state = ScribeState::Recording;
@@ -108,7 +108,7 @@ impl ScribeController {
         let title =
             title.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d %H:%M").to_string());
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let ctrl = Arc::clone(&this);
             let result =
                 tokio::task::spawn_blocking(move || ctrl.do_transcription(session, &title))

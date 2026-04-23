@@ -24,9 +24,6 @@ impl MicSession {
         (buf, rate)
     }
 
-    pub fn sample_rate(&self) -> u32 {
-        self.sample_rate
-    }
 }
 
 pub struct AudioService;
@@ -95,12 +92,6 @@ impl AudioService {
         })
     }
 
-    pub fn list_input_devices(&self) -> Vec<String> {
-        let host = cpal::default_host();
-        host.input_devices()
-            .map(|it| it.filter_map(|d| d.name().ok()).collect())
-            .unwrap_or_default()
-    }
 }
 
 /// Append samples to buffer, mixing down to mono if needed.

@@ -26,7 +26,7 @@ pub fn run() {
             if !model.default_model_ready() {
                 let m = Arc::clone(&model);
                 let handle = app.handle().clone();
-                tokio::spawn(async move {
+                tauri::async_runtime::spawn(async move {
                     if let Err(e) = m.download_default(&handle).await {
                         eprintln!("model auto-download failed: {e}");
                         use tauri::Emitter;

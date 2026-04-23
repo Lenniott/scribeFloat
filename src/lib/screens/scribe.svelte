@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-	import { open } from '@tauri-apps/plugin-opener';
+	import { openPath } from '@tauri-apps/plugin-opener';
 
 	import Accordion from '@components/accordion/Accordion.svelte';
 	import AccordionItem from '@components/accordion/AccordionItem.svelte';
@@ -142,7 +142,7 @@
 	}
 
 	async function openTranscript() {
-		if (transcriptPath) await open(transcriptPath);
+		if (transcriptPath) await openPath(transcriptPath);
 	}
 
 	// ── Lifecycle ─────────────────────────────────────────────────────────────

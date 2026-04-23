@@ -2,6 +2,7 @@ use crate::types::{ModelDownloadEvent, Segment};
 use anyhow::{anyhow, Context, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
@@ -41,14 +42,46 @@ impl ModelService {
 
         std::fs::create_dir_all(&self.models_dir).context("create models dir")?;
 
-        let client = reqwest::Client::new();
-        let response = client
-            .get(SMALL_MODEL_URL)
-            .send()
-            .await
-            .context("download request failed")?
-            .error_for_status()
-            .context("server returned error")?;
+        let client = reqwest::Client::builder()
+            .user_agent("liscribe_v8/0.1")
+            .timeout(Duration::from_secs(60))
+            .build()
+            .context("failed to build download client")?;
+
+        let mut response = None;
+        let mut last_err = None;
+        for attempt in 1..=3 {
+            match client.get(SMALL_MODEL_URL).send().await {
+                Ok(r) if r.status().is_success() => {
+                    response = Some(r);
+                    break;
+                }
+                Ok(r) if r.status().is_server_error() && attempt < 3 => {
+                    last_err = Some(anyhow!("server error {} on attempt {attempt}", r.status()));
+                    tokio::time::sleep(Duration::from_millis(600 * attempt as u64)).await;
+                }
+                Ok(r) => {
+                    last_err = Some(anyhow!("model download failed with HTTP {}", r.status()));
+                    break;
+                }
+                Err(e) if attempt < 3 => {
+                    last_err = Some(anyhow!("download request failed on attempt {attempt}: {e}"));
+                    tokio::time::sleep(Duration::from_millis(600 * attempt as u64)).await;
+                }
+                Err(e) => {
+                    last_err = Some(anyhow!("download request failed: {e}"));
+                    break;
+                }
+            }
+        }
+        let mut response = response.ok_or_else(|| {
+            anyhow!(
+                "failed to download default model after retries: {}",
+                last_err
+                    .map(|e| e.to_string())
+                    .unwrap_or_else(|| "unknown error".to_string())
+            )
+        })?;
 
         let total = response.content_length();
         let mut downloaded = 0u64;
@@ -57,7 +90,6 @@ impl ModelService {
             .await
             .context("failed to create temp file")?;
 
-        let mut response = response;
         while let Some(chunk) = response.chunk().await.context("stream read error")? {
             tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await?;
             downloaded += chunk.len() as u64;

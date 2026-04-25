@@ -2,7 +2,6 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-	import { openPath } from '@tauri-apps/plugin-opener';
 
 	import Accordion from '@components/accordion/Accordion.svelte';
 	import AccordionItem from '@components/accordion/AccordionItem.svelte';
@@ -14,7 +13,6 @@
 	import ConfigField from '@components/form/ConfigField.svelte';
 	import EditableTitleField from '@components/form/EditableTitleField.svelte';
 	import ToggleSwitch from '@components/form/ToggleSwitch.svelte';
-	import ProgressBar from '@components/form/ProgressBar.svelte';
 	import ModelSetupModal from '@components/model/ModelSetupModal.svelte';
 	import NoteComposer from '@components/notes/NoteComposer.svelte';
 	import NotesList from '@components/notes/NotesList.svelte';
@@ -24,11 +22,16 @@
 	import Cog from 'lucide-svelte/icons/settings-2';
 	import type { Note } from '@components/notes/NoteCard.svelte';
 
+	let {
+		processingStart,
+	}: {
+		processingStart?: (title: string) => void;
+	} = $props();
+
 	// ── State machine ─────────────────────────────────────────────────────────
-	type Phase = 'idle' | 'recording' | 'transcribing' | 'done' | 'no_model' | 'error';
+	type Phase = 'idle' | 'recording' | 'no_model' | 'error';
 	let phase = $state<Phase>('idle');
 	let errorMessage = $state('');
-	let transcriptPath = $state('');
 
 	// ── Model download ─────────────────────────────────────────────────────────
 	const modelStore = createModelDownloadStore();
@@ -66,13 +69,6 @@
 	let selectedNoteId = $state<string | null>(null);
 	let includeTimestamps = $state(true);
 	let micLevel = $state(0);
-	let transcribeProgress = $state(0);
-
-	const transcribeSteps = [
-		{ label: 'Loading model', complete: false },
-		{ label: 'Transcribing audio', complete: false },
-		{ label: 'Writing transcript', complete: false },
-	];
 
 	const micOptions = [{ value: '', label: 'System Default' }];
 
@@ -98,15 +94,12 @@
 				startTimer();
 				break;
 			case 'TRANSCRIBING':
-				phase = 'transcribing';
-				transcribeProgress = p.progress ? Math.round(p.progress * 100) : Math.max(transcribeProgress, 33);
 				stopTimer();
 				micLevel = 0;
 				break;
 			case 'DONE':
-				phase = 'done';
-				transcribeProgress = 100;
-				transcriptPath = p.transcript_path ?? '';
+				stopTimer();
+				micLevel = 0;
 				break;
 			case 'NO_MODEL':
 				phase = 'no_model';
@@ -116,7 +109,6 @@
 				break;
 			case 'ERROR':
 				phase = 'error';
-				transcribeProgress = 0;
 				errorMessage = p.error ?? 'Unknown error';
 				stopTimer();
 				micLevel = 0;
@@ -135,13 +127,9 @@
 	}
 
 	async function stopAndSave() {
-		try {
-			await invoke('scribe_stop_and_save', { title: fileName || 'Recording' });
-		} catch (e) {
-			phase = 'error';
-			errorMessage = String(e);
-			stopTimer();
-		}
+		stopTimer();
+		micLevel = 0;
+		processingStart?.(fileName || 'Recording');
 	}
 
 	async function cancel() {
@@ -158,7 +146,6 @@
 	async function recordAgain() {
 		notes = [];
 		elapsedSeconds = 0;
-		transcriptPath = '';
 		errorMessage = '';
 		micLevel = 0;
 		await startRecording();
@@ -166,7 +153,7 @@
 
 	async function closeModelSetup() {
 		modelSetupOpen = false;
-		if (canCloseModelSetup && phase !== 'recording' && phase !== 'transcribing') {
+		if (canCloseModelSetup && phase !== 'recording') {
 			await startRecording();
 		}
 	}
@@ -182,10 +169,6 @@
 			...notes,
 			{ id: created.id, text: created.text, recordedAtMs: created.recorded_at_ms },
 		];
-	}
-
-	async function openTranscript() {
-		if (transcriptPath) await openPath(transcriptPath);
 	}
 
 	// ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -307,34 +290,6 @@
 
 					{:else if phase === 'recording'}
 						<Button variant="primary" onclick={stopAndSave}>Stop and Save</Button>
-
-					{:else if phase === 'transcribing'}
-						<ProgressBar
-							progress={transcribeProgress}
-							sequence={transcribeSteps.map((step, index) => ({
-								...step,
-								complete:
-									(index === 0 && transcribeProgress >= 20) ||
-									(index === 1 && transcribeProgress >= 70) ||
-									(index === 2 && transcribeProgress >= 100),
-							}))}
-							sequenceMode="window"
-							uiSize="sm"
-						/>
-
-					{:else if phase === 'done'}
-						<div class="flex min-w-0 flex-1 flex-col gap-2">
-							<p class="font-data text-label-sm text-on-surface/60 uppercase tracking-stamped">
-								Transcript saved
-							</p>
-							<p class="truncate text-body-sm text-on-surface/80" title={transcriptPath}>
-								{transcriptPath}
-							</p>
-							<div class="flex gap-2">
-								<Button variant="primary" onclick={openTranscript}>Open</Button>
-								<Button variant="secondary" onclick={recordAgain}>Record Again</Button>
-							</div>
-						</div>
 
 					{:else if phase === 'no_model'}
 						<div class="flex flex-col gap-2">

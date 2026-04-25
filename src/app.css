@@ -56,8 +56,8 @@
 	--tracking-stamped: 0.05em;
 
 	/* Geometry — strict radii (DESIGN.md §4) */
-	--radius-sm: 2px;
-	--radius-md: 4px;
+	--radius-sm: 0px;
+	--radius-md: 2px;
 }
 
 @layer base {

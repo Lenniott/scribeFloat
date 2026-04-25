@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use whisper_rs::{
+    FullParams, SamplingStrategy, SegmentCallbackData, WhisperContext, WhisperContextParameters,
+};
 
 pub const SMALL_MODEL_FILENAME: &str = "ggml-small.bin";
 
@@ -177,8 +179,17 @@ impl ModelService {
         MODEL_CATALOG.iter().find(|m| m.id == model_id).copied()
     }
 
-    /// Transcribe mono f32 PCM at 16 kHz. Must be called from spawn_blocking.
-    pub fn transcribe_pcm(&self, model_path: &Path, pcm: &[f32]) -> Result<Vec<Segment>> {
+    /// Transcribe mono f32 PCM at 16 kHz and report Whisper's own progress.
+    /// Must be called from spawn_blocking.
+    pub fn transcribe_pcm_with_progress<F>(
+        &self,
+        model_path: &Path,
+        pcm: &[f32],
+        mut on_progress: F,
+    ) -> Result<Vec<Segment>>
+    where
+        F: FnMut(f32) + 'static,
+    {
         let path_str = model_path
             .to_str()
             .ok_or_else(|| anyhow!("model path is not valid UTF-8"))?;
@@ -196,6 +207,10 @@ impl ModelService {
         params.set_print_realtime(false);
         params.set_print_special(false);
         params.set_single_segment(false);
+        let total_ms = ((pcm.len() as f32 / 16_000.0) * 1_000.0).max(1.0);
+        params.set_segment_callback_safe_lossy(move |segment: SegmentCallbackData| {
+            on_progress(progress_from_segment_end(segment.end_timestamp, total_ms));
+        });
 
         state
             .full(params, pcm)
@@ -228,6 +243,10 @@ impl ModelService {
 
         Ok(segments)
     }
+}
+
+fn progress_from_segment_end(end_timestamp: i64, total_ms: f32) -> f32 {
+    ((end_timestamp as f32 * 10.0) / total_ms).clamp(0.0, 1.0)
 }
 
 #[cfg(test)]
@@ -274,5 +293,14 @@ mod tests {
         assert!(!service.model_downloaded("tiny"));
         std::fs::write(&tiny_path, [1]).expect("write tiny model");
         assert!(service.model_downloaded("tiny"));
+    }
+
+    #[test]
+    fn progress_from_segment_end_uses_audio_time_and_clamps() {
+        assert_eq!(progress_from_segment_end(-10, 1_000.0), 0.0);
+        assert_eq!(progress_from_segment_end(0, 1_000.0), 0.0);
+        assert_eq!(progress_from_segment_end(50, 1_000.0), 0.5);
+        assert_eq!(progress_from_segment_end(100, 1_000.0), 1.0);
+        assert_eq!(progress_from_segment_end(150, 1_000.0), 1.0);
     }
 }

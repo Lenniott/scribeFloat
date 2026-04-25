@@ -12,7 +12,7 @@
   import EditableTitleField from "@components/form/EditableTitleField.svelte";
   import LabeledTextField from "@components/form/LabeledTextField.svelte";
   import OptionGroup from "@components/form/OptionGroup.svelte";
-  import ProgressBar from "@components/form/ProgressBar.svelte";
+  import StackProgressBar from "@components/form/StackProgressBar.svelte";
   import ToggleSwitch from "@components/form/ToggleSwitch.svelte";
   import TabPage, { type TabPageItem } from "@components/layout/TabPage.svelte";
   import NoteCard from "@components/notes/NoteCard.svelte";
@@ -88,13 +88,11 @@
   /** IconButton intentionally supports fewer variants than Button */
   const iconButtonVariants = ["primary", "destructive", "normal"] as const;
   const sizes = ["normal", "small"] as const;
-  const progressSequence = [
-    { label: "model small", complete: true },
-    { label: "File created", complete: true },
-    { label: "Model medium", complete: true },
-    { label: "File created", complete: false },
-    { label: "Model large", complete: false },
-    { label: "Result export", complete: false },
+  const stackProgressSequence = [
+    { label: "Loading model", complete: true },
+    { label: "Transcribing audio", complete: true },
+    { label: "Writing transcript", complete: false },
+    { label: "Cleaning up audio", complete: false },
   ];
   const panelTabs: TabPageItem[] = [
     { id: "setup", label: "Setup" },
@@ -421,7 +419,7 @@
     <div class="flex flex-col gap-10 lg:flex-row lg:items-start">
       <div class="flex flex-col items-center gap-8">
         <div class="flex flex-col items-center gap-2">
-          <p class="text-label-sm text-on-surface/45">Normal</p>
+          <p class="text-label-sm text-on-surface/45">Normal (with speaker audio)</p>
           <AudioWaveFormVisualizer
             micLevel={0.55}
             speakerLevel={0.35}
@@ -429,36 +427,33 @@
             size="normal"
           />
         </div>
-
         <div class="flex flex-col items-center gap-2">
-          <p class="text-label-sm text-on-surface/45">
-            Compact with center indicator
-          </p>
+          <p class="text-label-sm text-on-surface/45">Normal (without speaker audio)</p>
           <AudioWaveFormVisualizer
             micLevel={0.55}
             speakerLevel={0.35}
             speakerEnabled={false}
-            size="small"
+            size="normal"
           />
-          <div class="flex items-center gap-1.5">
-            <RecordingStatusDot status="recording" />
-            <RecordingTimer elapsedSeconds={94} />
-          </div>
         </div>
         <div class="flex flex-col items-center gap-2">
           <p class="text-label-sm text-on-surface/45">DicateRecordScreen</p>
-          <div class="flex gap-2 items-center">
-			<div class="flex items-center gap-1.5 mr-4">
-				<RecordingStatusDot status="recording" />
-				<RecordingTimer elapsedSeconds={94} />
-			</div>
-            <AudioWaveFormVisualizer
-              micLevel={0.55}
-              speakerLevel={0.35}
-              speakerEnabled={false}
-              size="small"
-            />
-			<IconButton variant="normal" icon={Close} aria-label="Close" />
+          <div class="flex gap-2 justify-between items-center w-60 py-2 pl-3 pr-2 bg-surface-container-lowest">
+            <div class="flex gap-4">
+              <div
+                class="flex items-center gap-2"
+              >
+                <RecordingStatusDot status="recording" />
+                <RecordingTimer elapsedSeconds={94} />
+              </div>
+              <AudioWaveFormVisualizer
+                micLevel={0.55}
+                speakerLevel={0.35}
+                speakerEnabled={false}
+                size="small"
+              />
+            </div>
+            <IconButton variant="normal" size="small" icon={Close} aria-label="Close" />
           </div>
         </div>
       </div>
@@ -492,25 +487,25 @@
         </div>
         <div>
           <p class="text-label-sm text-on-surface/45 mb-2">
-            ProgressBarScribe (windowed sequence)
+            StackProgressBar Large (variant defaults)
           </p>
-          <ProgressBar
-            progress={40}
-            sequence={progressSequence}
-            sequenceMode="window"
-            uiSize="lg"
+          <StackProgressBar
+            variant="large"
+            progress={62}
+            sequence={stackProgressSequence}
           />
         </div>
         <div>
           <p class="text-label-sm text-on-surface/45 mb-2">
-            ProgressBarDictate (current stage)
+            StackProgressBar Small (current state only)
           </p>
-          <ProgressBar
-            progress={100}
-            sequence={progressSequence}
-            sequenceMode="current"
-            uiSize="sm"
+          <div class="w-60 pr-2">
+          <StackProgressBar
+            variant="small"
+            progress={62}
+            sequence={stackProgressSequence}
           />
+          </div>
         </div>
         <div>
           <p class="text-label-sm text-on-surface/45 mb-2">AudioLayerLegend</p>

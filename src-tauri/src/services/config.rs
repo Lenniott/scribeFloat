@@ -106,8 +106,7 @@ mod tests {
     fn loads_defaults_for_missing_fields_in_old_config() {
         let path = temp_config_path();
         // Write a minimal config that predates newer fields.
-        std::fs::write(&path, r#"{"save_folder": "/tmp/old-liscribe"}"#)
-            .expect("write old config");
+        std::fs::write(&path, r#"{"save_folder": "/tmp/old-liscribe"}"#).expect("write old config");
 
         let service = ConfigService::load(path).expect("load partial config");
         let cfg = service.get();

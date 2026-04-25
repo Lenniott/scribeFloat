@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "dev:tauri": "VITE_SKIP_ONBOARDING=1 vite dev",
     "dev:onboarding": "VITE_FORCE_ONBOARDING=1 vite dev",
     "build": "vite build",
     "preview": "vite preview",

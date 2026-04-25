@@ -110,11 +110,22 @@ pub struct ScribeStateEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub processing_stage: Option<ProcessingStage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub transcript_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wav_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ProcessingStage {
+    LoadingModel,
+    TranscribingAudio,
+    WritingTranscript,
+    CleaningUpAudio,
 }
 
 /// Emitted on `model://download-progress` while the default model downloads.
@@ -147,6 +158,7 @@ impl ScribeStateEvent {
         Self {
             state,
             progress: None,
+            processing_stage: None,
             transcript_path: None,
             wav_path: None,
             error: None,
@@ -163,11 +175,13 @@ mod tests {
         let mut event = ScribeStateEvent::new(ScribeState::Done);
         event.transcript_path = Some("/tmp/result.md".to_string());
         event.progress = Some(0.75);
+        event.processing_stage = Some(ProcessingStage::WritingTranscript);
 
         let json = serde_json::to_value(&event).expect("serialize state event");
         assert_eq!(json["state"], "DONE");
         assert_eq!(json["transcript_path"], "/tmp/result.md");
         assert_eq!(json["progress"], 0.75);
+        assert_eq!(json["processing_stage"], "WRITING_TRANSCRIPT");
     }
 
     #[test]

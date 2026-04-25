@@ -110,6 +110,15 @@
 		isRefreshing = false;
 	}
 
+	async function completeOnboarding() {
+		saveError = '';
+		await invoke('settings_complete_onboarding')
+			.then(() => onComplete?.())
+			.catch((e) => {
+				saveError = extractErrorMessage(e, 'Could not finish onboarding.');
+			});
+	}
+
 	async function grantPermission(kind: string) {
 		requestingKind = kind;
 		saveError = '';
@@ -152,6 +161,14 @@
 		await refreshConfig();
 	}
 
+	async function selectModel(modelId: string) {
+		await modelStore.select(modelId);
+	}
+
+	async function closeModelSetup() {
+		modelSetupOpen = false;
+	}
+
 	let unlistenFocus: (() => void) | undefined;
 
 	onMount(async () => {
@@ -166,6 +183,7 @@
 		unlistenFocus?.();
 		modelUnlisteners.forEach((u) => u());
 	});
+
 </script>
 
 <div class="mx-auto flex h-screen w-full max-w-3xl flex-col gap-6 p-6 text-on-surface">
@@ -182,16 +200,16 @@
 				type="button"
 				class={`rounded-md border px-3 py-2 text-left transition ${
 					stepStatus.id === step
-						? 'border-primary bg-primary/10'
+						? 'border-secondary bg-secondary/10'
 						: stepStatus.complete
-							? 'border-green-500/40 bg-green-500/10'
+							? 'border-green/40 bg-green/2'
 							: 'border-surface-container bg-surface'
 				}`}
 				onclick={() => (step = stepStatus.id)}
 			>
 				<div class="flex items-center justify-between gap-3">
 					<p class="text-label-sm font-semibold">{stepStatus.id}. {stepStatus.title}</p>
-					<span class={`text-label-sm ${stepStatus.complete ? 'text-green-500' : 'text-on-surface/70'}`}>
+					<span class={`text-label-sm ${stepStatus.complete ? stepStatus.id === step? 'text-secondary':'text-green' : 'text-on-surface/70'}`}>
 						{stepStatus.complete ? 'Done' : 'Pending'}
 					</span>
 				</div>
@@ -205,7 +223,7 @@
 			<div class="space-y-3">
 				<p class="text-body-sm">Select and download a model for transcription.</p>
 				<Button
-					variant="primary"
+					variant="secondary"
 					onclick={async () => {
 						modelSetupOpen = true;
 						await modelStore.refresh();
@@ -226,7 +244,7 @@
 					<div
 						class={`rounded-md border px-3 py-2.5 transition ${
 							permission.granted
-								? 'border-green-500/30 bg-green-500/5'
+								? 'border-green/30 bg-green/5'
 								: isOptional
 									? 'border-surface-container bg-surface'
 									: 'border-amber-500/30 bg-amber-500/5'
@@ -235,7 +253,7 @@
 						<div class="flex items-center justify-between gap-3">
 							<div class="flex items-center gap-2">
 								{#if permission.granted}
-									<svg class="size-4 shrink-0 text-green-500" viewBox="0 0 16 16" fill="currentColor">
+									<svg class="size-4 shrink-0 text-green" viewBox="0 0 16 16" fill="currentColor">
 										<path fill-rule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" />
 									</svg>
 								{:else if !isOptional}
@@ -249,12 +267,12 @@
 										{#if isOptional}<span class="text-on-surface/40"> · optional</span>{/if}
 									</p>
 									{#if justGrantedByKind[permission.kind]}
-										<p class="text-label-sm text-green-500">Just granted</p>
+										<p class="text-label-sm text-green">Just granted</p>
 									{/if}
 								</div>
 							</div>
 							{#if permission.granted}
-								<span class="text-label-sm font-medium text-green-500">Granted</span>
+								<span class="text-label-sm font-medium text-green">Granted</span>
 							{:else if permission.can_request}
 								<Button
 									variant="secondary"
@@ -292,7 +310,7 @@
 				/>
 				<LabeledTextField label="Input label" bind:value={inputLabel} />
 				<LabeledTextField label="Output label" bind:value={outputLabel} />
-				<Button variant="primary" onclick={saveHotkeysAndLabels}>Save hotkeys and labels</Button>
+				<Button variant="secondary" onclick={saveHotkeysAndLabels}>Save hotkeys and labels</Button>
 			</div>
 		{/if}
 		{#if gateError}
@@ -304,18 +322,11 @@
 	</section>
 
 	<footer class="mt-auto flex items-center justify-between">
-		<Button variant="secondary" disabled={isRefreshing} onclick={refreshAllStatus}>
+		<Button variant="secondary" onclick={refreshAllStatus}>
 			{isRefreshing ? 'Refreshing...' : 'Refresh status'}
 		</Button>
-		<Button
-			variant="primary"
-			disabled={!allReady}
-			onclick={async () => {
-				await invoke('settings_complete_onboarding').catch(() => {});
-				onComplete?.();
-			}}
-		>
-			Enter Scribe
+		<Button variant="primary" onclick={completeOnboarding}>
+			Continue to Scribe
 		</Button>
 	</footer>
 </div>
@@ -329,6 +340,6 @@
 	errorMessage={modelStore.error}
 	canClose={canCloseModelSetup}
 	onDownload={modelStore.download}
-	onSelect={modelStore.select}
-	onClose={() => (modelSetupOpen = false)}
+	onSelect={selectModel}
+	onClose={closeModelSetup}
 />

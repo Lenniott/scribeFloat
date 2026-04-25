@@ -5,7 +5,7 @@
 | `CircularAudioVisualizer` | A parent visual component for circular live audio display.   | Composes one or more circular layers, usually mic in the centre and optional speaker as an outer overlay ring.   |
 | `MicWaveRing` | A circular waveform ring for microphone input.   | Reads mic level/amplitude data and renders animated radial motion as the core waveform layer.   |
 | `SpeakerWaveRing` | A circular waveform ring for speaker/system input.   | Renders a second waveform overlay; if speaker input is disabled, this component is not mounted or is hidden.   |
-| `CircularProgressRing` | A reusable radial progress indicator.   | Draws a track and active arc based on a progress value from 0 to 100 percent, separate from live waveform animation.   |
+| `StackProgressBar` | A reusable horizontal progress indicator.   | Fills waveform-style stacked bars from left to right and shows processing steps across the row.   |
 | `AudioLayerLegend` | A small key showing which colour maps to mic and speaker.   | Displays colour swatches and labels; can optionally show disabled state for speaker when not active.   |
 | `RecordingStatusDot` | Small status indicator for recording state.   | Changes appearance for idle, recording, paused, or error states.   |
 | `RecordingTimer` | Elapsed-time display component.   | Shows formatted session time such as `00:00` and updates from external recording state.   |
@@ -60,7 +60,7 @@ For reusability, I’d separate them like this instead of tying them to “Scrib
 A clean composition would be:
 
 - `CircularAudioVisualizer`
-- `CircularProgressRing`
+- `StackProgressBar`
 - `Accordion`
 - `DeviceSelect`
 - `ToggleSwitch`

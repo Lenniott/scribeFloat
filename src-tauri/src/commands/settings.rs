@@ -88,8 +88,6 @@ pub fn settings_complete_onboarding(
 }
 
 #[tauri::command]
-pub fn settings_reset_onboarding(
-    ctrl: State<'_, Arc<SettingsController>>,
-) -> Result<(), String> {
+pub fn settings_reset_onboarding(ctrl: State<'_, Arc<SettingsController>>) -> Result<(), String> {
     ctrl.reset_onboarding()
 }

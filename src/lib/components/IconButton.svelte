@@ -30,7 +30,7 @@
 	} = $props();
 
 	const base =
-		"inline-flex shrink-0 items-center justify-center rounded-md transition-[opacity,background-color,color] disabled:pointer-events-none disabled:opacity-40";
+		"inline-flex shrink-0 items-center justify-center rounded-md cursor-pointer transition-[opacity,background-color,color] disabled:pointer-events-none disabled:opacity-40";
 
 	const variantClass: Record<Variant, string> = {
 		primary: "bg-primary text-on-primary hover:brightness-150",

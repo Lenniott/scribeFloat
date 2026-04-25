@@ -32,12 +32,12 @@
 	} = $props();
 
 	const base =
-		"inline-flex shrink-0 items-center justify-center gap-2 font-semibold transition-[opacity,background-color,color] disabled:pointer-events-none disabled:opacity-40";
+		"inline-flex shrink-0 items-center justify-center gap-2 font-semibold cursor-pointer transition-[opacity,background-color,color] disabled:pointer-events-none disabled:opacity-40";
 
 	const variantClass: Record<Variant, string> = {
 		primary:
 			"bg-primary font-data text-on-primary hover:brightness-150",
-		secondary: "border-primary border-1 text-primary hover:bg-primary hover:brightness-120 hover:text-on-primary",
+		secondary: "border-secondary border-1 text-secondary hover:bg-secondary hover:brightness-120 hover:text-on-secondary",
 		destructive:
 			"bg-error-container text-on-error-container hover:brightness-150",
 		tertiary:

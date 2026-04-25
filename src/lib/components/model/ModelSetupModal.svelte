@@ -39,7 +39,6 @@
 						Download and choose a model. Downloaded models stay on this machine.
 					</p>
 				</div>
-				<Button variant="secondary" disabled={!canClose} onclick={onClose}>Close</Button>
 			</div>
 
 			{#if errorMessage}
@@ -62,7 +61,7 @@
 									</Button>
 								{:else}
 									<Button
-										variant="primary"
+										variant="secondary"
 										disabled={!!downloadingByModel[model.id]}
 										onclick={() => onDownload?.(model.id)}
 									>
@@ -89,6 +88,9 @@
 					</div>
 				{/each}
 			</div>
+			<div class="mt-4 w-full items-end">
+				<Button variant="secondary" disabled={!canClose} onclick={onClose}>Close</Button>
+			</div>		
 		</div>
 	</div>
 {/if}

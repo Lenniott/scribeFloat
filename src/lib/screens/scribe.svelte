@@ -2,11 +2,13 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+	import { getCurrentWindow } from '@tauri-apps/api/window';
 
 	import Accordion from '@components/accordion/Accordion.svelte';
 	import AccordionItem from '@components/accordion/AccordionItem.svelte';
 	import Button from '@components/Button.svelte';
 	import IconButton from '@components/IconButton.svelte';
+	import Modal from '@components/Modal.svelte';
 	import RecordingStatusDot from '@components/audio/RecordingStatusDot.svelte';
 	import RecordingTimer from '@components/audio/RecordingTimer.svelte';
 	import AudioWaveFormVisualizer from '@lib/components/audio/AudioWaveFormVisualizer.svelte';
@@ -38,6 +40,9 @@ let { processingStart, autoStart = true }: Props = $props();
 	let modelUnlisteners: (() => void)[] = [];
 	let modelSetupOpen = $state(false);
 	let settingsOpen = $state(false);
+	let discardConfirmOpen = $state(false);
+	let discardInProgress = $state(false);
+	let startInProgress = false;
 
 	const modelReady = $derived(modelStore.models.some((m) => m.downloaded));
 	const canCloseModelSetup = $derived(modelStore.models.some((m) => m.selected && m.downloaded));
@@ -129,11 +134,24 @@ let { processingStart, autoStart = true }: Props = $props();
 
 	// ── Actions ───────────────────────────────────────────────────────────────
 	async function startRecording() {
+		if (startInProgress || phase === 'recording') return;
+		startInProgress = true;
 		try {
 			await invoke('scribe_start', { preferredMic: selectedMic || null });
 		} catch (e) {
 			phase = 'error';
 			errorMessage = String(e);
+		} finally {
+			startInProgress = false;
+		}
+	}
+
+	async function maybeAutoStartRecording() {
+		if (!autoStart || !modelReady || modelSetupOpen || discardConfirmOpen || discardInProgress) {
+			return;
+		}
+		if (phase === 'idle') {
+			await startRecording();
 		}
 	}
 
@@ -152,6 +170,14 @@ let { processingStart, autoStart = true }: Props = $props();
 			await invoke('scribe_cancel');
 		} catch (_) {}
 		phase = 'idle';
+	}
+
+	async function discardRecording() {
+		discardInProgress = true;
+		await cancel();
+		discardConfirmOpen = false;
+		discardInProgress = false;
+		await getCurrentWindow().close();
 	}
 
 	async function recordAgain() {
@@ -185,6 +211,7 @@ let { processingStart, autoStart = true }: Props = $props();
 
 	// ── Lifecycle ─────────────────────────────────────────────────────────────
 	let unlisteners: UnlistenFn[] = [];
+	let unlistenFocus: (() => void) | undefined;
 
 	onMount(async () => {
 		includeTimestamps = await invoke<boolean>('scribe_get_include_timestamps').catch(() => true);
@@ -213,14 +240,16 @@ let { processingStart, autoStart = true }: Props = $props();
 			micLevel = e.payload ?? 0;
 		});
 		unlisteners = [ul1, ul2];
+		unlistenFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+			if (focused) void maybeAutoStartRecording();
+		});
 
-		if (autoStart && modelReady) {
-			await startRecording();
-		}
+		await maybeAutoStartRecording();
 	});
 
 	onDestroy(() => {
 		unlisteners.forEach((u) => u());
+		unlistenFocus?.();
 		modelUnlisteners.forEach((u) => u());
 		stopTimer();
 	});
@@ -252,8 +281,8 @@ let { processingStart, autoStart = true }: Props = $props();
 						variant="destructive"
 						size="small"
 						icon={Bin}
-						aria-label="Cancel recording"
-						onclick={cancel}
+						aria-label="Discard recording"
+						onclick={() => (discardConfirmOpen = true)}
 					/>
 					<RecordingTimer {elapsedSeconds} />
 					<RecordingStatusDot status="recording" />
@@ -399,6 +428,34 @@ let { processingStart, autoStart = true }: Props = $props();
 	open={modelSetupOpen}
 	onClose={closeModelSetup}
 />
+
+<Modal
+	open={discardConfirmOpen}
+	title="Discard recording?"
+	description="Are you sure you want to discard this recording? This cannot be undone."
+	maxWidthClass="max-w-md"
+	closeDisabled={discardInProgress}
+	onClose={() => (discardConfirmOpen = false)}
+>
+	{#snippet footer()}
+		<div class="flex gap-2">
+			<Button
+				variant="secondary"
+				disabled={discardInProgress}
+				onclick={() => (discardConfirmOpen = false)}
+			>
+				Cancel
+			</Button>
+			<Button
+				variant="destructive"
+				disabled={discardInProgress}
+				onclick={discardRecording}
+			>
+				Discard
+			</Button>
+		</div>
+	{/snippet}
+</Modal>
 
 {#if settingsOpen}
 	<SettingsScreen onClose={() => (settingsOpen = false)} />

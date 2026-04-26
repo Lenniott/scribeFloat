@@ -1,4 +1,5 @@
 pub mod permissions_impl;
+pub mod window_impl;
 
 /// Open a file, optionally with a specific application.
 /// On macOS `app` is either a bare app name ("Obsidian") or a full path ("/Applications/Obsidian.app").

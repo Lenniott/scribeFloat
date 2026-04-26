@@ -38,7 +38,7 @@
 		aria-hidden="true"
 		class="relative inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-white/85 bg-transparent text-transparent transition-colors peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary peer-checked:border-primary peer-checked:bg-primary peer-checked:text-on-primary"
 	>
-		<span class="text-label-md leading-none font-bold">✓</span>
+		<span class="text-label-md leading-none font-normal">✓</span>
 	</span>
 	{#if label}
 		<span class="text-body-md tracking-[0.01em]">{label}</span>

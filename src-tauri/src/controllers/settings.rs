@@ -1,7 +1,7 @@
 use crate::services::config::ConfigService;
 use crate::services::hotkeys::HotkeyService;
 use crate::services::permissions::PermissionsService;
-use crate::types::PermissionStatus;
+use crate::types::{PermissionStatus, ThemeMode};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -132,6 +132,32 @@ impl SettingsController {
                 cfg.output_label = output_label.to_string();
             })
             .map_err(|e| format!("failed to persist labels: {e}"))
+    }
+
+    pub fn get_open_with_app_path(&self) -> Option<String> {
+        self.config.get().open_with_app_path
+    }
+
+    pub fn set_open_with_app_path(&self, path: Option<String>) -> Result<(), String> {
+        self.config
+            .update(|cfg| cfg.open_with_app_path = path)
+            .map_err(|e| format!("failed to persist app path: {e}"))
+    }
+
+    pub fn open_transcript(&self, file_path: &str) -> Result<(), String> {
+        let app = self.config.get().open_with_app_path;
+        crate::platform::open_file(file_path, app.as_deref())
+    }
+
+    pub fn get_theme_mode(&self) -> ThemeMode {
+        self.config.get().theme_mode
+    }
+
+    pub fn set_theme_mode(&self, theme_mode: String) -> Result<(), String> {
+        let theme_mode = ThemeMode::parse(&theme_mode)?;
+        self.config
+            .update(|cfg| cfg.theme_mode = theme_mode)
+            .map_err(|e| format!("failed to persist theme mode: {e}"))
     }
 
     pub fn permission_statuses(&self) -> Vec<PermissionStatus> {
@@ -307,6 +333,32 @@ mod tests {
         assert!(ctrl
             .set_input_labels("   ".to_string(), "Speaker".to_string())
             .is_err());
+    }
+
+    #[test]
+    fn theme_mode_defaults_to_system_and_persists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("config.json");
+        let config = ConfigService::load(config_path.clone()).unwrap();
+        let ctrl = make_controller(config, None);
+
+        assert_eq!(ctrl.get_theme_mode(), ThemeMode::System);
+        ctrl.set_theme_mode("light".to_string())
+            .expect("set theme mode");
+        assert_eq!(ctrl.get_theme_mode(), ThemeMode::Light);
+
+        let reloaded = ConfigService::load(config_path).unwrap();
+        let ctrl2 = make_controller(reloaded, None);
+        assert_eq!(ctrl2.get_theme_mode(), ThemeMode::Light);
+    }
+
+    #[test]
+    fn theme_mode_rejects_unknown_values() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
+        let ctrl = make_controller(config, None);
+
+        assert!(ctrl.set_theme_mode("sepia".to_string()).is_err());
     }
 
     #[test]

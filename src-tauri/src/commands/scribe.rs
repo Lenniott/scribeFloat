@@ -47,3 +47,18 @@ pub fn scribe_set_include_timestamps(
     ctrl.set_include_timestamps(enabled)
         .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn scribe_list_input_devices(
+    ctrl: State<'_, Arc<ScribeController>>,
+) -> Result<Vec<String>, String> {
+    Ok(ctrl.list_input_devices())
+}
+
+#[tauri::command]
+pub fn scribe_read_transcript(
+    ctrl: State<'_, Arc<ScribeController>>,
+    path: String,
+) -> Result<String, String> {
+    ctrl.read_transcript_at(&path)
+}

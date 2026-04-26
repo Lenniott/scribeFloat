@@ -4,10 +4,10 @@ use crate::services::{
     model::ModelService,
     output::OutputService,
 };
-use crate::types::{Config, Note, ScribeState, ScribeStateEvent};
+use crate::types::{Config, Note, ProcessingStage, ScribeState, ScribeStateEvent};
 use anyhow::{anyhow, Result};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 
@@ -15,6 +15,11 @@ struct ActiveSession {
     mic: MicSession,
     session_dir: PathBuf,
     started_at: Instant,
+}
+
+enum ProgressMessage {
+    Progress(f32),
+    Finished,
 }
 
 struct Inner {
@@ -84,16 +89,27 @@ impl ScribeController {
         Ok(())
     }
 
-    /// Transition RECORDING → IDLE. Discards the audio buffer.
+    /// Transition RECORDING → IDLE. Discards the audio buffer and removes the
+    /// session directory if no files were written into it yet.
     pub fn cancel(&self) -> Result<()> {
-        let mut inner = self.inner.lock().unwrap();
-        if inner.state != ScribeState::Recording {
-            return Err(anyhow!("cannot cancel: not recording"));
+        let session_dir = {
+            let mut inner = self.inner.lock().unwrap();
+            if inner.state != ScribeState::Recording {
+                return Err(anyhow!("cannot cancel: not recording"));
+            }
+            let dir = inner
+                .session
+                .as_ref()
+                .map(|s| s.session_dir.clone());
+            inner.session = None;
+            inner.state = ScribeState::Idle;
+            inner.notes.clear();
+            self.emit_state(&inner);
+            dir
+        };
+        if let Some(dir) = session_dir {
+            self.output.delete_session_dir_if_empty(&dir);
         }
-        inner.session = None;
-        inner.state = ScribeState::Idle;
-        inner.notes.clear();
-        self.emit_state(&inner);
         Ok(())
     }
 
@@ -116,7 +132,11 @@ impl ScribeController {
         this.app
             .emit(
                 "scribe://state-changed",
-                ScribeStateEvent::new(ScribeState::Transcribing),
+                ScribeStateEvent {
+                    progress: Some(0.0),
+                    processing_stage: Some(ProcessingStage::LoadingModel),
+                    ..ScribeStateEvent::new(ScribeState::Transcribing)
+                },
             )
             .ok();
 
@@ -187,15 +207,57 @@ impl ScribeController {
             return Ok(());
         }
 
-        let segments = self.model.transcribe_pcm(&model_path, &pcm_16k)?;
+        let (progress_tx, progress_rx) = mpsc::channel::<ProgressMessage>();
+        let callback_progress_tx = progress_tx.clone();
+        let progress_app = self.app.clone();
+        let progress_thread = std::thread::spawn(move || {
+            while let Ok(message) = progress_rx.recv() {
+                match message {
+                    ProgressMessage::Progress(progress) => {
+                        progress_app
+                            .emit(
+                                "scribe://state-changed",
+                                ScribeStateEvent {
+                                    progress: Some(progress),
+                                    processing_stage: Some(ProcessingStage::TranscribingAudio),
+                                    ..ScribeStateEvent::new(ScribeState::Transcribing)
+                                },
+                            )
+                            .ok();
+                    }
+                    ProgressMessage::Finished => break,
+                }
+            }
+        });
+
+        let segments =
+            self.model
+                .transcribe_pcm_with_progress(&model_path, &pcm_16k, move |progress| {
+                    callback_progress_tx
+                        .send(ProgressMessage::Progress(progress))
+                        .ok();
+                });
+        progress_tx.send(ProgressMessage::Finished).ok();
+        progress_thread.join().ok();
+        let segments = segments?;
 
         let transcript_path = self
             .output
-            .transcript_path(&session.session_dir, &model_path);
+            .transcript_path(&session.session_dir, &model_path, title);
         let model_name = model_path
             .file_stem()
             .map(|s| s.to_string_lossy().replace("ggml-", ""))
             .unwrap_or_else(|| "model".to_string());
+        self.app
+            .emit(
+                "scribe://state-changed",
+                ScribeStateEvent {
+                    progress: Some(1.0),
+                    processing_stage: Some(ProcessingStage::WritingTranscript),
+                    ..ScribeStateEvent::new(ScribeState::Transcribing)
+                },
+            )
+            .ok();
         self.output.write_transcript(
             &segments,
             &notes,
@@ -206,6 +268,16 @@ impl ScribeController {
         )?;
 
         if !config.keep_wav && !segments.is_empty() {
+            self.app
+                .emit(
+                    "scribe://state-changed",
+                    ScribeStateEvent {
+                        progress: Some(1.0),
+                        processing_stage: Some(ProcessingStage::CleaningUpAudio),
+                        ..ScribeStateEvent::new(ScribeState::Transcribing)
+                    },
+                )
+                .ok();
             self.output.delete_wav(&wav_path)?;
         }
 
@@ -264,6 +336,14 @@ impl ScribeController {
                 ScribeStateEvent::new(inner.state.clone()),
             )
             .ok();
+    }
+
+    pub fn list_input_devices(&self) -> Vec<String> {
+        self.audio.list_input_devices()
+    }
+
+    pub fn read_transcript_at(&self, path: &str) -> Result<String, String> {
+        std::fs::read_to_string(path).map_err(|e| format!("failed to read transcript: {e}"))
     }
 
     fn ensure_start_allowed(state: &ScribeState) -> Result<()> {
@@ -357,7 +437,12 @@ mod tests {
         ));
         // Cancelling from non-recording states should be rejected at the controller level.
         // We test the guard directly since cancel() also checks state internally.
-        for state in [ScribeState::Idle, ScribeState::Done, ScribeState::NoModel, ScribeState::Error] {
+        for state in [
+            ScribeState::Idle,
+            ScribeState::Done,
+            ScribeState::NoModel,
+            ScribeState::Error,
+        ] {
             assert!(
                 ScribeController::ensure_start_allowed(&state).is_ok(),
                 "start should be allowed from {state:?}"

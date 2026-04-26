@@ -14,6 +14,7 @@ pub fn run() {
     let permissions = services::permissions::PermissionsService::new();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -60,6 +61,8 @@ pub fn run() {
             commands::scribe::scribe_add_note,
             commands::scribe::scribe_get_include_timestamps,
             commands::scribe::scribe_set_include_timestamps,
+            commands::scribe::scribe_list_input_devices,
+            commands::scribe::scribe_read_transcript,
             commands::model::model_setup_status,
             commands::model::model_list,
             commands::model::model_download,
@@ -70,6 +73,11 @@ pub fn run() {
             commands::settings::settings_set_hotkeys,
             commands::settings::settings_get_input_labels,
             commands::settings::settings_set_input_labels,
+            commands::settings::settings_get_open_with_app_path,
+            commands::settings::settings_set_open_with_app_path,
+            commands::settings::settings_open_transcript,
+            commands::settings::settings_get_theme_mode,
+            commands::settings::settings_set_theme_mode,
             commands::settings::settings_permissions_status,
             commands::settings::settings_permissions_open,
             commands::settings::settings_permissions_request,

@@ -53,7 +53,7 @@
 	let t0 = 0;
 	let smoothMic = 0;
 	let smoothSpk = 0;
-	let palette = $state({ primary: "", tertiary: "" });
+	let palette = $state({ primary: "", active: "" });
 
 	function currentPreset(): Preset {
 		return PRESETS[size] ?? PRESETS.normal;
@@ -62,8 +62,8 @@
 	function syncPaletteFromTheme() {
 		if (typeof document === "undefined") return;
 		const cs = getComputedStyle(document.documentElement);
-		palette.primary = cs.getPropertyValue("--color-primary").trim();
-		palette.tertiary = cs.getPropertyValue("--color-tertiary").trim();
+		palette.primary = cs.getPropertyValue("--color-secondary").trim();
+		palette.active = cs.getPropertyValue("--color-active").trim();
 	}
 
 	function normalize(level: number): number {
@@ -152,7 +152,7 @@
 				if (bottomY - y > maxReachPx) break;
 				ctx.globalAlpha = 1;
 				if (l < spkLayers) {
-					ctx.fillStyle = palette.tertiary;
+					ctx.fillStyle = palette.active;
 					ctx.fillRect(x, y, sideW, Math.max(1, unitH - 1));
 				}
 				if (l < micLayers) {
@@ -165,7 +165,7 @@
 
 	function frame(now: number) {
 		if (!ctx) return;
-		if (!palette.primary || !palette.tertiary) syncPaletteFromTheme();
+		if (!palette.primary || !palette.active) syncPaletteFromTheme();
 		t0 = now;
 		const mic = normalize(micLevel);
 		const spk = speakerEnabled ? normalize(speakerLevel) : 0;

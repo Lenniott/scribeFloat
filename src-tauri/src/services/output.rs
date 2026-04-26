@@ -19,14 +19,29 @@ impl OutputService {
         Ok(dir)
     }
 
-    /// Build the transcript file path: `{session_dir}/{ts}_{model_stem}.md`
-    pub fn transcript_path(&self, session_dir: &Path, model_path: &Path) -> PathBuf {
-        let ts = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
+    /// Build the transcript file path using the recording title as the filename base.
+    /// Spaces become underscores; chars forbidden on Windows/macOS become dashes.
+    pub fn transcript_path(&self, session_dir: &Path, model_path: &Path, title: &str) -> PathBuf {
+        let slug: String = title
+            .chars()
+            .map(|c| match c {
+                ' ' => '_',
+                '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '-',
+                c => c,
+            })
+            .collect();
+        let slug = if slug.is_empty() {
+            chrono::Local::now()
+                .format("%Y-%m-%d_%H-%M-%S")
+                .to_string()
+        } else {
+            slug
+        };
         let stem = model_path
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "model".to_string());
-        session_dir.join(format!("{}_{}.md", ts, stem))
+        session_dir.join(format!("{}_{}.md", slug, stem))
     }
 
     /// Write mono f32 PCM as a 16-bit WAV file.
@@ -112,6 +127,20 @@ impl OutputService {
             std::fs::remove_file(path)?;
         }
         Ok(())
+    }
+
+    /// Remove the session directory if it contains no files (i.e. recording was cancelled
+    /// before any WAV was written). Silent no-op if the directory is non-empty or gone.
+    pub fn delete_session_dir_if_empty(&self, dir: &Path) {
+        if !dir.exists() {
+            return;
+        }
+        let is_empty = std::fs::read_dir(dir)
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false);
+        if is_empty {
+            let _ = std::fs::remove_dir(dir);
+        }
     }
 }
 

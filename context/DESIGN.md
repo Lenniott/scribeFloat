@@ -30,17 +30,32 @@ To prevent the UI from feeling "flat" or "cheap," use Glassmorphism for floating
 ---
  
 ## 3. Typography: Technical Authority
-We employ a dual-typeface system to distinguish between **Data** and **Interface**.
+We employ a dual-typeface system to distinguish between **Interface** and **Data**.
  
 ### The Font Pairing
-- **Technical Headers & Data:** `Space Grotesk`. Its idiosyncratic terminals and monospaced-leaning proportions convey engineering precision. Use this for all headings, timestamps, and raw transcript data.
-- **UI Text:** `Inter`. A neutral, highly legible workhorse for buttons, labels, and system messages.
+- **Interface:** `Geist`. Use this for headings, navigation, buttons, body copy, chips, and settings UI.
+- **Data:** `Geist Mono`. Use this for eyebrows, transcript labels (`in:` / `out:`), timestamps, footer meta, paths, hotkeys, and compact technical values.
  
 ### Typography Scale
-- **display-lg (Space Grotesk | 3.5rem):** Reserved for hero data points or start-state branding.
-- **headline-sm (Space Grotesk | 1.5rem):** Section headers. Use all-caps with 0.05em tracking for an industrial "stamped" look.
-- **body-md (Inter | 0.875rem):** Standard UI text. Use a `1.5` line-height to maintain "breathing room" amidst high data density.
-- **label-sm (Inter | 0.6875rem):** For metadata (bitrate, file size, technical specs). Always in semi-bold.
+- **display-lg (Geist | `clamp(40px, 7vw, 84px)`):** Hero h1. Use `font-light`, `tracking-tight`, and `leading-none`. Use `font-medium` only for emphasized h1 words.
+- **headline-lg (Geist | 2.25rem–3rem):** h2 section headings. Use `font-light`, `tracking-tight`, and `leading-[1.07]`.
+- **subtitle (Geist | 17px):** Hero subtitles and high-level descriptions. Use relaxed leading.
+- **body-md/body-sm (Geist | 13–14px):** Standard UI copy and descriptions. Default to `font-light` and relaxed leading.
+- **label-xs/label-sm (Geist Mono | 10–11px):** Eyebrows, transcript labels, timestamps, and footer meta. Use `tracking-wide` or `tracking-widest`.
+
+### Weight Rules
+- **300 / `font-light`:** Default everywhere.
+- **400 / `font-normal`:** Navigation, chips, logo, buttons, step headings, and compact labels.
+- **500 / `font-medium`:** Strong words inside h1 only.
+
+### Theme Modes
+The app supports `system`, `dark`, and `light` theme modes from Settings. Components must use semantic tokens (`primary`, `secondary`, `active`, `normal`, `transparent`, `surface-*`, `on-surface`) rather than hardcoded colors so the mode switch can resolve centrally.
+
+### Color Roles
+Use a 60-30-10 hierarchy:
+- **60% foundation:** `void`, `surface`, and `surface-container-*`.
+- **30% support:** `secondary`, neutral panels, chips, and grouped controls.
+- **10% emphasis:** `primary` for main actions and `active` for selected/current state. Keep `error` separate from accent.
  
 ---
  
@@ -57,9 +72,12 @@ Traditional drop shadows are forbidden. They feel "web-like" and soft. Instead, 
 ## 5. Components: Modular Units
  
 ### Buttons
-- **Primary:** Technical Orange gradient background, `on-primary` text (Space Grotesk, Semi-bold). 4px radius.
-- **Secondary:** `surface-container-highest` background, `on-surface` text. No border.
-- **Tertiary:** Ghost style. No background. `primary` text. Underline only on hover.
+- **Primary:** Main action / brand color, `on-primary` text.
+- **Secondary:** Supporting action/chip color, lower emphasis than primary.
+- **Normal:** Default neutral control using surface/outline tokens.
+- **Transparent:** Ghost control with no fill and a surface hover.
+- **Active:** Selected/current state color, distinct from primary when the UI needs a separate state cue.
+- **Destructive:** Error role only; do not reuse accent colors for destructive states.
  
 ### Technical Input Fields
 - **Styling:** Use `surface-container-lowest` as the field background. 
@@ -67,7 +85,7 @@ Traditional drop shadows are forbidden. They feel "web-like" and soft. Instead, 
  
 ### Transcription Cards & Lists
 - **No Dividers:** Forbid the use of horizontal lines between list items. Use vertical white space (16px/24px) or a subtle shift between `surface-container-low` and `surface-container-lowest` to separate entries.
-- **Waveform Display:** Use `tertiary` (#ff9e65) for inactive audio segments and `primary` (#ffb693) for active segments.
+- **Waveform Display:** Use `active` (#ff9e65) for inactive audio segments and `primary` (#ffb693) for active segments.
  
 ### Status Chips
 - **Action Chips:** 4px radius. Background: `surface-container-highest`. Text: `label-md`.
@@ -84,7 +102,7 @@ Traditional drop shadows are forbidden. They feel "web-like" and soft. Instead, 
  
 ### Don't
 - **Don't** use icons with rounded caps. Use "sharp" or "square" icon sets to match the 4px radius theme.
-- **Don't** use blues, purples, or "SaaS Blue." The palette is strictly monochromatic + Technical Orange.
+- **Don't** introduce decorative blues, purples, or generic SaaS colors. `active` is the only separate state cue and must stay tokenized.
 - **Don't** use center-alignment for headers. Everything should be left-aligned to mimic a technical log or ledger.
 - **Don't** use standard 1px dividers. If you feel the need for a line, try a 4px background color shift instead.
 - **Don't** Use disabled button workflows, they suck.

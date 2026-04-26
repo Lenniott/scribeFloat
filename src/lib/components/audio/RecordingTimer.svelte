@@ -18,7 +18,7 @@
 </script>
 
 <time
-	class="font-data tabular-nums tracking-tight text-on-surface {className}"
+	class="font-data text-label-xs tabular-nums tracking-data text-on-surface {className}"
 	datetime={`PT${Math.floor(elapsedSeconds)}S`}
 >
 	{text}

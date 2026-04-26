@@ -2,7 +2,6 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-	import { openPath } from '@tauri-apps/plugin-opener';
 
 	import Accordion from '@components/accordion/Accordion.svelte';
 	import AccordionItem from '@components/accordion/AccordionItem.svelte';
@@ -11,10 +10,8 @@
 	import RecordingStatusDot from '@components/audio/RecordingStatusDot.svelte';
 	import RecordingTimer from '@components/audio/RecordingTimer.svelte';
 	import AudioWaveFormVisualizer from '@lib/components/audio/AudioWaveFormVisualizer.svelte';
-	import ConfigField from '@components/form/ConfigField.svelte';
 	import EditableTitleField from '@components/form/EditableTitleField.svelte';
 	import ToggleSwitch from '@components/form/ToggleSwitch.svelte';
-	import ProgressBar from '@components/form/ProgressBar.svelte';
 	import ModelSetupModal from '@components/model/ModelSetupModal.svelte';
 	import NoteComposer from '@components/notes/NoteComposer.svelte';
 	import NotesList from '@components/notes/NotesList.svelte';
@@ -24,11 +21,17 @@
 	import Cog from 'lucide-svelte/icons/settings-2';
 	import type { Note } from '@components/notes/NoteCard.svelte';
 
+type Props = {
+	processingStart?: (title: string) => void;
+	autoStart?: boolean;
+};
+
+let { processingStart, autoStart = true }: Props = $props();
+
 	// ── State machine ─────────────────────────────────────────────────────────
-	type Phase = 'idle' | 'recording' | 'transcribing' | 'done' | 'no_model' | 'error';
+	type Phase = 'idle' | 'recording' | 'no_model' | 'error';
 	let phase = $state<Phase>('idle');
 	let errorMessage = $state('');
-	let transcriptPath = $state('');
 
 	// ── Model download ─────────────────────────────────────────────────────────
 	const modelStore = createModelDownloadStore();
@@ -38,6 +41,11 @@
 
 	const modelReady = $derived(modelStore.models.some((m) => m.downloaded));
 	const canCloseModelSetup = $derived(modelStore.models.some((m) => m.selected && m.downloaded));
+	const downloadedModelOptions = $derived(
+		modelStore.models
+			.filter((m) => m.downloaded)
+			.map((m) => ({ value: m.id, label: m.label })),
+	);
 
 	// ── Recording ─────────────────────────────────────────────────────────────
 	let elapsedSeconds = $state(0);
@@ -59,22 +67,21 @@
 	}
 
 	// ── Session metadata ──────────────────────────────────────────────────────
-	let fileName = $state('Recording');
+	function defaultTitle() {
+		const now = new Date();
+		const pad = (n: number) => n.toString().padStart(2, '0');
+		return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}-${pad(now.getMinutes())}`;
+	}
+
+	let fileName = $state(defaultTitle());
 	let selectedMic = $state('');
+	let selectedModelId = $state('');
 	let noteDraft = $state('');
 	let notes = $state<Note[]>([]);
 	let selectedNoteId = $state<string | null>(null);
 	let includeTimestamps = $state(true);
 	let micLevel = $state(0);
-	let transcribeProgress = $state(0);
-
-	const transcribeSteps = [
-		{ label: 'Loading model', complete: false },
-		{ label: 'Transcribing audio', complete: false },
-		{ label: 'Writing transcript', complete: false },
-	];
-
-	const micOptions = [{ value: '', label: 'System Default' }];
+	let micOptions = $state([{ value: '', label: 'System Default' }]);
 
 	// ── Backend events ────────────────────────────────────────────────────────
 	type ScribePayload = {
@@ -98,15 +105,12 @@
 				startTimer();
 				break;
 			case 'TRANSCRIBING':
-				phase = 'transcribing';
-				transcribeProgress = p.progress ? Math.round(p.progress * 100) : Math.max(transcribeProgress, 33);
 				stopTimer();
 				micLevel = 0;
 				break;
 			case 'DONE':
-				phase = 'done';
-				transcribeProgress = 100;
-				transcriptPath = p.transcript_path ?? '';
+				stopTimer();
+				micLevel = 0;
 				break;
 			case 'NO_MODEL':
 				phase = 'no_model';
@@ -116,7 +120,6 @@
 				break;
 			case 'ERROR':
 				phase = 'error';
-				transcribeProgress = 0;
 				errorMessage = p.error ?? 'Unknown error';
 				stopTimer();
 				micLevel = 0;
@@ -135,13 +138,9 @@
 	}
 
 	async function stopAndSave() {
-		try {
-			await invoke('scribe_stop_and_save', { title: fileName || 'Recording' });
-		} catch (e) {
-			phase = 'error';
-			errorMessage = String(e);
-			stopTimer();
-		}
+		stopTimer();
+		micLevel = 0;
+		processingStart?.(fileName || 'Recording');
 	}
 
 	async function cancel() {
@@ -158,7 +157,6 @@
 	async function recordAgain() {
 		notes = [];
 		elapsedSeconds = 0;
-		transcriptPath = '';
 		errorMessage = '';
 		micLevel = 0;
 		await startRecording();
@@ -166,7 +164,8 @@
 
 	async function closeModelSetup() {
 		modelSetupOpen = false;
-		if (canCloseModelSetup && phase !== 'recording' && phase !== 'transcribing') {
+		await modelStore.refresh();
+		if (canCloseModelSetup && phase !== 'recording') {
 			await startRecording();
 		}
 	}
@@ -184,10 +183,6 @@
 		];
 	}
 
-	async function openTranscript() {
-		if (transcriptPath) await openPath(transcriptPath);
-	}
-
 	// ── Lifecycle ─────────────────────────────────────────────────────────────
 	let unlisteners: UnlistenFn[] = [];
 
@@ -195,6 +190,17 @@
 		includeTimestamps = await invoke<boolean>('scribe_get_include_timestamps').catch(() => true);
 		modelUnlisteners = await modelStore.subscribe();
 		await modelStore.refresh();
+
+		// Populate mic list
+		const devices = await invoke<string[]>('scribe_list_input_devices').catch(() => []);
+		micOptions = [
+			{ value: '', label: 'System Default' },
+			...devices.map((d) => ({ value: d, label: d })),
+		];
+
+		// Sync model selector with the currently selected model
+		const sel = modelStore.models.find((m) => m.selected && m.downloaded);
+		if (sel) selectedModelId = sel.id;
 
 		if (!modelReady) {
 			modelSetupOpen = true;
@@ -208,7 +214,7 @@
 		});
 		unlisteners = [ul1, ul2];
 
-		if (modelReady) {
+		if (autoStart && modelReady) {
 			await startRecording();
 		}
 	});
@@ -271,14 +277,54 @@
 					<Accordion defaultOpenId="basic">
 						<AccordionItem id="basic" title="Basic">
 							<div class="space-y-4">
-								<ConfigField
-									label="Selected mic"
-									mode="select"
-									options={micOptions}
-									bind:value={selectedMic}
-								/>
+								<div class="flex flex-col gap-1.5 text-left">
+									<label for="mic-select" class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase">
+										Selected mic
+									</label>
+									<select
+										id="mic-select"
+										bind:value={selectedMic}
+										onchange={async () => {
+											if (phase === 'recording') {
+												stopTimer();
+												notes = [];
+												elapsedSeconds = 0;
+												micLevel = 0;
+												try { await invoke('scribe_cancel'); } catch (_) {}
+												phase = 'idle';
+												await startRecording();
+											}
+										}}
+										class="h-8 rounded-md border-0 border-b border-transparent bg-surface-container-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:ring-active focus:bg-surface-container-high focus:ring-0 focus:outline-none"
+									>
+										{#each micOptions as opt (opt.value)}
+											<option value={opt.value}>{opt.label}</option>
+										{/each}
+									</select>
+								</div>
+								{#if downloadedModelOptions.length > 0}
+									<div class="flex flex-col gap-1.5 text-left">
+										<label for="model-select" class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase">
+											Model
+										</label>
+										<select
+											id="model-select"
+											value={selectedModelId}
+											onchange={async (e) => {
+												const id = (e.currentTarget as HTMLSelectElement).value;
+												selectedModelId = id;
+												await modelStore.select(id);
+											}}
+											class="h-8 rounded-md border-0 border-b border-transparent bg-surface-container-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:ring-active focus:bg-surface-container-high focus:ring-0 focus:outline-none"
+										>
+											{#each downloadedModelOptions as opt (opt.value)}
+												<option value={opt.value}>{opt.label}</option>
+											{/each}
+										</select>
+									</div>
+								{/if}
 								<div class="flex items-center justify-between">
-									<span class="text-label-sm font-semibold tracking-stamped uppercase">
+									<span class="font-data text-label-sm font-normal tracking-stamped uppercase">
 										Transcript timestamps
 									</span>
 									<ToggleSwitch
@@ -301,40 +347,16 @@
 				<!-- Footer -->
 				<footer class="flex items-center gap-3 px-4 py-3">
 					{#if phase === 'idle'}
-						<span class="font-data text-label-sm text-on-surface/50 uppercase tracking-stamped">
-							Starting…
-						</span>
+						{#if autoStart}
+							<span class="font-data text-label-sm text-on-surface/50 uppercase tracking-stamped">
+								Starting…
+							</span>
+						{:else}
+							<Button variant="primary" onclick={startRecording}>Start Recording</Button>
+						{/if}
 
 					{:else if phase === 'recording'}
 						<Button variant="primary" onclick={stopAndSave}>Stop and Save</Button>
-
-					{:else if phase === 'transcribing'}
-						<ProgressBar
-							progress={transcribeProgress}
-							sequence={transcribeSteps.map((step, index) => ({
-								...step,
-								complete:
-									(index === 0 && transcribeProgress >= 20) ||
-									(index === 1 && transcribeProgress >= 70) ||
-									(index === 2 && transcribeProgress >= 100),
-							}))}
-							sequenceMode="window"
-							uiSize="sm"
-						/>
-
-					{:else if phase === 'done'}
-						<div class="flex min-w-0 flex-1 flex-col gap-2">
-							<p class="font-data text-label-sm text-on-surface/60 uppercase tracking-stamped">
-								Transcript saved
-							</p>
-							<p class="truncate text-body-sm text-on-surface/80" title={transcriptPath}>
-								{transcriptPath}
-							</p>
-							<div class="flex gap-2">
-								<Button variant="primary" onclick={openTranscript}>Open</Button>
-								<Button variant="secondary" onclick={recordAgain}>Record Again</Button>
-							</div>
-						</div>
 
 					{:else if phase === 'no_model'}
 						<div class="flex flex-col gap-2">
@@ -375,14 +397,6 @@
 
 <ModelSetupModal
 	open={modelSetupOpen}
-	models={modelStore.models}
-	progressByModel={modelStore.progressByModel}
-	downloadingByModel={modelStore.downloadingByModel}
-	statusByModel={modelStore.statusByModel}
-	errorMessage={modelStore.error}
-	canClose={true}
-	onDownload={modelStore.download}
-	onSelect={modelStore.select}
 	onClose={closeModelSetup}
 />
 

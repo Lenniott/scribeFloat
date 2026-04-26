@@ -106,8 +106,7 @@ mod tests {
     fn loads_defaults_for_missing_fields_in_old_config() {
         let path = temp_config_path();
         // Write a minimal config that predates newer fields.
-        std::fs::write(&path, r#"{"save_folder": "/tmp/old-liscribe"}"#)
-            .expect("write old config");
+        std::fs::write(&path, r#"{"save_folder": "/tmp/old-liscribe"}"#).expect("write old config");
 
         let service = ConfigService::load(path).expect("load partial config");
         let cfg = service.get();
@@ -117,6 +116,7 @@ mod tests {
         assert_eq!(cfg.open_scribe_hotkey, "CmdOrCtrl+Shift+S");
         assert_eq!(cfg.input_label, "Mic");
         assert_eq!(cfg.output_label, "Speaker");
+        assert_eq!(cfg.theme_mode, crate::types::ThemeMode::System);
     }
 
     #[test]

@@ -10,7 +10,7 @@
 	const styles: Record<Status, string> = {
 		idle: "bg-surface-container-highest",
 		recording: "bg-error-container brightness-200 animate-pulse",
-		paused: "bg-tertiary",
+		paused: "bg-active",
 		error: "bg-primary",
 	};
 </script>

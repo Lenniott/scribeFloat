@@ -94,7 +94,11 @@ struct ValidatedHotkey {
     conflict_key: String,
 }
 
-fn validate_hotkey(label: &str, raw: &str, require_non_modifier_key: bool) -> Result<ValidatedHotkey, String> {
+fn validate_hotkey(
+    label: &str,
+    raw: &str,
+    require_non_modifier_key: bool,
+) -> Result<ValidatedHotkey, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err(format!("{label} hotkey cannot be empty."));

@@ -1,5 +1,5 @@
 use crate::controllers::settings::SettingsController;
-use crate::types::PermissionStatus;
+use crate::types::{PermissionStatus, ThemeMode};
 use std::sync::Arc;
 use tauri::State;
 
@@ -51,6 +51,44 @@ pub fn settings_set_input_labels(
 }
 
 #[tauri::command]
+pub fn settings_get_open_with_app_path(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<Option<String>, String> {
+    Ok(ctrl.get_open_with_app_path())
+}
+
+#[tauri::command]
+pub fn settings_set_open_with_app_path(
+    ctrl: State<'_, Arc<SettingsController>>,
+    path: Option<String>,
+) -> Result<(), String> {
+    ctrl.set_open_with_app_path(path)
+}
+
+#[tauri::command]
+pub fn settings_open_transcript(
+    ctrl: State<'_, Arc<SettingsController>>,
+    file_path: String,
+) -> Result<(), String> {
+    ctrl.open_transcript(&file_path)
+}
+
+#[tauri::command]
+pub fn settings_get_theme_mode(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<ThemeMode, String> {
+    Ok(ctrl.get_theme_mode())
+}
+
+#[tauri::command]
+pub fn settings_set_theme_mode(
+    ctrl: State<'_, Arc<SettingsController>>,
+    theme_mode: String,
+) -> Result<(), String> {
+    ctrl.set_theme_mode(theme_mode)
+}
+
+#[tauri::command]
 pub fn settings_permissions_status(
     ctrl: State<'_, Arc<SettingsController>>,
 ) -> Result<Vec<PermissionStatus>, String> {
@@ -88,8 +126,6 @@ pub fn settings_complete_onboarding(
 }
 
 #[tauri::command]
-pub fn settings_reset_onboarding(
-    ctrl: State<'_, Arc<SettingsController>>,
-) -> Result<(), String> {
+pub fn settings_reset_onboarding(ctrl: State<'_, Arc<SettingsController>>) -> Result<(), String> {
     ctrl.reset_onboarding()
 }

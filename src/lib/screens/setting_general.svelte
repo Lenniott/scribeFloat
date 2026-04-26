@@ -4,14 +4,29 @@
 	import Button from "@lib/components/Button.svelte";
 	import HotkeyCaptureField from "@lib/components/form/HotkeyCaptureField.svelte";
 	import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
+	import OptionGroup from "@lib/components/form/OptionGroup.svelte";
 	import PathSelectorField from "@lib/components/form/PathSelectorField.svelte";
+	import { applyThemeMode, type ThemeMode } from "$lib/theme";
 
 	let outputPath = $state("");
 	let openHotkey = $state("");
 	let dictateHotkey = $state("");
 	let inputLabel = $state("");
 	let outputLabel = $state("");
+	let themeMode = $state<ThemeMode>("system");
+	let openWithApp = $state("");
 	let message = $state("");
+
+	// Apply theme immediately as the user toggles it (live preview)
+	$effect(() => {
+		applyThemeMode(themeMode);
+	});
+
+	const themeOptions = [
+		{ value: "system", label: "System" },
+		{ value: "dark", label: "Dark" },
+		{ value: "light", label: "Light" },
+	];
 
 	async function refresh() {
 		outputPath = await invoke<string>("settings_get_output_path").catch(() => "");
@@ -24,6 +39,8 @@
 		]);
 		inputLabel = inLabel;
 		outputLabel = outLabel;
+		themeMode = await invoke<ThemeMode>("settings_get_theme_mode").catch(() => "system");
+		openWithApp = (await invoke<string | null>("settings_get_open_with_app_path").catch(() => null)) ?? "";
 	}
 
 	async function saveAll() {
@@ -31,6 +48,8 @@
 		await invoke("settings_set_output_path", { path: outputPath });
 		await invoke("settings_set_hotkeys", { openScribe: openHotkey, dictate: dictateHotkey });
 		await invoke("settings_set_input_labels", { inputLabel, outputLabel });
+		await invoke("settings_set_theme_mode", { themeMode });
+		await invoke("settings_set_open_with_app_path", { path: openWithApp.trim() || null });
 		message = "Saved";
 	}
 
@@ -38,8 +57,14 @@
 </script>
 
 <section class="space-y-4">
-	<h2 class="text-title-sm font-semibold">General settings</h2>
+	<h2 class="text-title-sm font-normal tracking-tight">General settings</h2>
+	<OptionGroup name="theme-mode" label="Theme" options={themeOptions} bind:selected={themeMode} />
 	<PathSelectorField label="Default save folder" bind:path={outputPath} />
+	<PathSelectorField
+		label="Open transcripts with"
+		bind:path={openWithApp}
+		directory={false}
+	/>
 	<HotkeyCaptureField label="Open Scribe hotkey" bind:value={openHotkey} />
 	<HotkeyCaptureField label="Dictate hotkey" bind:value={dictateHotkey} allowModifierOnly={true} />
 	<LabeledTextField label="Input label" bind:value={inputLabel} />

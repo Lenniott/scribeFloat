@@ -10,7 +10,7 @@
 </script>
 
 <section class="space-y-4">
-	<h2 class="text-title-sm font-semibold">Webhook</h2>
+	<h2 class="text-title-sm font-normal tracking-tight">Webhook</h2>
 	<LabeledTextField label="Webhook URL" bind:value={webhookUrl} />
 	<LabeledTextField label="Auth header name" bind:value={authHeaderName} />
 	<LabeledTextField label="Auth header value" bind:value={authHeaderValue} />

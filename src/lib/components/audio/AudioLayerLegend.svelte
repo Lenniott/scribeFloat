@@ -16,7 +16,7 @@
 	</div>
 	{#if speakerEnabled}
 	<div class="flex items-center gap-2">
-		<span class="h-2.5 w-2.5 shrink-0 rounded-sm bg-tertiary" aria-hidden="true"></span>
+		<span class="h-2.5 w-2.5 shrink-0 rounded-sm bg-active" aria-hidden="true"></span>
 		<span>Speaker</span>
 	</div>
 	{/if}

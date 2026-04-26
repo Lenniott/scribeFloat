@@ -27,8 +27,8 @@
 			<label
 				class="flex cursor-pointer items-center justify-center rounded-sm px-3 py-1.5 text-label-md font-medium transition-colors {selected ===
 				opt.value
-					? 'bg-tertiary text-on-tertiary'
-					: 'text-on-surface hover:bg-tertiary/20'}"
+					? 'bg-active text-on-active'
+					: 'text-on-surface hover:bg-active/20'}"
 			>
 				<input
 					type="radio"

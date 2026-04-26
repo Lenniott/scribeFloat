@@ -74,7 +74,7 @@
       token: "surface-container-highest",
       class: "bg-surface-container-highest",
     },
-    { token: "tertiary", class: "bg-tertiary" },
+    { token: "active", class: "bg-active" },
     { token: "error-container", class: "bg-error-container" },
   ];
 
@@ -82,7 +82,7 @@
     "primary",
     "secondary",
     "destructive",
-    "tertiary",
+    "transparent",
     "normal",
   ] as const;
   /** IconButton intentionally supports fewer variants than Button */

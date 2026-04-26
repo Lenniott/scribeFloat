@@ -21,7 +21,7 @@
 	aria-checked={checked}
 	aria-label={ariaLabel}
 	class="relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors disabled:opacity-40 {checked
-		? 'bg-primary'
+		? 'bg-secondary'
 		: 'bg-surface-container-lowest'}"
 	{disabled}
 	onclick={() => {

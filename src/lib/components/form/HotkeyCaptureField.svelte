@@ -114,7 +114,7 @@
 			class="text-label-md min-w-0 flex-1 truncate rounded-md bg-surface-container-lowest px-2 py-2 text-on-surface/90"
 			title={value || placeholder}
 		/>
-		<Button variant="secondary" onclick={startCapture}>
+		<Button variant="normal" onclick={startCapture}>
 			{isCapturing ? "Press keys..." : "Capture"}
 		</Button>
 	</div>

@@ -7,6 +7,7 @@
 	import LabeledTextField from '@lib/components/form/LabeledTextField.svelte';
 	import PathSelectorField from '@lib/components/form/PathSelectorField.svelte';
 	import ModelSetupModal from '@lib/components/model/ModelSetupModal.svelte';
+	import {CircleCheckBig} from "lucide-svelte"; 
 	import { createModelDownloadStore } from '$lib/stores/modelDownload.svelte';
 	import { type PermissionStatus, extractErrorMessage } from '$lib/types';
 
@@ -30,7 +31,6 @@
 	let step = $state<1 | 2 | 3 | 4>(1);
 
 	const modelReady = $derived(modelStore.models.some((m) => m.downloaded && m.selected));
-	const canCloseModelSetup = $derived(modelStore.models.some((m) => m.selected && m.downloaded));
 	const microphoneReady = $derived(
 		permissions.find((p) => p.kind === 'microphone')?.granted ?? false,
 	);
@@ -161,12 +161,14 @@
 		await refreshConfig();
 	}
 
-	async function selectModel(modelId: string) {
-		await modelStore.select(modelId);
+	async function openModelSetup() {
+		modelSetupOpen = true;
+		await modelStore.refresh();
 	}
 
 	async function closeModelSetup() {
 		modelSetupOpen = false;
+		await modelStore.refresh();
 	}
 
 	let unlistenFocus: (() => void) | undefined;
@@ -200,7 +202,7 @@
 				type="button"
 				class={`rounded-md border px-3 py-2 text-left transition ${
 					stepStatus.id === step
-						? 'border-secondary bg-secondary/10'
+						? 'border-active bg-active/10'
 						: stepStatus.complete
 							? 'border-green/40 bg-green/2'
 							: 'border-surface-container bg-surface'
@@ -209,7 +211,7 @@
 			>
 				<div class="flex items-center justify-between gap-3">
 					<p class="text-label-sm font-semibold">{stepStatus.id}. {stepStatus.title}</p>
-					<span class={`text-label-sm ${stepStatus.complete ? stepStatus.id === step? 'text-secondary':'text-green' : 'text-on-surface/70'}`}>
+					<span class={`text-label-sm ${stepStatus.complete ? stepStatus.id === step? 'text-active':'text-green' : 'text-on-surface/70'}`}>
 						{stepStatus.complete ? 'Done' : 'Pending'}
 					</span>
 				</div>
@@ -222,15 +224,7 @@
 		{#if step === 1}
 			<div class="space-y-3">
 				<p class="text-body-sm">Select and download a model for transcription.</p>
-				<Button
-					variant="secondary"
-					onclick={async () => {
-						modelSetupOpen = true;
-						await modelStore.refresh();
-					}}
-				>
-					Open model setup
-				</Button>
+				<Button variant="secondary" onclick={openModelSetup}>Open model setup</Button>
 				{#if modelReady}
 					<p class="text-label-sm text-on-surface/70">Model setup complete.</p>
 				{:else}
@@ -253,11 +247,9 @@
 						<div class="flex items-center justify-between gap-3">
 							<div class="flex items-center gap-2">
 								{#if permission.granted}
-									<svg class="size-4 shrink-0 text-green" viewBox="0 0 16 16" fill="currentColor">
-										<path fill-rule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" />
-									</svg>
+									<CircleCheckBig class="size-4 text-green"/>
 								{:else if !isOptional}
-									<span class="size-4 shrink-0 rounded-full border-2 border-amber-500/60 bg-amber-500/20"></span>
+									<span class="size-4 shrink-0 rounded-full border-2 border-secondary bg-secondary/10"></span>
 								{:else}
 									<span class="size-4 shrink-0 rounded-full border-2 border-surface-container-high"></span>
 								{/if}
@@ -266,9 +258,6 @@
 										{permission.kind.replace(/_/g, ' ')}
 										{#if isOptional}<span class="text-on-surface/40"> · optional</span>{/if}
 									</p>
-									{#if justGrantedByKind[permission.kind]}
-										<p class="text-label-sm text-green">Just granted</p>
-									{/if}
 								</div>
 							</div>
 							{#if permission.granted}
@@ -331,15 +320,4 @@
 	</footer>
 </div>
 
-<ModelSetupModal
-	open={modelSetupOpen}
-	models={modelStore.models}
-	progressByModel={modelStore.progressByModel}
-	downloadingByModel={modelStore.downloadingByModel}
-	statusByModel={modelStore.statusByModel}
-	errorMessage={modelStore.error}
-	canClose={canCloseModelSetup}
-	onDownload={modelStore.download}
-	onSelect={selectModel}
-	onClose={closeModelSetup}
-/>
+<ModelSetupModal open={modelSetupOpen} onClose={closeModelSetup} />

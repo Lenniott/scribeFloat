@@ -59,7 +59,7 @@ Traditional drop shadows are forbidden. They feel "web-like" and soft. Instead, 
 ### Buttons
 - **Primary:** Technical Orange gradient background, `on-primary` text (Space Grotesk, Semi-bold). 4px radius.
 - **Secondary:** `surface-container-highest` background, `on-surface` text. No border.
-- **Tertiary:** Ghost style. No background. `primary` text. Underline only on hover.
+- **active:** Ghost style. No background. `primary` text. Underline only on hover.
  
 ### Technical Input Fields
 - **Styling:** Use `surface-container-lowest` as the field background. 
@@ -67,7 +67,7 @@ Traditional drop shadows are forbidden. They feel "web-like" and soft. Instead, 
  
 ### Transcription Cards & Lists
 - **No Dividers:** Forbid the use of horizontal lines between list items. Use vertical white space (16px/24px) or a subtle shift between `surface-container-low` and `surface-container-lowest` to separate entries.
-- **Waveform Display:** Use `tertiary` (#ff9e65) for inactive audio segments and `primary` (#ffb693) for active segments.
+- **Waveform Display:** Use `active` (#ff9e65) for inactive audio segments and `primary` (#ffb693) for active segments.
  
 ### Status Chips
 - **Action Chips:** 4px radius. Background: `surface-container-highest`. Text: `label-md`.

@@ -153,6 +153,7 @@
 
 	async function closeModelSetup() {
 		modelSetupOpen = false;
+		await modelStore.refresh();
 		if (canCloseModelSetup && phase !== 'recording') {
 			await startRecording();
 		}
@@ -330,14 +331,6 @@
 
 <ModelSetupModal
 	open={modelSetupOpen}
-	models={modelStore.models}
-	progressByModel={modelStore.progressByModel}
-	downloadingByModel={modelStore.downloadingByModel}
-	statusByModel={modelStore.statusByModel}
-	errorMessage={modelStore.error}
-	canClose={true}
-	onDownload={modelStore.download}
-	onSelect={modelStore.select}
 	onClose={closeModelSetup}
 />
 

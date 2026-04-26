@@ -25,7 +25,7 @@
 	<h3 class="border-0">
 		<button
 			type="button"
-			class="font-data text-label-md flex w-full items-center justify-between px-3 py-2.5 text-left font-semibold tracking-stamped text-on-surface uppercase hover:bg-surface-container-highest"
+			class="font-data text-label-md flex w-full items-center justify-between px-3 py-2.5 text-left font-normal tracking-stamped text-on-surface uppercase hover:bg-surface-container-highest"
 			aria-expanded={isOpen}
 			aria-controls={`panel-${id}`}
 			id={`header-${id}`}

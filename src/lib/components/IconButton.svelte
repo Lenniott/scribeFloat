@@ -33,7 +33,7 @@
 		"inline-flex shrink-0 items-center justify-center rounded-md cursor-pointer transition-[opacity,background-color,color] disabled:pointer-events-none disabled:opacity-40";
 
 	const variantClass: Record<Variant, string> = {
-		primary: "bg-primary text-on-primary hover:brightness-150",
+		primary: "bg-primary text-on-primary hover:brightness-110",
 		destructive:
 			"bg-transparent text-error-container hover:bg-error-container hover:text-on-error-container",
 		normal: "bg-transparent text-on-surface hover:bg-surface-container-high",

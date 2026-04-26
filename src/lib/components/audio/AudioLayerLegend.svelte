@@ -7,7 +7,7 @@
 </script>
 
 <div
-	class="flex flex-wrap items-center justify-center gap-4 text-label-sm font-semibold text-on-surface"
+	class="font-data flex flex-wrap items-center justify-center gap-4 text-label-sm font-normal tracking-data text-on-surface"
 	aria-label="Layer legend"
 >
 	<div class="flex items-center gap-2">

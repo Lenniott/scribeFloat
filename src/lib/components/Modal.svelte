@@ -32,11 +32,11 @@
 			role="dialog"
 			aria-modal="true"
 			aria-label={title}
-			class={`flex max-h-full w-full ${maxWidthClass} flex-col rounded-xl border border-surface-container-high bg-surface-container-lowest px-5 py-4 shadow-xl`}
+			class={`flex max-h-full w-full ${maxWidthClass} flex-col rounded-md border border-outline-variant/20 bg-surface-container-lowest px-5 py-4 shadow-ambient`}
 		>
 			<header class="mb-3 flex items-start justify-between gap-4">
 				<div>
-					<h2 class="text-title-md font-semibold text-on-surface">{title}</h2>
+					<h2 class="text-title-md font-normal tracking-tight text-on-surface">{title}</h2>
 					{#if description}
 						<p class="text-body-sm text-on-surface/70">{description}</p>
 					{/if}

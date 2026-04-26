@@ -89,16 +89,27 @@ impl ScribeController {
         Ok(())
     }
 
-    /// Transition RECORDING → IDLE. Discards the audio buffer.
+    /// Transition RECORDING → IDLE. Discards the audio buffer and removes the
+    /// session directory if no files were written into it yet.
     pub fn cancel(&self) -> Result<()> {
-        let mut inner = self.inner.lock().unwrap();
-        if inner.state != ScribeState::Recording {
-            return Err(anyhow!("cannot cancel: not recording"));
+        let session_dir = {
+            let mut inner = self.inner.lock().unwrap();
+            if inner.state != ScribeState::Recording {
+                return Err(anyhow!("cannot cancel: not recording"));
+            }
+            let dir = inner
+                .session
+                .as_ref()
+                .map(|s| s.session_dir.clone());
+            inner.session = None;
+            inner.state = ScribeState::Idle;
+            inner.notes.clear();
+            self.emit_state(&inner);
+            dir
+        };
+        if let Some(dir) = session_dir {
+            self.output.delete_session_dir_if_empty(&dir);
         }
-        inner.session = None;
-        inner.state = ScribeState::Idle;
-        inner.notes.clear();
-        self.emit_state(&inner);
         Ok(())
     }
 
@@ -232,7 +243,7 @@ impl ScribeController {
 
         let transcript_path = self
             .output
-            .transcript_path(&session.session_dir, &model_path);
+            .transcript_path(&session.session_dir, &model_path, title);
         let model_name = model_path
             .file_stem()
             .map(|s| s.to_string_lossy().replace("ggml-", ""))
@@ -325,6 +336,14 @@ impl ScribeController {
                 ScribeStateEvent::new(inner.state.clone()),
             )
             .ok();
+    }
+
+    pub fn list_input_devices(&self) -> Vec<String> {
+        self.audio.list_input_devices()
+    }
+
+    pub fn read_transcript_at(&self, path: &str) -> Result<String, String> {
+        std::fs::read_to_string(path).map_err(|e| format!("failed to read transcript: {e}"))
     }
 
     fn ensure_start_allowed(state: &ScribeState) -> Result<()> {

@@ -18,8 +18,8 @@
 
 	const variantClass: Record<ToastState, string> = {
 		success: 'border-green bg-green/10 text-on-surface',
-		error: 'border-error/40 bg-error-container text-error',
-		normal: 'border-surface-container-high bg-surface-container-low text-on-surface',
+		error: 'border-error/40 bg-error-container text-on-error-container',
+		normal: 'border-outline-variant/20 bg-surface-container-low text-on-surface',
 	};
 
 	const positionClass = $derived(
@@ -34,7 +34,7 @@
 		<p
 			in:fly={{ y: 12, duration: 160 }}
 			out:fade={{ duration: 140 }}
-			class={`rounded-md border p-2 text-body-sm shadow-lg min-w-2xs ${variantClass[state]}`}
+			class={`rounded-md border p-2 text-body-sm shadow-ambient min-w-2xs ${variantClass[state]}`}
 		>
 			{message}
 		</p>

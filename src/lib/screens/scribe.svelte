@@ -10,7 +10,6 @@
 	import RecordingStatusDot from '@components/audio/RecordingStatusDot.svelte';
 	import RecordingTimer from '@components/audio/RecordingTimer.svelte';
 	import AudioWaveFormVisualizer from '@lib/components/audio/AudioWaveFormVisualizer.svelte';
-	import ConfigField from '@components/form/ConfigField.svelte';
 	import EditableTitleField from '@components/form/EditableTitleField.svelte';
 	import ToggleSwitch from '@components/form/ToggleSwitch.svelte';
 	import ModelSetupModal from '@components/model/ModelSetupModal.svelte';
@@ -22,11 +21,12 @@
 	import Cog from 'lucide-svelte/icons/settings-2';
 	import type { Note } from '@components/notes/NoteCard.svelte';
 
-	let {
-		processingStart,
-	}: {
-		processingStart?: (title: string) => void;
-	} = $props();
+type Props = {
+	processingStart?: (title: string) => void;
+	autoStart?: boolean;
+};
+
+let { processingStart, autoStart = true }: Props = $props();
 
 	// ── State machine ─────────────────────────────────────────────────────────
 	type Phase = 'idle' | 'recording' | 'no_model' | 'error';
@@ -41,6 +41,11 @@
 
 	const modelReady = $derived(modelStore.models.some((m) => m.downloaded));
 	const canCloseModelSetup = $derived(modelStore.models.some((m) => m.selected && m.downloaded));
+	const downloadedModelOptions = $derived(
+		modelStore.models
+			.filter((m) => m.downloaded)
+			.map((m) => ({ value: m.id, label: m.label })),
+	);
 
 	// ── Recording ─────────────────────────────────────────────────────────────
 	let elapsedSeconds = $state(0);
@@ -62,15 +67,21 @@
 	}
 
 	// ── Session metadata ──────────────────────────────────────────────────────
-	let fileName = $state('Recording');
+	function defaultTitle() {
+		const now = new Date();
+		const pad = (n: number) => n.toString().padStart(2, '0');
+		return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}-${pad(now.getMinutes())}`;
+	}
+
+	let fileName = $state(defaultTitle());
 	let selectedMic = $state('');
+	let selectedModelId = $state('');
 	let noteDraft = $state('');
 	let notes = $state<Note[]>([]);
 	let selectedNoteId = $state<string | null>(null);
 	let includeTimestamps = $state(true);
 	let micLevel = $state(0);
-
-	const micOptions = [{ value: '', label: 'System Default' }];
+	let micOptions = $state([{ value: '', label: 'System Default' }]);
 
 	// ── Backend events ────────────────────────────────────────────────────────
 	type ScribePayload = {
@@ -180,6 +191,17 @@
 		modelUnlisteners = await modelStore.subscribe();
 		await modelStore.refresh();
 
+		// Populate mic list
+		const devices = await invoke<string[]>('scribe_list_input_devices').catch(() => []);
+		micOptions = [
+			{ value: '', label: 'System Default' },
+			...devices.map((d) => ({ value: d, label: d })),
+		];
+
+		// Sync model selector with the currently selected model
+		const sel = modelStore.models.find((m) => m.selected && m.downloaded);
+		if (sel) selectedModelId = sel.id;
+
 		if (!modelReady) {
 			modelSetupOpen = true;
 		}
@@ -192,7 +214,7 @@
 		});
 		unlisteners = [ul1, ul2];
 
-		if (modelReady) {
+		if (autoStart && modelReady) {
 			await startRecording();
 		}
 	});
@@ -255,14 +277,54 @@
 					<Accordion defaultOpenId="basic">
 						<AccordionItem id="basic" title="Basic">
 							<div class="space-y-4">
-								<ConfigField
-									label="Selected mic"
-									mode="select"
-									options={micOptions}
-									bind:value={selectedMic}
-								/>
+								<div class="flex flex-col gap-1.5 text-left">
+									<label for="mic-select" class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase">
+										Selected mic
+									</label>
+									<select
+										id="mic-select"
+										bind:value={selectedMic}
+										onchange={async () => {
+											if (phase === 'recording') {
+												stopTimer();
+												notes = [];
+												elapsedSeconds = 0;
+												micLevel = 0;
+												try { await invoke('scribe_cancel'); } catch (_) {}
+												phase = 'idle';
+												await startRecording();
+											}
+										}}
+										class="h-8 rounded-md border-0 border-b border-transparent bg-surface-container-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:ring-active focus:bg-surface-container-high focus:ring-0 focus:outline-none"
+									>
+										{#each micOptions as opt (opt.value)}
+											<option value={opt.value}>{opt.label}</option>
+										{/each}
+									</select>
+								</div>
+								{#if downloadedModelOptions.length > 0}
+									<div class="flex flex-col gap-1.5 text-left">
+										<label for="model-select" class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase">
+											Model
+										</label>
+										<select
+											id="model-select"
+											value={selectedModelId}
+											onchange={async (e) => {
+												const id = (e.currentTarget as HTMLSelectElement).value;
+												selectedModelId = id;
+												await modelStore.select(id);
+											}}
+											class="h-8 rounded-md border-0 border-b border-transparent bg-surface-container-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:ring-active focus:bg-surface-container-high focus:ring-0 focus:outline-none"
+										>
+											{#each downloadedModelOptions as opt (opt.value)}
+												<option value={opt.value}>{opt.label}</option>
+											{/each}
+										</select>
+									</div>
+								{/if}
 								<div class="flex items-center justify-between">
-									<span class="text-label-sm font-semibold tracking-stamped uppercase">
+									<span class="font-data text-label-sm font-normal tracking-stamped uppercase">
 										Transcript timestamps
 									</span>
 									<ToggleSwitch
@@ -285,9 +347,13 @@
 				<!-- Footer -->
 				<footer class="flex items-center gap-3 px-4 py-3">
 					{#if phase === 'idle'}
-						<span class="font-data text-label-sm text-on-surface/50 uppercase tracking-stamped">
-							Starting…
-						</span>
+						{#if autoStart}
+							<span class="font-data text-label-sm text-on-surface/50 uppercase tracking-stamped">
+								Starting…
+							</span>
+						{:else}
+							<Button variant="primary" onclick={startRecording}>Start Recording</Button>
+						{/if}
 
 					{:else if phase === 'recording'}
 						<Button variant="primary" onclick={stopAndSave}>Stop and Save</Button>

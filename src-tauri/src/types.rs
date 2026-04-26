@@ -32,6 +32,15 @@ pub struct Config {
     #[serde(default = "default_output_label")]
     pub output_label: String,
 
+    /// UI theme preference. `System` follows the OS preference.
+    #[serde(default)]
+    pub theme_mode: ThemeMode,
+
+    /// Application to open transcripts with. None = system default.
+    /// macOS: app name (e.g. "Obsidian"). Windows: full path to exe.
+    #[serde(default)]
+    pub open_with_app_path: Option<String>,
+
     #[serde(default)]
     pub onboarding_complete: bool,
 }
@@ -48,7 +57,34 @@ impl Default for Config {
             dictate_hotkey: default_dictate_hotkey(),
             input_label: default_input_label(),
             output_label: default_output_label(),
+            theme_mode: ThemeMode::System,
+            open_with_app_path: None,
             onboarding_complete: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeMode {
+    System,
+    Dark,
+    Light,
+}
+
+impl Default for ThemeMode {
+    fn default() -> Self {
+        Self::System
+    }
+}
+
+impl ThemeMode {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "system" => Ok(Self::System),
+            "dark" => Ok(Self::Dark),
+            "light" => Ok(Self::Light),
+            other => Err(format!("unsupported theme mode `{other}`")),
         }
     }
 }

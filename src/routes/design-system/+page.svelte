@@ -20,6 +20,7 @@
   import NotesList from "@components/notes/NotesList.svelte";
   import TimestampLabel from "@components/notes/TimestampLabel.svelte";
   import type { Note } from "@components/notes/NoteCard.svelte";
+  import { applyThemeMode, type ThemeMode } from "$lib/theme";
   import { X as Close } from "lucide-svelte";
   import ChevronRight from "lucide-svelte/icons/chevron-right";
   import Plus from "lucide-svelte/icons/plus";
@@ -42,6 +43,7 @@
   let draft = $state("");
   let activePanelTab = $state<string>("setup");
   let activeSectionTab = $state<string>("timers");
+  let previewTheme = $state<ThemeMode>("system");
 
   const selectOptions = [
     { value: "a", label: "Option A" },
@@ -66,7 +68,11 @@
 
   const colorTokens: { token: string; class: string }[] = [
     { token: "void", class: "bg-void" },
+    { token: "surface", class: "bg-surface" },
+    { token: "surface-container", class: "bg-surface-container" },
     { token: "primary", class: "bg-primary" },
+    { token: "secondary", class: "bg-secondary" },
+    { token: "active", class: "bg-active" },
     { token: "surface-container-lowest", class: "bg-surface-container-lowest" },
     { token: "surface-container-low", class: "bg-surface-container-low" },
     { token: "surface-container-high", class: "bg-surface-container-high" },
@@ -74,7 +80,6 @@
       token: "surface-container-highest",
       class: "bg-surface-container-highest",
     },
-    { token: "active", class: "bg-active" },
     { token: "error-container", class: "bg-error-container" },
   ];
 
@@ -103,28 +108,66 @@
     { id: "timers", label: "Timers" },
     { id: "recording", label: "Recording" },
   ];
+
+  const themeOptions = [
+    { value: "system", label: "System" },
+    { value: "dark", label: "Dark" },
+    { value: "light", label: "Light" },
+  ];
+
+  $effect(() => {
+    applyThemeMode(previewTheme);
+  });
 </script>
 
 <main class="mx-auto text-left p-4">
   <a href="/">scribe</a>
   <header class="mb-14 max-w-2xl">
-    <p class="text-label-sm tracking-stamped text-on-surface/50 uppercase">
-      scribefloat · tokens
+    <p class="font-data text-label-sm tracking-stamped text-on-surface/50 uppercase">
+      liscribe · design system
     </p>
-    <h1 class="font-data text-display-lg text-on-surface">Design system</h1>
+    <h1 class="text-display-lg font-light tracking-heading text-on-surface">
+      Design <span class="font-medium">system</span>
+    </h1>
     <p class="mt-3 text-body-md text-on-surface/65 leading-relaxed">
-      Surfaces, type, and components from <code class="text-primary"
-        >context/DESIGN.md</code
-      >. This page is for reviewing primitives only — not a product layout.
+      Geist typography, semantic theme tokens, and the existing component variants:
+      <code class="text-primary">primary</code>,
+      <code class="text-primary">secondary</code>,
+      <code class="text-primary">normal</code>,
+      <code class="text-primary">transparent</code>, and
+      <code class="text-primary">active</code>.
     </p>
   </header>
+
+  <section class="mb-16" aria-labelledby="sec-theme">
+    <h2
+      id="sec-theme"
+      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
+    >
+      Theme Modes
+    </h2>
+    <div class="max-w-md rounded-md bg-surface-container-low p-6">
+      <OptionGroup
+        name="theme-preview"
+        label="Preview theme"
+        options={themeOptions}
+        bind:selected={previewTheme}
+      />
+      <p class="mt-4 text-body-sm text-on-surface/65">
+        The app stores <code class="text-primary">system</code>,
+        <code class="text-primary">dark</code>, or
+        <code class="text-primary">light</code> in settings and resolves those to document-level
+        theme tokens.
+      </p>
+    </div>
+  </section>
 
   <section class="mb-16" aria-labelledby="sec-colors">
     <h2
       id="sec-colors"
-      class="font-data text-headline-sm mb-6 tracking-stamped text-on-surface/80 uppercase"
+      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
     >
-      Color
+      Color Roles
     </h2>
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
       {#each colorTokens as { token, class: c } (token)}
@@ -132,7 +175,7 @@
           <div class="rounded-md bg-surface-container-low p-2">
             <div class="h-12 rounded-md {c}"></div>
           </div>
-          <span class="text-label-sm font-semibold text-on-surface/90"
+          <span class="font-data text-label-sm font-normal tracking-data text-on-surface/90"
             >{token}</span
           >
         </div>
@@ -147,39 +190,49 @@
   <section class="mb-16" aria-labelledby="sec-type">
     <h2
       id="sec-type"
-      class="font-data text-headline-sm mb-6 tracking-stamped text-on-surface/80 uppercase"
+      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
     >
       Typography
     </h2>
     <div class="flex flex-col gap-6 bg-surface-container-low p-6 rounded-md">
       <div>
         <p class="text-label-sm text-on-surface/45 mb-1">
-          display-lg · Space Grotesk
+          display-lg · Geist
         </p>
-        <p class="font-data text-display-lg text-on-surface">00:00</p>
+        <p class="text-display-lg font-light tracking-heading text-on-surface">
+          Record <span class="font-medium">clearly</span>
+        </p>
       </div>
       <div>
         <p class="text-label-sm text-on-surface/45 mb-1">
-          headline-sm · stamped
+          headline-lg · Geist
         </p>
         <p
-          class="font-data text-headline-sm tracking-stamped text-on-surface uppercase"
+          class="text-headline-lg font-light tracking-heading text-on-surface"
         >
           Section header
         </p>
       </div>
       <div>
-        <p class="text-label-sm text-on-surface/45 mb-1">body-md · Inter</p>
+        <p class="text-label-sm text-on-surface/45 mb-1">
+          mono label · Geist Mono
+        </p>
+        <p class="font-data text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase">
+          transcript · input
+        </p>
+      </div>
+      <div>
+        <p class="text-label-sm text-on-surface/45 mb-1">body-md · Geist</p>
         <p class="text-body-md text-on-surface/90">
-          Standard UI copy. Line height tuned for dense technical layouts.
+          Standard UI copy defaults to light weight with relaxed leading for dense layouts.
         </p>
       </div>
       <div>
         <p class="text-label-sm text-on-surface/45 mb-1">label-sm / label-md</p>
-        <p class="text-label-sm font-semibold text-on-surface/80 uppercase">
+        <p class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase">
           Metadata
         </p>
-        <p class="text-label-md font-medium text-on-surface/70">
+        <p class="text-label-md font-normal text-on-surface/70">
           Secondary label
         </p>
       </div>
@@ -189,7 +242,7 @@
   <section class="mb-16" aria-labelledby="sec-geo">
     <h2
       id="sec-geo"
-      class="font-data text-headline-sm mb-6 tracking-stamped text-on-surface/80 uppercase"
+      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
     >
       Geometry
     </h2>
@@ -208,7 +261,7 @@
   <section class="mb-16" aria-labelledby="sec-buttons">
     <h2
       id="sec-buttons"
-      class="font-data text-headline-sm mb-6 tracking-stamped text-on-surface/80 uppercase"
+      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
     >
       Button
     </h2>
@@ -239,7 +292,7 @@
   <section class="mb-16" aria-labelledby="sec-icon-buttons">
     <h2
       id="sec-icon-buttons"
-      class="font-data text-headline-sm mb-6 tracking-stamped text-on-surface/80 uppercase"
+      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
     >
       IconButton
     </h2>
@@ -274,7 +327,7 @@
   <section class="mb-16" aria-labelledby="sec-forms">
     <h2
       id="sec-forms"
-      class="font-data text-headline-sm mb-6 tracking-stamped text-on-surface/80 uppercase"
+      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
     >
       Form
     </h2>
@@ -294,14 +347,14 @@
       />
       <div class="flex items-center justify-between gap-4">
         <span
-          class="text-label-sm font-semibold tracking-wide text-on-surface/80 uppercase"
+          class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase"
           >ToggleSwitch</span
         >
         <ToggleSwitch aria-label="Demo toggle" bind:checked={toggleA} />
       </div>
       <div class="flex items-center justify-between gap-4">
         <span
-          class="text-label-sm font-semibold tracking-wide text-on-surface/80 uppercase"
+          class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase"
           >Checkbox</span
         >
         <Checkbox aria-label="Demo checkbox" bind:checked={checkboxA} />
@@ -339,7 +392,7 @@
   <section class="mb-16" aria-labelledby="sec-tabs">
     <h2
       id="sec-tabs"
-      class="font-data text-headline-sm mb-6 tracking-stamped text-on-surface/80 uppercase"
+      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
     >
       TabPage
     </h2>
@@ -389,7 +442,7 @@
   <section class="mb-16" aria-labelledby="sec-acc">
     <h2
       id="sec-acc"
-      class="font-data text-headline-sm mb-6 tracking-stamped text-on-surface/80 uppercase"
+      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
     >
       Accordion
     </h2>
@@ -412,7 +465,7 @@
   <section class="mb-16" aria-labelledby="sec-audio">
     <h2
       id="sec-audio"
-      class="font-data text-headline-sm mb-6 tracking-stamped text-on-surface/80 uppercase"
+      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
     >
       Audio (static demo)
     </h2>
@@ -520,7 +573,7 @@
   <section class="mb-20" aria-labelledby="sec-notes">
     <h2
       id="sec-notes"
-      class="font-data text-headline-sm mb-6 tracking-stamped text-on-surface/80 uppercase"
+      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
     >
       Notes
     </h2>

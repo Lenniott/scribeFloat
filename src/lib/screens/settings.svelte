@@ -21,7 +21,7 @@
 <div class="fixed inset-0 z-50 bg-black/50 p-4">
 	<div class="mx-auto flex h-full max-w-5xl flex-col rounded-lg bg-surface-container-lowest shadow-lg">
 		<header class="flex items-center justify-between border-b border-surface-container-low px-4 py-3">
-			<h2 class="text-title-md font-semibold">Settings</h2>
+			<h2 class="text-title-md font-normal tracking-tight">Settings</h2>
 			<IconButton aria-label="close settings" variant="normal" icon={X} onclick={() => onClose?.()}/>
 		</header>
 

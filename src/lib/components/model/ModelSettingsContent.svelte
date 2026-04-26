@@ -2,10 +2,9 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { createModelDownloadStore } from '$lib/stores/modelDownload.svelte';
 	import Button from '@lib/components/Button.svelte';
-	import IconButton from '@lib/components/IconButton.svelte';
 	import Toast from '@lib/components/Toast.svelte';
 	import type { ToastState } from '@lib/components/Toast.svelte';
-	import { CircleCheckBig, Download, RefreshCcw } from 'lucide-svelte';
+	import { CircleCheckBig, Download } from 'lucide-svelte';
 
 	type ToastConfig = {
 		message: string;
@@ -78,21 +77,13 @@
 
 <section class="space-y-4">
 	{#if showHeader}
-		<div class="flex items-center justify-between">
-			<h2 class="text-title-sm font-semibold">{heading}</h2>
-			<IconButton
-				aria-label="Refresh list"
-				variant="normal"
-				icon={RefreshCcw}
-				onclick={modelStore.refresh}
-			/>
-		</div>
+		<h2 class="text-title-sm font-normal tracking-tight">{heading}</h2>
 	{/if}
 
 	{#if selectedModel}
 		<p class="text-body-sm text-on-surface/70">
 			Active Scribe model:
-			<span class="font-semibold text-on-surface">{selectedModel.label}</span>
+			<span class="font-normal text-on-surface">{selectedModel.label}</span>
 		</p>
 	{:else}
 		<p class="text-body-sm text-on-surface/70">No model selected yet.</p>
@@ -110,7 +101,7 @@
 			>
 				<div class="flex items-center">
 					<div class="flex min-w-0 grow items-center gap-2">
-						<p class="text-label-md font-semibold text-on-surface">
+						<p class="text-label-md font-normal text-on-surface">
 							{model.label}
 						</p>
 						{#if modelStore.statusByModel[model.id]}

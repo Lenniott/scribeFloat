@@ -17,6 +17,7 @@
 	let gateError = $state("");
 	let appScreen = $state<AppScreen>("recording");
 	let processingTitle = $state("Recording");
+	let autoStartRecording = $state(true);
 
 	async function refreshGate() {
 		if (skipOnboarding) {
@@ -53,6 +54,12 @@
 	}
 
 	function returnToRecording() {
+		autoStartRecording = true;
+		appScreen = "recording";
+	}
+
+	function closeProcessing() {
+		autoStartRecording = false;
 		appScreen = "recording";
 	}
 
@@ -73,15 +80,15 @@
 		</div>
 	{:else if gateError}
 		<div class="mx-auto flex min-h-screen w-full max-w-2xl flex-col items-center justify-center gap-3 p-6 text-center">
-			<p class="text-title-sm font-semibold text-on-surface">Could not load app status</p>
+			<p class="text-title-sm font-normal tracking-tight text-on-surface">Could not load app status</p>
 			<p class="text-body-sm text-error">{gateError}</p>
 			<Button variant="secondary" onclick={refreshGate}>Retry</Button>
 		</div>
 	{:else if onboardingComplete}
 		{#if appScreen === "processing"}
-			<ScribeProcessingScreen title={processingTitle} onClose={returnToRecording} onRecordAgain={returnToRecording} />
+			<ScribeProcessingScreen title={processingTitle} onClose={closeProcessing} onRecordAgain={returnToRecording} />
 		{:else}
-			<ScribeScreen processingStart={beginProcessing} />
+			<ScribeScreen processingStart={beginProcessing} autoStart={autoStartRecording} />
 		{/if}
 	{:else}
 		<OnboardingScreen onComplete={finishOnboarding} />

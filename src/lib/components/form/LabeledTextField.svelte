@@ -17,7 +17,7 @@
 </script>
 
 <div class="flex flex-col gap-1.5 text-left">
-	<label class="text-label-sm font-semibold tracking-wide text-on-surface/80 uppercase" for={fieldId}
+	<label class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase" for={fieldId}
 		>{label}</label
 	>
 	<input

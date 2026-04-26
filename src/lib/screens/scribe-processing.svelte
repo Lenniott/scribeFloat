@@ -2,7 +2,7 @@
   import { onDestroy, onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { openPath } from "@tauri-apps/plugin-opener";
+  import { copyTranscript } from "$lib/services/clipboard";
 
   import Button from "@components/Button.svelte";
   import StackProgressBar from "@components/form/StackProgressBar.svelte";
@@ -106,11 +106,11 @@
   }
 
   async function openTranscript() {
-    if (transcriptPath) await openPath(transcriptPath);
+    if (transcriptPath) await invoke("settings_open_transcript", { filePath: transcriptPath });
   }
 
-  async function copyPath() {
-    if (displayPath) await navigator.clipboard.writeText(displayPath);
+  async function copyContent() {
+    if (transcriptPath) await copyTranscript(transcriptPath);
   }
 
   onMount(async () => {
@@ -129,7 +129,7 @@
   class="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center p-6 text-on-surface"
 >
   <section
-    class="flex w-full flex-col gap-8 rounded-xl border border-surface-container-low bg-surface-container-lowest p-8 shadow-lg"
+    class="flex w-full flex-col gap-8 rounded-md border border-outline-variant/20 bg-surface-container-lowest p-8 shadow-ambient"
   >
     <header class="flex gap-4 w-full justify-between items-center">
       <div class="flex flex-col gap-2">
@@ -138,7 +138,7 @@
         >
           {title || "Recording"}
         </p>
-        <h1 class="text-display-sm font-semibold">
+        <h1 class="text-display-sm font-light tracking-heading">
           {#if phase === "transcribing"}
             Processing...
           {:else if phase === "done"}
@@ -172,7 +172,7 @@
                   aria-label="copy transcript to clipboard"
                   variant="normal"
                   icon={Copy}
-                  onclick={copyPath}
+                  onclick={copyContent}
                 />
                 <IconButton
                   aria-label="Open Transcript"
@@ -210,7 +210,10 @@
         <Button variant="secondary" onclick={onRecordAgain}>Record Again</Button
         >
       {:else if phase === "no_model"}
-        <Button variant="secondary" onclick={copyPath} disabled={!displayPath}
+        <Button
+          variant="secondary"
+          disabled={!displayPath}
+          onclick={() => displayPath && navigator.clipboard.writeText(displayPath)}
           >Copy WAV Path</Button
         >
         <Button variant="primary" onclick={onRecordAgain}>Record Again</Button>

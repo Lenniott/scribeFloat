@@ -104,7 +104,7 @@
     {/each}
     {#if variantConfig.showPercent}
       <p
-        class="absolute -bottom-6 left-0 font-data text-label-lg text-on-surface/55"
+        class="absolute -bottom-6 left-0 font-data text-label-xs tracking-data text-on-surface/55"
       >
         {Math.round(safeProgress)}%
       </p>
@@ -115,7 +115,7 @@
       {#each sequence as step (step.label)}
         <div class="flex min-w-0 flex-1 items-center gap-2">
           <span
-            class={`grid size-5 shrink-0 place-items-center rounded border text-label-sm font-bold ${
+            class={`grid size-5 shrink-0 place-items-center rounded border text-label-sm font-normal ${
               step.complete
                 ? "border-primary bg-primary text-on-primary"
                 : "border-on-surface/70 text-transparent"
@@ -134,7 +134,7 @@
     </div>
   {/if}
   {#if variantConfig.showCurrentStep && currentStep}
-  <p class="m-0 ml-auto truncate text-label-md font-medium text-on-surface">
+  <p class="m-0 ml-auto truncate text-label-md font-normal text-on-surface">
 	{currentStep.label}
   </p>
 {/if}

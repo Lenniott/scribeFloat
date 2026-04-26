@@ -116,6 +116,7 @@ mod tests {
         assert_eq!(cfg.open_scribe_hotkey, "CmdOrCtrl+Shift+S");
         assert_eq!(cfg.input_label, "Mic");
         assert_eq!(cfg.output_label, "Speaker");
+        assert_eq!(cfg.theme_mode, crate::types::ThemeMode::System);
     }
 
     #[test]

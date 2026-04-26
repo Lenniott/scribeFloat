@@ -53,7 +53,7 @@
 </script>
 
 <section class="space-y-3">
-  <h2 class="text-title-sm font-semibold">Permissions</h2>
+  <h2 class="text-title-sm font-normal tracking-tight">Permissions</h2>
   {#each statuses as status (status.kind)}
     <div
       class={`rounded-md border px-3 py-2.5 transition ${
@@ -75,13 +75,13 @@
         {#if status.granted}
           <div class="flex gap-2 items-center text-green brightness-120">
 			<CircleCheckBig class='size-4'/>
-            <span class="text-label-sm font-medium">Granted</span
+            <span class="text-label-sm font-normal">Granted</span
             >
           </div>
         {:else if status.can_request}
           <div class="flex gap-2">
             <span
-              class="size-4 shrink-0 rounded-full border-2 border-secondary bg-amber-secondary/10"
+              class="size-4 shrink-0 rounded-full border-2 border-secondary bg-secondary/10"
             ></span>
             <Button
               variant="secondary"

@@ -73,8 +73,8 @@
 				aria-selected={activeId === tab.id}
 				aria-controls={`tab-panel-${tab.id}`}
 				disabled={tab.disabled}
-				class="{tabButtonClass[mode]} rounded-sm font-semibold tracking-wide whitespace-nowrap uppercase transition-colors disabled:opacity-40 {activeId === tab.id
-					? 'bg-active text-on-primary'
+				class="{tabButtonClass[mode]} rounded-sm font-normal tracking-widest whitespace-nowrap uppercase transition-colors disabled:opacity-40 {activeId === tab.id
+					? 'bg-active text-on-active'
 					: 'text-on-surface/70 hover:bg-surface-container-high hover:text-on-surface'}"
 				onclick={() => (activeId = tab.id)}
 			>

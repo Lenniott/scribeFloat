@@ -190,8 +190,8 @@
 
 <div class="mx-auto flex h-screen w-full max-w-3xl flex-col gap-6 p-6 text-on-surface">
 	<header class="space-y-1">
-		<h1 class="text-title-lg font-semibold">Welcome to Liscribe</h1>
-		<p class="text-body-sm text-on-surface/70">
+		<h1 class="text-display-sm font-light tracking-heading">Welcome to Liscribe</h1>
+		<p class="text-subtitle text-on-surface/70">
 			Finish setup once: choose model, check permissions, confirm output path, then configure hotkeys.
 		</p>
 	</header>
@@ -210,7 +210,7 @@
 				onclick={() => (step = stepStatus.id)}
 			>
 				<div class="flex items-center justify-between gap-3">
-					<p class="text-label-sm font-semibold">{stepStatus.id}. {stepStatus.title}</p>
+					<p class="text-label-sm font-normal">{stepStatus.id}. {stepStatus.title}</p>
 					<span class={`text-label-sm ${stepStatus.complete ? stepStatus.id === step? 'text-active':'text-green' : 'text-on-surface/70'}`}>
 						{stepStatus.complete ? 'Done' : 'Pending'}
 					</span>
@@ -261,7 +261,7 @@
 								</div>
 							</div>
 							{#if permission.granted}
-								<span class="text-label-sm font-medium text-green">Granted</span>
+								<span class="text-label-sm font-normal text-green">Granted</span>
 							{:else if permission.can_request}
 								<Button
 									variant="secondary"

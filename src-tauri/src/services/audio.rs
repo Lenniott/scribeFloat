@@ -32,6 +32,13 @@ impl AudioService {
         Arc::new(Self)
     }
 
+    pub fn list_input_devices(&self) -> Vec<String> {
+        let host = cpal::default_host();
+        host.input_devices()
+            .map(|devs| devs.filter_map(|d| d.name().ok()).collect())
+            .unwrap_or_default()
+    }
+
     /// Open a mic input stream. Uses preferred_name if provided and available,
     /// otherwise falls back to the system default input device.
     pub fn start_mic(

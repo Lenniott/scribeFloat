@@ -5,17 +5,19 @@
 	let {
 		label,
 		path = $bindable(""),
+		directory = true,
 		onChange,
 	}: {
 		label: string;
 		path?: string;
+		directory?: boolean;
 		onChange?: (nextPath: string) => void | Promise<void>;
 	} = $props();
 	const fieldId = $derived(`path-${label.toLowerCase().replace(/\s+/g, "-")}`);
 
 	async function choosePath() {
 		const selected = await open({
-			directory: true,
+			directory,
 			multiple: false,
 			defaultPath: path || undefined,
 		}).catch(() => null);
@@ -26,7 +28,7 @@
 </script>
 
 <div class="flex flex-col gap-1.5 text-left">
-	<label class="text-label-sm font-semibold tracking-wide text-on-surface/80 uppercase" for={fieldId}
+	<label class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase" for={fieldId}
 		>{label}</label
 	>
 	<div class="flex min-w-0 items-center gap-2">

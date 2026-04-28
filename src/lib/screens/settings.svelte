@@ -1,14 +1,14 @@
 <script lang="ts">
-	import NavButton from '@lib/components/NavButton.svelte';
+	import NavButton from '@components/NavButton.svelte';
 	import SettingGeneral from '@lib/screens/setting_general.svelte';
 	import SettingPermissions from '@lib/screens/setting_permissions.svelte';
 	import SettingModels from '@lib/screens/setting_models.svelte';
-	import IconButton from '@lib/components/IconButton.svelte';
+	import IconButton from '@components/IconButton.svelte';
 	import { X } from 'lucide-svelte';
 
 	type SettingsTab = 'general' | 'permissions' | 'models';
 
-	let { onClose }: { onClose?: () => void } = $props();
+	let { onClose, standalone = false }: { onClose?: () => void; standalone?: boolean } = $props();
 	let activeTab = $state<SettingsTab>('general');
 
 	const tabs: Array<{ id: SettingsTab; label: string }> = [
@@ -18,8 +18,8 @@
 	];
 </script>
 
-<div class="fixed inset-0 z-50 bg-black/50 p-4">
-	<div class="mx-auto flex h-full max-w-5xl flex-col rounded-lg bg-surface-container-lowest shadow-lg">
+<div class={standalone ? 'min-h-screen bg-surface-container-low' : 'fixed inset-0 z-50 bg-black/50 p-4'}>
+	<div class="mx-auto flex h-full max-w-5xl flex-col bg-surface-container-lowest shadow-lg">
 		<header class="flex items-center justify-between border-b border-surface-container-low px-4 py-3">
 			<h2 class="text-title-md font-normal tracking-tight">Settings</h2>
 			<IconButton aria-label="close settings" variant="normal" icon={X} onclick={() => onClose?.()}/>

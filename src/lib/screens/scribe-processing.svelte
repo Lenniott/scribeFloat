@@ -154,7 +154,6 @@
 	  variant="normal"
 	  aria-label="close panel"
 	  onclick={onClose}
-	  disabled={phase === "transcribing"}
 	  icon={X}
 	  />
     </header>

@@ -374,7 +374,7 @@ let { processingStart, autoStart = true }: Props = $props();
 				</div>
 
 				<!-- Footer -->
-				<footer class="flex items-center gap-3 px-4 py-3">
+				<footer class="flex items-center gap-3 py-3">
 					{#if phase === 'idle'}
 						{#if autoStart}
 							<span class="font-data text-label-sm text-on-surface/50 uppercase tracking-stamped">

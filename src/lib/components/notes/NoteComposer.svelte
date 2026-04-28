@@ -55,6 +55,7 @@
             aria-label="Add note"
             disabled={disabled || !value.trim()}
             onclick={submit}
+            class=rounded-full
         />
     </div>
 </div>

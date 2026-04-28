@@ -18,8 +18,8 @@
 	];
 </script>
 
-<div class={standalone ? 'min-h-screen bg-surface-container-low p-4' : 'fixed inset-0 z-50 bg-black/50 p-4'}>
-	<div class="mx-auto flex h-full max-w-5xl flex-col rounded-lg bg-surface-container-lowest shadow-lg">
+<div class={standalone ? 'min-h-screen bg-surface-container-low' : 'fixed inset-0 z-50 bg-black/50 p-4'}>
+	<div class="mx-auto flex h-full max-w-5xl flex-col bg-surface-container-lowest shadow-lg">
 		<header class="flex items-center justify-between border-b border-surface-container-low px-4 py-3">
 			<h2 class="text-title-md font-normal tracking-tight">Settings</h2>
 			<IconButton aria-label="close settings" variant="normal" icon={X} onclick={() => onClose?.()}/>

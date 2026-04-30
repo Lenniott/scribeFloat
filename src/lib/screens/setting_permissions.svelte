@@ -6,8 +6,21 @@
   import {CircleCheckBig} from "lucide-svelte"; 
   import type { PermissionStatus } from "$lib/types";
 
+  let {
+    ready = $bindable(false),
+  }: {
+    ready?: boolean;
+  } = $props();
+
   let statuses = $state<PermissionStatus[]>([]);
   let requestingKind = $state<string | null>(null);
+  const microphoneReady = $derived(
+    statuses.find((status) => status.kind === "microphone")?.granted ?? false,
+  );
+
+  $effect(() => {
+    ready = microphoneReady;
+  });
 
   async function refresh() {
     statuses = await invoke<PermissionStatus[]>(
@@ -52,7 +65,7 @@
   });
 </script>
 
-<section class="space-y-3">
+<section class="space-y-3 h-full">
   <h2 class="text-title-sm font-normal tracking-tight">Permissions</h2>
   {#each statuses as status (status.kind)}
     <div

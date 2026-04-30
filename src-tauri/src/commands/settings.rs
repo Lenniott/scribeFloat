@@ -1,7 +1,7 @@
 use crate::controllers::settings::SettingsController;
 use crate::types::{PermissionStatus, ThemeMode};
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub fn settings_get_output_path(
@@ -128,4 +128,12 @@ pub fn settings_complete_onboarding(
 #[tauri::command]
 pub fn settings_reset_onboarding(ctrl: State<'_, Arc<SettingsController>>) -> Result<(), String> {
     ctrl.reset_onboarding()
+}
+
+#[tauri::command]
+pub fn settings_show_window(app: AppHandle) -> Result<(), String> {
+    crate::open_settings_window(&app)
+        .map(|_| ())
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }

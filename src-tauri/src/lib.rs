@@ -8,10 +8,10 @@ use std::sync::Arc;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 
-const SCRIBE_WINDOW_LABEL: &str = "scribe";
+pub(crate) const SCRIBE_WINDOW_LABEL: &str = "scribe";
 const SETTINGS_WINDOW_LABEL: &str = "settings";
 const OPEN_SCRIBE_MENU_ID: &str = "open_scribe";
 const OPEN_SETTINGS_MENU_ID: &str = "open_settings";
@@ -65,7 +65,7 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-fn open_scribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+pub(crate) fn open_scribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     open_or_focus_window(
         app,
         SCRIBE_WINDOW_LABEL,
@@ -76,7 +76,7 @@ fn open_scribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     )
 }
 
-fn open_settings_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+pub(crate) fn open_settings_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     open_or_focus_window(
         app,
         SETTINGS_WINDOW_LABEL,
@@ -181,6 +181,16 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == SCRIBE_WINDOW_LABEL {
+                    api.prevent_close();
+                    let _ = window.emit(
+                        "scribe://native-close-requested",
+                        serde_json::json!({}),
+                    );
+                    platform::window_impl::sync_activation_policy(window.app_handle());
+                    return;
+                }
+
                 api.prevent_close();
                 if let Err(err) = window.hide() {
                     eprintln!("failed to hide window {}: {err}", window.label());
@@ -191,6 +201,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::scribe::scribe_start,
             commands::scribe::scribe_stop_and_save,
+            commands::scribe::scribe_save_recording_only,
+            commands::scribe::scribe_abort_transcription,
+            commands::scribe::scribe_destroy_window,
             commands::scribe::scribe_cancel,
             commands::scribe::scribe_add_note,
             commands::scribe::scribe_get_include_timestamps,
@@ -218,6 +231,7 @@ pub fn run() {
             commands::settings::settings_onboarding_status,
             commands::settings::settings_complete_onboarding,
             commands::settings::settings_reset_onboarding,
+            commands::settings::settings_show_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

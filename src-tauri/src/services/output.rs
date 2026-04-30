@@ -1,10 +1,19 @@
 use crate::types::{Note, Segment};
 use anyhow::{Context, Result};
 use hound::{SampleFormat, WavSpec, WavWriter};
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub struct OutputService;
+
+#[derive(Debug, Serialize)]
+struct SessionNotesPayload<'a> {
+    format_version: u8,
+    title: &'a str,
+    wav_file: &'a str,
+    notes: &'a [Note],
+}
 
 impl OutputService {
     pub fn new() -> Arc<Self> {
@@ -129,6 +138,27 @@ impl OutputService {
         Ok(())
     }
 
+    /// Write `[session_dir]/notes.json` capturing title and recorded notes for a WAV-only save.
+    pub fn write_session_notes(
+        &self,
+        session_dir: &Path,
+        title: &str,
+        wav_file_name: &str,
+        notes: &[Note],
+    ) -> Result<PathBuf> {
+        let payload = SessionNotesPayload {
+            format_version: 1,
+            title,
+            wav_file: wav_file_name,
+            notes,
+        };
+        let dest = session_dir.join("notes.json");
+        let json =
+            serde_json::to_string_pretty(&payload).context("failed to serialize notes.json")?;
+        std::fs::write(&dest, json).context("failed to write notes.json")?;
+        Ok(dest)
+    }
+
     /// Remove the session directory if it contains no files (i.e. recording was cancelled
     /// before any WAV was written). Silent no-op if the directory is non-empty or gone.
     pub fn delete_session_dir_if_empty(&self, dir: &Path) {
@@ -157,6 +187,8 @@ fn format_ms(ms: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::Note;
+
 
     fn temp_file(name: &str) -> PathBuf {
         let dir =
@@ -198,5 +230,25 @@ mod tests {
         let content = std::fs::read_to_string(&file).expect("read transcript");
         assert!(content.contains("hello world"));
         assert!(!content.contains("[00:00:12]"));
+    }
+
+    #[test]
+    fn session_notes_json_includes_title_wav_and_note_text() {
+        let svc = OutputService;
+        let dir = std::env::temp_dir().join(format!("liscribe-notes-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let notes = vec![Note {
+            id: "n1".to_string(),
+            text: "remember this".to_string(),
+            recorded_at_ms: 2500,
+        }];
+        let dest = svc
+            .write_session_notes(&dir, "Meeting A", "mic.wav", &notes)
+            .expect("write_session_notes");
+        assert_eq!(dest.file_name().unwrap(), "notes.json");
+        let raw = std::fs::read_to_string(&dest).expect("read");
+        assert!(raw.contains("Meeting A"));
+        assert!(raw.contains("mic.wav"));
+        assert!(raw.contains("remember this"));
     }
 }

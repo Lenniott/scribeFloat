@@ -75,7 +75,7 @@
 	}
 </script>
 
-<section class="space-y-4">
+<section class="space-y-4 h-full">
 	{#if showHeader}
 		<h2 class="text-title-sm font-normal tracking-tight">{heading}</h2>
 	{/if}

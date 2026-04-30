@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import { browser } from "$app/environment";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { copyTranscript } from "$lib/services/clipboard";
@@ -27,11 +28,9 @@
 
   let {
     title,
-    onClose,
     onRecordAgain,
   }: {
     title: string;
-    onClose?: () => void;
     onRecordAgain?: () => void;
   } = $props();
 
@@ -42,7 +41,7 @@
   let errorMessage = $state("");
   let processingStage = $state<ProcessingStage>("LOADING_MODEL");
   let started = false;
-  let unlisten: UnlistenFn | null = null;
+  let unlisteners: UnlistenFn[] = [];
 
   const progressSequence: { label: string; stage: ProcessingStage }[] = [
     { label: "Loading model", stage: "LOADING_MODEL" },
@@ -105,6 +104,14 @@
     }
   }
 
+  async function closeScribeWindowCompletely(): Promise<void> {
+    if (!browser) return;
+    if (phase === "transcribing") {
+      await invoke("scribe_abort_transcription").catch(() => {});
+    }
+    await invoke("scribe_destroy_window").catch(() => {});
+  }
+
   async function openTranscript() {
     if (transcriptPath) await invoke("settings_open_transcript", { filePath: transcriptPath });
   }
@@ -114,14 +121,18 @@
   }
 
   onMount(async () => {
-    unlisten = await listen<ScribePayload>("scribe://state-changed", (event) =>
+    const ulState = await listen<ScribePayload>("scribe://state-changed", (event) =>
       handleScribeEvent(event.payload),
     );
+    const ulClose = await listen("scribe://native-close-requested", () => {
+      void closeScribeWindowCompletely();
+    });
+    unlisteners = [ulState, ulClose];
     await startProcessing();
   });
 
   onDestroy(() => {
-    unlisten?.();
+    unlisteners.forEach((u) => u());
   });
 </script>
 
@@ -153,7 +164,7 @@
 	  <IconButton
 	  variant="normal"
 	  aria-label="close panel"
-	  onclick={onClose}
+	  onclick={() => void closeScribeWindowCompletely()}
 	  icon={X}
 	  />
     </header>

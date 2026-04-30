@@ -1,0 +1,487 @@
+{
+    "$schema": "https://scribefloat.dev/design-system.schema.json",
+    "meta": {
+      "name": "Scribefloat Design System",
+      "version": "2.0.0",
+      "product": "Scribefloat — local audio transcription for macOS",
+      "stack": "Tauri + Svelte + Tailwind CSS v4",
+      "colorScheme": "dark-first",
+      "lightModeSupported": true,
+      "themeAttribute": "data-theme",
+      "themeValues": ["dark", "light"],
+      "fonts": {
+        "import": "https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400&family=Geist:wght@400;500&display=swap",
+        "sans": "Geist",
+        "mono": "Geist Mono",
+        "weightsUsed": {
+          "Geist": [400, 500],
+          "Geist Mono": [400]
+        },
+        "weightsOmitted": {
+          "300": "too light on dark backgrounds — omitted entirely"
+        }
+      },
+      "tailwindThemeFile": "tailwind.css",
+      "tone": "instrument-grade. terse, precise, zero hype. reads like terminal output.",
+      "casing": {
+        "labels": "UPPERCASE with letter-spacing: 0.05em",
+        "prose": "Sentence case",
+        "cta": "Title Case (Stop and Save, Record Again)",
+        "never": "Title Case for labels or section headers"
+      }
+    },
+  
+    "tokens": {
+  
+      "colors": {
+        "description": "OKLCH-based palette. Dark mode is default. Accents are reserved — each has exactly one semantic job. See rules.colors for usage restrictions.",
+        "dark": {
+          "void":             { "value": "oklch(0.20 0 0)",          "tw": "bg-void",            "role": "Page and window background only" },
+          "surface-lowest":   { "value": "oklch(0.24 0 0)",          "tw": "bg-surface-lowest",  "role": "Primary panel face, modal body, right column" },
+          "surface-low":      { "value": "oklch(0.28 0 0)",          "tw": "bg-surface-low",     "role": "Cards, note items, waveform bg, dividers" },
+          "surface-high":     { "value": "oklch(0.32 0 0)",          "tw": "bg-surface-high",    "role": "Input borders, model card borders, hover bg" },
+          "surface-highest":  { "value": "oklch(0.40 0 0)",          "tw": "bg-surface-highest", "role": "Toggle knob (off), active pill, pressed states" },
+          "on-surface":       { "value": "oklch(0.93 0.0044 286.28)","tw": "text-on-surface",    "role": "Primary body text" },
+          "on-surface-dim":   { "value": "oklch(0.60 0 0)",          "tw": "text-on-surface-dim","role": "Secondary labels, captions, waveform idle bars" },
+          "on-surface-faint": { "value": "oklch(0.40 0 0)",          "tw": "text-on-surface-faint","role": "Disabled text, placeholders" },
+          "primary":          { "value": "oklch(0.70 0.1867 47.6)",  "tw": "bg-primary text-primary", "role": "Primary action button only. One per screen." },
+          "on-primary":       { "value": "oklch(0.20 0 0)",          "tw": "text-on-primary",    "role": "Text on primary button background" },
+          "secondary":        { "value": "oklch(0.815 0.19 77)",     "tw": "border-secondary text-secondary", "role": "Secondary CTA outline/text. One per screen max." },
+          "on-secondary":     { "value": "oklch(0.20 0 0)",          "tw": "text-on-secondary",  "role": "Text on secondary button background" },
+          "tertiary":         { "value": "oklch(0.72 0.16 240)",     "tw": "text-tertiary",      "role": "Active tab indicator only" },
+          "error":            { "value": "oklch(0.53 0.21 26.5)",    "tw": "bg-error text-error","role": "Recording status dot, destructive button, inline error text" },
+          "on-error":         { "value": "oklch(0.93 0.0044 286.28)","tw": "text-on-error",      "role": "Text on error/destructive background" },
+          "green":            { "value": "oklch(0.609 0.2158 141.64)","tw": "text-green",        "role": "Transient success text or check icon only. Never persistent." }
+        },
+        "light": {
+          "void":             { "value": "oklch(0.98 0 0)",          "tw": "bg-void" },
+          "surface-lowest":   { "value": "oklch(0.96 0 0)",          "tw": "bg-surface-lowest" },
+          "surface-low":      { "value": "oklch(0.92 0 0)",          "tw": "bg-surface-low" },
+          "surface-high":     { "value": "oklch(0.87 0 0)",          "tw": "bg-surface-high" },
+          "surface-highest":  { "value": "oklch(0.80 0 0)",          "tw": "bg-surface-highest" },
+          "on-surface":       { "value": "oklch(0.18 0 0)",          "tw": "text-on-surface" },
+          "on-surface-dim":   { "value": "oklch(0.45 0 0)",          "tw": "text-on-surface-dim" },
+          "on-surface-faint": { "value": "oklch(0.65 0 0)",          "tw": "text-on-surface-faint" },
+          "primary":          { "value": "oklch(0.58 0.18 47.6)",    "tw": "bg-primary text-primary",  "note": "Darkened from dark mode for contrast on white" },
+          "on-primary":       { "value": "oklch(0.98 0 0)",          "tw": "text-on-primary" },
+          "secondary":        { "value": "oklch(0.52 0.16 77)",      "tw": "border-secondary text-secondary", "note": "Yellow shifts to olive-amber at this lightness" },
+          "on-secondary":     { "value": "oklch(0.98 0 0)",          "tw": "text-on-secondary" },
+          "tertiary":         { "value": "oklch(0.50 0.16 240)",     "tw": "text-tertiary" },
+          "error":            { "value": "oklch(0.48 0.20 26.5)",    "tw": "bg-error text-error" },
+          "on-error":         { "value": "oklch(0.98 0 0)",          "tw": "text-on-error" },
+          "green":            { "value": "oklch(0.45 0.18 141.64)",  "tw": "text-green" }
+        }
+      },
+  
+      "typography": {
+        "fonts": {
+          "sans": {
+            "family": "Geist",
+            "tw": "font-sans",
+            "weights": { "400": "regular", "500": "medium" },
+            "roles": ["body copy", "prose", "form labels", "input text", "UI metadata", "section labels (uppercase)"]
+          },
+          "mono": {
+            "family": "Geist Mono",
+            "tw": "font-mono",
+            "weights": { "400": "regular" },
+            "roles": ["timers", "counters", "file sizes", "hotkey chips", "version strings", "modal titles", "section headers"]
+          }
+        },
+        "rule": "Geist for prose and UI labels. Geist Mono for anything that reads like an instrument readout — if it would look right on a terminal or piece of equipment, use Mono.",
+        "weightRule": "No bold. Hierarchy via size, case, and opacity only. Never font-weight 600 or 700.",
+        "scale": {
+          "display-lg": {
+            "tw": "text-display-lg font-mono font-normal",
+            "size": "3.5rem",
+            "lineHeight": 1.1,
+            "font": "mono",
+            "weight": 400,
+            "transform": "none",
+            "tracking": "normal",
+            "usage": "Recording timer only. One instance per screen.",
+            "never": ["headings", "hero text", "decorative elements"]
+          },
+          "headline-sm": {
+            "tw": "text-headline-sm font-mono font-normal uppercase tracking-stamped",
+            "size": "1.5rem",
+            "lineHeight": 1.2,
+            "font": "mono",
+            "weight": 400,
+            "transform": "uppercase",
+            "tracking": "0.05em",
+            "usage": "Modal titles, screen-level headers. One per view.",
+            "never": ["section labels inside panels", "card titles"]
+          },
+          "body-md": {
+            "tw": "text-body-md font-sans font-normal",
+            "size": "0.875rem",
+            "lineHeight": 1.5,
+            "font": "sans",
+            "weight": 400,
+            "transform": "none",
+            "tracking": "normal",
+            "usage": "Transcript body, descriptions, onboarding prose, accordion content.",
+            "never": ["labels", "buttons"]
+          },
+          "label-md": {
+            "tw": "text-label-md font-sans font-medium",
+            "size": "0.75rem",
+            "lineHeight": 1.4,
+            "font": "sans",
+            "weight": 500,
+            "transform": "none",
+            "tracking": "normal",
+            "usage": "Form field labels, accordion titles, button text, inline control labels.",
+            "never": ["body copy", "captions"]
+          },
+          "label-sm": {
+            "tw": "text-label-sm font-sans uppercase tracking-stamped",
+            "size": "0.6875rem",
+            "lineHeight": 1.4,
+            "font": "sans",
+            "weight": 500,
+            "transform": "uppercase",
+            "tracking": "0.05em",
+            "usage": "Section dividers, metadata captions, status labels.",
+            "never": ["interactive elements", "anything longer than ~4 words"]
+          },
+          "label-sm-mono": {
+            "tw": "text-label-sm font-mono font-normal uppercase tracking-stamped",
+            "size": "0.6875rem",
+            "lineHeight": 1.4,
+            "font": "mono",
+            "weight": 400,
+            "transform": "uppercase",
+            "tracking": "0.05em",
+            "usage": "File sizes, model names, hotkey chips, version strings, data labels.",
+            "never": ["prose", "descriptions"]
+          }
+        }
+      },
+  
+      "spacing": {
+        "description": "Dense UI. Base unit is p-3 (12px). Use flex/grid with gap — never margin on siblings.",
+        "scale": {
+          "1":  { "px": 4,  "tw": "p-1 gap-1",   "usage": "Internal icon padding. Gap between dot and label. Chip inner spacing." },
+          "2":  { "px": 8,  "tw": "p-2 gap-2",   "usage": "Icon button padding. Gap between label and value. Within a form field row." },
+          "3":  { "px": 12, "tw": "p-3 gap-3",   "usage": "Panel section padding. Note card padding. Gap between form fields. Modal body." },
+          "4":  { "px": 16, "tw": "p-4 gap-4",   "usage": "Panel header horizontal padding. Modal header. Primary CTA footer zone." },
+          "6":  { "px": 24, "tw": "p-6 gap-6",   "usage": "Onboarding step padding. Between major layout zones (left/right split)." },
+          "8":  { "px": 32, "tw": "p-8 gap-8",   "usage": "Onboarding illustration breathing room. Never inside a Scribe panel." }
+        },
+        "omitted": ["5", "7", "9", "10", "anything above 8 inside the Scribe window"],
+        "rules": [
+          "Always use flex/grid with gap for sibling spacing — never margin between siblings",
+          "p-3 is the base unit inside panels",
+          "Keep horizontal padding consistent per zone — p-3 or p-4, never mixed",
+          "Max spacing inside Scribe window is p-8"
+        ]
+      },
+  
+      "radius": {
+        "sm": { "value": "2px", "tw": "rounded-sm", "usage": "Chips, small tags, status dot containers, inner elements within cards" },
+        "md": { "value": "4px", "tw": "rounded-md", "usage": "Buttons, inputs, cards, panels, modals — everything else" },
+        "full": { "value": "9999px", "tw": "rounded-full", "usage": "Toggle knob and recording status dot only. Nothing else." },
+        "rules": [
+          "No pill buttons",
+          "No rounded modals beyond rounded-md",
+          "4px maximum on all interactive elements — this is an instrument, not a consumer app"
+        ]
+      },
+  
+      "shadow": {
+        "ambient": {
+          "dark":  "0 4px 32px oklch(0 0 0 / 0.5)",
+          "light": "0 4px 32px oklch(0 0 0 / 0.12)",
+          "tw": "shadow-ambient",
+          "usage": "PanelShell floating window only. No shadow on cards or modals."
+        },
+        "rules": [
+          "Elevation is communicated by surface lightness steps, not shadow",
+          "Only the top-level floating panel uses a shadow",
+          "Cards, modals, and inner panels: no shadow"
+        ]
+      }
+    },
+  
+    "rules": {
+  
+      "colors": {
+        "principles": [
+          "Build every screen in grey first. Add an accent only when it carries a specific meaning.",
+          "Each accent color owns exactly one job. Orange = primary action. Red = live/danger. They are not interchangeable.",
+          "Max two accents visible simultaneously. Orange + red during recording is the only sanctioned pair.",
+          "Yellow, green, blue are for momentary or single-use states — never persistent background tints or borders.",
+          "Use opacity variants (white/40, on-surface/60) to dim. Do not tint grey surfaces with accent colors."
+        ],
+        "accents": {
+          "primary": {
+            "color": "orange",
+            "job": "The one primary action button per screen",
+            "maxPerScreen": 1,
+            "transient": false,
+            "use": ["Primary action button (Stop and Save, Record)", "Active toggle track on-state", "Inline tertiary text link"],
+            "never": ["Waveform bars", "Underlines or decorative strokes", "Multiple buttons simultaneously", "Tab indicators", "Focus rings"]
+          },
+          "error": {
+            "color": "red",
+            "job": "Live recording state and destructive actions",
+            "maxPerScreen": 2,
+            "transient": "while recording",
+            "use": ["Recording status dot (pulsing)", "Destructive/cancel action button", "Inline error text"],
+            "never": ["Warnings or non-critical notices", "Decorative accents", "Card borders or background tints"]
+          },
+          "secondary": {
+            "color": "yellow",
+            "job": "Secondary CTA when a primary already exists",
+            "maxPerScreen": 1,
+            "transient": false,
+            "use": ["Secondary CTA button outline style"],
+            "never": ["Warning states (use red)", "Multiple buttons simultaneously", "Text labels or icons", "Paused state indicator"]
+          },
+          "tertiary": {
+            "color": "blue",
+            "job": "Active tab indicator",
+            "maxPerScreen": 1,
+            "transient": false,
+            "use": ["Active tab indicator only"],
+            "never": ["Buttons of any kind", "Text color", "Links or interactive elements outside tabs"]
+          },
+          "green": {
+            "color": "green",
+            "job": "Confirmed success flash",
+            "maxPerScreen": 1,
+            "transient": true,
+            "use": ["Inline success text (auto-dismisses)", "Permission granted check icon"],
+            "never": ["Persistent background tints", "Persistent border color", "Buttons", "Any element that stays visible indefinitely"]
+          }
+        },
+        "violations": [
+          {
+            "bad": "Waveform bars using primary (orange)",
+            "fix": "Use on-surface-dim (oklch 0.60) for idle bars; on-surface at 40% opacity for active bars"
+          },
+          {
+            "bad": "Permission cards with persistent green border + tint",
+            "fix": "Use surface-high border for all permission rows. Show green check icon only."
+          },
+          {
+            "bad": "Multiple yellow secondary buttons on one screen",
+            "fix": "Demote to ghost (sf-btn-ghost). Reserve yellow outline for the single most important secondary action."
+          },
+          {
+            "bad": "Title input focus underline in orange",
+            "fix": "Use surface-highest (1px border-bottom) or white/20 outline for focus states."
+          }
+        ]
+      },
+  
+      "typography": {
+        "principles": [
+          "No bold text in the UI. Hierarchy comes from size, case, and opacity — not weight.",
+          "If you reach for bold to add emphasis, add spacing or case instead.",
+          "Geist Mono for anything that reads like an instrument readout. Geist for everything else.",
+          "300 weight is removed entirely — too light on dark backgrounds.",
+          "Uppercase + tracking-stamped (0.05em) is a single visual treatment — always use them together."
+        ]
+      },
+  
+      "spacing": {
+        "principles": [
+          "Use flex/grid with gap for all sibling spacing — never margin on siblings.",
+          "p-3 is the base unit inside panels.",
+          "Keep horizontal padding consistent per zone — do not mix p-3 and p-4 within the same panel.",
+          "Never use spacing values outside the defined scale (no p-5, p-7, p-9, p-10)."
+        ]
+      },
+  
+      "surfaces": {
+        "elevationModel": "Lighter surface = higher elevation (dark mode). Darker surface = higher elevation (light mode). Never use shadow or border weight to indicate elevation.",
+        "waveform": "Use on-surface-dim (0.60) for idle waveform bars — not surface-highest (0.40). On void background, surface-highest has ~2:1 contrast (near invisible). on-surface-dim gives ~3.5:1.",
+        "principles": [
+          "void is never used as a card or container surface — page/window only",
+          "Elevation is communicated purely by background lightness — no shadows on inner elements",
+          "No colored surface tints (no green/red/orange at low opacity as persistent backgrounds)"
+        ]
+      }
+    },
+  
+    "components": {
+  
+      "button": {
+        "description": "Four variants. Primary is orange-filled. Secondary is yellow-outline. Ghost is transparent. Destructive is red-filled.",
+        "rules": [
+          "Max one primary button per screen",
+          "Max one secondary button per screen",
+          "If secondary would appear without a primary, use ghost instead",
+          "Font: Geist Mono for primary, Geist for all others",
+          "Radius: rounded-md (4px) always",
+          "No pill or full-round buttons"
+        ],
+        "variants": {
+          "primary": {
+            "tw": "bg-primary text-on-primary font-mono text-label-sm uppercase tracking-stamped rounded-md px-3 py-1.5",
+            "hover": "hover:brightness-150",
+            "disabled": "opacity-40 pointer-events-none",
+            "usage": "The single most important action on screen"
+          },
+          "secondary": {
+            "tw": "border border-secondary text-secondary bg-transparent font-sans text-label-md rounded-md px-3 py-1.5",
+            "hover": "hover:bg-secondary hover:text-on-secondary",
+            "usage": "Second-priority action when a primary already exists on screen"
+          },
+          "ghost": {
+            "tw": "bg-transparent text-on-surface font-sans text-label-md rounded-md px-3 py-1.5",
+            "hover": "hover:bg-surface-high",
+            "usage": "Low-priority actions, icon-adjacent text buttons"
+          },
+          "destructive": {
+            "tw": "bg-error text-on-error font-sans text-label-md rounded-md px-3 py-1.5",
+            "hover": "hover:brightness-110",
+            "usage": "Cancel recording, delete actions only"
+          }
+        }
+      },
+  
+      "iconButton": {
+        "description": "Square button for icons only. Must have aria-label.",
+        "tw": "inline-flex items-center justify-center rounded-md p-1.5",
+        "variants": {
+          "normal": "bg-transparent text-on-surface hover:bg-surface-high",
+          "destructive": "bg-error text-on-error"
+        },
+        "rules": ["Always include aria-label", "Never use without an accessible label"]
+      },
+  
+      "toggle": {
+        "description": "On/off switch. Orange track when on, surface-lowest when off. Knob is full-round.",
+        "tw": {
+          "track": "relative w-10 h-6 rounded-full transition-colors",
+          "trackOn": "bg-primary",
+          "trackOff": "bg-surface-lowest",
+          "knob": "absolute top-1 w-4 h-4 rounded-full transition-[left,right]",
+          "knobOn": "bg-on-primary right-1",
+          "knobOff": "bg-surface-highest left-1"
+        }
+      },
+  
+      "input": {
+        "tw": "bg-surface-lowest border border-surface-high rounded-md text-on-surface font-sans text-label-md px-2 py-1.5 outline-none",
+        "focusTw": "focus:border-surface-highest",
+        "rules": [
+          "Focus ring: surface-highest border only — no orange",
+          "Placeholder text: text-on-surface-faint",
+          "Always pair with a label in label-sm style above"
+        ]
+      },
+  
+      "statusDot": {
+        "description": "8px full-round dot indicating recording/idle/error state.",
+        "tw": "inline-block w-2 h-2 rounded-full flex-shrink-0",
+        "states": {
+          "idle":      { "tw": "bg-surface-highest", "animation": "none" },
+          "recording": { "tw": "bg-error", "animation": "animate-pulse" },
+          "error":     { "tw": "bg-error", "animation": "none" }
+        },
+        "rules": ["No paused state in yellow — omit dot when paused, show text status instead"]
+      },
+  
+      "card": {
+        "tw": "bg-surface-low rounded-md",
+        "padding": "p-3",
+        "rules": [
+          "No shadow",
+          "No colored borders",
+          "Border only when needed for separation: border border-surface-high"
+        ]
+      },
+  
+      "accordion": {
+        "trigger": {
+          "tw": "w-full flex items-center justify-between p-3 bg-transparent text-on-surface/60 font-sans text-body-md",
+          "chevronTw": "text-on-surface-dim transition-transform",
+          "openChevron": "rotate-90"
+        },
+        "content": {
+          "tw": "p-3 border-t border-surface-lowest"
+        }
+      },
+  
+      "modal": {
+        "backdrop": "bg-black/50",
+        "container": "bg-surface-lowest rounded-md shadow-ambient",
+        "header": "flex items-center justify-between p-4 border-b border-surface-low",
+        "body": "p-4",
+        "rules": [
+          "Backdrop is black/50 — no blur",
+          "Max-width: fit the content, not full-screen",
+          "Header uses sf-headline-sm for title",
+          "Close button is icon-only ghost variant"
+        ]
+      },
+  
+      "tabs": {
+        "description": "Settings modal navigation. Active tab uses tertiary (blue) indicator.",
+        "tabTw": "font-sans text-label-md px-3 py-2 border-b-2",
+        "activeTw": "border-tertiary text-on-surface",
+        "inactiveTw": "border-transparent text-on-surface-dim hover:text-on-surface",
+        "rules": ["Blue used only for the active tab bottom border — nothing else in the UI uses blue"]
+      },
+  
+      "waveformVisualizer": {
+        "container": "bg-surface-low rounded-md overflow-hidden",
+        "bars": {
+          "idle": "fill: on-surface-dim (oklch 0.60) — NOT primary orange",
+          "active": "fill: on-surface at 40% opacity",
+          "note": "on-surface-dim gives ~3.5:1 contrast on void bg. surface-highest gives ~2:1 — too low."
+        }
+      }
+    },
+  
+    "surfaces": {
+      "scribeWindow": {
+        "description": "Primary floating panel. Menu-bar app, no Dock icon.",
+        "shell": "bg-void shadow-ambient rounded-md overflow-hidden",
+        "header": "flex items-center justify-between min-h-[52px] border-b border-surface-low px-4 gap-3 flex-shrink-0 bg-surface-lowest",
+        "body": "grid grid-cols-[1.05fr_0.95fr] flex-1 min-h-0",
+        "leftCol": "flex flex-col p-3 min-h-0",
+        "rightCol": "flex flex-col border-l border-surface-low bg-surface-lowest p-2.5 min-h-0"
+      },
+      "settingsModal": {
+        "description": "Overlay. General / Permissions / Models tabs.",
+        "overlay": "fixed inset-0 bg-black/50 flex items-center justify-center",
+        "panel": "bg-surface-lowest rounded-md w-[520px] max-h-[80vh] flex flex-col shadow-ambient"
+      },
+      "onboarding": {
+        "description": "First-run 4-step wizard. Full panel, no close button.",
+        "container": "flex flex-col items-center justify-center h-full p-6 gap-6 bg-surface-lowest"
+      },
+      "dictateBar": {
+        "description": "Compact menu-bar overlay for quick dictation.",
+        "container": "bg-surface-lowest rounded-md shadow-ambient px-3 py-2 flex items-center gap-3"
+      }
+    },
+  
+    "copy": {
+      "rules": [
+        "No exclamation marks",
+        "No 'we' or 'our'",
+        "Labels are ALL CAPS with letter-spacing",
+        "Prose is sentence case",
+        "CTAs are Title Case (Stop and Save, Record Again)",
+        "Ellipsis for in-progress states (Starting…), not spinner copy",
+        "Error messages: lowercase, inline, no icon"
+      ],
+      "examples": {
+        "label": "TRANSCRIPT TIMESTAMPS",
+        "actionLabel": "add notes",
+        "descriptor": "scribefloat · tokens",
+        "status": "Starting…",
+        "cta": "Stop and Save",
+        "instruction": "No model selected. Open model settings to download and select a model.",
+        "error": "permission not granted"
+      }
+    }
+  }
+  

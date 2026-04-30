@@ -6,7 +6,8 @@ use crate::services::{
 };
 use crate::types::{Config, Note, ProcessingStage, ScribeState, ScribeStateEvent};
 use anyhow::{anyhow, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
@@ -26,6 +27,10 @@ struct Inner {
     state: ScribeState,
     session: Option<ActiveSession>,
     notes: Vec<Note>,
+    /// Shared with `do_transcription` while a transcription task is active.
+    transcription_abort: Option<Arc<AtomicBool>>,
+    /// Set once `mic.wav` is written during transcription (for abort UX).
+    transcription_wav_path: Option<PathBuf>,
 }
 
 pub struct ScribeController {
@@ -50,6 +55,8 @@ impl ScribeController {
                 state: ScribeState::Idle,
                 session: None,
                 notes: Vec::new(),
+                transcription_abort: None,
+                transcription_wav_path: None,
             }),
             audio,
             model,
@@ -113,9 +120,63 @@ impl ScribeController {
         Ok(())
     }
 
+    /// Stop recording, write `mic.wav` + `notes.json`, return to IDLE without Whisper.
+    pub fn save_recording_only(&self, title: Option<String>) -> Result<PathBuf> {
+        let title =
+            title.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d %H:%M").to_string());
+
+        let (session, notes) = {
+            let mut inner = self.inner.lock().unwrap();
+            if inner.state != ScribeState::Recording {
+                return Err(anyhow!("cannot save recording-only: not recording"));
+            }
+            let session = inner
+                .session
+                .take()
+                .ok_or_else(|| anyhow!("recording session missing"))?;
+            let notes = inner.notes.clone();
+            inner.notes.clear();
+            inner.state = ScribeState::Idle;
+            (session, notes)
+        };
+
+        let wav_path = session.session_dir.join("mic.wav");
+        let (raw_pcm, native_rate) = session.mic.stop_and_take();
+        let pcm_16k = resample_linear(&raw_pcm, native_rate, 16_000);
+        self.output.write_wav(&pcm_16k, 16_000, &wav_path)?;
+        self.output
+            .write_session_notes(&session.session_dir, &title, "mic.wav", &notes)?;
+
+        self.emit_idle_optional_wav(Some(&wav_path));
+        Ok(wav_path)
+    }
+
+    /// Request cooperative cancellation before transcript write (WAV retained). UI may IDLE immediately.
+    pub fn abort_transcription_keep_wav(&self) -> Result<()> {
+        let wav = {
+            let mut inner = self.inner.lock().unwrap();
+            if inner.state != ScribeState::Transcribing {
+                return Err(anyhow!("cannot abort transcription: not transcribing"));
+            }
+            if let Some(flag) = inner.transcription_abort.as_ref() {
+                flag.store(true, Ordering::SeqCst);
+            }
+            inner.state = ScribeState::Idle;
+            let w = inner.transcription_wav_path.clone();
+            inner.transcription_abort = None;
+            inner.transcription_wav_path = None;
+            w
+        };
+        let mut idle = ScribeStateEvent::new(ScribeState::Idle);
+        idle.wav_path = wav.map(|p| p.to_string_lossy().into_owned());
+        self.app.emit("scribe://state-changed", idle).ok();
+        Ok(())
+    }
+
     /// Transition RECORDING → TRANSCRIBING then → DONE / NO_MODEL.
     /// Returns immediately; heavy work runs in a background spawn_blocking task.
     pub fn stop_and_save(this: Arc<Self>, title: Option<String>) -> Result<()> {
+        let abort_flag = Arc::new(AtomicBool::new(false));
         // Extract session under lock then release immediately.
         let (session, notes) = {
             let mut inner = this.inner.lock().unwrap();
@@ -123,6 +184,7 @@ impl ScribeController {
                 return Err(anyhow!("cannot stop: not recording"));
             }
             inner.state = ScribeState::Transcribing;
+            inner.transcription_abort = Some(Arc::clone(&abort_flag));
             (
                 inner.session.take().expect("session exists when Recording"),
                 inner.notes.clone(),
@@ -146,13 +208,16 @@ impl ScribeController {
         tauri::async_runtime::spawn(async move {
             let ctrl = Arc::clone(&this);
             let result =
-                tokio::task::spawn_blocking(move || ctrl.do_transcription(session, notes, &title))
+                tokio::task::spawn_blocking(move || {
+                    ctrl.do_transcription(session, notes, &title, abort_flag)
+                })
                     .await;
 
             match result {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => {
                     eprintln!("transcription error: {e}");
+                    this.clear_transcription_tracking();
                     {
                         let mut inner = this.inner.lock().unwrap();
                         inner.state = ScribeState::Error;
@@ -167,7 +232,10 @@ impl ScribeController {
                         )
                         .ok();
                 }
-                Err(e) => eprintln!("transcription task panicked: {e}"),
+                Err(e) => {
+                    this.clear_transcription_tracking();
+                    eprintln!("transcription task panicked: {e}");
+                }
             }
         });
 
@@ -180,6 +248,7 @@ impl ScribeController {
         session: ActiveSession,
         notes: Vec<Note>,
         title: &str,
+        abort_flag: Arc<AtomicBool>,
     ) -> Result<()> {
         let (raw_pcm, native_rate) = session.mic.stop_and_take();
 
@@ -189,11 +258,16 @@ impl ScribeController {
         let wav_path = session.session_dir.join("mic.wav");
         self.output.write_wav(&pcm_16k, 16_000, &wav_path)?;
 
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.transcription_wav_path = Some(wav_path.clone());
+        }
+
         // Use configured path, then selected model id, then built-in default path.
         let model_path = resolve_model_path(&config, &self.model);
 
         if !self.model.model_available(&model_path) {
-            // Model not downloaded yet — keep the WAV and surface the path.
+            self.clear_transcription_tracking();
             self.transition(ScribeState::NoModel);
             self.app
                 .emit(
@@ -241,6 +315,11 @@ impl ScribeController {
         progress_thread.join().ok();
         let segments = segments?;
 
+        if abort_flag.load(Ordering::SeqCst) {
+            self.clear_transcription_tracking();
+            return Ok(());
+        }
+
         let transcript_path = self
             .output
             .transcript_path(&session.session_dir, &model_path, title);
@@ -281,6 +360,7 @@ impl ScribeController {
             self.output.delete_wav(&wav_path)?;
         }
 
+        self.clear_transcription_tracking();
         self.transition(ScribeState::Done);
         self.app
             .emit(
@@ -327,6 +407,18 @@ impl ScribeController {
 
     fn transition(&self, state: ScribeState) {
         self.inner.lock().unwrap().state = state;
+    }
+
+    fn clear_transcription_tracking(&self) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.transcription_abort = None;
+        inner.transcription_wav_path = None;
+    }
+
+    fn emit_idle_optional_wav(&self, wav: Option<&Path>) {
+        let mut ev = ScribeStateEvent::new(ScribeState::Idle);
+        ev.wav_path = wav.map(|p| p.to_string_lossy().into_owned());
+        self.app.emit("scribe://state-changed", ev).ok();
     }
 
     fn emit_state(&self, inner: &Inner) {

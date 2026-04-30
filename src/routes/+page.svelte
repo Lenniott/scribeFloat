@@ -4,7 +4,6 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { getCurrentWindow } from "@tauri-apps/api/window";
 	import Button from "@lib/components/Button.svelte";
-	import OnboardingScreen from "@lib/screens/onboarding.svelte";
 	import ScribeScreen from "@lib/screens/scribe.svelte";
 	import ScribeProcessingScreen from "@lib/screens/scribe-processing.svelte";
 	import SettingsScreen from "@lib/screens/settings.svelte";
@@ -22,6 +21,13 @@
 	let appScreen = $state<AppScreen>("recording");
 	let processingTitle = $state("Recording");
 	let autoStartRecording = $state(true);
+
+	let standaloneSettingsReady = $state(false);
+	let standaloneSetupHighlight = $state(false);
+
+	const firstRunSetupHint = $derived(
+		!gateLoading && !gateError && !skipOnboarding && !onboardingComplete,
+	);
 
 	async function refreshGate() {
 		if (skipOnboarding) {
@@ -62,31 +68,46 @@
 		appScreen = "recording";
 	}
 
-	async function closeProcessing() {
-		autoStartRecording = false;
-		await getCurrentWindow().close().catch(() => {
-			appScreen = "recording";
-		});
-	}
-
 	async function closeStandaloneSettings() {
 		await getCurrentWindow().close();
 	}
 
-	function finishOnboarding() {
-		onboardingComplete = true;
-		gateError = "";
-		gateLoading = false;
-		appScreen = "recording";
+	async function loadStandaloneSettingsMode() {
+		if (!standaloneSettings) return;
+		try {
+			if (skipOnboarding) {
+				standaloneSetupHighlight = false;
+			} else if (forceOnboarding) {
+				standaloneSetupHighlight = true;
+			} else {
+				const done = await invoke<boolean>("settings_onboarding_status");
+				standaloneSetupHighlight = !done;
+			}
+		} catch {
+			standaloneSetupHighlight = false;
+		} finally {
+			standaloneSettingsReady = true;
+		}
 	}
 
 	onMount(() => {
-		if (!standaloneSettings) void refreshGate();
+		if (standaloneSettings) void loadStandaloneSettingsMode();
+		else void refreshGate();
 	});
 </script>
 
 {#if standaloneSettings}
-	<SettingsScreen standalone onClose={closeStandaloneSettings} />
+	{#if !standaloneSettingsReady}
+		<div class="flex min-h-screen items-center justify-center bg-surface-container-low">
+			<p class="text-body-sm text-on-surface/70">Loading Settings…</p>
+		</div>
+	{:else}
+		<SettingsScreen
+			standalone
+			setupHighlight={standaloneSetupHighlight}
+			onClose={closeStandaloneSettings}
+		/>
+	{/if}
 {:else}
 	<main>
 		{#if gateLoading}
@@ -94,19 +115,20 @@
 				<p class="text-body-sm text-on-surface/70">Loading app status...</p>
 			</div>
 		{:else if gateError}
-			<div class="mx-auto flex min-h-screen w-full max-w-2xl flex-col items-center justify-center gap-3 p-6 text-center">
+			<div
+				class="mx-auto flex min-h-screen w-full max-w-2xl flex-col items-center justify-center gap-3 p-6 text-center"
+			>
 				<p class="text-title-sm font-normal tracking-tight text-on-surface">Could not load app status</p>
 				<p class="text-body-sm text-error">{gateError}</p>
 				<Button variant="secondary" onclick={refreshGate}>Retry</Button>
 			</div>
-		{:else if onboardingComplete}
-			{#if appScreen === "processing"}
-				<ScribeProcessingScreen title={processingTitle} onClose={closeProcessing} onRecordAgain={returnToRecording} />
-			{:else}
-				<ScribeScreen processingStart={beginProcessing} autoStart={autoStartRecording} />
-			{/if}
+		{:else if appScreen === "processing"}
+			<ScribeProcessingScreen
+				title={processingTitle}
+				onRecordAgain={returnToRecording}
+			/>
 		{:else}
-			<OnboardingScreen onComplete={finishOnboarding} />
+			<ScribeScreen processingStart={beginProcessing} autoStart={autoStartRecording} {firstRunSetupHint} />
 		{/if}
 	</main>
 {/if}

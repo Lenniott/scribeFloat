@@ -21,7 +21,7 @@
           "300": "too light on dark backgrounds — omitted entirely"
         }
       },
-      "tailwindThemeFile": "tailwind.css",
+      "tailwindThemeFile": "src/app.css",
       "tone": "instrument-grade. terse, precise, zero hype. reads like terminal output.",
       "casing": {
         "labels": "UPPERCASE with letter-spacing: 0.05em",

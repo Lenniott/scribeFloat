@@ -12,7 +12,7 @@
 
 <section class="flex flex-col gap-4 pt-1">
 	{#if title}
-		<h4 class="font-data text-label-sm tracking-stamped text-on-surface/60 uppercase">{title}</h4>
+		<h4 class="font-mono text-label-sm tracking-stamped text-on-surface/60 uppercase">{title}</h4>
 	{/if}
 	<div class="flex flex-col gap-4">
 		{@render children?.()}

@@ -62,8 +62,8 @@
 	function syncPaletteFromTheme() {
 		if (typeof document === "undefined") return;
 		const cs = getComputedStyle(document.documentElement);
-		palette.primary = cs.getPropertyValue("--color-secondary").trim();
-		palette.active = cs.getPropertyValue("--color-active").trim();
+		palette.primary = cs.getPropertyValue("--color-on-surface-dim").trim();
+		palette.active = cs.getPropertyValue("--color-on-surface").trim();
 	}
 
 	function normalize(level: number): number {
@@ -150,12 +150,13 @@
 			for (let l = 0; l < maxLayers; l++) {
 				const y = bottomY - (l + 1) * unitH;
 				if (bottomY - y > maxReachPx) break;
-				ctx.globalAlpha = 1;
 				if (l < spkLayers) {
+					ctx.globalAlpha = 0.4;
 					ctx.fillStyle = palette.active;
 					ctx.fillRect(x, y, sideW, Math.max(1, unitH - 1));
 				}
 				if (l < micLayers) {
+					ctx.globalAlpha = 1;
 					ctx.fillStyle = palette.primary;
 					ctx.fillRect(x + sideW + innerGap, y, sideW, Math.max(1, unitH - 1));
 				}
@@ -198,7 +199,7 @@
 
 <div
 	bind:this={wrap}
-	class="relative overflow-hidden rounded-md bg-surface-container-low {className}"
+	class="relative overflow-hidden rounded-md bg-surface-low {className}"
 	style="width: {currentPreset().width}px; height: {currentPreset().height}px;"
 >
 	<canvas bind:this={canvas} class="block h-full w-full" aria-hidden="true"></canvas>

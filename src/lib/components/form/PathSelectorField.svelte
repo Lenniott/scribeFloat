@@ -28,7 +28,7 @@
 </script>
 
 <div class="flex flex-col gap-1.5 text-left">
-	<label class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase" for={fieldId}
+	<label class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase" for={fieldId}
 		>{label}</label
 	>
 	<div class="flex min-w-0 items-center gap-2">
@@ -36,7 +36,7 @@
 			id={fieldId}
 			type="text"
 			bind:value={path}
-			class="h-8 min-w-0 flex-1 rounded-md border-0 border-b border-transparent bg-surface-container-lowest p-2 text-body-md text-on-surface placeholder:text-on-surface-dim focus:bg-surface-container-highest focus:outline-none"
+			class="h-8 min-w-0 flex-1 rounded-md border-0 border-b border-transparent bg-surface-lowest p-2 text-body-md text-on-surface placeholder:text-on-surface-dim focus:bg-surface-highest focus:outline-none"
 			onblur={() => onChange?.(path)}
 		/>
 		<Button variant="normal" onclick={choosePath}>Change</Button>

@@ -88,15 +88,15 @@
   aria-label={`Processing ${Math.round(safeProgress)}% complete`}
 >
   <div
-    class={`flex relative ${variantConfig.barHeight} rounded-xs bg-surface-container-low ${variantConfig.padding}`}
+    class={`flex relative ${variantConfig.barHeight} rounded-xs bg-surface-low ${variantConfig.padding}`}
     style={`width: ${resolvedBarWidth}; gap: ${blockGap};`}
   >
     {#each blocks as block (block)}
       <span
         class={`h-full shrink-0 transition-colors duration-200 ${
           block < activeBlockCount
-            ? "bg-primary"
-            : "bg-surface-container-highest"
+            ? "bg-on-surface"
+            : "bg-surface-highest"
         }`}
         style={`width: ${variantConfig.blockWidth};`}
         aria-hidden="true"
@@ -104,7 +104,7 @@
     {/each}
     {#if variantConfig.showPercent}
       <p
-        class="absolute -bottom-6 left-0 font-data text-label-xs tracking-data text-on-surface/55"
+        class="absolute -bottom-6 left-0 font-mono text-label-sm tracking-stamped text-on-surface/55"
       >
         {Math.round(safeProgress)}%
       </p>
@@ -117,7 +117,7 @@
           <span
             class={`grid size-5 shrink-0 place-items-center rounded border text-label-sm font-normal ${
               step.complete
-                ? "border-primary bg-primary text-on-primary"
+                ? "border-on-surface bg-on-surface text-void"
                 : "border-on-surface/70 text-transparent"
             }`}
             aria-hidden="true"

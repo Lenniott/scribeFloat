@@ -77,27 +77,27 @@
 
 <section class="space-y-4 h-full">
 	{#if showHeader}
-		<h2 class="text-title-sm font-normal tracking-tight">{heading}</h2>
+		<h2 class="sf-headline-sm">{heading}</h2>
 	{/if}
 
 	{#if selectedModel}
-		<p class="text-body-sm text-on-surface/70">
+		<p class="text-body-md text-on-surface/70">
 			Active Scribe model:
 			<span class="font-normal text-on-surface">{selectedModel.label}</span>
 		</p>
 	{:else}
-		<p class="text-body-sm text-on-surface/70">No model selected yet.</p>
+		<p class="text-body-md text-on-surface/70">No model selected yet.</p>
 	{/if}
 
 	{#if modelStore.error}
-		<p class="rounded-md bg-error-container/20 px-3 py-2 text-body-sm text-error">
+		<p class="rounded-md border border-surface-high px-3 py-2 text-body-md text-error">
 			{modelStore.error}
 		</p>
 	{/if}
 	<div class="space-y-3">
 		{#each modelStore.models as model (model.id)}
 			<div
-				class={`rounded-md border ${model.selected ? 'border-active bg-active/5' : 'border-surface-container-high'} px-3 py-3`}
+				class={`rounded-md border ${model.selected ? 'border-surface-highest' : 'border-surface-high'} px-3 py-3`}
 			>
 				<div class="flex items-center">
 					<div class="flex min-w-0 grow items-center gap-2">
@@ -113,7 +113,7 @@
 					<div class="flex items-center gap-2">
 						{#if model.downloaded}
 							{#if model.selected}
-								<span class="flex size-6 items-center justify-center p-1 text-active">
+								<span class="flex size-6 items-center justify-center p-1 text-on-surface">
 									<CircleCheckBig />
 								</span>
 							{:else}
@@ -123,7 +123,7 @@
 							{/if}
 						{:else}
 							<Button
-								variant="transparent"
+								variant="ghost"
 								disabled={!!modelStore.downloadingByModel[model.id]}
 								onclick={() => downloadModel(model.id)}
 								icon={Download}
@@ -134,9 +134,9 @@
 					</div>
 				</div>
 				{#if !model.downloaded && (modelStore.downloadingByModel[model.id] || (modelStore.progressByModel[model.id] ?? 0) > 0)}
-					<div class="h-2 w-full overflow-hidden rounded bg-surface-container-high">
+					<div class="h-2 w-full overflow-hidden rounded bg-surface-high">
 						<div
-							class="h-full bg-primary transition-all"
+							class="h-full bg-on-surface-dim transition-all"
 							style={`width:${Math.round((modelStore.progressByModel[model.id] ?? 0) * 100)}%`}
 						></div>
 					</div>

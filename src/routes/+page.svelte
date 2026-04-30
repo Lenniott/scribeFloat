@@ -9,6 +9,9 @@
 	import SettingsScreen from "@lib/screens/settings.svelte";
 	import { extractErrorMessage } from "$lib/types";
 
+	/** Cleared when onboarding is done so setup auto-open may run again after a future reset-onboarding flow. */
+	const AUTO_OPEN_SETUP_STORAGE_KEY = "liscribe_auto_opened_setup_once";
+
 	const forceOnboarding = import.meta.env.VITE_FORCE_ONBOARDING === "1";
 	const skipOnboarding = import.meta.env.VITE_SKIP_ONBOARDING === "1" && !forceOnboarding;
 	const standaloneSettings = browser && new URLSearchParams(window.location.search).get("view") === "settings";
@@ -38,13 +41,6 @@
 			return;
 		}
 
-		if (forceOnboarding) {
-			onboardingComplete = false;
-			gateError = "";
-			gateLoading = false;
-			appScreen = "recording";
-			return;
-		}
 		gateLoading = true;
 		gateError = "";
 		try {
@@ -94,12 +90,17 @@
 		if (standaloneSettings) void loadStandaloneSettingsMode();
 		else void refreshGate();
 	});
+
+	$effect(() => {
+		if (!browser || !onboardingComplete) return;
+		localStorage.removeItem(AUTO_OPEN_SETUP_STORAGE_KEY);
+	});
 </script>
 
 {#if standaloneSettings}
 	{#if !standaloneSettingsReady}
-		<div class="flex min-h-screen items-center justify-center bg-surface-container-low">
-			<p class="text-body-sm text-on-surface/70">Loading Settings…</p>
+		<div class="flex min-h-screen items-center justify-center bg-surface-low">
+			<p class="text-body-md text-on-surface/70">Loading Settings…</p>
 		</div>
 	{:else}
 		<SettingsScreen
@@ -112,14 +113,14 @@
 	<main>
 		{#if gateLoading}
 			<div class="flex min-h-screen items-center justify-center p-6">
-				<p class="text-body-sm text-on-surface/70">Loading app status...</p>
+				<p class="text-body-md text-on-surface/70">Loading app status...</p>
 			</div>
 		{:else if gateError}
 			<div
 				class="mx-auto flex min-h-screen w-full max-w-2xl flex-col items-center justify-center gap-3 p-6 text-center"
 			>
-				<p class="text-title-sm font-normal tracking-tight text-on-surface">Could not load app status</p>
-				<p class="text-body-sm text-error">{gateError}</p>
+				<p class="sf-headline-sm text-on-surface">Could not load app status</p>
+				<p class="text-body-md text-error">{gateError}</p>
 				<Button variant="secondary" onclick={refreshGate}>Retry</Button>
 			</div>
 		{:else if appScreen === "processing"}

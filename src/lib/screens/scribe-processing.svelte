@@ -109,6 +109,7 @@
     if (phase === "transcribing") {
       await invoke("scribe_abort_transcription").catch(() => {});
     }
+    await invoke("scribe_cancel").catch(() => {});
     await invoke("scribe_destroy_window").catch(() => {});
   }
 
@@ -140,16 +141,16 @@
   class="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center p-6 text-on-surface"
 >
   <section
-    class="flex w-full flex-col gap-8 rounded-md border border-outline-variant/20 bg-surface-container-lowest p-8 shadow-ambient"
+    class="flex w-full flex-col gap-8 rounded-md border border-surface-low/20 bg-surface-lowest p-8 shadow-ambient"
   >
     <header class="flex gap-4 w-full justify-between items-center">
       <div class="flex flex-col gap-2">
         <p
-          class="font-data text-label-sm tracking-stamped text-on-surface/55 uppercase"
+          class="font-mono text-label-sm tracking-stamped text-on-surface/55 uppercase"
         >
           {title || "Recording"}
         </p>
-        <h1 class="text-display-sm font-light tracking-heading">
+        <h1 class="sf-headline-sm">
           {#if phase === "transcribing"}
             Processing...
           {:else if phase === "done"}
@@ -205,7 +206,7 @@
         {#if displayPath}
           <button class="cursor-pointer group" onclick={openTranscript}>
             <p
-              class="truncate font-data text-body-sm text-primary underline decoration-primary/60 group-hover:underline-offset-2"
+              class="truncate font-mono text-body-md text-on-surface underline decoration-on-surface-dim group-hover:underline-offset-2"
               title={displayPath}
             >
               {displayPath}

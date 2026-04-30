@@ -1,212 +1,216 @@
-/*
- * Scribefloat Design System — Tailwind v4 Theme
- *
- * Usage in your project:
- *   @import "tailwindcss";
- *   @import "./tailwind.css";
- *
- * Font import (add to <head> or top of CSS entry):
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400&family=Geist:wght@300;400;500&display=swap');
+@import "tailwindcss";
 
+/* Scan design specs so utilities referenced in markdown are generated */
+@source "../context/**/*.md";
+
+/*
+ * Color values live in :root / [data-theme] — NOT in @theme inline.
  *
- * Theme switching:
- *   Dark  → default / [data-theme="dark"] on <html>
- *   Light → [data-theme="light"] on <html>  (or prefers-color-scheme: light fallback)
- *
- * Color utilities generated: bg-*, text-*, border-* for every --color-* token.
- * Text utilities generated:  text-display-lg, text-headline-sm, text-body-md, text-label-md, text-label-sm
- * Radius utilities generated: rounded-sm (2px), rounded-md (4px)
+ * Tailwind v4 @theme inline stamps values onto every element via the * selector
+ * inside @layer theme, which prevents CSS inheritance from propagating theme
+ * overrides. By using var(--sf-*) forwarding, @theme inline still registers
+ * the utility class names (bg-void, text-on-surface, etc.) while the actual
+ * color values remain inheritable from :root / [data-theme].
  */
+@theme inline {
+
+  /* ── Fonts ─────────────────────────────────────────────────────────────── */
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+
+  /* ── Colors — forwarded via var() so :root / [data-theme] overrides work ── */
+  --color-void:              var(--sf-void);
+  --color-primary:           var(--sf-primary);
+  --color-on-primary:        var(--sf-on-primary);
+  --color-secondary:         var(--sf-secondary);
+  --color-on-secondary:      var(--sf-on-secondary);
+  --color-tertiary:          var(--sf-tertiary);
+  --color-on-tertiary:       var(--sf-on-tertiary);
+  --color-error:             var(--sf-error);
+  --color-on-error:          var(--sf-on-error);
+  --color-green:             var(--sf-green);
+  --color-surface-lowest:    var(--sf-surface-lowest);
+  --color-surface-low:       var(--sf-surface-low);
+  --color-surface-high:      var(--sf-surface-high);
+  --color-surface-highest:   var(--sf-surface-highest);
+  --color-on-surface:        var(--sf-on-surface);
+  --color-on-surface-dim:    var(--sf-on-surface-dim);
+  --color-on-surface-faint:  var(--sf-on-surface-faint);
+
+  /* ── Type scale (size + paired line-height) ────────────────────────────── */
+  --text-display-lg:              3.5rem;
+  --text-display-lg--line-height:  1.1;
+
+  --text-headline-sm:              1.5rem;
+  --text-headline-sm--line-height: 1.2;
+
+  --text-body-md:                 0.875rem;
+  --text-body-md--line-height:    1.5;
+
+  --text-label-md:                0.75rem;
+  --text-label-md--line-height:   1.4;
+
+  --text-label-sm:                0.6875rem;
+  --text-label-sm--line-height:   1.4;
+
+  /* ── Letter spacing ────────────────────────────────────────────────────── */
+  --tracking-normal:   0em;
+  --tracking-tight:   -0.025em;
+  --tracking-stamped:  0.05em;
+
+  /* ── Radius ────────────────────────────────────────────────────────────── */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+
+  /* ── Shadows ───────────────────────────────────────────────────────────── */
+  --shadow-ambient: var(--sf-shadow-ambient);
+}
+
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   @theme inline  →  utilities emit var() references so overrides work at runtime
+   Color values — non-layered so they beat @layer theme output from @theme.
+   :root provides dark defaults; [data-theme] and @media override as needed.
    ───────────────────────────────────────────────────────────────────────────── */
-   @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400&family=Geist:wght@400;500&display=swap');
-   @theme inline {
 
-	/* ── Fonts ─────────────────────────────────────────────────────────────── */
-	--font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
-	--font-mono: "Geist Mono", ui-monospace, monospace;
-  
-	/* ── Colors — dark defaults; overridden per theme in @layer base below ── */
-  
-	/* Page */
-	--color-void:              oklch(0.20 0 0);
-  
-	/* Accents */
-	--color-primary:           oklch(0.70 0.1867 47.6);
-	--color-on-primary:        oklch(0.20 0 0);
-	--color-secondary:         oklch(0.815 0.19 77);
-	--color-on-secondary:      oklch(0.20 0 0);
-	--color-tertiary:          oklch(0.72 0.16 240);
-	--color-on-tertiary:       oklch(0.20 0 0);
-	--color-error:             oklch(0.53 0.21 26.5);
-	--color-on-error:          oklch(0.93 0.0044 286.28);
-	--color-green:             oklch(0.609 0.2158 141.64);
-  
-	/* Surfaces */
-	--color-surface-lowest:    oklch(0.24 0 0);
-	--color-surface-low:       oklch(0.28 0 0);
-	--color-surface-high:      oklch(0.32 0 0);
-	--color-surface-highest:   oklch(0.40 0 0);
-  
-	/* Text */
-	--color-on-surface:        oklch(0.93 0.0044 286.28);
-	--color-on-surface-dim:    oklch(0.60 0 0);   /* also: waveform idle bars */
-	--color-on-surface-faint:  oklch(0.40 0 0);   /* disabled, placeholders */
-  
-	/* ── Type scale (size + paired line-height) ────────────────────────────── */
-	--text-display-lg:             3.5rem;
-	--text-display-lg--line-height: 1.1;
-  
-	--text-headline-sm:             1.5rem;
-	--text-headline-sm--line-height: 1.2;
-  
-	--text-body-md:                0.875rem;
-	--text-body-md--line-height:   1.5;
-  
-	--text-label-md:               0.75rem;
-	--text-label-md--line-height:  1.4;
-  
-	--text-label-sm:               0.6875rem;
-	--text-label-sm--line-height:  1.4;
-  
-	/* ── Letter spacing ────────────────────────────────────────────────────── */
-	--tracking-stamped: 0.05em;   /* all uppercase labels, section headers */
-  
-	/* ── Radius ────────────────────────────────────────────────────────────── */
-	/* Tailwind v4 maps --radius-sm → rounded-sm, --radius-md → rounded-md    */
-	--radius-sm: 2px;   /* chips, small tags, inner elements                  */
-	--radius-md: 4px;   /* buttons, inputs, cards, panels, modals             */
-	/* full-round (9999px) is rounded-full — toggle knob + recording dot only  */
-  
-	/* ── Shadows ───────────────────────────────────────────────────────────── */
-	--shadow-ambient: 0 4px 32px oklch(0 0 0 / 0.5);
+/* Dark defaults */
+:root {
+  color-scheme: dark;
+  --sf-void:              oklch(0.20 0 0);
+  --sf-primary:           oklch(0.70 0.1867 47.6);
+  --sf-on-primary:        oklch(0.20 0 0);
+  --sf-secondary:         oklch(0.815 0.19 77);
+  --sf-on-secondary:      oklch(0.20 0 0);
+  --sf-tertiary:          oklch(0.72 0.16 240);
+  --sf-on-tertiary:       oklch(0.20 0 0);
+  --sf-error:             oklch(0.53 0.21 26.5);
+  --sf-on-error:          oklch(0.93 0.0044 286.28);
+  --sf-green:             oklch(0.609 0.2158 141.64);
+  --sf-surface-lowest:    oklch(0.24 0 0);
+  --sf-surface-low:       oklch(0.28 0 0);
+  --sf-surface-high:      oklch(0.32 0 0);
+  --sf-surface-highest:   oklch(0.40 0 0);
+  --sf-on-surface:        oklch(0.93 0.0044 286.28);
+  --sf-on-surface-dim:    oklch(0.60 0 0);
+  --sf-on-surface-faint:  oklch(0.40 0 0);
+  --sf-shadow-ambient:    0 4px 32px oklch(0 0 0 / 0.5);
+}
+
+/* Explicit dark */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --sf-void:              oklch(0.20 0 0);
+  --sf-primary:           oklch(0.70 0.1867 47.6);
+  --sf-on-primary:        oklch(0.20 0 0);
+  --sf-secondary:         oklch(0.815 0.19 77);
+  --sf-on-secondary:      oklch(0.20 0 0);
+  --sf-tertiary:          oklch(0.72 0.16 240);
+  --sf-on-tertiary:       oklch(0.20 0 0);
+  --sf-error:             oklch(0.53 0.21 26.5);
+  --sf-on-error:          oklch(0.93 0.0044 286.28);
+  --sf-green:             oklch(0.609 0.2158 141.64);
+  --sf-surface-lowest:    oklch(0.24 0 0);
+  --sf-surface-low:       oklch(0.28 0 0);
+  --sf-surface-high:      oklch(0.32 0 0);
+  --sf-surface-highest:   oklch(0.40 0 0);
+  --sf-on-surface:        oklch(0.93 0.0044 286.28);
+  --sf-on-surface-dim:    oklch(0.60 0 0);
+  --sf-on-surface-faint:  oklch(0.40 0 0);
+  --sf-shadow-ambient:    0 4px 32px oklch(0 0 0 / 0.5);
+}
+
+/* Explicit light */
+[data-theme="light"] {
+  color-scheme: light;
+  --sf-void:              oklch(0.98 0 0);
+  --sf-primary:           oklch(0.58 0.18 47.6);
+  --sf-on-primary:        oklch(0.98 0 0);
+  --sf-secondary:         oklch(0.52 0.16 77);
+  --sf-on-secondary:      oklch(0.98 0 0);
+  --sf-tertiary:          oklch(0.50 0.16 240);
+  --sf-on-tertiary:       oklch(0.98 0 0);
+  --sf-error:             oklch(0.48 0.20 26.5);
+  --sf-on-error:          oklch(0.98 0 0);
+  --sf-green:             oklch(0.45 0.18 141.64);
+  --sf-surface-lowest:    oklch(0.96 0 0);
+  --sf-surface-low:       oklch(0.92 0 0);
+  --sf-surface-high:      oklch(0.87 0 0);
+  --sf-surface-highest:   oklch(0.80 0 0);
+  --sf-on-surface:        oklch(0.18 0 0);
+  --sf-on-surface-dim:    oklch(0.45 0 0);
+  --sf-on-surface-faint:  oklch(0.65 0 0);
+  --sf-shadow-ambient:    0 4px 32px oklch(0 0 0 / 0.12);
+}
+
+/* System preference fallback (no explicit data-theme set) */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --sf-void:              oklch(0.98 0 0);
+    --sf-primary:           oklch(0.58 0.18 47.6);
+    --sf-on-primary:        oklch(0.98 0 0);
+    --sf-secondary:         oklch(0.52 0.16 77);
+    --sf-on-secondary:      oklch(0.98 0 0);
+    --sf-tertiary:          oklch(0.50 0.16 240);
+    --sf-on-tertiary:       oklch(0.98 0 0);
+    --sf-error:             oklch(0.48 0.20 26.5);
+    --sf-on-error:          oklch(0.98 0 0);
+    --sf-green:             oklch(0.45 0.18 141.64);
+    --sf-surface-lowest:    oklch(0.96 0 0);
+    --sf-surface-low:       oklch(0.92 0 0);
+    --sf-surface-high:      oklch(0.87 0 0);
+    --sf-surface-highest:   oklch(0.80 0 0);
+    --sf-on-surface:        oklch(0.18 0 0);
+    --sf-on-surface-dim:    oklch(0.45 0 0);
+    --sf-on-surface-faint:  oklch(0.65 0 0);
+    --sf-shadow-ambient:    0 4px 32px oklch(0 0 0 / 0.12);
   }
-  
-  
-  /* ─────────────────────────────────────────────────────────────────────────────
-	 Light mode overrides
-	 These replace the inline @theme defaults when the relevant selector is active.
-	 ───────────────────────────────────────────────────────────────────────────── */
-  @layer base {
-  
-	/* Explicit dark — matches default but useful for toggling */
-	[data-theme="dark"] {
-	  color-scheme: dark;
-	  --color-void:              oklch(0.20 0 0);
-	  --color-primary:           oklch(0.70 0.1867 47.6);
-	  --color-on-primary:        oklch(0.20 0 0);
-	  --color-secondary:         oklch(0.815 0.19 77);
-	  --color-on-secondary:      oklch(0.20 0 0);
-	  --color-tertiary:          oklch(0.72 0.16 240);
-	  --color-on-tertiary:       oklch(0.20 0 0);
-	  --color-error:             oklch(0.53 0.21 26.5);
-	  --color-on-error:          oklch(0.93 0.0044 286.28);
-	  --color-green:             oklch(0.609 0.2158 141.64);
-	  --color-surface-lowest:    oklch(0.24 0 0);
-	  --color-surface-low:       oklch(0.28 0 0);
-	  --color-surface-high:      oklch(0.32 0 0);
-	  --color-surface-highest:   oklch(0.40 0 0);
-	  --color-on-surface:        oklch(0.93 0.0044 286.28);
-	  --color-on-surface-dim:    oklch(0.60 0 0);
-	  --color-on-surface-faint:  oklch(0.40 0 0);
-	  --shadow-ambient:          0 4px 32px oklch(0 0 0 / 0.5);
-	}
-  
-	/* Explicit light */
-	[data-theme="light"] {
-	  color-scheme: light;
-	  --color-void:              oklch(0.98 0 0);
-	  --color-primary:           oklch(0.58 0.18 47.6);    /* orange, darkened */
-	  --color-on-primary:        oklch(0.98 0 0);
-	  --color-secondary:         oklch(0.52 0.16 77);      /* yellow → olive-amber */
-	  --color-on-secondary:      oklch(0.98 0 0);
-	  --color-tertiary:          oklch(0.50 0.16 240);     /* blue, darkened */
-	  --color-on-tertiary:       oklch(0.98 0 0);
-	  --color-error:             oklch(0.48 0.20 26.5);    /* red, darkened */
-	  --color-on-error:          oklch(0.98 0 0);
-	  --color-green:             oklch(0.45 0.18 141.64);  /* green, darkened */
-	  --color-surface-lowest:    oklch(0.96 0 0);
-	  --color-surface-low:       oklch(0.92 0 0);
-	  --color-surface-high:      oklch(0.87 0 0);
-	  --color-surface-highest:   oklch(0.80 0 0);
-	  --color-on-surface:        oklch(0.18 0 0);
-	  --color-on-surface-dim:    oklch(0.45 0 0);
-	  --color-on-surface-faint:  oklch(0.65 0 0);
-	  --shadow-ambient:          0 4px 32px oklch(0 0 0 / 0.12);
-	}
-  
-	/* System preference fallback (no explicit data-theme set) */
-	@media (prefers-color-scheme: light) {
-	  :root:not([data-theme]) {
-		color-scheme: light;
-		--color-void:              oklch(0.98 0 0);
-		--color-primary:           oklch(0.58 0.18 47.6);
-		--color-on-primary:        oklch(0.98 0 0);
-		--color-secondary:         oklch(0.52 0.16 77);
-		--color-on-secondary:      oklch(0.98 0 0);
-		--color-tertiary:          oklch(0.50 0.16 240);
-		--color-on-tertiary:       oklch(0.98 0 0);
-		--color-error:             oklch(0.48 0.20 26.5);
-		--color-on-error:          oklch(0.98 0 0);
-		--color-green:             oklch(0.45 0.18 141.64);
-		--color-surface-lowest:    oklch(0.96 0 0);
-		--color-surface-low:       oklch(0.92 0 0);
-		--color-surface-high:      oklch(0.87 0 0);
-		--color-surface-highest:   oklch(0.80 0 0);
-		--color-on-surface:        oklch(0.18 0 0);
-		--color-on-surface-dim:    oklch(0.45 0 0);
-		--color-on-surface-faint:  oklch(0.65 0 0);
-		--shadow-ambient:          0 4px 32px oklch(0 0 0 / 0.12);
-	  }
-	}
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Semantic component utilities
+   ───────────────────────────────────────────────────────────────────────────── */
+@layer components {
+
+  /* Typography role classes */
+  .sf-display-lg {
+    @apply font-mono text-display-lg font-normal tracking-normal;
   }
-  
-  
-  /* ─────────────────────────────────────────────────────────────────────────────
-	 Semantic component utilities  (use @apply in components, or add to @layer)
-	 ───────────────────────────────────────────────────────────────────────────── */
-  @layer components {
-  
-	/* Typography role classes */
-	.sf-display-lg {
-	  @apply font-mono text-display-lg tracking-normal font-normal;
-	}
-	.sf-headline-sm {
-	  @apply font-mono text-headline-sm tracking-stamped uppercase font-normal;
-	}
-	.sf-body-md {
-	  @apply font-sans text-body-md font-normal;
-	}
-	.sf-label-md {
-	  @apply font-sans text-label-md font-medium;
-	}
-	.sf-label-sm {
-	  @apply font-sans text-label-sm tracking-stamped uppercase;
-	  font-weight: 500;
-	}
-	.sf-label-sm-mono {
-	  @apply font-mono text-label-sm tracking-stamped uppercase font-normal;
-	}
-  
-	/* Surface shortcuts */
-	.sf-panel      { @apply bg-surface-lowest rounded-md; }
-	.sf-card       { @apply bg-surface-low rounded-md; }
-	.sf-input      { @apply bg-surface-lowest border border-surface-high rounded-md text-on-surface font-sans text-label-md; }
-	.sf-divider    { @apply border-t border-surface-low; }
-  
-	/* Button variants */
-	.sf-btn-primary {
-	  @apply bg-primary text-on-primary font-mono text-label-md tracking-stamped rounded-md px-3 py-1.5;
-	}
-	.sf-btn-secondary {
-	  @apply border border-secondary text-secondary bg-transparent font-sans text-label-md rounded-md px-3 py-1.5;
-	}
-	.sf-btn-ghost {
-	  @apply bg-transparent text-on-surface font-sans text-label-md rounded-md px-3 py-1.5;
-	}
-	.sf-btn-destructive {
-	  @apply bg-error text-on-error font-sans text-label-md rounded-md px-3 py-1.5;
-	}
+  .sf-headline-sm {
+    @apply font-mono text-headline-sm tracking-stamped uppercase font-normal;
   }
-  
+  .sf-body-md {
+    @apply font-sans text-body-md font-normal;
+  }
+  .sf-label-md {
+    @apply font-sans text-label-md font-medium;
+  }
+  .sf-label-sm {
+    @apply font-sans text-label-sm tracking-stamped uppercase;
+    font-weight: 500;
+  }
+  .sf-label-sm-mono {
+    @apply font-mono text-label-sm tracking-stamped uppercase font-normal;
+  }
+
+  /* Surface shortcuts */
+  .sf-panel      { @apply bg-surface-lowest rounded-md; }
+  .sf-card       { @apply bg-surface-low rounded-md; }
+  .sf-input      { @apply bg-surface-lowest border border-surface-high rounded-md text-on-surface font-sans text-label-md; }
+  .sf-divider    { @apply border-t border-surface-low; }
+
+  /* Button variants */
+  .sf-btn-primary {
+    @apply bg-primary text-on-primary font-mono text-label-md tracking-stamped rounded-md px-3 py-1.5;
+  }
+  .sf-btn-secondary {
+    @apply border border-secondary text-secondary bg-transparent font-sans text-label-md rounded-md px-3 py-1.5;
+  }
+  .sf-btn-ghost {
+    @apply bg-transparent text-on-surface font-sans text-label-md rounded-md px-3 py-1.5;
+  }
+  .sf-btn-destructive {
+    @apply bg-error text-on-error font-sans text-label-md rounded-md px-3 py-1.5;
+  }
+}

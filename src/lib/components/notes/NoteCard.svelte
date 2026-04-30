@@ -20,8 +20,8 @@
 
 <article
 	class="rounded-md px-3 py-2 text-left transition-colors {selected
-		? 'bg-surface-container-high'
-		: 'bg-surface-container-low hover:bg-surface-container-high/80'}"
+		? 'bg-surface-high'
+		: 'bg-surface-low hover:bg-surface-high/80'}"
 >
 	<button
 		type="button"

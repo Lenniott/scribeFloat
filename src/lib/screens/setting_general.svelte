@@ -57,7 +57,7 @@
 </script>
 
 <section class="space-y-4">
-	<h2 class="text-title-sm font-normal tracking-tight">General settings</h2>
+	<h2 class="sf-headline-sm">General settings</h2>
 	<OptionGroup name="theme-mode" label="Theme" options={themeOptions} bind:selected={themeMode} />
 	<PathSelectorField label="Default save folder" bind:path={outputPath} />
 	<PathSelectorField

@@ -24,7 +24,7 @@
 	import type { Note } from '@components/notes/NoteCard.svelte';
 	import type { PermissionStatus } from '$lib/types';
 
-	const AUTO_OPEN_SETUP_STORAGE_KEY = 'liscribe_auto_opened_setup_session';
+	const AUTO_OPEN_SETUP_STORAGE_KEY = 'liscribe_auto_opened_setup_once';
 
 	type Props = {
 		processingStart?: (title: string) => void;
@@ -63,6 +63,7 @@
 	let timerInterval: ReturnType<typeof setInterval> | null = null;
 
 	function startTimer() {
+		stopTimer();
 		const start = Date.now();
 		elapsedSeconds = 0;
 		timerInterval = setInterval(() => {
@@ -164,6 +165,8 @@
 			}
 
 			await invoke('scribe_start', { preferredMic: selectedMic || null });
+			phase = 'recording';
+			startTimer();
 		} catch (e) {
 			phase = 'error';
 			errorMessage = String(e);
@@ -179,8 +182,8 @@
 	async function maybeOfferSettingsWindowOnce() {
 		if (!browser || !firstRunSetupHint) return;
 		try {
-			if (sessionStorage.getItem(AUTO_OPEN_SETUP_STORAGE_KEY) === '1') return;
-			sessionStorage.setItem(AUTO_OPEN_SETUP_STORAGE_KEY, '1');
+			if (localStorage.getItem(AUTO_OPEN_SETUP_STORAGE_KEY) === '1') return;
+			localStorage.setItem(AUTO_OPEN_SETUP_STORAGE_KEY, '1');
 			await invoke('settings_show_window');
 		} catch {
 			// Desktop-only; silently ignore during web-only dev checks.
@@ -205,6 +208,8 @@
 
 	async function destroyScribeWindow() {
 		if (!browser) return;
+		await invoke('scribe_cancel').catch(() => {});
+		await invoke('scribe_abort_transcription').catch(() => {});
 		await invoke('scribe_destroy_window').catch(() => {});
 	}
 
@@ -342,8 +347,6 @@
 		const sel = modelStore.models.find((m) => m.selected && m.downloaded);
 		if (sel) selectedModelId = sel.id;
 
-		await maybeOfferSettingsWindowOnce();
-
 		const ul1 = await listen<ScribePayload>('scribe://state-changed', (e) =>
 			handleScribeEvent(e.payload),
 		);
@@ -358,6 +361,8 @@
 			if (focused) void maybeAutoStartRecording();
 		});
 
+		await maybeOfferSettingsWindowOnce();
+
 		await maybeAutoStartRecording();
 	});
 
@@ -369,11 +374,11 @@
 	});
 </script>
 
-<div class="mx-auto flex max-w-5xl flex-col gap-4 text-on-surface">
-	<section class="flex h-screen flex-col overflow-hidden bg-surface-container-lowest">
+<div class="mx-auto flex flex-col gap-4 text-on-surface">
+	<section class="flex h-screen flex-col overflow-hidden bg-surface-lowest">
 
 		<!-- Header -->
-		<header class="flex min-h-14 items-end justify-between border-b border-b-surface-container-low px-5 py-2">
+		<header class="flex min-h-14 items-end justify-between border-b border-b-surface-low px-5 py-2">
 			<div class="min-w-0 flex-1">
 				<EditableTitleField bind:value={fileName} />
 			</div>
@@ -386,7 +391,7 @@
 					onclick={openSettingsWindow}
 				/>
 				{#if modelStore.activeDownloadModelId}
-					<span class="font-data text-label-sm text-on-surface/60 uppercase tracking-stamped">
+					<span class="font-mono text-label-sm text-on-surface/60 uppercase tracking-stamped">
 						Model {Math.round((modelStore.progressByModel[modelStore.activeDownloadModelId] ?? 0) * 100)}%
 					</span>
 				{/if}
@@ -405,7 +410,7 @@
 		</header>
 
 		<!-- Body -->
-		<div class="grid min-h-0 flex-1 grid-cols-[1.05fr_0.95fr] items-stretch">
+		<div class="grid min-h-0 flex-1 grid-cols-[0.45fr_0.99fr] items-stretch">
 
 			<!-- Left: visualizer + settings -->
 			<div class="flex min-h-0 flex-col px-4 py-3">
@@ -421,7 +426,7 @@
 						<AccordionItem id="basic" title="Basic">
 							<div class="space-y-4">
 								<div class="flex flex-col gap-1.5 text-left">
-									<label for="mic-select" class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase">
+									<label for="mic-select" class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase">
 										Selected mic
 									</label>
 									<select
@@ -438,7 +443,7 @@
 												await startRecording();
 											}
 										}}
-										class="h-8 rounded-md border-0 border-b border-transparent bg-surface-container-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:ring-active focus:bg-surface-container-high focus:ring-0 focus:outline-none"
+										class="h-8 rounded-md border-0 border-b border-transparent bg-surface-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:border-b-surface-highest focus:bg-surface-high focus:ring-0 focus:outline-none"
 									>
 										{#each micOptions as opt (opt.value)}
 											<option value={opt.value}>{opt.label}</option>
@@ -447,7 +452,7 @@
 								</div>
 								{#if downloadedModelOptions.length > 0}
 									<div class="flex flex-col gap-1.5 text-left">
-										<label for="model-select" class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase">
+										<label for="model-select" class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase">
 											Model
 										</label>
 										<select
@@ -458,7 +463,7 @@
 												selectedModelId = id;
 												await modelStore.select(id);
 											}}
-											class="h-8 rounded-md border-0 border-b border-transparent bg-surface-container-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:ring-active focus:bg-surface-container-high focus:ring-0 focus:outline-none"
+											class="h-8 rounded-md border-0 border-b border-transparent bg-surface-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:border-b-surface-highest focus:bg-surface-high focus:ring-0 focus:outline-none"
 										>
 											{#each downloadedModelOptions as opt (opt.value)}
 												<option value={opt.value}>{opt.label}</option>
@@ -467,7 +472,7 @@
 									</div>
 								{/if}
 								<div class="flex items-center justify-between">
-									<span class="font-data text-label-sm font-normal tracking-stamped uppercase">
+									<span class="font-mono text-label-sm font-normal tracking-stamped uppercase">
 										Transcript timestamps
 									</span>
 									<ToggleSwitch
@@ -500,7 +505,7 @@
 								</div>
 							</div>
 						{:else if autoStart}
-							<span class="font-data text-label-sm text-on-surface/50 uppercase tracking-stamped">
+							<span class="font-mono text-label-sm text-on-surface/50 uppercase tracking-stamped">
 								Starting…
 							</span>
 						{:else}
@@ -519,7 +524,7 @@
 								<Button variant="secondary" onclick={() => (modelSetupOpen = true)}>
 									Model quick setup
 								</Button>
-								<Button variant="transparent" onclick={openSettingsWindow}>Full settings</Button>
+								<Button variant="ghost" onclick={openSettingsWindow}>Full settings</Button>
 							</div>
 						</div>
 
@@ -539,9 +544,9 @@
 
 			<!-- Right: notes -->
 			<div
-				class="flex min-h-0 flex-col border-l border-l-surface-container-low bg-surface-container-lowest p-3"
+				class="flex min-h-0 flex-col border-l border-l-surface-low bg-surface-lowest p-3"
 			>
-				<p class="mb-2 font-data text-label-md tracking-stamped text-on-surface/80 uppercase">
+				<p class="mb-2 font-mono text-label-md tracking-stamped text-on-surface/80 uppercase">
 					add notes
 				</p>
 				<div class="min-h-0 flex-1 overflow-y-auto">

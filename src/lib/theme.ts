@@ -16,8 +16,8 @@ export function resolveThemeMode(mode: ThemeMode): ResolvedTheme {
 export function applyThemeMode(mode: ThemeMode) {
 	if (typeof document === "undefined") return;
 	const resolved = resolveThemeMode(mode);
-	document.documentElement.dataset.themeMode = mode;
 	document.documentElement.dataset.theme = resolved;
+	try { localStorage.setItem('sf_theme_mode', mode); } catch (_) {}
 }
 
 export function watchThemeMode(mode: ThemeMode) {

@@ -31,13 +31,13 @@
 		{#if header}
 			{@render header()}
 		{:else}
-			<h2 class="font-data text-label-sm tracking-stamped text-on-surface/60 uppercase">Notes</h2>
+			<h2 class="font-mono text-label-sm tracking-stamped text-on-surface/60 uppercase">Notes</h2>
 		{/if}
 	</div>
 	<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4">
 		<NotesList bind:selectedId {notes} />
 	</div>
-	<div class="shrink-0 border-t border-outline-variant/0 px-4 pt-3 pb-4" style="box-shadow: inset 0 1px 0 0 var(--color-outline-variant);">
+	<div class="shrink-0 border-t border-surface-low/0 px-4 pt-3 pb-4" style="box-shadow: inset 0 1px 0 0 var(--color-surface-low);">
 		<NoteComposer bind:value={draft} onSubmit={add} />
 	</div>
 </div>

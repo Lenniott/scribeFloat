@@ -82,11 +82,11 @@
 	}
 </script>
 
-<div class={standalone ? 'min-h-screen bg-surface-container-low' : 'fixed inset-0 z-50 bg-black/50 p-4'}>
-	<div class="mx-auto flex h-screen max-w-5xl flex-col bg-surface-container-lowest shadow-lg">
-		<header class="flex items-center justify-between border-b border-surface-container-low px-4 py-3">
+<div class={standalone ? 'min-h-screen bg-surface-low' : 'fixed inset-0 z-50 bg-black/50 p-4'}>
+	<div class="mx-auto flex h-screen max-w-5xl flex-col bg-surface-lowest shadow-lg">
+		<header class="flex items-center justify-between border-b border-surface-low px-4 py-3">
 			<div>
-				<h2 class="text-title-md font-normal tracking-tight">
+				<h2 class="sf-headline-sm">
 					{setupMode ? 'Set up Liscribe' : 'Settings'}
 				</h2>
 				{#if setupMode}
@@ -101,7 +101,7 @@
 		</header>
 
 		<div class="flex min-h-0 h-full">
-			<nav class="w-52 border-r border-surface-container-low p-2">
+			<nav class="w-52 border-r border-surface-low p-2">
 				<div class="flex flex-col gap-1">
 					{#each visibleTabs as tab (tab.id)}
 						<NavButton active={currentTab === tab.id} onclick={() => selectTab(tab.id)}>
@@ -110,19 +110,19 @@
 					{/each}
 				</div>
 				{#if setupMode}
-					<div class="mt-4 space-y-2 rounded-md border border-surface-container px-3 py-2">
+					<div class="mt-4 space-y-2 rounded-md border border-surface-low px-3 py-2">
 						<p class="text-label-sm text-on-surface/70">Before recording you will need:</p>
-						<p class={modelReady ? 'text-label-sm text-green' : 'text-label-sm text-on-surface/50'}>
+						<p class={modelReady ? 'text-label-sm text-on-surface' : 'text-label-sm text-on-surface/50'}>
 							{modelReady ? 'Model installed and selected' : 'Model not ready'}
 						</p>
-						<p class={permissionsReady ? 'text-label-sm text-green' : 'text-label-sm text-on-surface/50'}>
+						<p class={permissionsReady ? 'text-label-sm text-on-surface' : 'text-label-sm text-on-surface/50'}>
 							{permissionsReady ? 'Microphone granted' : 'Microphone not granted'}
 						</p>
 					</div>
 				{/if}
 			</nav>
 
-			<section class="min-h-0 flex-1 overflow-y-auto bg-surface-container-low p-4">
+			<section class="min-h-0 flex-1 overflow-y-auto bg-surface-low p-4">
 				{#if currentTab === 'general'}
 					<SettingGeneral />
 				{:else if currentTab === 'permissions'}
@@ -134,7 +134,7 @@
 		</div>
 
 		{#if setupMode && standalone}
-			<footer class="flex flex-wrap items-center justify-between gap-3 border-t border-surface-container-low px-4 py-3">
+			<footer class="flex flex-wrap items-center justify-between gap-3 border-t border-surface-low px-4 py-3">
 				<div class="min-w-0 flex-1">
 					{#if setupMessage}
 						<p class="text-label-sm text-error">{setupMessage}</p>
@@ -147,7 +147,7 @@
 					{/if}
 				</div>
 				<div class="flex shrink-0 flex-wrap items-center gap-2">
-					<Button variant="transparent" onclick={configureLater} disabled={finishing}>
+					<Button variant="ghost" onclick={configureLater} disabled={finishing}>
 						Configure later
 					</Button>
 					{#if currentTab === 'permissions'}

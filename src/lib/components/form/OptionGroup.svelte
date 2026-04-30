@@ -15,7 +15,7 @@
 </script>
 
 <fieldset class="flex flex-col gap-2 text-left">
-	<legend class="font-data text-label-sm mb-1.5 font-normal tracking-widest text-on-surface/80 uppercase">
+	<legend class="font-mono text-label-sm mb-1.5 font-normal tracking-stamped text-on-surface/80 uppercase">
 		{label}
 	</legend>
 	<div
@@ -27,12 +27,12 @@
 			<label
 				class="flex cursor-pointer items-center justify-center rounded-sm px-3 py-1.5 text-label-md font-normal transition-colors {selected ===
 				opt.value
-					? 'bg-active text-on-active'
-					: 'text-on-surface hover:bg-active/20'}"
+					? 'bg-surface-highest text-on-surface'
+					: 'text-on-surface hover:bg-surface-high'}"
 			>
 				<input
 					type="radio"
-					class="sr-only h-7 bg-surface-container-low border border-primary"
+					class="sr-only"
 					{name}
 					value={opt.value}
 					checked={selected === opt.value}

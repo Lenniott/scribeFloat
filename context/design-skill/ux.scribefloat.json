@@ -135,7 +135,7 @@
             ],
             [
               "Multiple accent colours or rainbow status indicators",
-              "One accent, accent . One visual language. Simplicity builds trust."
+              "One primary accent colour (orange/`primary`). Red (`error`) is reserved for live/danger only. Simplicity builds trust."
             ]
           ]
         },
@@ -381,32 +381,43 @@
         },
         {
           "title": "Hierarchy",
-          "content": "A clear text hierarchy makes interfaces scannable. Use four distinct levels consistently:",
+          "content": "ScribeFloat uses five named scale steps. Use the semantic class (or `.sf-*` helper) — never compose the parts individually.\n\nHierarchy comes from size, case, and opacity only. No bold (`font-weight` 600+). No custom tracking outside the three defined values (`tracking-normal`, `tracking-tight`, `tracking-stamped`).",
           "table": [
             [
-              "Level",
+              "Scale",
+              "Tailwind class",
               "Role",
-              "Example"
+              "Usage"
             ],
             [
-              "Title",
-              "Headings, emphasis, primary content",
-              "Page title, card heading, bold labels"
+              "display-lg",
+              "text-display-lg font-mono font-normal",
+              "Large numeric readout. One per screen.",
+              "Recording timer only"
             ],
             [
-              "Body",
-              "Default reading text",
-              "Paragraphs, descriptions, form labels"
+              "headline-sm",
+              "sf-headline-sm (= text-headline-sm font-mono uppercase tracking-stamped)",
+              "Screen-level heading. Mono uppercase.",
+              "Modal titles, screen headers — one per view"
             ],
             [
-              "Subtitle",
-              "Secondary text, metadata, labels",
-              "Timestamps, categories, helper text"
+              "body-md",
+              "text-body-md font-sans font-normal",
+              "Default reading text.",
+              "Descriptions, onboarding prose, transcript body"
             ],
             [
-              "Muted",
-              "Placeholder, disabled, tertiary info",
-              "Empty state text, disabled labels"
+              "label-md",
+              "text-label-md font-sans font-medium",
+              "Control labels.",
+              "Form field labels, button text, accordion titles"
+            ],
+            [
+              "label-sm / label-sm-mono",
+              "text-label-sm … uppercase tracking-stamped",
+              "Metadata captions. Sans or mono.",
+              "Section dividers, status chips, file sizes, hotkey chips"
             ]
           ]
         },
@@ -699,13 +710,16 @@
           ]
         },
         {
-          "title": "React-specific",
+          "title": "Svelte-specific",
           "items": [
             {
-              "text": "For real-time values that update on every frame, like scroll position or mouse coordinates, use `refs` instead of `state` to bypass React's render cycle and commit to the DOM directly. This is appropriate for high-frequency events like `wheel`, `mousemove`, or `resize`."
+              "text": "For real-time values that update on every frame (scroll position, waveform data, animation), use a plain variable instead of a `$state` rune to avoid triggering Svelte's reactive graph on every animation frame. Commit to the DOM directly via the canvas API or direct element mutations."
             },
             {
-              "text": "Consider detecting device capabilities ([react-adaptive-hooks](https://github.com/GoogleChromeLabs/react-adaptive-hooks)) and adapting accordingly: reduce animation, lower image quality, or simplify layouts for lower-end hardware."
+              "text": "Use `$derived` for computed values that depend on reactive state. Avoid recalculating inside `$effect` when `$derived` would do."
+            },
+            {
+              "text": "For CPU-bound work (audio processing, large transcripts), use `requestAnimationFrame` or Tauri backend commands to keep the main thread free."
             }
           ]
         },
@@ -731,37 +745,43 @@
       "sections": [
         {
           "title": "Surfaces & depth",
-          "content": "**Light mode depth:** subtle shadows and thin border rings for edge definition.\n**Dark mode depth:** surface colour stepping alone communicates elevation, with no shadows or rings needed for static elements.",
+          "content": "**Dark mode:** lighter surface = higher elevation. Surface colour stepping alone communicates depth — no shadows on inner elements.\n**Light mode:** darker surface = higher elevation. Same token names; CSS vars swap automatically via .\n\nElevation is never communicated by shadow weight or border thickness. Only the top-level floating panel () uses a drop shadow.",
           "table": [
             [
-              "Layer",
+              "Token",
+              "Tailwind class",
               "Role",
               "ScribeFloat example"
             ],
             [
-              "Canvas",
-              "Page background, the base",
-              "Dashboard background, search page"
+              "void",
+              "bg-void",
+              "Page / window background only. Never a container.",
+              "App window background"
             ],
             [
-              "Surface 1",
-              "Cards, panels, first elevation",
-              "Matter cards, document preview"
+              "surface-lowest",
+              "bg-surface-lowest",
+              "Primary panel face, modal body.",
+              "Scribe panel, modal body"
             ],
             [
-              "Surface 2",
-              "Nested surfaces, table headers",
-              "Table header rows, filter sidebar"
+              "surface-low",
+              "bg-surface-low",
+              "Cards, note items, waveform bg, dividers.",
+              "Settings section bg, waveform container"
             ],
             [
-              "Surface 3",
-              "Higher elevation, hover states",
-              "Hovered rows, active filters"
+              "surface-high",
+              "bg-surface-high",
+              "Input borders, hover bg.",
+              "Input borders, hovered rows"
             ],
             [
-              "Surface 4",
-              "Highest elevation",
-              "Dropdown menus, floating toolbars"
+              "surface-highest",
+              "bg-surface-highest",
+              "Active pill, pressed states, toggle knob (off).",
+              "Active nav item, dropdown menus"
             ]
           ]
         },
@@ -836,39 +856,42 @@
           "title": "Colour usage",
           "items": [
             {
-              "text": "Use **semantic colour tokens**, not raw hex values. This ensures consistency and makes dark mode trivial."
+              "text": "Use **semantic colour tokens**, not raw hex or OKLCH literals. Every token is defined in  and switches automatically between dark and light mode."
             },
             {
-              "text": "Use **one brand accent colour** for primary actions, active states, and links. Use semantic colours only for semantic meaning, such as error, warning, success, or info."
+              "text": "**One primary accent** ( /  — orange) for the single primary action button per screen. **One error accent** ( /  — red) for recording status dot and destructive actions. These are not interchangeable."
             },
             {
-              "text": "Semantic colours should be reserved for their intended meaning. Do not repurpose error-red as a decorative colour."
+              "text": "Yellow ( / ) is for secondary CTA outline/text only — one per screen. Blue () is for the active tab indicator only. Green () is for transient success text or a check icon — never persistent backgrounds or borders."
+            },
+            {
+              "text": "Semantic colours must stay semantically correct. Do not use  as a decorative accent, or  for waveform bars. Build in grey first; add accent only when it carries a specific meaning."
             }
           ]
         },
         {
           "title": "Border radius",
-          "content": "Pick a default and use it everywhere. Consistency matters more than the specific value:",
+          "content": "ScribeFloat uses three fixed radius values. Do not introduce others — this is an instrument, not a consumer app.",
           "table": [
             [
-              "Size",
+              "Token",
+              "Value",
               "Usage"
             ],
             [
+              "rounded-sm",
+              "2px",
+              "Chips, small tags, status dot containers, inner card elements"
+            ],
+            [
+              "rounded-md",
               "4px",
-              "Small elements, chips, tags"
+              "Buttons, inputs, cards, panels, modals — everything else"
             ],
             [
-              "**8px**",
-              "Standard: cards, buttons, inputs"
-            ],
-            [
-              "12px",
-              "Larger panels"
-            ],
-            [
-              "16px",
-              "Modals, drawers"
+              "rounded-full",
+              "9999px",
+              "Toggle knob and recording status dot only. Nothing else."
             ]
           ]
         },
@@ -960,7 +983,7 @@
         },
         {
           "title": "Empty, loading, and error states",
-          "content": "Every data-driven view needs loading, empty, and error states. knowledge workerss will hit all three often:",
+          "content": "Every data-driven view needs loading, empty, and error states. knowledge workers will hit all three often:",
           "table": [
             [
               "State",
@@ -1563,7 +1586,7 @@
               "text": "Are the same patterns used for the same purposes throughout?"
             },
             {
-              "text": "Does the interface still feel like a legal tool rather than a generic SaaS dashboard?"
+              "text": "Does the interface still feel like a ScribeFloat tool rather than a generic SaaS dashboard?"
             },
             {
               "text": "Is AI-generated content clearly labelled wherever it appears?"

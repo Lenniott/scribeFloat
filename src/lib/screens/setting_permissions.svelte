@@ -66,35 +66,26 @@
 </script>
 
 <section class="space-y-3 h-full">
-  <h2 class="text-title-sm font-normal tracking-tight">Permissions</h2>
+  <h2 class="sf-headline-sm">Permissions</h2>
   {#each statuses as status (status.kind)}
-    <div
-      class={`rounded-md border px-3 py-2.5 transition ${
-        status.granted
-          ? "border-green-500/30 bg-green-500/5"
-          : status.can_request
-            ? "border-amber-500/30 bg-amber-500/5"
-            : "border-surface-container bg-surface"
-      }`}
-    >
+    <div class="rounded-md border border-surface-high px-3 py-2 transition bg-surface-low">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-2">
           <div>
-            <p class="text-body-sm capitalize">
+            <p class="text-label-md font-sans uppercase tracking-stamped">
               {status.kind.replace(/_/g, " ")}
             </p>
           </div>
         </div>
         {#if status.granted}
-          <div class="flex gap-2 items-center text-green brightness-120">
+          <div class="flex gap-2 items-center text-green">
 			<CircleCheckBig class='size-4'/>
-            <span class="text-label-sm font-normal">Granted</span
-            >
+            <span class="text-label-sm font-medium">Granted</span>
           </div>
         {:else if status.can_request}
           <div class="flex gap-2">
             <span
-              class="size-4 shrink-0 rounded-full border-2 border-secondary bg-secondary/10"
+              class="size-4 shrink-0 rounded-full border-2 border-surface-highest"
             ></span>
             <Button
               variant="secondary"
@@ -110,7 +101,7 @@
           <div class="flex gap-2">
             <span class="text-label-sm text-on-surface/50">Not supported</span>
             <span
-              class="size-4 shrink-0 rounded-full border-2 border-surface-container-high"
+              class="size-4 shrink-0 rounded-full border-2 border-surface-high"
             ></span>
           </div>
         {/if}

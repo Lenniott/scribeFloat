@@ -65,15 +65,35 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+fn prewarm_scribe_window(app: &AppHandle) {
+    let result: tauri::Result<()> = (|| {
+        let url = WebviewUrl::App("index.html".into());
+        let mut builder = WebviewWindowBuilder::new(app, SCRIBE_WINDOW_LABEL, url)
+            .title("Scribe")
+            .inner_size(800.0, 600.0)
+            .visible(false);
+        if let Some(icon) = app.default_window_icon() {
+            builder = builder.icon(icon.clone())?;
+        }
+        builder.build()?;
+        Ok(())
+    })();
+    if let Err(err) = result {
+        eprintln!("failed to prewarm scribe window: {err}");
+    }
+}
+
 pub(crate) fn open_scribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    open_or_focus_window(
+    let window = open_or_focus_window(
         app,
         SCRIBE_WINDOW_LABEL,
         "Scribe",
         WebviewUrl::App("index.html".into()),
         800.0,
         600.0,
-    )
+    )?;
+    let _ = window.emit("scribe://open-requested", serde_json::json!({}));
+    Ok(window)
 }
 
 pub(crate) fn open_settings_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
@@ -177,6 +197,7 @@ pub fn run() {
             app.manage(model_ctrl); // model command orchestration
             app.manage(settings_ctrl); // settings orchestration
             app.manage(ctrl); // for scribe commands
+            prewarm_scribe_window(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {

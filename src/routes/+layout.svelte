@@ -7,6 +7,7 @@
 	let { children } = $props();
 
 	onMount(() => {
+		document.getElementById('sf-loading')?.remove();
 		let cleanup = watchThemeMode("system");
 		let mounted = true;
 		invoke<ThemeMode>("settings_get_theme_mode")

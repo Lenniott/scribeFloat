@@ -24,15 +24,12 @@
 	import type { Note } from '@components/notes/NoteCard.svelte';
 	import type { PermissionStatus } from '$lib/types';
 
-	const AUTO_OPEN_SETUP_STORAGE_KEY = 'liscribe_auto_opened_setup_once';
-
 	type Props = {
 		processingStart?: (title: string) => void;
 		autoStart?: boolean;
-		firstRunSetupHint?: boolean;
 	};
 
-	let { processingStart, autoStart = true, firstRunSetupHint = false }: Props = $props();
+	let { processingStart, autoStart = true }: Props = $props();
 
 	// ── State machine ─────────────────────────────────────────────────────────
 	type Phase = 'idle' | 'recording' | 'no_model' | 'error';
@@ -50,7 +47,6 @@
 	let closeRecordingError = $state('');
 	let startInProgress = false;
 
-	const modelReady = $derived(modelStore.models.some((m) => m.downloaded && m.selected));
 	const canCloseModelSetup = $derived(modelStore.models.some((m) => m.selected && m.downloaded));
 	const downloadedModelOptions = $derived(
 		modelStore.models
@@ -149,12 +145,6 @@
 		if (startInProgress || phase === 'recording') return;
 		startInProgress = true;
 		try {
-			if (!modelReady) {
-				errorMessage = '';
-				phase = 'no_model';
-				return;
-			}
-
 			const perms = await invoke<PermissionStatus[]>('settings_permissions_status').catch(() => []);
 			const mic = perms.find((p) => p.kind === 'microphone');
 			if (mic && !mic.granted) {
@@ -179,21 +169,9 @@
 		await invoke('settings_show_window').catch(() => {});
 	}
 
-	async function maybeOfferSettingsWindowOnce() {
-		if (!browser || !firstRunSetupHint) return;
-		try {
-			if (localStorage.getItem(AUTO_OPEN_SETUP_STORAGE_KEY) === '1') return;
-			localStorage.setItem(AUTO_OPEN_SETUP_STORAGE_KEY, '1');
-			await invoke('settings_show_window');
-		} catch {
-			// Desktop-only; silently ignore during web-only dev checks.
-		}
-	}
-
 	async function maybeAutoStartRecording() {
 		if (
 			!autoStart ||
-			!modelReady ||
 			modelSetupOpen ||
 			discardConfirmOpen ||
 			discardInProgress ||
@@ -356,12 +334,13 @@
 		const ul3 = await listen('scribe://native-close-requested', () => {
 			void handleNativeCloseRequested();
 		});
-		unlisteners = [ul1, ul2, ul3];
+		const ul4 = await listen('scribe://open-requested', () => {
+			void startRecording();
+		});
+		unlisteners = [ul1, ul2, ul3, ul4];
 		unlistenFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
 			if (focused) void maybeAutoStartRecording();
 		});
-
-		await maybeOfferSettingsWindowOnce();
 
 		await maybeAutoStartRecording();
 	});
@@ -495,16 +474,7 @@
 				<!-- Footer -->
 				<footer class="flex items-center gap-3 py-3">
 					{#if phase === 'idle'}
-						{#if autoStart && !modelReady}
-							<div class="flex flex-col gap-2 text-left">
-								<p class="text-label-sm text-on-surface/80">
-									Add a Whisper model before recording happens automatically.
-								</p>
-								<div class="flex flex-wrap gap-2">
-									<Button variant="secondary" onclick={openSettingsWindow}>Open Settings</Button>
-								</div>
-							</div>
-						{:else if autoStart}
+						{#if autoStart}
 							<span class="font-mono text-label-sm text-on-surface/50 uppercase tracking-stamped">
 								Starting…
 							</span>

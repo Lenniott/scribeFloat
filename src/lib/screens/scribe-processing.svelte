@@ -7,7 +7,7 @@
 
   import Button from "@components/Button.svelte";
   import StackProgressBar from "@components/form/StackProgressBar.svelte";
-  import { Copy, SquareArrowOutUpLeftIcon, X } from "lucide-svelte";
+  import { Copy, SquareArrowOutUpRight, X } from "lucide-svelte";
   import IconButton from "@lib/components/IconButton.svelte";
 
   type Phase = "transcribing" | "done" | "no_model" | "error";
@@ -57,7 +57,7 @@
   const sequence = $derived(
     progressSequence.map((step) => ({
       label: step.label,
-      complete: stageOrder.indexOf(step.stage) < currentStageIndex,
+      complete: stageOrder.indexOf(step.stage) <= currentStageIndex,
     })),
   );
 
@@ -73,11 +73,16 @@
           );
         }
         break;
-      case "DONE":
-        phase = "done";
+      case "DONE": {
+        const path = payload.transcript_path ?? "";
+        transcriptPath = path;
+        processingStage = "CLEANING_UP_AUDIO";
         progress = 100;
-        transcriptPath = payload.transcript_path ?? "";
+        setTimeout(() => {
+          phase = "done";
+        }, 800);
         break;
+      }
       case "NO_MODEL":
         phase = "no_model";
         progress = 0;
@@ -114,7 +119,8 @@
   }
 
   async function openTranscript() {
-    if (transcriptPath) await invoke("settings_open_transcript", { filePath: transcriptPath });
+    if (transcriptPath)
+      await invoke("settings_open_transcript", { filePath: transcriptPath });
   }
 
   async function copyContent() {
@@ -122,8 +128,9 @@
   }
 
   onMount(async () => {
-    const ulState = await listen<ScribePayload>("scribe://state-changed", (event) =>
-      handleScribeEvent(event.payload),
+    const ulState = await listen<ScribePayload>(
+      "scribe://state-changed",
+      (event) => handleScribeEvent(event.payload),
     );
     const ulClose = await listen("scribe://native-close-requested", () => {
       void closeScribeWindowCompletely();
@@ -137,19 +144,12 @@
   });
 </script>
 
-<div
-  class="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center p-6 text-on-surface"
->
-  <section
-    class="flex w-full flex-col gap-8 rounded-md border border-surface-low/20 bg-surface-lowest p-8 shadow-ambient"
-  >
-    <header class="flex gap-4 w-full justify-between items-center">
-      <div class="flex flex-col gap-2">
-        <p
-          class="font-mono text-label-sm tracking-stamped text-on-surface/55 uppercase"
-        >
-          {title || "Recording"}
-        </p>
+<div class="mx-auto flex flex-col text-on-surface">
+  <section class="flex h-screen flex-col overflow-hidden bg-surface-lowest">
+    <header
+      class="flex min-h-14 items-start justify-between border-b border-b-surface-low px-5 py-2"
+    >
+      <div class="flex min-w-0 flex-1 flex-col gap-1">
         <h1 class="sf-headline-sm">
           {#if phase === "transcribing"}
             Processing...
@@ -161,23 +161,28 @@
             Processing Failed
           {/if}
         </h1>
+        <p
+          class="font-mono text-label-sm tracking-stamped text-on-surface/55 uppercase"
+        >
+          {title || "Recording"}
+        </p>
       </div>
-	  <IconButton
-	  variant="normal"
-	  aria-label="close panel"
-	  onclick={() => void closeScribeWindowCompletely()}
-	  icon={X}
-	  />
+      <IconButton
+        variant="normal"
+        aria-label="close panel"
+        onclick={() => void closeScribeWindowCompletely()}
+        icon={X}
+      />
     </header>
 
-    {#if phase === "transcribing"}
-      <StackProgressBar {progress} {sequence} />
-    {:else}
-      <div class="flex flex-col gap-4">
+    <div class="flex min-h-0 flex-1 flex-col justify-between gap-6 px-5 py-6">
+      {#if phase === "transcribing" || phase === "done"}
+        <div class="w-fill max-w-2xl mx-auto h-full max-h-72 flex items-center">
+          <StackProgressBar {progress} {sequence} />
+        </div>
         {#if phase === "done"}
-          <div class="flex items-center justify-between">
-            <p class="text-body-md text-on-surface/80">Transcript saved.</p>
-            {#if phase === "done"}
+          <div class="flex flex-col gap-3">
+            <div class="w-full flex justify-end">
               <div class="flex gap-2">
                 <IconButton
                   aria-label="copy transcript to clipboard"
@@ -187,47 +192,59 @@
                 />
                 <IconButton
                   aria-label="Open Transcript"
-                  icon={SquareArrowOutUpLeftIcon}
+                  icon={SquareArrowOutUpRight}
                   variant="normal"
                   onclick={openTranscript}
                 />
               </div>
+            </div>
+            {#if displayPath}
+              <button
+                class="cursor-pointer group p-0 text-left"
+                onclick={openTranscript}
+              >
+                <p
+                  class="truncate font-mono text-body-md text-on-surface underline decoration-on-surface-dim group-hover:underline-offset-2"
+                  title={displayPath}
+                >
+                  {displayPath}
+                </p>
+              </button>
             {/if}
           </div>
-        {:else if phase === "no_model"}
+        {/if}
+      {:else if phase === "no_model"}
+        <div class="flex flex-col gap-4">
           <p class="text-body-md text-on-surface/80">
             No downloaded model was available. The WAV file was kept so this
             recording can be transcribed later.
           </p>
-        {:else}
-          <p class="text-body-md text-error">{errorMessage}</p>
-        {/if}
-
-        {#if displayPath}
-          <button class="cursor-pointer group" onclick={openTranscript}>
-            <p
-              class="truncate font-mono text-body-md text-on-surface underline decoration-on-surface-dim group-hover:underline-offset-2"
-              title={displayPath}
+          {#if displayPath}
+            <button
+              class="cursor-pointer group p-0 text-left"
+              onclick={() =>
+                displayPath && navigator.clipboard.writeText(displayPath)}
             >
-              {displayPath}
-            </p>
-          </button>
-        {/if}
-      </div>
-    {/if}
+              <p
+                class="truncate font-mono text-body-md text-on-surface underline decoration-on-surface-dim group-hover:underline-offset-2"
+                title={displayPath}
+              >
+                {displayPath}
+              </p>
+            </button>
+          {/if}
+        </div>
+      {:else if phase === "error"}
+        <p class="text-body-md text-error">{errorMessage}</p>
+      {/if}
+    </div>
 
-    <footer class="flex flex-wrap justify-end gap-3">
-      {#if phase === "done"}
+    <footer
+      class="flex flex-wrap justify-end gap-3 border-t border-t-surface-low px-5 py-3"
+    >
+      {#if phase === "done" || phase === "no_model"}
         <Button variant="secondary" onclick={onRecordAgain}>Record Again</Button
         >
-      {:else if phase === "no_model"}
-        <Button
-          variant="secondary"
-          disabled={!displayPath}
-          onclick={() => displayPath && navigator.clipboard.writeText(displayPath)}
-          >Copy WAV Path</Button
-        >
-        <Button variant="primary" onclick={onRecordAgain}>Record Again</Button>
       {:else if phase === "error"}
         <Button variant="primary" onclick={onRecordAgain}>Try Again</Button>
       {/if}

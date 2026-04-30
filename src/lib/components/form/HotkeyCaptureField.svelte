@@ -102,7 +102,7 @@
 </script>
 
 <div class="flex flex-col gap-1.5 text-left">
-	<label class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase" for={fieldId}
+	<label class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase" for={fieldId}
 		>{label}</label
 	>
 	<div class="flex min-w-0 items-center gap-2">
@@ -111,7 +111,7 @@
 			type="text"
 			readonly
 			value={value || placeholder}
-			class="font-data text-label-md min-w-0 flex-1 truncate rounded-md bg-surface-container-lowest px-2 py-2 tracking-data text-on-surface/90"
+			class="font-mono text-label-md min-w-0 flex-1 truncate rounded-md bg-surface-lowest px-2 py-2 tracking-stamped text-on-surface/90"
 			title={value || placeholder}
 		/>
 		<Button variant="normal" onclick={startCapture}>

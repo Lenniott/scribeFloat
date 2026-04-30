@@ -44,15 +44,15 @@
 	let activeTab = $derived(tabs.find((tab) => tab.id === activeId));
 
 	const wrapperClass: Record<Mode, string> = {
-		panel: "rounded-md bg-surface-container-low shadow-ambient",
-		section: "rounded-md border border-outline-variant/60 bg-surface-container-low/50",
+		panel: "rounded-md bg-surface-low shadow-ambient",
+		section: "rounded-md border border-surface-low/60 bg-surface-low/50",
 	};
 
 	const tabListClass: Record<Mode, string> = {
 		panel:
-			"flex items-center gap-1 overflow-x-auto border-b border-outline-variant/60 bg-surface-container-lowest p-2",
+			"flex items-center gap-1 overflow-x-auto border-b border-surface-low/60 bg-surface-lowest p-2",
 		section:
-			"flex items-center gap-1 overflow-x-auto border-b border-outline-variant/60 bg-surface-container-lowest/70 p-1.5",
+			"flex items-center gap-1 overflow-x-auto border-b border-surface-low/60 bg-surface-lowest/70 p-1.5",
 	};
 	const tabButtonClass: Record<Mode, string> = {
 		panel: "px-3 py-2 text-label-md",
@@ -73,9 +73,9 @@
 				aria-selected={activeId === tab.id}
 				aria-controls={`tab-panel-${tab.id}`}
 				disabled={tab.disabled}
-				class="{tabButtonClass[mode]} rounded-sm font-normal tracking-widest whitespace-nowrap uppercase transition-colors disabled:opacity-40 {activeId === tab.id
-					? 'bg-active text-on-active'
-					: 'text-on-surface/70 hover:bg-surface-container-high hover:text-on-surface'}"
+				class="{tabButtonClass[mode]} rounded-sm font-normal tracking-stamped whitespace-nowrap uppercase transition-colors disabled:opacity-40 {activeId === tab.id
+					? 'bg-surface-highest text-on-surface'
+					: 'text-on-surface/70 hover:bg-surface-high hover:text-on-surface'}"
 				onclick={() => (activeId = tab.id)}
 			>
 				{tab.label}

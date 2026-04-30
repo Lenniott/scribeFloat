@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { browser } from '$app/environment';
 	import { invoke } from '@tauri-apps/api/core';
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -17,18 +18,18 @@
 	import ModelSetupModal from '@components/model/ModelSetupModal.svelte';
 	import NoteComposer from '@components/notes/NoteComposer.svelte';
 	import NotesList from '@components/notes/NotesList.svelte';
-	import SettingsScreen from '@lib/screens/settings.svelte';
 	import { createModelDownloadStore } from '$lib/stores/modelDownload.svelte';
 	import Bin from 'lucide-svelte/icons/trash-2';
 	import Cog from 'lucide-svelte/icons/settings-2';
 	import type { Note } from '@components/notes/NoteCard.svelte';
+	import type { PermissionStatus } from '$lib/types';
 
-type Props = {
-	processingStart?: (title: string) => void;
-	autoStart?: boolean;
-};
+	type Props = {
+		processingStart?: (title: string) => void;
+		autoStart?: boolean;
+	};
 
-let { processingStart, autoStart = true }: Props = $props();
+	let { processingStart, autoStart = true }: Props = $props();
 
 	// ── State machine ─────────────────────────────────────────────────────────
 	type Phase = 'idle' | 'recording' | 'no_model' | 'error';
@@ -39,12 +40,13 @@ let { processingStart, autoStart = true }: Props = $props();
 	const modelStore = createModelDownloadStore();
 	let modelUnlisteners: (() => void)[] = [];
 	let modelSetupOpen = $state(false);
-	let settingsOpen = $state(false);
 	let discardConfirmOpen = $state(false);
 	let discardInProgress = $state(false);
+	let closeRecordingChoiceOpen = $state(false);
+	let closeRecordingFlowBusy = $state(false);
+	let closeRecordingError = $state('');
 	let startInProgress = false;
 
-	const modelReady = $derived(modelStore.models.some((m) => m.downloaded));
 	const canCloseModelSetup = $derived(modelStore.models.some((m) => m.selected && m.downloaded));
 	const downloadedModelOptions = $derived(
 		modelStore.models
@@ -57,6 +59,7 @@ let { processingStart, autoStart = true }: Props = $props();
 	let timerInterval: ReturnType<typeof setInterval> | null = null;
 
 	function startTimer() {
+		stopTimer();
 		const start = Date.now();
 		elapsedSeconds = 0;
 		timerInterval = setInterval(() => {
@@ -105,6 +108,11 @@ let { processingStart, autoStart = true }: Props = $props();
 
 	function handleScribeEvent(p: ScribePayload) {
 		switch (p.state) {
+			case 'IDLE':
+				phase = 'idle';
+				stopTimer();
+				micLevel = 0;
+				break;
 			case 'RECORDING':
 				phase = 'recording';
 				startTimer();
@@ -137,7 +145,18 @@ let { processingStart, autoStart = true }: Props = $props();
 		if (startInProgress || phase === 'recording') return;
 		startInProgress = true;
 		try {
+			const perms = await invoke<PermissionStatus[]>('settings_permissions_status').catch(() => []);
+			const mic = perms.find((p) => p.kind === 'microphone');
+			if (mic && !mic.granted) {
+				phase = 'error';
+				errorMessage =
+					'Microphone access is required. Grant it under Settings → Permissions, then try again.';
+				return;
+			}
+
 			await invoke('scribe_start', { preferredMic: selectedMic || null });
+			phase = 'recording';
+			startTimer();
 		} catch (e) {
 			phase = 'error';
 			errorMessage = String(e);
@@ -146,13 +165,90 @@ let { processingStart, autoStart = true }: Props = $props();
 		}
 	}
 
+	async function openSettingsWindow() {
+		await invoke('settings_show_window').catch(() => {});
+	}
+
 	async function maybeAutoStartRecording() {
-		if (!autoStart || !modelReady || modelSetupOpen || discardConfirmOpen || discardInProgress) {
+		if (
+			!autoStart ||
+			modelSetupOpen ||
+			discardConfirmOpen ||
+			discardInProgress ||
+			closeRecordingChoiceOpen
+		) {
 			return;
 		}
 		if (phase === 'idle') {
 			await startRecording();
 		}
+	}
+
+	async function destroyScribeWindow() {
+		if (!browser) return;
+		await invoke('scribe_cancel').catch(() => {});
+		await invoke('scribe_abort_transcription').catch(() => {});
+		await invoke('scribe_destroy_window').catch(() => {});
+	}
+
+	async function handleNativeCloseRequested() {
+		discardConfirmOpen = false;
+		if (!browser) return;
+
+		if (phase === 'recording') {
+			closeRecordingError = '';
+			closeRecordingChoiceOpen = true;
+			return;
+		}
+		await destroyScribeWindow();
+	}
+
+	async function confirmCloseDeleteRecording() {
+		closeRecordingFlowBusy = true;
+		closeRecordingError = '';
+		try {
+			await invoke('scribe_cancel');
+		} catch (e) {
+			closeRecordingError = String(e);
+			closeRecordingFlowBusy = false;
+			return;
+		}
+		closeRecordingChoiceOpen = false;
+		stopTimer();
+		notes = [];
+		elapsedSeconds = 0;
+		micLevel = 0;
+		noteDraft = '';
+		errorMessage = '';
+		phase = 'idle';
+		await destroyScribeWindow();
+		closeRecordingFlowBusy = false;
+	}
+
+	async function confirmCloseSaveRecording() {
+		closeRecordingFlowBusy = true;
+		closeRecordingError = '';
+		const title = (fileName || '').trim();
+		try {
+			await invoke('scribe_save_recording_only', {
+				title: title.length > 0 ? title : null,
+			});
+		} catch (e) {
+			closeRecordingError = String(e);
+			closeRecordingFlowBusy = false;
+			return;
+		}
+		closeRecordingChoiceOpen = false;
+		stopTimer();
+		notes = [];
+		elapsedSeconds = 0;
+		micLevel = 0;
+		noteDraft = '';
+		errorMessage = '';
+		phase = 'idle';
+		fileName = defaultTitle();
+		await destroyScribeWindow();
+		closeRecordingFlowBusy = false;
 	}
 
 	async function stopAndSave() {
@@ -177,7 +273,7 @@ let { processingStart, autoStart = true }: Props = $props();
 		await cancel();
 		discardConfirmOpen = false;
 		discardInProgress = false;
-		await getCurrentWindow().close();
+		await destroyScribeWindow();
 	}
 
 	async function recordAgain() {
@@ -229,17 +325,19 @@ let { processingStart, autoStart = true }: Props = $props();
 		const sel = modelStore.models.find((m) => m.selected && m.downloaded);
 		if (sel) selectedModelId = sel.id;
 
-		if (!modelReady) {
-			modelSetupOpen = true;
-		}
-
 		const ul1 = await listen<ScribePayload>('scribe://state-changed', (e) =>
 			handleScribeEvent(e.payload),
 		);
 		const ul2 = await listen<number>('scribe://audio-level', (e) => {
 			micLevel = e.payload ?? 0;
 		});
-		unlisteners = [ul1, ul2];
+		const ul3 = await listen('scribe://native-close-requested', () => {
+			void handleNativeCloseRequested();
+		});
+		const ul4 = await listen('scribe://open-requested', () => {
+			void startRecording();
+		});
+		unlisteners = [ul1, ul2, ul3, ul4];
 		unlistenFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
 			if (focused) void maybeAutoStartRecording();
 		});
@@ -255,11 +353,11 @@ let { processingStart, autoStart = true }: Props = $props();
 	});
 </script>
 
-<div class="mx-auto flex max-w-5xl flex-col gap-4 text-on-surface">
-	<section class="flex h-screen flex-col overflow-hidden bg-surface-container-lowest">
+<div class="mx-auto flex flex-col gap-4 text-on-surface">
+	<section class="flex h-screen flex-col overflow-hidden bg-surface-lowest">
 
 		<!-- Header -->
-		<header class="flex min-h-14 items-end justify-between border-b border-b-surface-container-low px-5 py-2">
+		<header class="flex min-h-14 items-end justify-between border-b border-b-surface-low px-5 py-2">
 			<div class="min-w-0 flex-1">
 				<EditableTitleField bind:value={fileName} />
 			</div>
@@ -268,11 +366,11 @@ let { processingStart, autoStart = true }: Props = $props();
 					variant="normal"
 					size="small"
 					icon={Cog}
-					aria-label="Open settings"
-					onclick={() => (settingsOpen = true)}
+					aria-label="Open settings window"
+					onclick={openSettingsWindow}
 				/>
 				{#if modelStore.activeDownloadModelId}
-					<span class="font-data text-label-sm text-on-surface/60 uppercase tracking-stamped">
+					<span class="font-mono text-label-sm text-on-surface/60 uppercase tracking-stamped">
 						Model {Math.round((modelStore.progressByModel[modelStore.activeDownloadModelId] ?? 0) * 100)}%
 					</span>
 				{/if}
@@ -291,7 +389,7 @@ let { processingStart, autoStart = true }: Props = $props();
 		</header>
 
 		<!-- Body -->
-		<div class="grid min-h-0 flex-1 grid-cols-[1.05fr_0.95fr] items-stretch">
+		<div class="grid min-h-0 flex-1 grid-cols-[0.45fr_0.99fr] items-stretch">
 
 			<!-- Left: visualizer + settings -->
 			<div class="flex min-h-0 flex-col px-4 py-3">
@@ -307,7 +405,7 @@ let { processingStart, autoStart = true }: Props = $props();
 						<AccordionItem id="basic" title="Basic">
 							<div class="space-y-4">
 								<div class="flex flex-col gap-1.5 text-left">
-									<label for="mic-select" class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase">
+									<label for="mic-select" class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase">
 										Selected mic
 									</label>
 									<select
@@ -324,7 +422,7 @@ let { processingStart, autoStart = true }: Props = $props();
 												await startRecording();
 											}
 										}}
-										class="h-8 rounded-md border-0 border-b border-transparent bg-surface-container-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:ring-active focus:bg-surface-container-high focus:ring-0 focus:outline-none"
+										class="h-8 rounded-md border-0 border-b border-transparent bg-surface-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:border-b-surface-highest focus:bg-surface-high focus:ring-0 focus:outline-none"
 									>
 										{#each micOptions as opt (opt.value)}
 											<option value={opt.value}>{opt.label}</option>
@@ -333,7 +431,7 @@ let { processingStart, autoStart = true }: Props = $props();
 								</div>
 								{#if downloadedModelOptions.length > 0}
 									<div class="flex flex-col gap-1.5 text-left">
-										<label for="model-select" class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase">
+										<label for="model-select" class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase">
 											Model
 										</label>
 										<select
@@ -344,7 +442,7 @@ let { processingStart, autoStart = true }: Props = $props();
 												selectedModelId = id;
 												await modelStore.select(id);
 											}}
-											class="h-8 rounded-md border-0 border-b border-transparent bg-surface-container-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:ring-active focus:bg-surface-container-high focus:ring-0 focus:outline-none"
+											class="h-8 rounded-md border-0 border-b border-transparent bg-surface-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:border-b-surface-highest focus:bg-surface-high focus:ring-0 focus:outline-none"
 										>
 											{#each downloadedModelOptions as opt (opt.value)}
 												<option value={opt.value}>{opt.label}</option>
@@ -353,7 +451,7 @@ let { processingStart, autoStart = true }: Props = $props();
 									</div>
 								{/if}
 								<div class="flex items-center justify-between">
-									<span class="font-data text-label-sm font-normal tracking-stamped uppercase">
+									<span class="font-mono text-label-sm font-normal tracking-stamped uppercase">
 										Transcript timestamps
 									</span>
 									<ToggleSwitch
@@ -377,7 +475,7 @@ let { processingStart, autoStart = true }: Props = $props();
 				<footer class="flex items-center gap-3 py-3">
 					{#if phase === 'idle'}
 						{#if autoStart}
-							<span class="font-data text-label-sm text-on-surface/50 uppercase tracking-stamped">
+							<span class="font-mono text-label-sm text-on-surface/50 uppercase tracking-stamped">
 								Starting…
 							</span>
 						{:else}
@@ -390,15 +488,25 @@ let { processingStart, autoStart = true }: Props = $props();
 					{:else if phase === 'no_model'}
 						<div class="flex flex-col gap-2">
 							<p class="text-label-sm text-on-surface/80">
-								No model selected. Open model settings to download and select a model.
+								No transcription model selected. Install and select one in Settings → Models.
 							</p>
-							<Button variant="secondary" onclick={() => (modelSetupOpen = true)}>Open model settings</Button>
+							<div class="flex flex-wrap gap-2">
+								<Button variant="secondary" onclick={() => (modelSetupOpen = true)}>
+									Model quick setup
+								</Button>
+								<Button variant="ghost" onclick={openSettingsWindow}>Full settings</Button>
+							</div>
 						</div>
 
 					{:else if phase === 'error'}
 						<div class="flex flex-col gap-2">
 							<p class="text-label-sm text-error">{errorMessage}</p>
-							<Button variant="secondary" onclick={recordAgain}>Try Again</Button>
+							<div class="flex flex-wrap gap-2">
+								{#if errorMessage.includes('Microphone')}
+									<Button variant="secondary" onclick={openSettingsWindow}>Open Settings</Button>
+								{/if}
+								<Button variant="secondary" onclick={recordAgain}>Try Again</Button>
+							</div>
 						</div>
 					{/if}
 				</footer>
@@ -406,9 +514,9 @@ let { processingStart, autoStart = true }: Props = $props();
 
 			<!-- Right: notes -->
 			<div
-				class="flex min-h-0 flex-col border-l border-l-surface-container-low bg-surface-container-lowest p-3"
+				class="flex min-h-0 flex-col border-l border-l-surface-low bg-surface-lowest p-3"
 			>
-				<p class="mb-2 font-data text-label-md tracking-stamped text-on-surface/80 uppercase">
+				<p class="mb-2 font-mono text-label-md tracking-stamped text-on-surface/80 uppercase">
 					add notes
 				</p>
 				<div class="min-h-0 flex-1 overflow-y-auto">
@@ -457,6 +565,49 @@ let { processingStart, autoStart = true }: Props = $props();
 	{/snippet}
 </Modal>
 
-{#if settingsOpen}
-	<SettingsScreen onClose={() => (settingsOpen = false)} />
-{/if}
+<Modal
+	open={closeRecordingChoiceOpen}
+	title="Close Scribe?"
+	description="You have an active recording. Delete it, or save the audio and notes only (no transcription)."
+	maxWidthClass="max-w-lg"
+	closeDisabled={closeRecordingFlowBusy}
+	onClose={() => {
+		if (!closeRecordingFlowBusy) {
+			closeRecordingChoiceOpen = false;
+			closeRecordingError = '';
+		}
+	}}
+>
+	{#if closeRecordingError}
+		<p class="mb-3 text-label-sm text-error">{closeRecordingError}</p>
+	{/if}
+	{#snippet footer()}
+		<div class="flex flex-wrap justify-end gap-2">
+			<Button
+				variant="secondary"
+				disabled={closeRecordingFlowBusy}
+				onclick={() => {
+					closeRecordingChoiceOpen = false;
+					closeRecordingError = '';
+				}}
+			>
+				Cancel
+			</Button>
+			<Button
+				variant="destructive"
+				disabled={closeRecordingFlowBusy}
+				onclick={confirmCloseDeleteRecording}
+			>
+				Stop and delete
+			</Button>
+			<Button
+				variant="primary"
+				disabled={closeRecordingFlowBusy}
+				onclick={confirmCloseSaveRecording}
+			>
+				Stop and save recording
+			</Button>
+		</div>
+	{/snippet}
+</Modal>
+

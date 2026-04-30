@@ -73,21 +73,21 @@
     { token: "primary", class: "bg-primary" },
     { token: "secondary", class: "bg-secondary" },
     { token: "active", class: "bg-active" },
-    { token: "surface-container-lowest", class: "bg-surface-container-lowest" },
-    { token: "surface-container-low", class: "bg-surface-container-low" },
-    { token: "surface-container-high", class: "bg-surface-container-high" },
+    { token: "surface-lowest", class: "bg-surface-lowest" },
+    { token: "surface-low", class: "bg-surface-low" },
+    { token: "surface-high", class: "bg-surface-high" },
     {
-      token: "surface-container-highest",
-      class: "bg-surface-container-highest",
+      token: "surface-highest",
+      class: "bg-surface-highest",
     },
-    { token: "error-container", class: "bg-error-container" },
+    { token: "error", class: "bg-error" },
   ];
 
   const variants = [
     "primary",
     "secondary",
     "destructive",
-    "transparent",
+    "ghost",
     "normal",
   ] as const;
   /** IconButton intentionally supports fewer variants than Button */
@@ -123,7 +123,7 @@
 <main class="mx-auto text-left p-4">
   <a href="/">scribe</a>
   <header class="mb-14 max-w-2xl">
-    <p class="font-data text-label-sm tracking-stamped text-on-surface/50 uppercase">
+    <p class="font-mono text-label-sm tracking-stamped text-on-surface/50 uppercase">
       liscribe · design system
     </p>
     <h1 class="text-display-lg font-light tracking-heading text-on-surface">
@@ -146,14 +146,14 @@
     >
       Theme Modes
     </h2>
-    <div class="max-w-md rounded-md bg-surface-container-low p-6">
+    <div class="max-w-md rounded-md bg-surface-low p-6">
       <OptionGroup
         name="theme-preview"
         label="Preview theme"
         options={themeOptions}
         bind:selected={previewTheme}
       />
-      <p class="mt-4 text-body-sm text-on-surface/65">
+      <p class="mt-4 text-body-md text-on-surface/65">
         The app stores <code class="text-primary">system</code>,
         <code class="text-primary">dark</code>, or
         <code class="text-primary">light</code> in settings and resolves those to document-level
@@ -172,10 +172,10 @@
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
       {#each colorTokens as { token, class: c } (token)}
         <div class="flex flex-col gap-2">
-          <div class="rounded-md bg-surface-container-low p-2">
+          <div class="rounded-md bg-surface-low p-2">
             <div class="h-12 rounded-md {c}"></div>
           </div>
-          <span class="font-data text-label-sm font-normal tracking-data text-on-surface/90"
+          <span class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/90"
             >{token}</span
           >
         </div>
@@ -183,7 +183,7 @@
     </div>
     <p class="text-label-sm mt-4 text-on-surface/50">
       Text: <span class="text-on-surface">on-surface</span> ·
-      <span class="text-on-error-container">on-error-container</span>
+      <span class="text-on-error">on-error</span>
     </p>
   </section>
 
@@ -194,7 +194,7 @@
     >
       Typography
     </h2>
-    <div class="flex flex-col gap-6 bg-surface-container-low p-6 rounded-md">
+    <div class="flex flex-col gap-6 bg-surface-low p-6 rounded-md">
       <div>
         <p class="text-label-sm text-on-surface/45 mb-1">
           display-lg · Geist
@@ -217,7 +217,7 @@
         <p class="text-label-sm text-on-surface/45 mb-1">
           mono label · Geist Mono
         </p>
-        <p class="font-data text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase">
+        <p class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase">
           transcript · input
         </p>
       </div>
@@ -229,7 +229,7 @@
       </div>
       <div>
         <p class="text-label-sm text-on-surface/45 mb-1">label-sm / label-md</p>
-        <p class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase">
+        <p class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase">
           Metadata
         </p>
         <p class="text-label-md font-normal text-on-surface/70">
@@ -249,11 +249,11 @@
     <div class="flex flex-wrap items-end gap-6">
       <div class="flex flex-col gap-2">
         <span class="text-label-sm text-on-surface/50">radius-md (4px)</span>
-        <div class="h-16 w-16 rounded-md bg-surface-container-highest"></div>
+        <div class="h-16 w-16 rounded-md bg-surface-highest"></div>
       </div>
       <div class="flex flex-col gap-2">
         <span class="text-label-sm text-on-surface/50">radius-sm (2px)</span>
-        <div class="h-16 w-16 rounded-sm bg-surface-container-highest"></div>
+        <div class="h-16 w-16 rounded-sm bg-surface-highest"></div>
       </div>
     </div>
   </section>
@@ -332,7 +332,7 @@
       Form
     </h2>
     <div
-      class="flex max-w-md flex-col gap-6 bg-surface-container-low p-6 rounded-md"
+      class="flex max-w-md flex-col gap-6 bg-surface-low p-6 rounded-md"
     >
       <ConfigField
         label="ConfigField (select)"
@@ -347,14 +347,14 @@
       />
       <div class="flex items-center justify-between gap-4">
         <span
-          class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase"
+          class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase"
           >ToggleSwitch</span
         >
         <ToggleSwitch aria-label="Demo toggle" bind:checked={toggleA} />
       </div>
       <div class="flex items-center justify-between gap-4">
         <span
-          class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase"
+          class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase"
           >Checkbox</span
         >
         <Checkbox aria-label="Demo checkbox" bind:checked={checkboxA} />
@@ -491,7 +491,7 @@
         </div>
         <div class="flex flex-col items-center gap-2">
           <p class="text-label-sm text-on-surface/45">DicateRecordScreen</p>
-          <div class="flex gap-2 justify-between items-center w-60 py-2 pl-3 pr-2 bg-surface-container-lowest">
+          <div class="flex gap-2 justify-between items-center w-60 py-2 pl-3 pr-2 bg-surface-lowest">
             <div class="flex gap-4">
               <div
                 class="flex items-center gap-2"
@@ -562,7 +562,7 @@
         </div>
         <div>
           <p class="text-label-sm text-on-surface/45 mb-2">AudioLayerLegend</p>
-          <div class="rounded-md bg-surface-container-low px-4 py-3">
+          <div class="rounded-md bg-surface-low px-4 py-3">
             <AudioLayerLegend speakerEnabled={true} />
           </div>
         </div>

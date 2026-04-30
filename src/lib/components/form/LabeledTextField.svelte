@@ -17,7 +17,7 @@
 </script>
 
 <div class="flex flex-col gap-1.5 text-left">
-	<label class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase" for={fieldId}
+	<label class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase" for={fieldId}
 		>{label}</label
 	>
 	<input
@@ -26,6 +26,6 @@
 		bind:value
 		{placeholder}
 		{disabled}
-		class="rounded-md h-8 border-0 border-b border-transparent bg-surface-container-lowest p-2 text-body-md text-on-surface placeholder:text-on-surface-dim focus:ring-active focus:bg-surface-container-highest focus:outline-none disabled:opacity-40"
+		class="rounded-md h-8 border-0 border-b border-transparent bg-surface-lowest p-2 text-body-md text-on-surface placeholder:text-on-surface-dim focus:border-b-surface-highest focus:bg-surface-highest focus:outline-none disabled:opacity-40"
 	/>
 </div>

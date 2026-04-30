@@ -1,7 +1,7 @@
 use crate::controllers::scribe::ScribeController;
 use crate::types::Note;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Manager, State};
 
 #[tauri::command]
 pub fn scribe_start(
@@ -17,6 +17,31 @@ pub fn scribe_stop_and_save(
     title: Option<String>,
 ) -> Result<(), String> {
     ScribeController::stop_and_save(Arc::clone(&ctrl), title).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn scribe_save_recording_only(
+    ctrl: State<'_, Arc<ScribeController>>,
+    title: Option<String>,
+) -> Result<(), String> {
+    ctrl.save_recording_only(title)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn scribe_abort_transcription(ctrl: State<'_, Arc<ScribeController>>) -> Result<(), String> {
+    ctrl.abort_transcription_keep_wav()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn scribe_destroy_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window(crate::SCRIBE_WINDOW_LABEL) {
+        w.destroy().map_err(|e| e.to_string())?;
+    }
+    crate::platform::window_impl::sync_activation_policy(&app);
+    Ok(())
 }
 
 #[tauri::command]

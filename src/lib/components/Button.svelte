@@ -2,7 +2,7 @@
 	import type { IconProps } from "lucide-svelte";
 	import type { Component, ComponentConstructorOptions, Snippet, SvelteComponent } from "svelte";
 
-	type Variant = "primary" | "secondary" | "destructive" | "transparent" | "normal" | "active";
+	type Variant = "primary" | "secondary" | "destructive" | "ghost" | "normal" | "active";
 	type Size = "normal" | "small";
 
 	/** lucide-svelte still types icons as class components; `Component` covers Svelte 5 function components only */
@@ -32,15 +32,15 @@
 	} = $props();
 
 	const base =
-		"inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 font-normal tracking-wide transition-[opacity,background-color,color] disabled:pointer-events-none disabled:opacity-40";
+		"inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 transition-[opacity,background-color,color] disabled:pointer-events-none disabled:opacity-40";
 
 	const variantClass: Record<Variant, string> = {
-		primary: "bg-primary text-on-primary hover:brightness-110",
-		secondary: "border-secondary border-1 text-secondary hover:bg-secondary hover:brightness-120 hover:text-on-secondary",
-		destructive: "bg-error-container text-on-error-container hover:brightness-150",
-		transparent: "bg-transparent text-on-surface hover:bg-surface-container-high",
-		normal: "bg-transparent border border-surface-container-highest text-on-surface hover:bg-surface-container-high",
-		active: "bg-active text-on-active hover:brightness-95",
+		primary: "bg-primary text-on-primary font-mono uppercase tracking-stamped hover:brightness-150",
+		secondary: "border border-secondary text-secondary bg-transparent font-sans hover:bg-secondary hover:text-on-secondary",
+		destructive: "bg-error text-on-error font-sans hover:brightness-110",
+		ghost: "bg-transparent text-on-surface font-sans hover:bg-surface-high",
+		normal: "bg-transparent border border-surface-highest text-on-surface font-sans hover:bg-surface-high",
+		active: "bg-surface-highest text-on-surface font-sans hover:brightness-105",
 	};
 
 	const sizeClass: Record<Size, { pad: string; text: string; icon: string }> = {

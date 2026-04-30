@@ -17,6 +17,29 @@ docs/action-flows.md     ← Step-by-step flows for each workflow.
 
 ---
 
+## Design system & UX playbook
+
+Before writing any frontend code, query the design skill:
+
+```
+context/design-skill/SKILL.md   ← Start here. Commands and query patterns.
+context/design-skill/query.py   ← CLI query tool (run from any directory).
+```
+
+Quick start:
+
+```bash
+python3 context/design-skill/query.py ds toc              # design token / component index
+python3 context/design-skill/query.py ux toc              # UX playbook chapter index
+python3 context/design-skill/query.py ds get components.button   # button spec
+python3 context/design-skill/query.py ds get tokens.colors.dark  # full dark palette
+python3 context/design-skill/query.py search "waveform"   # search both files
+```
+
+Always pull the relevant token/component spec before writing Tailwind classes. The design system owns colour, spacing, radius, and typography — do not guess or hardcode values.
+
+---
+
 ## Build and test
 
 ```bash

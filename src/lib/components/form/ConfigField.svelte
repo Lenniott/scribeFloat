@@ -28,14 +28,14 @@
 </script>
 
 <div class="flex flex-col gap-1.5 text-left">
-	<label class="font-data text-label-sm font-normal tracking-widest text-on-surface/80 uppercase" for={fieldId}
+	<label class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase" for={fieldId}
 		>{label}</label
 	>
 	{#if mode === "select"}
 		<select
 			id={fieldId}
 			bind:value
-			class="h-8 rounded-md border-0 border-b border-transparent bg-surface-container-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:ring-active focus:bg-surface-container-high focus:ring-0 focus:outline-none"
+			class="h-8 rounded-md border-0 border-b border-transparent bg-surface-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:border-b-surface-highest focus:bg-surface-high focus:ring-0 focus:outline-none"
 		>
 			{#each options as opt (opt.value)}
 				<option value={opt.value}>{opt.label}</option>
@@ -45,7 +45,7 @@
 		<div class="flex min-w-0 items-center gap-2">
 			<code
 				id={fieldId}
-				class="font-data text-label-md min-w-0 flex-1 truncate rounded-md bg-surface-container-lowest px-2 py-2 tracking-data text-on-surface/90"
+				class="font-mono text-label-md min-w-0 flex-1 truncate rounded-md bg-surface-lowest px-2 py-2 tracking-stamped text-on-surface/90"
 				title={value}
 			>
 				{value || placeholder}

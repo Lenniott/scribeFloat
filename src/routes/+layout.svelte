@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
-	import { watchThemeMode, type ThemeMode } from "$lib/theme";
+	import { watchThemeMode, applyThemeMode, type ThemeMode } from "$lib/theme";
 	import "../app.css";
 
 	let { children } = $props();
 
 	onMount(() => {
+		document.getElementById('sf-loading')?.remove();
 		let cleanup = watchThemeMode("system");
 		let mounted = true;
 		invoke<ThemeMode>("settings_get_theme_mode")
@@ -16,9 +17,21 @@
 				cleanup();
 				cleanup = watchThemeMode(themeMode);
 			});
+
+		// Sync theme changes made in other windows (e.g. settings window → scribe window).
+		// The storage event fires in all windows except the one that wrote the value.
+		function onStorage(e: StorageEvent) {
+			if (e.key === "sf_theme_mode" && e.newValue) {
+				cleanup();
+				cleanup = watchThemeMode(e.newValue as ThemeMode);
+			}
+		}
+		window.addEventListener("storage", onStorage);
+
 		return () => {
 			mounted = false;
 			cleanup();
+			window.removeEventListener("storage", onStorage);
 		};
 	});
 </script>

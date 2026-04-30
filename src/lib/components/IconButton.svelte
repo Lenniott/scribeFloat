@@ -35,8 +35,8 @@
 	const variantClass: Record<Variant, string> = {
 		primary: "bg-primary text-on-primary hover:brightness-110",
 		destructive:
-			"bg-transparent text-error-container hover:bg-error-container hover:text-on-error-container",
-		normal: "bg-transparent text-on-surface hover:bg-surface-container-high",
+			"bg-transparent text-error hover:bg-error hover:text-on-error",
+		normal: "bg-transparent text-on-surface hover:bg-surface-high",
 	};
 
 	const sizeClass: Record<Size, { button: string; icon: string }> = {

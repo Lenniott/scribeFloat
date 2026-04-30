@@ -4,10 +4,55 @@
     <meta charset="utf-8" />
     <link rel="icon" href="%sveltekit.assets%/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tauri + SvelteKit + Typescript App</title>
+    <title>Scribefloat</title>
+    <script>
+      // Apply saved theme before first paint to prevent flash-of-wrong-theme.
+      // Mirrors the logic in theme.ts — keep in sync if ThemeMode changes.
+      try {
+        var saved = localStorage.getItem('sf_theme_mode') || 'system';
+        var resolved = saved === 'dark' ? 'dark'
+          : saved === 'light' ? 'light'
+          : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = resolved;
+        var d = resolved === 'dark';
+        document.documentElement.style.backgroundColor = d ? 'oklch(0.24 0 0)' : 'oklch(0.96 0 0)';
+        document.documentElement.style.setProperty('--sf-bg',   d ? 'oklch(0.24 0 0)' : 'oklch(0.96 0 0)');
+        document.documentElement.style.setProperty('--sf-line', d ? 'oklch(0.30 0 0)' : 'oklch(0.90 0 0)');
+        document.documentElement.style.setProperty('--sf-sk',   d ? 'oklch(0.33 0 0)' : 'oklch(0.86 0 0)');
+      } catch (_) {}
+    </script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
+    <div id="sf-loading">
+      <style>
+        #sf-loading{position:fixed;inset:0;background:var(--sf-bg);display:flex;flex-direction:column;overflow:hidden;z-index:9999}
+        .sf-sk{background:var(--sf-sk);border-radius:4px;animation:sfp 1.6s ease-in-out infinite}
+        @keyframes sfp{0%,100%{opacity:1}50%{opacity:.35}}
+      </style>
+      <div style="height:56px;border-bottom:1px solid var(--sf-line);display:flex;align-items:center;padding:0 20px;gap:12px;flex-shrink:0">
+        <div class="sf-sk" style="height:14px;width:110px"></div>
+        <div style="flex:1"></div>
+        <div class="sf-sk" style="height:28px;width:28px;border-radius:6px"></div>
+        <div class="sf-sk" style="height:28px;width:28px;border-radius:6px;animation-delay:.1s"></div>
+      </div>
+      <div style="flex:1;display:grid;grid-template-columns:0.45fr 1fr;min-height:0">
+        <div style="display:flex;flex-direction:column;gap:16px;padding:20px">
+          <div class="sf-sk" style="height:12px;width:65%;animation-delay:.05s"></div>
+          <div class="sf-sk" style="height:12px;width:45%;animation-delay:.1s"></div>
+          <div style="flex:1"></div>
+          <div class="sf-sk" style="height:60px;width:100%;border-radius:6px;animation-delay:.15s"></div>
+        </div>
+        <div style="background:var(--sf-line);border-left:1px solid var(--sf-line);display:flex;flex-direction:column;gap:10px;padding:16px">
+          <div class="sf-sk" style="height:12px;width:55%;animation-delay:.05s"></div>
+          <div class="sf-sk" style="height:12px;width:75%;animation-delay:.2s"></div>
+          <div class="sf-sk" style="height:12px;width:40%;animation-delay:.35s"></div>
+        </div>
+      </div>
+      <div style="height:52px;border-top:1px solid var(--sf-line);display:flex;align-items:center;justify-content:flex-end;padding:0 20px;flex-shrink:0">
+        <div class="sf-sk" style="height:32px;width:96px;border-radius:6px"></div>
+      </div>
+    </div>
     <div style="display: contents">%sveltekit.body%</div>
   </body>
 </html>

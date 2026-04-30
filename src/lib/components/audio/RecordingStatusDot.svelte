@@ -8,15 +8,15 @@
 	} = $props();
 
 	const styles: Record<Status, string> = {
-		idle: "bg-surface-container-highest",
-		recording: "bg-error-container brightness-200 animate-pulse",
-		paused: "bg-active",
-		error: "bg-primary",
+		idle: "bg-surface-highest",
+		recording: "bg-error animate-pulse",
+		paused: "bg-surface-highest",
+		error: "bg-error",
 	};
 </script>
 
 <span
-	class="inline-block h-2 w-2 rounded-sm {styles[status]}"
+	class="inline-block h-2 w-2 rounded-full {styles[status]}"
 	title={status}
 	aria-label={`Recording status: ${status}`}
 ></span>

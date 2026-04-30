@@ -30,10 +30,9 @@
 
 <div
     aria-disabled={disabled}
-    class="group relative flex gap-2 rounded-md border-b border-transparent bg-surface-container-high px-2 py-2 text-body-md text-on-surface transition
-           focus-within:ring-primary
-		   focus-within:ring-1
-           focus-within:bg-surface-container-high
+    class="group relative flex gap-2 rounded-md border-b border-surface-high bg-surface-high px-2 py-2 text-body-md text-on-surface transition
+           focus-within:border-surface-highest
+           focus-within:bg-surface-high
            aria-disabled:opacity-40
            aria-disabled:pointer-events-none
            aria-disabled:cursor-not-allowed"
@@ -55,7 +54,7 @@
             aria-label="Add note"
             disabled={disabled || !value.trim()}
             onclick={submit}
-            class=rounded-full
+            class="rounded-full"
         />
     </div>
 </div>

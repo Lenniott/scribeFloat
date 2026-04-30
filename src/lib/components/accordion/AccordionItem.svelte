@@ -21,11 +21,11 @@
 	const isOpen = $derived(ctx.openId === id);
 </script>
 
-<div class="bg-surface-container-low mb-1">
+<div class="bg-surface-low mb-1">
 	<h3 class="border-0">
 		<button
 			type="button"
-			class="font-data text-label-md flex w-full items-center justify-between px-3 py-2.5 text-left font-normal tracking-stamped text-on-surface uppercase hover:bg-surface-container-highest"
+			class="font-mono text-label-md flex w-full items-center justify-between px-3 py-2.5 text-left font-normal tracking-stamped text-on-surface uppercase hover:bg-surface-highest"
 			aria-expanded={isOpen}
 			aria-controls={`panel-${id}`}
 			id={`header-${id}`}
@@ -43,7 +43,7 @@
 			? 'grid-rows-[1fr]'
 			: 'grid-rows-[0fr]'}"
 	>
-		<div class="min-h-0 overflow-hidden bg-surface-container-high">
+		<div class="min-h-0 overflow-hidden bg-surface-high">
 			<div class="p-3">
 				{@render children?.()}
 			</div>

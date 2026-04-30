@@ -57,7 +57,7 @@
   const sequence = $derived(
     progressSequence.map((step) => ({
       label: step.label,
-      complete: stageOrder.indexOf(step.stage) < currentStageIndex,
+      complete: stageOrder.indexOf(step.stage) <= currentStageIndex,
     })),
   );
 
@@ -73,11 +73,16 @@
           );
         }
         break;
-      case "DONE":
-        phase = "done";
+      case "DONE": {
+        const path = payload.transcript_path ?? "";
+        transcriptPath = path;
+        processingStage = "CLEANING_UP_AUDIO";
         progress = 100;
-        transcriptPath = payload.transcript_path ?? "";
+        setTimeout(() => {
+          phase = "done";
+        }, 800);
         break;
+      }
       case "NO_MODEL":
         phase = "no_model";
         progress = 0;
@@ -114,7 +119,8 @@
   }
 
   async function openTranscript() {
-    if (transcriptPath) await invoke("settings_open_transcript", { filePath: transcriptPath });
+    if (transcriptPath)
+      await invoke("settings_open_transcript", { filePath: transcriptPath });
   }
 
   async function copyContent() {
@@ -122,8 +128,9 @@
   }
 
   onMount(async () => {
-    const ulState = await listen<ScribePayload>("scribe://state-changed", (event) =>
-      handleScribeEvent(event.payload),
+    const ulState = await listen<ScribePayload>(
+      "scribe://state-changed",
+      (event) => handleScribeEvent(event.payload),
     );
     const ulClose = await listen("scribe://native-close-requested", () => {
       void closeScribeWindowCompletely();
@@ -137,17 +144,11 @@
   });
 </script>
 
-<div
-  class="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center p-6 text-on-surface"
->
-  <section
-    class="flex w-full flex-col gap-8 rounded-md border border-surface-low/20 bg-surface-lowest p-8 shadow-ambient"
-  >
-    <header class="flex gap-4 w-full justify-between items-center">
-      <div class="flex flex-col gap-2">
-        <p
-          class="font-mono text-label-sm tracking-stamped text-on-surface/55 uppercase"
-        >
+<div class="mx-auto flex flex-col text-on-surface">
+  <section class="flex h-screen flex-col overflow-hidden bg-surface-lowest">
+    <header class="flex min-h-14 items-end justify-between border-b border-b-surface-low px-5 py-2">
+      <div class="flex min-w-0 flex-1 flex-col gap-1">
+        <p class="font-mono text-label-sm tracking-stamped text-on-surface/55 uppercase">
           {title || "Recording"}
         </p>
         <h1 class="sf-headline-sm">
@@ -162,22 +163,22 @@
           {/if}
         </h1>
       </div>
-	  <IconButton
-	  variant="normal"
-	  aria-label="close panel"
-	  onclick={() => void closeScribeWindowCompletely()}
-	  icon={X}
-	  />
+      <IconButton
+        variant="normal"
+        aria-label="close panel"
+        onclick={() => void closeScribeWindowCompletely()}
+        icon={X}
+      />
     </header>
 
-    {#if phase === "transcribing"}
-      <StackProgressBar {progress} {sequence} />
-    {:else}
-      <div class="flex flex-col gap-4">
-        {#if phase === "done"}
-          <div class="flex items-center justify-between">
-            <p class="text-body-md text-on-surface/80">Transcript saved.</p>
-            {#if phase === "done"}
+    <div class="flex min-h-0 flex-1 flex-col justify-center gap-8 px-5 py-6">
+      {#if phase === "transcribing"}
+        <StackProgressBar {progress} {sequence} />
+      {:else}
+        <div class="flex flex-col gap-4">
+          {#if phase === "done"}
+            <div class="flex items-center justify-between">
+              <p class="text-body-md text-on-surface/80">Transcript saved.</p>
               <div class="flex gap-2">
                 <IconButton
                   aria-label="copy transcript to clipboard"
@@ -192,41 +193,39 @@
                   onclick={openTranscript}
                 />
               </div>
-            {/if}
-          </div>
-        {:else if phase === "no_model"}
-          <p class="text-body-md text-on-surface/80">
-            No downloaded model was available. The WAV file was kept so this
-            recording can be transcribed later.
-          </p>
-        {:else}
-          <p class="text-body-md text-error">{errorMessage}</p>
-        {/if}
-
-        {#if displayPath}
-          <button class="cursor-pointer group" onclick={openTranscript}>
-            <p
-              class="truncate font-mono text-body-md text-on-surface underline decoration-on-surface-dim group-hover:underline-offset-2"
-              title={displayPath}
-            >
-              {displayPath}
+            </div>
+          {:else if phase === "no_model"}
+            <p class="text-body-md text-on-surface/80">
+              No downloaded model was available. The WAV file was kept so this
+              recording can be transcribed later.
             </p>
-          </button>
-        {/if}
-      </div>
-    {/if}
+          {:else}
+            <p class="text-body-md text-error">{errorMessage}</p>
+          {/if}
 
-    <footer class="flex flex-wrap justify-end gap-3">
+          {#if displayPath}
+            <button class="cursor-pointer group p-0" onclick={openTranscript}>
+              <p
+                class="truncate font-mono text-body-md text-on-surface underline decoration-on-surface-dim group-hover:underline-offset-2"
+                title={displayPath}
+              >
+                {displayPath}
+              </p>
+            </button>
+          {/if}
+        </div>
+      {/if}
+    </div>
+
+    <footer class="flex flex-wrap justify-end gap-3 border-t border-t-surface-low px-5 py-3">
       {#if phase === "done"}
-        <Button variant="secondary" onclick={onRecordAgain}>Record Again</Button
-        >
+        <Button variant="secondary" onclick={onRecordAgain}>Record Again</Button>
       {:else if phase === "no_model"}
         <Button
           variant="secondary"
           disabled={!displayPath}
           onclick={() => displayPath && navigator.clipboard.writeText(displayPath)}
-          >Copy WAV Path</Button
-        >
+        >Copy WAV Path</Button>
         <Button variant="primary" onclick={onRecordAgain}>Record Again</Button>
       {:else if phase === "error"}
         <Button variant="primary" onclick={onRecordAgain}>Try Again</Button>

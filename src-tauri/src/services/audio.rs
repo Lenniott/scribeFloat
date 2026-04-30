@@ -39,24 +39,53 @@ impl AudioService {
             .unwrap_or_default()
     }
 
+    pub fn list_output_devices(&self) -> Vec<String> {
+        let host = cpal::default_host();
+        host.output_devices()
+            .map(|devs| devs.filter_map(|d| d.name().ok()).collect())
+            .unwrap_or_default()
+    }
+
     /// Open a mic input stream. Uses preferred_name if provided and available,
     /// otherwise falls back to the system default input device.
     pub fn start_mic(
         &self,
         preferred_name: Option<&str>,
+        allow_fallback_to_default: bool,
         on_level: Option<Arc<dyn Fn(f32) + Send + Sync>>,
     ) -> Result<MicSession> {
         let host = cpal::default_host();
-
         let device = match preferred_name {
-            Some(name) => host
-                .input_devices()?
-                .find(|d| d.name().map(|n| n == name).unwrap_or(false))
-                .or_else(|| host.default_input_device())
-                .ok_or_else(|| anyhow!("no input device found"))?,
-            None => host
-                .default_input_device()
-                .ok_or_else(|| anyhow!("no default input device"))?,
+            Some(name) => {
+                let mut found_exact = false;
+                let selected = host
+                    .input_devices()?
+                    .find(|d| d.name().map(|n| n == name).unwrap_or(false))
+                    .map(|d| {
+                        found_exact = true;
+                        d
+                    })
+                    .or_else(|| {
+                        if allow_fallback_to_default {
+                            host.default_input_device()
+                        } else {
+                            None
+                        }
+                    })
+                    .ok_or_else(|| anyhow!("no input device found"))?;
+                if !found_exact && !allow_fallback_to_default {
+                    return Err(anyhow!(
+                        "preferred input device `{name}` was not found; refusing fallback for this stream"
+                    ));
+                }
+                selected
+            }
+            None => {
+                let selected = host
+                    .default_input_device()
+                    .ok_or_else(|| anyhow!("no default input device"))?;
+                selected
+            }
         };
 
         let supported = device.default_input_config()?;
@@ -110,8 +139,8 @@ impl AudioService {
             sample_rate,
         })
     }
-}
 
+}
 /// Append samples to buffer, mixing down to mono if needed.
 /// Uses try_lock so we never block the audio callback thread.
 fn push_mono(buf: &Mutex<Vec<f32>>, data: &[f32], channels: usize) {

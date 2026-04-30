@@ -1,6 +1,7 @@
 use crate::services::config::ConfigService;
 use crate::services::hotkeys::HotkeyService;
 use crate::services::permissions::PermissionsService;
+use crate::services::audio::AudioService;
 use crate::types::{PermissionStatus, ThemeMode};
 use std::path::Path;
 use std::sync::Arc;
@@ -9,6 +10,7 @@ pub struct SettingsController {
     config: Arc<ConfigService>,
     hotkeys: Arc<HotkeyService>,
     permissions: Arc<PermissionsService>,
+    audio: Arc<AudioService>,
 }
 
 impl SettingsController {
@@ -16,11 +18,13 @@ impl SettingsController {
         config: Arc<ConfigService>,
         hotkeys: Arc<HotkeyService>,
         permissions: Arc<PermissionsService>,
+        audio: Arc<AudioService>,
     ) -> Arc<Self> {
         Arc::new(Self {
             config,
             hotkeys,
             permissions,
+            audio,
         })
     }
 
@@ -134,6 +138,52 @@ impl SettingsController {
             .map_err(|e| format!("failed to persist labels: {e}"))
     }
 
+    pub fn get_preferred_audio_devices(&self) -> (Option<String>, Option<String>) {
+        let cfg = self.config.get();
+        (cfg.preferred_input_device, cfg.preferred_speaker_device)
+    }
+
+    pub fn set_preferred_audio_devices(
+        &self,
+        preferred_input_device: Option<String>,
+        preferred_speaker_device: Option<String>,
+    ) -> Result<(), String> {
+        let normalize = |value: Option<String>| -> Option<String> {
+            value.and_then(|v| {
+                let trimmed = v.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            })
+        };
+
+        let preferred_input_device = normalize(preferred_input_device);
+        let preferred_speaker_device = normalize(preferred_speaker_device);
+
+        self.config
+            .update(|cfg| {
+                cfg.preferred_input_device = preferred_input_device.clone();
+                cfg.preferred_speaker_device = preferred_speaker_device.clone();
+            })
+            .map_err(|e| format!("failed to persist preferred audio devices: {e}"))
+    }
+
+    pub fn list_output_devices(&self) -> Vec<String> {
+        self.audio.list_output_devices()
+    }
+
+    pub fn get_scribe_capture_speaker(&self) -> bool {
+        self.config.get().scribe_capture_speaker
+    }
+
+    pub fn set_scribe_capture_speaker(&self, enabled: bool) -> Result<(), String> {
+        self.config
+            .update(|cfg| cfg.scribe_capture_speaker = enabled)
+            .map_err(|e| format!("failed to persist scribe speaker capture setting: {e}"))
+    }
+
     pub fn get_open_with_app_path(&self) -> Option<String> {
         self.config.get().open_with_app_path
     }
@@ -230,7 +280,12 @@ mod tests {
             fail_on_open,
         });
         let hotkeys = HotkeyService::new(registrar);
-        SettingsController::new(config, hotkeys, PermissionsService::new())
+        SettingsController::new(
+            config,
+            hotkeys,
+            PermissionsService::new(),
+            AudioService::new(),
+        )
     }
 
     #[test]
@@ -333,6 +388,22 @@ mod tests {
         assert!(ctrl
             .set_input_labels("   ".to_string(), "Speaker".to_string())
             .is_err());
+    }
+
+    #[test]
+    fn preferred_audio_devices_trim_and_persist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
+        let ctrl = make_controller(config, None);
+
+        ctrl.set_preferred_audio_devices(
+            Some("  Built-in Mic ".to_string()),
+            Some("  BlackHole 2ch ".to_string()),
+        )
+        .expect("set preferred devices");
+        let (preferred_input, preferred_speaker) = ctrl.get_preferred_audio_devices();
+        assert_eq!(preferred_input.as_deref(), Some("Built-in Mic"));
+        assert_eq!(preferred_speaker.as_deref(), Some("BlackHole 2ch"));
     }
 
     #[test]

@@ -51,6 +51,44 @@ pub fn settings_set_input_labels(
 }
 
 #[tauri::command]
+pub fn settings_get_preferred_audio_devices(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<(Option<String>, Option<String>), String> {
+    Ok(ctrl.get_preferred_audio_devices())
+}
+
+#[tauri::command]
+pub fn settings_set_preferred_audio_devices(
+    ctrl: State<'_, Arc<SettingsController>>,
+    preferred_input_device: Option<String>,
+    preferred_speaker_device: Option<String>,
+) -> Result<(), String> {
+    ctrl.set_preferred_audio_devices(preferred_input_device, preferred_speaker_device)
+}
+
+#[tauri::command]
+pub fn settings_list_output_devices(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<Vec<String>, String> {
+    Ok(ctrl.list_output_devices())
+}
+
+#[tauri::command]
+pub fn settings_get_scribe_capture_speaker(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<bool, String> {
+    Ok(ctrl.get_scribe_capture_speaker())
+}
+
+#[tauri::command]
+pub fn settings_set_scribe_capture_speaker(
+    ctrl: State<'_, Arc<SettingsController>>,
+    enabled: bool,
+) -> Result<(), String> {
+    ctrl.set_scribe_capture_speaker(enabled)
+}
+
+#[tauri::command]
 pub fn settings_get_open_with_app_path(
     ctrl: State<'_, Arc<SettingsController>>,
 ) -> Result<Option<String>, String> {

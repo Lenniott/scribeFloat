@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
+	import { emit } from '@tauri-apps/api/event';
 	import NavButton from '@components/NavButton.svelte';
 	import Button from '@components/Button.svelte';
 	import SettingGeneral from '@lib/screens/setting_general.svelte';
@@ -29,9 +30,9 @@
 	let setupDismissedThisSession = $state(false);
 	const setupMode = $derived(setupHighlight && !setupDismissedThisSession);
 
-	const currentTab = $derived(activeTab ?? (setupMode ? 'models' : 'general'));
+	const currentTab = $derived(activeTab ?? (setupMode ? 'permissions' : 'general'));
 	const prerequisitesMet = $derived(modelReady && permissionsReady);
-	const setupStep = $derived(currentTab === 'models' ? 1 : currentTab === 'permissions' ? 2 : 0);
+	const setupStep = $derived(currentTab === 'permissions' ? 1 : currentTab === 'models' ? 2 : 0);
 
 	const tabs: Array<{ id: SettingsTab; label: string }> = [
 		{ id: 'general', label: 'General' },
@@ -39,8 +40,8 @@
 		{ id: 'models', label: 'Models' },
 	];
 	const highlightTabs: Array<{ id: SettingsTab; label: string }> = [
-		{ id: 'models', label: 'Models' },
 		{ id: 'permissions', label: 'Permissions' },
+		{ id: 'models', label: 'Models' },
 	];
 	const visibleTabs = $derived(setupMode ? highlightTabs : tabs);
 
@@ -60,25 +61,34 @@
 		return ok;
 	}
 
-	async function configureLater() {
-		if (finishing) return;
+	async function completeAndClose(): Promise<boolean> {
+		if (finishing) return false;
 		finishing = true;
 		const ok = await markSetupDismissedPersisted();
 		finishing = false;
-		if (!ok) return;
+		if (!ok) return false;
+		await emit('settings://onboarding-complete').catch(() => {});
 		setupDismissedThisSession = true;
 		setupMessage = '';
 		onClose?.();
+		return true;
+	}
+
+	async function closeSettings() {
+		if (setupMode) {
+			await completeAndClose();
+		} else {
+			onClose?.();
+		}
+	}
+
+	async function configureLater() {
+		await completeAndClose();
 	}
 
 	async function finishHighlightSetup() {
 		if (!prerequisitesMet || finishing) return;
-		finishing = true;
-		const ok = await markSetupDismissedPersisted();
-		finishing = false;
-		if (!ok) return;
-		setupDismissedThisSession = true;
-		onClose?.();
+		await completeAndClose();
 	}
 </script>
 
@@ -91,13 +101,13 @@
 				</h2>
 				{#if setupMode}
 					<p class="text-label-sm text-on-surface/60">
-						Step {setupStep} of 2 — {currentTab === 'models'
-							? 'Install and select a model'
-							: 'Grant microphone access for recording'}.
+						Step {setupStep} of 2 — {currentTab === 'permissions'
+							? 'Grant microphone access for recording'
+							: 'Install and select a model'}.
 					</p>
 				{/if}
 			</div>
-			<IconButton aria-label="close settings" variant="normal" icon={X} onclick={() => onClose?.()} />
+			<IconButton aria-label="close settings" variant="normal" icon={X} onclick={() => void closeSettings()} />
 		</header>
 
 		<div class="flex min-h-0 h-full">
@@ -112,11 +122,11 @@
 				{#if setupMode}
 					<div class="mt-4 space-y-2 rounded-md border border-surface-low px-3 py-2">
 						<p class="text-label-sm text-on-surface/70">Before recording you will need:</p>
-						<p class={modelReady ? 'text-label-sm text-on-surface' : 'text-label-sm text-on-surface/50'}>
-							{modelReady ? 'Model installed and selected' : 'Model not ready'}
-						</p>
 						<p class={permissionsReady ? 'text-label-sm text-on-surface' : 'text-label-sm text-on-surface/50'}>
 							{permissionsReady ? 'Microphone granted' : 'Microphone not granted'}
+						</p>
+						<p class={modelReady ? 'text-label-sm text-on-surface' : 'text-label-sm text-on-surface/50'}>
+							{modelReady ? 'Model installed and selected' : 'Model not ready'}
 						</p>
 					</div>
 				{/if}
@@ -147,22 +157,18 @@
 					{/if}
 				</div>
 				<div class="flex shrink-0 flex-wrap items-center gap-2">
-					<Button variant="ghost" onclick={configureLater} disabled={finishing}>
+					<Button variant="ghost" onclick={() => void configureLater()} disabled={finishing}>
 						Configure later
 					</Button>
 					{#if currentTab === 'permissions'}
-						<Button variant="secondary" onclick={() => selectTab('models')}>Back</Button>
-					{/if}
-					{#if currentTab === 'models'}
-						<Button variant="primary" disabled={!modelReady || finishing} onclick={() => selectTab('permissions')}>
+						<Button variant="primary" disabled={finishing} onclick={() => selectTab('models')}>
 							Continue
 						</Button>
-					{:else}
-						<Button
-							variant="primary"
-							disabled={!prerequisitesMet || finishing}
-							onclick={finishHighlightSetup}
-						>
+					{:else if currentTab === 'models'}
+						<Button variant="secondary" disabled={finishing} onclick={() => selectTab('permissions')}>
+							Back
+						</Button>
+						<Button variant="primary" disabled={!prerequisitesMet || finishing} onclick={() => void finishHighlightSetup()}>
 							{finishing ? 'Saving…' : 'Finish setup'}
 						</Button>
 					{/if}

@@ -17,6 +17,7 @@ export type PermissionStatus = {
 	kind: string;
 	granted: boolean;
 	can_request: boolean;
+	hint?: string;
 };
 
 export function extractErrorMessage(error: unknown, fallback: string): string {

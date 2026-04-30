@@ -159,6 +159,7 @@ pub fn run() {
                 Arc::clone(&config),
                 Arc::clone(&hotkeys),
                 Arc::clone(&permissions),
+                Arc::clone(&audio),
             );
             if let Err(err) = settings_ctrl.rehydrate_hotkeys() {
                 eprintln!("hotkey rehydration skipped: {err}");
@@ -209,6 +210,7 @@ pub fn run() {
             commands::scribe::scribe_get_include_timestamps,
             commands::scribe::scribe_set_include_timestamps,
             commands::scribe::scribe_list_input_devices,
+            commands::scribe::scribe_list_output_devices,
             commands::scribe::scribe_read_transcript,
             commands::model::model_setup_status,
             commands::model::model_list,
@@ -220,6 +222,11 @@ pub fn run() {
             commands::settings::settings_set_hotkeys,
             commands::settings::settings_get_input_labels,
             commands::settings::settings_set_input_labels,
+            commands::settings::settings_get_preferred_audio_devices,
+            commands::settings::settings_set_preferred_audio_devices,
+            commands::settings::settings_list_output_devices,
+            commands::settings::settings_get_scribe_capture_speaker,
+            commands::settings::settings_set_scribe_capture_speaker,
             commands::settings::settings_get_open_with_app_path,
             commands::settings::settings_set_open_with_app_path,
             commands::settings::settings_open_transcript,

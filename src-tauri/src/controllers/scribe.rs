@@ -6,6 +6,7 @@ use crate::services::{
 };
 use crate::types::{Config, Note, ProcessingStage, ScribeState, ScribeStateEvent};
 use anyhow::{anyhow, Result};
+use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
@@ -14,6 +15,8 @@ use tauri::{AppHandle, Emitter};
 
 struct ActiveSession {
     mic: MicSession,
+    speaker: Option<MicSession>,
+    previous_output_device: Option<String>,
     session_dir: PathBuf,
     started_at: Instant,
 }
@@ -67,7 +70,12 @@ impl ScribeController {
     }
 
     /// Transition IDLE → RECORDING. Opens mic and creates session directory.
-    pub fn start(&self, preferred_mic: Option<String>) -> Result<()> {
+    pub fn start(
+        &self,
+        preferred_mic: Option<String>,
+        preferred_speaker: Option<String>,
+        capture_speaker: bool,
+    ) -> Result<()> {
         {
             let inner = self.inner.lock().unwrap();
             Self::ensure_start_allowed(&inner.state)?;
@@ -78,16 +86,74 @@ impl ScribeController {
         let app = self.app.clone();
         let mic = self.audio.start_mic(
             preferred_mic.as_deref(),
+            true,
             Some(Arc::new(move |level| {
                 app.emit("scribe://audio-level", level).ok();
             })),
         )?;
+        let mut previous_output_device: Option<String> = None;
+        let speaker = if capture_speaker {
+            if let Ok(current) = crate::platform::get_default_output_device() {
+                previous_output_device = Some(current.clone());
+            }
+            if let Some(target_output) = preferred_speaker
+                .as_ref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                if let Err(err) = crate::platform::set_default_output_device(target_output) {
+                    eprintln!("failed to switch output route to `{target_output}`: {err}");
+                } else {
+                }
+            }
+            let input_devices = self.audio.list_input_devices();
+            let speaker_name = preferred_speaker.clone().unwrap_or_default();
+            let input_match = input_devices.iter().any(|name| name == &speaker_name);
+            let mut speaker_capture_name = preferred_speaker.clone();
+            #[cfg(target_os = "macos")]
+            {
+                let has_preferred_output = macos_output_device_exists(&speaker_name);
+                let has_blackhole_input =
+                    input_devices.iter().any(|name| name.eq_ignore_ascii_case("BlackHole 2ch"));
+                if !input_match && has_preferred_output && has_blackhole_input {
+                    speaker_capture_name = Some("BlackHole 2ch".to_string());
+                }
+            }
+            let app = self.app.clone();
+            match self.audio.start_mic(
+                speaker_capture_name.as_deref(),
+                false,
+                Some(Arc::new(move |level| {
+                    app.emit("scribe://speaker-level", level).ok();
+                })),
+            ) {
+                Ok(stream) => Some(stream),
+                Err(err) => {
+                    // Keep recording reliable: if speaker stream cannot attach,
+                    // continue with mic-only instead of failing the whole start.
+                    self.app
+                        .emit(
+                            "scribe://speaker-capture-unavailable",
+                            json!({
+                                "reason": err.to_string(),
+                                "requestedSpeakerDevice": preferred_speaker
+                            }),
+                        )
+                        .ok();
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
         let mut inner = self.inner.lock().unwrap();
         Self::ensure_start_allowed(&inner.state)?;
         inner.state = ScribeState::Recording;
         inner.session = Some(ActiveSession {
             mic,
+            speaker,
+            previous_output_device,
             session_dir,
             started_at: Instant::now(),
         });
@@ -99,23 +165,23 @@ impl ScribeController {
     /// Transition RECORDING → IDLE. Discards the audio buffer and removes the
     /// session directory if no files were written into it yet.
     pub fn cancel(&self) -> Result<()> {
-        let session_dir = {
+        let session = {
             let mut inner = self.inner.lock().unwrap();
             if inner.state != ScribeState::Recording {
                 return Err(anyhow!("cannot cancel: not recording"));
             }
-            let dir = inner
-                .session
-                .as_ref()
-                .map(|s| s.session_dir.clone());
+            let session = inner.session.take();
             inner.session = None;
             inner.state = ScribeState::Idle;
             inner.notes.clear();
             self.emit_state(&inner);
-            dir
+            session
         };
-        if let Some(dir) = session_dir {
-            self.output.delete_session_dir_if_empty(&dir);
+        if let Some(session) = session {
+            if let Some(previous_output) = session.previous_output_device.as_deref() {
+                let _ = crate::platform::set_default_output_device(previous_output);
+            }
+            self.output.delete_session_dir_if_empty(&session.session_dir);
         }
         Ok(())
     }
@@ -139,6 +205,9 @@ impl ScribeController {
             inner.state = ScribeState::Idle;
             (session, notes)
         };
+        if let Some(previous_output) = session.previous_output_device.as_deref() {
+            let _ = crate::platform::set_default_output_device(previous_output);
+        }
 
         let wav_path = session.session_dir.join("mic.wav");
         let (raw_pcm, native_rate) = session.mic.stop_and_take();
@@ -250,12 +319,24 @@ impl ScribeController {
         title: &str,
         abort_flag: Arc<AtomicBool>,
     ) -> Result<()> {
-        let (raw_pcm, native_rate) = session.mic.stop_and_take();
+        let ActiveSession {
+            mic,
+            speaker,
+            previous_output_device,
+            session_dir,
+            ..
+        } = session;
+        let (raw_pcm, native_rate) = mic.stop_and_take();
+        let speaker_capture_enabled = speaker.is_some();
+        let speaker_capture = speaker.map(|speaker| speaker.stop_and_take());
+        if let Some(previous_output) = previous_output_device.as_deref() {
+            let _ = crate::platform::set_default_output_device(previous_output);
+        }
 
         let pcm_16k = resample_linear(&raw_pcm, native_rate, 16_000);
 
         let config = self.config.get();
-        let wav_path = session.session_dir.join("mic.wav");
+        let wav_path = session_dir.join("mic.wav");
         self.output.write_wav(&pcm_16k, 16_000, &wav_path)?;
 
         {
@@ -304,13 +385,35 @@ impl ScribeController {
             }
         });
 
-        let segments =
+        let segments = if let Some((speaker_raw, speaker_native_rate)) = speaker_capture {
+            let speaker_16k = resample_linear(&speaker_raw, speaker_native_rate, 16_000);
+            let speaker_wav_path = session_dir.join("speaker.wav");
+            self.output.write_wav(&speaker_16k, 16_000, &speaker_wav_path)?;
+
+            let mic_segments =
+                self.model
+                    .transcribe_pcm_with_progress(&model_path, &pcm_16k, move |progress| {
+                        callback_progress_tx
+                            .send(ProgressMessage::Progress(progress * 0.5))
+                            .ok();
+                    })?;
+            let progress_tx_speaker = progress_tx.clone();
+            let speaker_segments =
+                self.model
+                    .transcribe_pcm_with_progress(&model_path, &speaker_16k, move |progress| {
+                        progress_tx_speaker
+                            .send(ProgressMessage::Progress(0.5 + (progress * 0.5)))
+                            .ok();
+                    })?;
+            Ok(self.model.merge_dual_source(&mic_segments, &speaker_segments))
+        } else {
             self.model
                 .transcribe_pcm_with_progress(&model_path, &pcm_16k, move |progress| {
                     callback_progress_tx
                         .send(ProgressMessage::Progress(progress))
                         .ok();
-                });
+                })
+        };
         progress_tx.send(ProgressMessage::Finished).ok();
         progress_thread.join().ok();
         let segments = segments?;
@@ -322,7 +425,7 @@ impl ScribeController {
 
         let transcript_path = self
             .output
-            .transcript_path(&session.session_dir, &model_path, title);
+            .transcript_path(&session_dir, &model_path, title);
         let model_name = model_path
             .file_stem()
             .map(|s| s.to_string_lossy().replace("ggml-", ""))
@@ -358,6 +461,10 @@ impl ScribeController {
                 )
                 .ok();
             self.output.delete_wav(&wav_path)?;
+            if speaker_capture_enabled {
+                let speaker_wav_path = session_dir.join("speaker.wav");
+                self.output.delete_wav(&speaker_wav_path)?;
+            }
         }
 
         self.clear_transcription_tracking();
@@ -434,6 +541,10 @@ impl ScribeController {
         self.audio.list_input_devices()
     }
 
+    pub fn list_output_devices(&self) -> Vec<String> {
+        self.audio.list_output_devices()
+    }
+
     pub fn read_transcript_at(&self, path: &str) -> Result<String, String> {
         std::fs::read_to_string(path).map_err(|e| format!("failed to read transcript: {e}"))
     }
@@ -444,6 +555,18 @@ impl ScribeController {
         }
         Ok(())
     }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_output_device_exists(device_name: &str) -> bool {
+    let output = std::process::Command::new("system_profiler")
+        .args(["SPAudioDataType", "-json"])
+        .output();
+    let Ok(output) = output else {
+        return false;
+    };
+    let raw = String::from_utf8_lossy(&output.stdout);
+    raw.contains(device_name)
 }
 
 /// Linear interpolation resampler. Good enough for speech at 16 kHz target.

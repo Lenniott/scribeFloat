@@ -32,6 +32,20 @@ pub struct Config {
     #[serde(default = "default_output_label")]
     pub output_label: String,
 
+    /// Whether Scribe should capture speaker/system audio alongside mic.
+    #[serde(default)]
+    pub scribe_capture_speaker: bool,
+
+    /// Preferred microphone device name for Scribe.
+    /// None = use system default input.
+    #[serde(default)]
+    pub preferred_input_device: Option<String>,
+
+    /// Preferred speaker-capture device name for Scribe.
+    /// None = use system/default platform route.
+    #[serde(default)]
+    pub preferred_speaker_device: Option<String>,
+
     /// UI theme preference. `System` follows the OS preference.
     #[serde(default)]
     pub theme_mode: ThemeMode,
@@ -57,6 +71,9 @@ impl Default for Config {
             dictate_hotkey: default_dictate_hotkey(),
             input_label: default_input_label(),
             output_label: default_output_label(),
+            scribe_capture_speaker: false,
+            preferred_input_device: None,
+            preferred_speaker_device: None,
             theme_mode: ThemeMode::System,
             open_with_app_path: None,
             onboarding_complete: false,
@@ -187,6 +204,8 @@ pub struct PermissionStatus {
     pub kind: String,
     pub granted: bool,
     pub can_request: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
 }
 
 impl ScribeStateEvent {

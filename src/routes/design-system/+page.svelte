@@ -87,7 +87,7 @@
     "primary",
     "secondary",
     "destructive",
-    "transparent",
+    "ghost",
     "normal",
   ] as const;
   /** IconButton intentionally supports fewer variants than Button */

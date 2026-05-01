@@ -7,6 +7,8 @@
 
   import Button from "@components/Button.svelte";
   import StackProgressBar from "@components/form/StackProgressBar.svelte";
+  import Toast from "@components/Toast.svelte";
+  import type { ToastState } from "@components/Toast.svelte";
   import { Copy, SquareArrowOutUpRight, X } from "lucide-svelte";
   import IconButton from "@lib/components/IconButton.svelte";
 
@@ -42,6 +44,20 @@
   let processingStage = $state<ProcessingStage>("LOADING_MODEL");
   let started = false;
   let unlisteners: UnlistenFn[] = [];
+
+  let toastMessage = $state("");
+  let toastState = $state<ToastState>("normal");
+  let toastTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function showToast(msg: string, state: ToastState = "normal") {
+    if (toastTimeout) clearTimeout(toastTimeout);
+    toastMessage = msg;
+    toastState = state;
+    toastTimeout = setTimeout(() => {
+      toastMessage = "";
+      toastTimeout = null;
+    }, 3000);
+  }
 
   const progressSequence: { label: string; stage: ProcessingStage }[] = [
     { label: "Loading model", stage: "LOADING_MODEL" },
@@ -124,7 +140,13 @@
   }
 
   async function copyContent() {
-    if (transcriptPath) await copyTranscript(transcriptPath);
+    if (!transcriptPath) return;
+    try {
+      await copyTranscript(transcriptPath);
+      showToast("Copied to clipboard", "success");
+    } catch (e) {
+      showToast("Copy failed: " + String(e), "error");
+    }
   }
 
   onMount(async () => {
@@ -251,3 +273,5 @@
     </footer>
   </section>
 </div>
+
+<Toast message={toastMessage} state={toastState} />

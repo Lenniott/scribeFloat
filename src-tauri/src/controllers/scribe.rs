@@ -69,7 +69,7 @@ impl ScribeController {
     /// Transition IDLE → RECORDING. Opens mic and creates session directory.
     pub fn start(&self, preferred_mic: Option<String>) -> Result<()> {
         {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.lock();
             Self::ensure_start_allowed(&inner.state)?;
         }
 
@@ -83,7 +83,7 @@ impl ScribeController {
             })),
         )?;
 
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.lock();
         Self::ensure_start_allowed(&inner.state)?;
         inner.state = ScribeState::Recording;
         inner.session = Some(ActiveSession {
@@ -100,7 +100,7 @@ impl ScribeController {
     /// session directory if no files were written into it yet.
     pub fn cancel(&self) -> Result<()> {
         let session_dir = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.lock();
             if inner.state != ScribeState::Recording {
                 return Err(anyhow!("cannot cancel: not recording"));
             }
@@ -126,7 +126,7 @@ impl ScribeController {
             title.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d %H:%M").to_string());
 
         let (session, notes) = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.lock();
             if inner.state != ScribeState::Recording {
                 return Err(anyhow!("cannot save recording-only: not recording"));
             }
@@ -154,7 +154,7 @@ impl ScribeController {
     /// Request cooperative cancellation before transcript write (WAV retained). UI may IDLE immediately.
     pub fn abort_transcription_keep_wav(&self) -> Result<()> {
         let wav = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.lock();
             if inner.state != ScribeState::Transcribing {
                 return Err(anyhow!("cannot abort transcription: not transcribing"));
             }
@@ -179,7 +179,7 @@ impl ScribeController {
         let abort_flag = Arc::new(AtomicBool::new(false));
         // Extract session under lock then release immediately.
         let (session, notes) = {
-            let mut inner = this.inner.lock().unwrap();
+            let mut inner = this.lock();
             if inner.state != ScribeState::Recording {
                 return Err(anyhow!("cannot stop: not recording"));
             }
@@ -219,7 +219,7 @@ impl ScribeController {
                     eprintln!("transcription error: {e}");
                     this.clear_transcription_tracking();
                     {
-                        let mut inner = this.inner.lock().unwrap();
+                        let mut inner = this.lock();
                         inner.state = ScribeState::Error;
                     }
                     this.app
@@ -235,6 +235,16 @@ impl ScribeController {
                 Err(e) => {
                     this.clear_transcription_tracking();
                     eprintln!("transcription task panicked: {e}");
+                    this.lock().state = ScribeState::Error;
+                    this.app
+                        .emit(
+                            "scribe://state-changed",
+                            ScribeStateEvent {
+                                error: Some("Transcription crashed unexpectedly.".to_string()),
+                                ..ScribeStateEvent::new(ScribeState::Error)
+                            },
+                        )
+                        .ok();
                 }
             }
         });
@@ -259,7 +269,7 @@ impl ScribeController {
         self.output.write_wav(&pcm_16k, 16_000, &wav_path)?;
 
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.lock();
             inner.transcription_wav_path = Some(wav_path.clone());
         }
 
@@ -387,7 +397,7 @@ impl ScribeController {
 
     /// Add a timestamped note. Only valid while recording.
     pub fn add_note(&self, text: String) -> Result<Note> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.lock();
         if inner.state != ScribeState::Recording {
             return Err(anyhow!("cannot add note: not recording"));
         }
@@ -406,11 +416,11 @@ impl ScribeController {
     }
 
     fn transition(&self, state: ScribeState) {
-        self.inner.lock().unwrap().state = state;
+        self.lock().state = state;
     }
 
     fn clear_transcription_tracking(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.lock();
         inner.transcription_abort = None;
         inner.transcription_wav_path = None;
     }
@@ -435,7 +445,25 @@ impl ScribeController {
     }
 
     pub fn read_transcript_at(&self, path: &str) -> Result<String, String> {
-        std::fs::read_to_string(path).map_err(|e| format!("failed to read transcript: {e}"))
+        let path = Path::new(path);
+        let canonical = path
+            .canonicalize()
+            .map_err(|_| "invalid or inaccessible transcript path".to_string())?;
+        let save_folder = self.config.get().save_folder;
+        let base = Path::new(&save_folder)
+            .canonicalize()
+            .map_err(|_| "save folder is not accessible".to_string())?;
+        if !canonical.starts_with(&base) {
+            return Err("transcript path is outside the configured save folder".to_string());
+        }
+        self.output.read_transcript(&canonical)
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
+        self.inner.lock().unwrap_or_else(|p| {
+            eprintln!("scribe: recovering from poisoned mutex");
+            p.into_inner()
+        })
     }
 
     fn ensure_start_allowed(state: &ScribeState) -> Result<()> {

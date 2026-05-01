@@ -1,5 +1,6 @@
 use crate::services::config::ConfigService;
 use crate::services::hotkeys::HotkeyService;
+use crate::services::output::OutputService;
 use crate::services::permissions::PermissionsService;
 use crate::types::{PermissionStatus, ThemeMode};
 use std::path::Path;
@@ -8,6 +9,7 @@ use std::sync::Arc;
 pub struct SettingsController {
     config: Arc<ConfigService>,
     hotkeys: Arc<HotkeyService>,
+    output: Arc<OutputService>,
     permissions: Arc<PermissionsService>,
 }
 
@@ -15,11 +17,13 @@ impl SettingsController {
     pub fn new(
         config: Arc<ConfigService>,
         hotkeys: Arc<HotkeyService>,
+        output: Arc<OutputService>,
         permissions: Arc<PermissionsService>,
     ) -> Arc<Self> {
         Arc::new(Self {
             config,
             hotkeys,
+            output,
             permissions,
         })
     }
@@ -45,16 +49,10 @@ impl SettingsController {
             ));
         }
 
-        std::fs::create_dir_all(candidate)
-            .map_err(|e| format!("failed to create output path `{trimmed}`: {e}"))?;
-        let normalized = std::fs::canonicalize(candidate)
-            .map_err(|e| format!("failed to canonicalize output path `{trimmed}`: {e}"))?;
-        if !normalized.is_dir() {
-            return Err(format!(
-                "output path `{}` is not a directory.",
-                normalized.display()
-            ));
-        }
+        let normalized = self
+            .output
+            .ensure_output_dir(candidate)
+            .map_err(|e| format!("output path `{trimmed}`: {e}"))?;
         let normalized = normalized.to_string_lossy().to_string();
         self.config
             .update(|cfg| cfg.save_folder = normalized.clone())
@@ -139,6 +137,15 @@ impl SettingsController {
     }
 
     pub fn set_open_with_app_path(&self, path: Option<String>) -> Result<(), String> {
+        if let Some(ref p) = path {
+            let trimmed = p.trim();
+            if trimmed.is_empty() {
+                return Err("app path cannot be empty; pass null to clear it".to_string());
+            }
+            if trimmed.contains("..") {
+                return Err("app path must not contain '..'".to_string());
+            }
+        }
         self.config
             .update(|cfg| cfg.open_with_app_path = path)
             .map_err(|e| format!("failed to persist app path: {e}"))
@@ -146,7 +153,7 @@ impl SettingsController {
 
     pub fn open_transcript(&self, file_path: &str) -> Result<(), String> {
         let app = self.config.get().open_with_app_path;
-        crate::platform::open_file(file_path, app.as_deref())
+        self.output.open_file_for_user(file_path, app.as_deref())
     }
 
     pub fn get_theme_mode(&self) -> ThemeMode {
@@ -230,7 +237,12 @@ mod tests {
             fail_on_open,
         });
         let hotkeys = HotkeyService::new(registrar);
-        SettingsController::new(config, hotkeys, PermissionsService::new())
+        SettingsController::new(
+            config,
+            hotkeys,
+            crate::services::output::OutputService::new(),
+            PermissionsService::new(),
+        )
     }
 
     #[test]

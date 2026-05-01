@@ -2,7 +2,7 @@
 	import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	import ToggleSwitch from "@lib/components/form/ToggleSwitch.svelte";
 
-	let webhookUrl = $state("https://n8n.lenniott.uk/webhook/ob-doc");
+	let webhookUrl = $state("");
 	let authHeaderName = $state("x-ob-key");
 	let authHeaderValue = $state("");
 	let autoSendScribe = $state(false);

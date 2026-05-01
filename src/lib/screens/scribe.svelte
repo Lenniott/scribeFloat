@@ -297,7 +297,10 @@
 		if (!text) return;
 		const draft = noteDraft;
 		noteDraft = '';
-		const created = await invoke<BackendNote>('scribe_add_note', { text: draft }).catch(() => null);
+		const created = await invoke<BackendNote>('scribe_add_note', { text: draft }).catch(() => {
+			noteDraft = draft; // restore so the user can retry
+			return null;
+		});
 		if (!created) return;
 		notes = [
 			...notes,

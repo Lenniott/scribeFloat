@@ -178,6 +178,7 @@ pub fn run() {
             let settings_ctrl = controllers::settings::SettingsController::new(
                 Arc::clone(&config),
                 Arc::clone(&hotkeys),
+                Arc::clone(&output),
                 Arc::clone(&permissions),
             );
             if let Err(err) = settings_ctrl.rehydrate_hotkeys() {

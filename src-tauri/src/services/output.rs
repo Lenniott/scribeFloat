@@ -159,6 +159,31 @@ impl OutputService {
         Ok(dest)
     }
 
+    /// Read a transcript file. Path validation (boundary check) is the caller's responsibility;
+    /// the actual I/O lives here to keep all disk access inside OutputService.
+    pub fn read_transcript(&self, path: &Path) -> Result<String, String> {
+        std::fs::read_to_string(path).map_err(|e| format!("failed to read transcript: {e}"))
+    }
+
+    /// Create the directory at `path` (and missing parents) and return its canonical form.
+    /// Used when validating and persisting a new save-folder location.
+    pub fn ensure_output_dir(&self, path: &Path) -> Result<PathBuf, String> {
+        std::fs::create_dir_all(path)
+            .map_err(|e| format!("failed to create directory `{}`: {e}", path.display()))?;
+        let canonical = std::fs::canonicalize(path)
+            .map_err(|e| format!("failed to resolve path `{}`: {e}", path.display()))?;
+        if !canonical.is_dir() {
+            return Err(format!("`{}` is not a directory", canonical.display()));
+        }
+        Ok(canonical)
+    }
+
+    /// Open a file with the OS default handler (or a named app). Delegates to platform code
+    /// so that controllers do not call the platform layer directly.
+    pub fn open_file_for_user(&self, path: &str, app: Option<&str>) -> Result<(), String> {
+        crate::platform::open_file(path, app)
+    }
+
     /// Remove the session directory if it contains no files (i.e. recording was cancelled
     /// before any WAV was written). Silent no-op if the directory is non-empty or gone.
     pub fn delete_session_dir_if_empty(&self, dir: &Path) {

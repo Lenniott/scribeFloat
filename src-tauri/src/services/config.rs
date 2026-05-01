@@ -25,7 +25,10 @@ impl ConfigService {
 
     /// Cheap clone of current config for use at call site.
     pub fn get(&self) -> Config {
-        self.inner.read().unwrap().clone()
+        self.inner
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
     }
 
     /// Mutate config via closure then persist atomically.
@@ -33,7 +36,7 @@ impl ConfigService {
     where
         F: FnOnce(&mut Config),
     {
-        let mut config = self.inner.write().unwrap();
+        let mut config = self.inner.write().unwrap_or_else(|p| p.into_inner());
         f(&mut config);
         self.save(&config)
     }

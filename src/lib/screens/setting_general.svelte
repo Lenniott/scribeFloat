@@ -59,17 +59,21 @@
 
 	async function saveAll() {
 		message = "";
-		await invoke("settings_set_output_path", { path: outputPath });
-		await invoke("settings_set_hotkeys", { openScribe: openHotkey, dictate: dictateHotkey });
-		await invoke("settings_set_input_labels", { inputLabel, outputLabel });
-		await invoke("settings_set_preferred_audio_devices", {
-			preferredInputDevice: preferredInputDevice.trim() || null,
-			preferredSpeakerDevice: preferredSpeakerDevice.trim() || null,
-		});
-		await invoke("settings_set_scribe_capture_speaker", { enabled: scribeCaptureSpeaker });
-		await invoke("settings_set_theme_mode", { themeMode });
-		await invoke("settings_set_open_with_app_path", { path: openWithApp.trim() || null });
-		message = "Saved";
+		try {
+			await invoke("settings_set_output_path", { path: outputPath });
+			await invoke("settings_set_hotkeys", { openScribe: openHotkey, dictate: dictateHotkey });
+			await invoke("settings_set_input_labels", { inputLabel, outputLabel });
+			await invoke("settings_set_preferred_audio_devices", {
+				preferredInputDevice: preferredInputDevice.trim() || null,
+				preferredSpeakerDevice: preferredSpeakerDevice.trim() || null,
+			});
+			await invoke("settings_set_scribe_capture_speaker", { enabled: scribeCaptureSpeaker });
+			await invoke("settings_set_theme_mode", { themeMode });
+			await invoke("settings_set_open_with_app_path", { path: openWithApp.trim() || null });
+			message = "Saved";
+		} catch (e) {
+			message = "Failed to save: " + String(e);
+		}
 	}
 
 	onMount(refresh);

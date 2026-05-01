@@ -82,3 +82,21 @@ pub fn get_default_output_device() -> Result<String, String> {
 pub fn set_default_output_device(_device_name: &str) -> Result<(), String> {
     Ok(())
 }
+
+/// Returns true if the named output device exists on the system.
+/// Uses `system_profiler` on macOS; returns false on other platforms.
+#[cfg(target_os = "macos")]
+pub fn output_device_exists(device_name: &str) -> bool {
+    let Ok(output) = std::process::Command::new("system_profiler")
+        .args(["SPAudioDataType", "-json"])
+        .output()
+    else {
+        return false;
+    };
+    String::from_utf8_lossy(&output.stdout).contains(device_name)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn output_device_exists(_device_name: &str) -> bool {
+    false
+}

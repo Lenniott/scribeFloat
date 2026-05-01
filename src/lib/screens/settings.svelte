@@ -136,9 +136,9 @@
 				{#if currentTab === 'general'}
 					<SettingGeneral />
 				{:else if currentTab === 'permissions'}
-					<SettingPermissions />
+					<SettingPermissions bind:ready={permissionsReady} />
 				{:else}
-					<SettingModels />
+					<SettingModels bind:ready={modelReady} />
 				{/if}
 			</section>
 		</div>

@@ -20,7 +20,7 @@ impl MicSession {
         let rate = self.sample_rate;
         // Drop stream first — stops callbacks before we read the buffer.
         drop(self._stream);
-        let buf = self.buffer.lock().unwrap().clone();
+        let buf = self.buffer.lock().unwrap_or_else(|p| p.into_inner()).clone();
         (buf, rate)
     }
 }
@@ -44,6 +44,18 @@ impl AudioService {
         host.output_devices()
             .map(|devs| devs.filter_map(|d| d.name().ok()).collect())
             .unwrap_or_default()
+    }
+
+    pub fn get_output_device(&self) -> Option<String> {
+        crate::platform::get_default_output_device().ok()
+    }
+
+    pub fn set_output_device(&self, device: &str) -> Result<()> {
+        crate::platform::set_default_output_device(device).map_err(|e| anyhow!("{e}"))
+    }
+
+    pub fn output_device_exists(&self, name: &str) -> bool {
+        crate::platform::output_device_exists(name)
     }
 
     /// Open a mic input stream. Uses preferred_name if provided and available,

@@ -93,31 +93,25 @@ impl ScribeController {
         )?;
         let mut previous_output_device: Option<String> = None;
         let speaker = if capture_speaker {
-            if let Ok(current) = crate::platform::get_default_output_device() {
-                previous_output_device = Some(current.clone());
-            }
+            previous_output_device = self.audio.get_output_device();
             if let Some(target_output) = preferred_speaker
                 .as_ref()
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
             {
-                if let Err(err) = crate::platform::set_default_output_device(target_output) {
+                if let Err(err) = self.audio.set_output_device(target_output) {
                     eprintln!("failed to switch output route to `{target_output}`: {err}");
-                } else {
                 }
             }
             let input_devices = self.audio.list_input_devices();
             let speaker_name = preferred_speaker.clone().unwrap_or_default();
             let input_match = input_devices.iter().any(|name| name == &speaker_name);
             let mut speaker_capture_name = preferred_speaker.clone();
-            #[cfg(target_os = "macos")]
-            {
-                let has_preferred_output = macos_output_device_exists(&speaker_name);
-                let has_blackhole_input =
-                    input_devices.iter().any(|name| name.eq_ignore_ascii_case("BlackHole 2ch"));
-                if !input_match && has_preferred_output && has_blackhole_input {
-                    speaker_capture_name = Some("BlackHole 2ch".to_string());
-                }
+            let has_preferred_output = self.audio.output_device_exists(&speaker_name);
+            let has_blackhole_input =
+                input_devices.iter().any(|name| name.eq_ignore_ascii_case("BlackHole 2ch"));
+            if !input_match && has_preferred_output && has_blackhole_input {
+                speaker_capture_name = Some("BlackHole 2ch".to_string());
             }
             let app = self.app.clone();
             match self.audio.start_mic(
@@ -178,9 +172,7 @@ impl ScribeController {
             session
         };
         if let Some(session) = session {
-            if let Some(previous_output) = session.previous_output_device.as_deref() {
-                let _ = crate::platform::set_default_output_device(previous_output);
-            }
+            self.restore_output_device(session.previous_output_device.as_deref());
             self.output.delete_session_dir_if_empty(&session.session_dir);
         }
         Ok(())
@@ -205,9 +197,7 @@ impl ScribeController {
             inner.state = ScribeState::Idle;
             (session, notes)
         };
-        if let Some(previous_output) = session.previous_output_device.as_deref() {
-            let _ = crate::platform::set_default_output_device(previous_output);
-        }
+        self.restore_output_device(session.previous_output_device.as_deref());
 
         let wav_path = session.session_dir.join("mic.wav");
         let (raw_pcm, native_rate) = session.mic.stop_and_take();
@@ -339,9 +329,7 @@ impl ScribeController {
         let (raw_pcm, native_rate) = mic.stop_and_take();
         let speaker_capture_enabled = speaker.is_some();
         let speaker_capture = speaker.map(|speaker| speaker.stop_and_take());
-        if let Some(previous_output) = previous_output_device.as_deref() {
-            let _ = crate::platform::set_default_output_device(previous_output);
-        }
+        self.restore_output_device(previous_output_device.as_deref());
 
         let pcm_16k = resample_linear(&raw_pcm, native_rate, 16_000);
 
@@ -577,24 +565,20 @@ impl ScribeController {
         })
     }
 
+    fn restore_output_device(&self, previous: Option<&str>) {
+        if let Some(device) = previous {
+            if let Err(e) = self.audio.set_output_device(device) {
+                eprintln!("failed to restore output device to `{device}`: {e}");
+            }
+        }
+    }
+
     fn ensure_start_allowed(state: &ScribeState) -> Result<()> {
         if matches!(state, ScribeState::Recording | ScribeState::Transcribing) {
             return Err(anyhow!("cannot start: already in {:?}", state));
         }
         Ok(())
     }
-}
-
-#[cfg(target_os = "macos")]
-fn macos_output_device_exists(device_name: &str) -> bool {
-    let output = std::process::Command::new("system_profiler")
-        .args(["SPAudioDataType", "-json"])
-        .output();
-    let Ok(output) = output else {
-        return false;
-    };
-    let raw = String::from_utf8_lossy(&output.stdout);
-    raw.contains(device_name)
 }
 
 /// Linear interpolation resampler. Good enough for speech at 16 kHz target.

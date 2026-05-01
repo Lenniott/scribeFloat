@@ -92,6 +92,7 @@
 	let micLevel = $state(0);
 	let speakerLevel = $state(0);
 	let captureSpeaker = $state(false);
+	let speakerWarning = $state('');
 	let micOptions = $state([{ value: '', label: 'System Default' }]);
 
 	// ── Backend events ────────────────────────────────────────────────────────
@@ -361,6 +362,10 @@
 			(e) => {
 				captureSpeaker = false;
 				speakerLevel = 0;
+				const device = e.payload?.requestedSpeakerDevice;
+				speakerWarning = device
+					? `Speaker capture unavailable for "${device}". Recording mic only.`
+					: 'Speaker capture unavailable. Recording mic only.';
 				void invoke('settings_set_scribe_capture_speaker', { enabled: false }).catch(() => {});
 			},
 		);
@@ -524,7 +529,11 @@
 				</div>
 
 				<!-- Footer -->
-				<footer class="flex items-center gap-3 py-3">
+				<footer class="flex flex-col gap-2 py-3">
+					{#if speakerWarning}
+						<p class="text-label-sm text-on-surface/60">{speakerWarning}</p>
+					{/if}
+					<div class="flex items-center gap-3">
 					{#if phase === 'idle'}
 						{#if autoStart}
 							<span class="font-mono text-label-sm text-on-surface/50 uppercase tracking-stamped">
@@ -561,6 +570,7 @@
 							</div>
 						</div>
 					{/if}
+					</div>
 				</footer>
 			</div>
 

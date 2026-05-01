@@ -6,6 +6,7 @@
 	import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	import OptionGroup from "@lib/components/form/OptionGroup.svelte";
 	import PathSelectorField from "@lib/components/form/PathSelectorField.svelte";
+	import ToggleSwitch from "@lib/components/form/ToggleSwitch.svelte";
 	import { applyThemeMode, type ThemeMode } from "$lib/theme";
 
 	let outputPath = $state("");
@@ -13,6 +14,10 @@
 	let dictateHotkey = $state("");
 	let inputLabel = $state("");
 	let outputLabel = $state("");
+	let preferredInputDevice = $state("");
+	let preferredSpeakerDevice = $state("");
+	let outputDevices = $state<string[]>([]);
+	let scribeCaptureSpeaker = $state(false);
 	let themeMode = $state<ThemeMode>("system");
 	let openWithApp = $state("");
 	let message = $state("");
@@ -41,6 +46,15 @@
 		outputLabel = outLabel;
 		themeMode = await invoke<ThemeMode>("settings_get_theme_mode").catch(() => "system");
 		openWithApp = (await invoke<string | null>("settings_get_open_with_app_path").catch(() => null)) ?? "";
+		const [preferredInput, preferredSpeaker] = await invoke<[string | null, string | null]>(
+			"settings_get_preferred_audio_devices",
+		).catch(() => [null, null]);
+		preferredInputDevice = preferredInput ?? "";
+		preferredSpeakerDevice = preferredSpeaker ?? "";
+		outputDevices = await invoke<string[]>("settings_list_output_devices").catch(() => []);
+		scribeCaptureSpeaker = await invoke<boolean>("settings_get_scribe_capture_speaker").catch(
+			() => false,
+		);
 	}
 
 	async function saveAll() {
@@ -48,6 +62,11 @@
 		await invoke("settings_set_output_path", { path: outputPath });
 		await invoke("settings_set_hotkeys", { openScribe: openHotkey, dictate: dictateHotkey });
 		await invoke("settings_set_input_labels", { inputLabel, outputLabel });
+		await invoke("settings_set_preferred_audio_devices", {
+			preferredInputDevice: preferredInputDevice.trim() || null,
+			preferredSpeakerDevice: preferredSpeakerDevice.trim() || null,
+		});
+		await invoke("settings_set_scribe_capture_speaker", { enabled: scribeCaptureSpeaker });
 		await invoke("settings_set_theme_mode", { themeMode });
 		await invoke("settings_set_open_with_app_path", { path: openWithApp.trim() || null });
 		message = "Saved";
@@ -69,6 +88,38 @@
 	<HotkeyCaptureField label="Dictate hotkey" bind:value={dictateHotkey} allowModifierOnly={true} />
 	<LabeledTextField label="Input label" bind:value={inputLabel} />
 	<LabeledTextField label="Output label" bind:value={outputLabel} />
+	<div class="flex items-center justify-between">
+		<span class="font-mono text-label-sm font-normal tracking-stamped uppercase">
+			Capture speaker by default
+		</span>
+		<ToggleSwitch checked={scribeCaptureSpeaker} aria-label="Toggle default speaker capture" onchange={(next) => (scribeCaptureSpeaker = next)} />
+	</div>
+	<div class="flex flex-col gap-1.5 text-left">
+		<label
+			for="speaker-device-select"
+			class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase"
+		>
+			Speaker capture device
+		</label>
+		<select
+			id="speaker-device-select"
+			class="h-8 rounded-md border-0 border-b border-transparent bg-surface-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:border-b-surface-highest focus:bg-surface-high focus:ring-0 focus:outline-none"
+			bind:value={preferredSpeakerDevice}
+		>
+			<option value="">System default</option>
+			{#each outputDevices as device (device)}
+				<option value={device}>{device}</option>
+			{/each}
+		</select>
+		<p class="text-label-sm text-on-surface/50">
+			Pick your Audio MIDI multi-output device if it appears here.
+		</p>
+	</div>
+	<LabeledTextField
+		label="Speaker capture device (manual name)"
+		bind:value={preferredSpeakerDevice}
+		placeholder="Type the exact Audio MIDI device name"
+	/>
 	<div class="flex items-center gap-3">
 		<Button variant="primary" onclick={saveAll}>Save</Button>
 		{#if message}

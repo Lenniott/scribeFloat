@@ -83,12 +83,15 @@
 
 	let fileName = $state(defaultTitle());
 	let selectedMic = $state('');
+	let selectedSpeakerSource = $state('');
 	let selectedModelId = $state('');
 	let noteDraft = $state('');
 	let notes = $state<Note[]>([]);
 	let selectedNoteId = $state<string | null>(null);
 	let includeTimestamps = $state(true);
 	let micLevel = $state(0);
+	let speakerLevel = $state(0);
+	let captureSpeaker = $state(false);
 	let micOptions = $state([{ value: '', label: 'System Default' }]);
 
 	// ── Backend events ────────────────────────────────────────────────────────
@@ -112,6 +115,7 @@
 				phase = 'idle';
 				stopTimer();
 				micLevel = 0;
+				speakerLevel = 0;
 				break;
 			case 'RECORDING':
 				phase = 'recording';
@@ -120,15 +124,18 @@
 			case 'TRANSCRIBING':
 				stopTimer();
 				micLevel = 0;
+				speakerLevel = 0;
 				break;
 			case 'DONE':
 				stopTimer();
 				micLevel = 0;
+				speakerLevel = 0;
 				break;
 			case 'NO_MODEL':
 				phase = 'no_model';
 				stopTimer();
 				micLevel = 0;
+				speakerLevel = 0;
 				modelSetupOpen = true;
 				break;
 			case 'ERROR':
@@ -136,6 +143,7 @@
 				errorMessage = p.error ?? 'Unknown error';
 				stopTimer();
 				micLevel = 0;
+				speakerLevel = 0;
 				break;
 		}
 	}
@@ -154,7 +162,11 @@
 				return;
 			}
 
-			await invoke('scribe_start', { preferredMic: selectedMic || null });
+			await invoke('scribe_start', {
+				preferredMic: selectedMic || null,
+				preferredSpeaker: selectedSpeakerSource || null,
+				captureSpeaker,
+			});
 			phase = 'recording';
 			startTimer();
 		} catch (e) {
@@ -262,6 +274,7 @@
 		notes = [];
 		elapsedSeconds = 0;
 		micLevel = 0;
+		speakerLevel = 0;
 		try {
 			await invoke('scribe_cancel');
 		} catch (_) {}
@@ -323,6 +336,12 @@
 			{ value: '', label: 'System Default' },
 			...devices.map((d) => ({ value: d, label: d })),
 		];
+		const [preferredInputDevice, preferredSpeakerDevice] = await invoke<
+			[string | null, string | null]
+		>('settings_get_preferred_audio_devices').catch(() => [null, null]);
+		selectedMic = preferredInputDevice ?? '';
+		selectedSpeakerSource = preferredSpeakerDevice ?? '';
+		captureSpeaker = await invoke<boolean>('settings_get_scribe_capture_speaker').catch(() => false);
 
 		// Sync model selector with the currently selected model
 		const sel = modelStore.models.find((m) => m.selected && m.downloaded);
@@ -334,13 +353,24 @@
 		const ul2 = await listen<number>('scribe://audio-level', (e) => {
 			micLevel = e.payload ?? 0;
 		});
+		const ulSpeaker = await listen<number>('scribe://speaker-level', (e) => {
+			speakerLevel = e.payload ?? 0;
+		});
+		const ulSpeakerUnavailable = await listen<{ reason?: string; requestedSpeakerDevice?: string }>(
+			'scribe://speaker-capture-unavailable',
+			(e) => {
+				captureSpeaker = false;
+				speakerLevel = 0;
+				void invoke('settings_set_scribe_capture_speaker', { enabled: false }).catch(() => {});
+			},
+		);
 		const ul3 = await listen('scribe://native-close-requested', () => {
 			void handleNativeCloseRequested();
 		});
 		const ul4 = await listen('scribe://open-requested', () => {
 			void startRecording();
 		});
-		unlisteners = [ul1, ul2, ul3, ul4];
+		unlisteners = [ul1, ul2, ulSpeaker, ulSpeakerUnavailable, ul3, ul4];
 		unlistenFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
 			if (focused) void maybeAutoStartRecording();
 		});
@@ -398,8 +428,8 @@
 			<div class="flex min-h-0 flex-col px-4 py-3">
 				<AudioWaveFormVisualizer
 					micLevel={phase === 'recording' ? micLevel : 0}
-					speakerLevel={0}
-					speakerEnabled={false}
+					speakerLevel={phase === 'recording' ? speakerLevel : 0}
+					speakerEnabled={captureSpeaker}
 					size="normal"
 				/>
 
@@ -415,6 +445,10 @@
 										id="mic-select"
 										bind:value={selectedMic}
 										onchange={async () => {
+											await invoke('settings_set_preferred_audio_devices', {
+												preferredInputDevice: selectedMic || null,
+												preferredSpeakerDevice: selectedSpeakerSource || null,
+											}).catch(() => {});
 											if (phase === 'recording') {
 												stopTimer();
 												notes = [];
@@ -453,6 +487,21 @@
 										</select>
 									</div>
 								{/if}
+								<div class="flex items-center justify-between">
+									<span class="font-mono text-label-sm font-normal tracking-stamped uppercase">
+										Capture speaker
+									</span>
+									<ToggleSwitch
+										checked={captureSpeaker}
+										aria-label="Toggle speaker capture"
+										onchange={async (next) => {
+											captureSpeaker = next;
+											await invoke('settings_set_scribe_capture_speaker', { enabled: next }).catch(() => {
+												captureSpeaker = !next;
+											});
+										}}
+									/>
+								</div>
 								<div class="flex items-center justify-between">
 									<span class="font-mono text-label-sm font-normal tracking-stamped uppercase">
 										Transcript timestamps

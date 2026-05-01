@@ -176,7 +176,7 @@
 
 		const micOut = Math.min(1, smoothMic * 1.02);
 		const spkOut = Math.min(1, smoothSpk * 1.1);
-		if (speakerEnabled && spkOut > 0.02) {
+		if (speakerEnabled) {
 			drawSplitBottomStacks(micOut, spkOut);
 		} else {
 			drawSingleBottomStacks(micOut, palette.primary);

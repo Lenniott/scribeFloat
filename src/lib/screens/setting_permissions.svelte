@@ -13,6 +13,11 @@
   } = $props();
 
   let statuses = $state<PermissionStatus[]>([]);
+  function formatKindLabel(kind: string): string {
+    if (kind === "speaker_capture") return "speaker capture";
+    return kind.replace(/_/g, " ");
+  }
+
   let requestingKind = $state<string | null>(null);
   const microphoneReady = $derived(
     statuses.find((status) => status.kind === "microphone")?.granted ?? false,
@@ -73,7 +78,7 @@
         <div class="flex items-center gap-2">
           <div>
             <p class="text-label-md font-sans uppercase tracking-stamped">
-              {status.kind.replace(/_/g, " ")}
+              {formatKindLabel(status.kind)}
             </p>
           </div>
         </div>
@@ -111,6 +116,11 @@
           {status.kind === "accessibility"
             ? "System Settings will open → Privacy & Security → Accessibility. Enable the toggle next to this app."
             : "System Settings will open → Privacy & Security → Input Monitoring. Enable the toggle next to this app."}
+        </p>
+      {/if}
+      {#if status.hint}
+        <p class="mt-1.5 text-label-sm text-on-surface/50">
+          {status.hint}
         </p>
       {/if}
     </div>

@@ -45,3 +45,40 @@ pub fn open_file(path: &str, app: Option<&str>) -> Result<(), String> {
         .map(|_| ())
         .map_err(|e| format!("failed to open file: {e}"))
 }
+
+#[cfg(target_os = "macos")]
+pub fn get_default_output_device() -> Result<String, String> {
+    let output = std::process::Command::new("/opt/homebrew/bin/SwitchAudioSource")
+        .args(["-c", "-t", "output"])
+        .output()
+        .map_err(|e| format!("failed to query current output device: {e}"))?;
+    if !output.status.success() {
+        return Err("failed to query current output device".to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[cfg(target_os = "macos")]
+pub fn set_default_output_device(device_name: &str) -> Result<(), String> {
+    let status = std::process::Command::new("/opt/homebrew/bin/SwitchAudioSource")
+        .args(["-s", device_name, "-t", "output"])
+        .status()
+        .map_err(|e| format!("failed to set output device `{device_name}`: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "switching output device to `{device_name}` failed with status {status}"
+        ))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn get_default_output_device() -> Result<String, String> {
+    Ok(String::new())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn set_default_output_device(_device_name: &str) -> Result<(), String> {
+    Ok(())
+}

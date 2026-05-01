@@ -11,10 +11,12 @@ export function createModelDownloadStore() {
 	let statusByModel = $state<Record<string, string>>({});
 	let error = $state('');
 	let activeDownloadModelId = $state<string | null>(null);
+	let autoSelectInFlight = false;
 
 	async function refresh() {
-		models = await invoke<ModelListItem[]>('model_list').catch(() => []);
-		for (const m of models) {
+		const list = await invoke<ModelListItem[]>('model_list').catch(() => [] as ModelListItem[]);
+		models = list;
+		for (const m of list) {
 			if (m.downloaded) {
 				progressByModel = { ...progressByModel, [m.id]: 1 };
 				downloadingByModel = { ...downloadingByModel, [m.id]: false };
@@ -22,6 +24,17 @@ export function createModelDownloadStore() {
 					...statusByModel,
 					[m.id]: m.selected ? 'Installed and selected' : 'Installed',
 				};
+			}
+		}
+
+		if (!autoSelectInFlight) {
+			const downloaded = list.filter((m) => m.downloaded);
+			const hasSelected = list.some((m) => m.downloaded && m.selected);
+			if (downloaded.length === 1 && !hasSelected) {
+				autoSelectInFlight = true;
+				await invoke('model_select', { modelId: downloaded[0].id }).catch(() => {});
+				autoSelectInFlight = false;
+				await refresh();
 			}
 		}
 	}

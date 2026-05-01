@@ -218,9 +218,15 @@
             </div>
           {:else if phase === "no_model"}
             <p class="text-body-md text-on-surface/80">
-              No downloaded model was available. The WAV file was kept so this
-              recording can be transcribed later.
+              No transcription model is installed. Your recording was saved as
+              a WAV file and can be transcribed once a model is downloaded.
             </p>
+            <Button
+              variant="secondary"
+              onclick={() => void invoke("settings_show_window").catch(() => {})}
+            >
+              Open Settings
+            </Button>
           {:else}
             <p class="text-body-md text-error">{errorMessage}</p>
           {/if}

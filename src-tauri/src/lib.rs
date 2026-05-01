@@ -170,6 +170,8 @@ pub fn run() {
                 services::hotkeys::TauriHotkeyRegistrar::new(app.handle().clone()),
             );
 
+            let is_first_run = !config.get().onboarding_complete;
+
             let models_dir = data_dir.join("models");
             std::fs::create_dir_all(&models_dir)?;
             let model = services::model::ModelService::new(models_dir);
@@ -199,6 +201,13 @@ pub fn run() {
             app.manage(model_ctrl); // model command orchestration
             app.manage(settings_ctrl); // settings orchestration
             app.manage(ctrl); // for scribe commands
+
+            if is_first_run {
+                open_settings_window(app.handle())?;
+                app.state::<Arc<controllers::settings::SettingsController>>()
+                    .complete_onboarding()
+                    .ok();
+            }
             prewarm_scribe_window(app.handle());
             Ok(())
         })

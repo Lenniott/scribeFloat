@@ -17,6 +17,8 @@
 	} = $props();
 
 	let activeTab = $state<SettingsTab>('general');
+	let permissionsReady = $state(false);
+	let modelReady = $state(false);
 
 	const tabs: Array<{ id: SettingsTab; label: string }> = [
 		{ id: 'general', label: 'General' },
@@ -31,6 +33,23 @@
 			<h2 class="sf-headline-sm">Settings</h2>
 			<IconButton aria-label="close settings" variant="normal" icon={X} onclick={() => onClose?.()} />
 		</header>
+
+		{#if !permissionsReady || !modelReady}
+			<div class="flex flex-col gap-1 border-b border-surface-low bg-surface-high px-4 py-2">
+				{#if !permissionsReady}
+					<p class="text-label-sm text-on-surface/70">
+						Microphone access needed —
+						<button class="underline" onclick={() => (activeTab = 'permissions')}>go to Permissions</button>.
+					</p>
+				{/if}
+				{#if !modelReady}
+					<p class="text-label-sm text-on-surface/70">
+						No transcription model installed —
+						<button class="underline" onclick={() => (activeTab = 'models')}>go to Models</button>.
+					</p>
+				{/if}
+			</div>
+		{/if}
 
 		<div class="flex min-h-0 h-full">
 			<nav class="w-52 border-r border-surface-low p-2">
@@ -47,9 +66,9 @@
 				{#if activeTab === 'general'}
 					<SettingGeneral />
 				{:else if activeTab === 'permissions'}
-					<SettingPermissions />
+					<SettingPermissions bind:ready={permissionsReady} />
 				{:else}
-					<SettingModels />
+					<SettingModels bind:ready={modelReady} />
 				{/if}
 			</section>
 		</div>

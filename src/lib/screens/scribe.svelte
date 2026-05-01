@@ -93,6 +93,7 @@
 	let speakerLevel = $state(0);
 	let captureSpeaker = $state(false);
 	let speakerWarning = $state('');
+	let saveFolder = $state('');
 	let micOptions = $state([{ value: '', label: 'System Default' }]);
 
 	// ── Backend events ────────────────────────────────────────────────────────
@@ -278,7 +279,11 @@
 		speakerLevel = 0;
 		try {
 			await invoke('scribe_cancel');
-		} catch (_) {}
+		} catch (e) {
+			phase = 'error';
+			errorMessage = 'Failed to cancel recording: ' + String(e);
+			return;
+		}
 		phase = 'idle';
 	}
 
@@ -328,6 +333,7 @@
 
 	onMount(async () => {
 		includeTimestamps = await invoke<boolean>('scribe_get_include_timestamps').catch(() => true);
+		saveFolder = await invoke<string>('settings_get_output_path').catch(() => '');
 		modelUnlisteners = await modelStore.subscribe();
 		await modelStore.refresh();
 
@@ -532,6 +538,11 @@
 				<footer class="flex flex-col gap-2 py-3">
 					{#if speakerWarning}
 						<p class="text-label-sm text-on-surface/60">{speakerWarning}</p>
+					{/if}
+					{#if saveFolder}
+						<p class="truncate text-label-sm text-on-surface/40" title={saveFolder}>
+							Saving to {saveFolder}
+						</p>
 					{/if}
 					<div class="flex items-center gap-3">
 					{#if phase === 'idle'}

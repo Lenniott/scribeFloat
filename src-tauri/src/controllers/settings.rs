@@ -192,8 +192,12 @@ impl SettingsController {
             if trimmed.is_empty() {
                 return Err("app path cannot be empty; pass null to clear it".to_string());
             }
-            if trimmed.contains("..") {
-                return Err("app path must not contain '..'".to_string());
+            let candidate = std::path::Path::new(trimmed);
+            if !candidate.is_absolute() {
+                return Err("app path must be an absolute path".to_string());
+            }
+            if !candidate.exists() {
+                return Err(format!("app path `{trimmed}` does not exist on this system"));
             }
         }
         self.config

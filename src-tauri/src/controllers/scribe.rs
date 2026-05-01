@@ -4,7 +4,8 @@ use crate::services::{
     model::ModelService,
     output::OutputService,
 };
-use crate::types::{Config, Note, ProcessingStage, ScribeState, ScribeStateEvent};
+use crate::services::audio::WHISPER_SAMPLE_RATE;
+use crate::types::{Config, Note, ProcessingStage, ScribeState, ScribeStateEvent, Segment};
 use anyhow::{anyhow, Result};
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -19,6 +20,15 @@ struct ActiveSession {
     previous_output_device: Option<String>,
     session_dir: PathBuf,
     started_at: Instant,
+}
+
+/// Intermediate state produced by prepare_audio and consumed by run_transcription / write_outputs.
+struct PreparedAudio {
+    session_dir: PathBuf,
+    wav_path: PathBuf,
+    pcm_16k: Vec<f32>,
+    speaker_pcm_16k: Option<Vec<f32>>,
+    speaker_capture_enabled: bool,
 }
 
 enum ProgressMessage {
@@ -201,8 +211,8 @@ impl ScribeController {
 
         let wav_path = session.session_dir.join("mic.wav");
         let (raw_pcm, native_rate) = session.mic.stop_and_take();
-        let pcm_16k = resample_linear(&raw_pcm, native_rate, 16_000);
-        self.output.write_wav(&pcm_16k, 16_000, &wav_path)?;
+        let pcm = resample_linear(&raw_pcm, native_rate, WHISPER_SAMPLE_RATE);
+        self.output.write_wav(&pcm, WHISPER_SAMPLE_RATE, &wav_path)?;
         self.output
             .write_session_notes(&session.session_dir, &title, "mic.wav", &notes)?;
 
@@ -319,32 +329,10 @@ impl ScribeController {
         title: &str,
         abort_flag: Arc<AtomicBool>,
     ) -> Result<()> {
-        let ActiveSession {
-            mic,
-            speaker,
-            previous_output_device,
-            session_dir,
-            ..
-        } = session;
-        let (raw_pcm, native_rate) = mic.stop_and_take();
-        let speaker_capture_enabled = speaker.is_some();
-        let speaker_capture = speaker.map(|speaker| speaker.stop_and_take());
-        self.restore_output_device(previous_output_device.as_deref());
-
-        let pcm_16k = resample_linear(&raw_pcm, native_rate, 16_000);
-
         let config = self.config.get();
-        let wav_path = session_dir.join("mic.wav");
-        self.output.write_wav(&pcm_16k, 16_000, &wav_path)?;
+        let prepared = self.prepare_audio(session)?;
 
-        {
-            let mut inner = self.lock();
-            inner.transcription_wav_path = Some(wav_path.clone());
-        }
-
-        // Use configured path, then selected model id, then built-in default path.
         let model_path = resolve_model_path(&config, &self.model);
-
         if !self.model.model_available(&model_path) {
             self.clear_transcription_tracking();
             self.transition(ScribeState::NoModel);
@@ -352,7 +340,7 @@ impl ScribeController {
                 .emit(
                     "scribe://state-changed",
                     ScribeStateEvent {
-                        wav_path: Some(wav_path.to_string_lossy().into()),
+                        wav_path: Some(prepared.wav_path.to_string_lossy().into()),
                         ..ScribeStateEvent::new(ScribeState::NoModel)
                     },
                 )
@@ -360,18 +348,58 @@ impl ScribeController {
             return Ok(());
         }
 
+        let segments = self.run_transcription(&model_path, &prepared, &abort_flag)?;
+        if abort_flag.load(Ordering::SeqCst) {
+            self.clear_transcription_tracking();
+            return Ok(());
+        }
+
+        self.write_outputs(&segments, &notes, title, &model_path, &config, &prepared)
+    }
+
+    /// Stop audio streams, resample to WHISPER_SAMPLE_RATE, and write WAV files.
+    /// Sets transcription_wav_path so abort UX can reference the file.
+    fn prepare_audio(&self, session: ActiveSession) -> Result<PreparedAudio> {
+        let ActiveSession { mic, speaker, previous_output_device, session_dir, .. } = session;
+        let speaker_capture_enabled = speaker.is_some();
+        let (raw_pcm, native_rate) = mic.stop_and_take();
+        let speaker_raw = speaker.map(|s| s.stop_and_take());
+        self.restore_output_device(previous_output_device.as_deref());
+
+        let pcm_16k = resample_linear(&raw_pcm, native_rate, WHISPER_SAMPLE_RATE);
+        let wav_path = session_dir.join("mic.wav");
+        self.output.write_wav(&pcm_16k, WHISPER_SAMPLE_RATE, &wav_path)?;
+        self.lock().transcription_wav_path = Some(wav_path.clone());
+
+        let speaker_pcm_16k = if let Some((s_raw, s_rate)) = speaker_raw {
+            let s16k = resample_linear(&s_raw, s_rate, WHISPER_SAMPLE_RATE);
+            self.output.write_wav(&s16k, WHISPER_SAMPLE_RATE, &session_dir.join("speaker.wav"))?;
+            Some(s16k)
+        } else {
+            None
+        };
+
+        Ok(PreparedAudio { session_dir, wav_path, pcm_16k, speaker_pcm_16k, speaker_capture_enabled })
+    }
+
+    /// Run Whisper on the prepared audio, reporting progress via state events.
+    fn run_transcription(
+        &self,
+        model_path: &Path,
+        prepared: &PreparedAudio,
+        _abort_flag: &AtomicBool,
+    ) -> Result<Vec<Segment>> {
         let (progress_tx, progress_rx) = mpsc::channel::<ProgressMessage>();
-        let callback_progress_tx = progress_tx.clone();
         let progress_app = self.app.clone();
         let progress_thread = std::thread::spawn(move || {
             while let Ok(message) = progress_rx.recv() {
                 match message {
-                    ProgressMessage::Progress(progress) => {
+                    ProgressMessage::Progress(p) => {
                         progress_app
                             .emit(
                                 "scribe://state-changed",
                                 ScribeStateEvent {
-                                    progress: Some(progress),
+                                    progress: Some(p),
                                     processing_stage: Some(ProcessingStage::TranscribingAudio),
                                     ..ScribeStateEvent::new(ScribeState::Transcribing)
                                 },
@@ -383,51 +411,50 @@ impl ScribeController {
             }
         });
 
-        let segments = if let Some((speaker_raw, speaker_native_rate)) = speaker_capture {
-            let speaker_16k = resample_linear(&speaker_raw, speaker_native_rate, 16_000);
-            let speaker_wav_path = session_dir.join("speaker.wav");
-            self.output.write_wav(&speaker_16k, 16_000, &speaker_wav_path)?;
-
-            let mic_segments =
-                self.model
-                    .transcribe_pcm_with_progress(&model_path, &pcm_16k, move |progress| {
-                        callback_progress_tx
-                            .send(ProgressMessage::Progress(progress * 0.5))
-                            .ok();
-                    })?;
-            let progress_tx_speaker = progress_tx.clone();
-            let speaker_segments =
-                self.model
-                    .transcribe_pcm_with_progress(&model_path, &speaker_16k, move |progress| {
-                        progress_tx_speaker
-                            .send(ProgressMessage::Progress(0.5 + (progress * 0.5)))
-                            .ok();
-                    })?;
-            Ok(self.model.merge_dual_source(&mic_segments, &speaker_segments))
+        let segments = if let Some(speaker_pcm) = &prepared.speaker_pcm_16k {
+            let tx1 = progress_tx.clone();
+            let mic_segs = self.model.transcribe_pcm_with_progress(
+                model_path,
+                &prepared.pcm_16k,
+                move |p| { tx1.send(ProgressMessage::Progress(p * 0.5)).ok(); },
+            )?;
+            let tx2 = progress_tx.clone();
+            let speaker_segs = self.model.transcribe_pcm_with_progress(
+                model_path,
+                speaker_pcm,
+                move |p| { tx2.send(ProgressMessage::Progress(0.5 + p * 0.5)).ok(); },
+            )?;
+            Ok(self.model.merge_dual_source(&mic_segs, &speaker_segs))
         } else {
-            self.model
-                .transcribe_pcm_with_progress(&model_path, &pcm_16k, move |progress| {
-                    callback_progress_tx
-                        .send(ProgressMessage::Progress(progress))
-                        .ok();
-                })
+            let tx = progress_tx.clone();
+            self.model.transcribe_pcm_with_progress(
+                model_path,
+                &prepared.pcm_16k,
+                move |p| { tx.send(ProgressMessage::Progress(p)).ok(); },
+            )
         };
+
         progress_tx.send(ProgressMessage::Finished).ok();
         progress_thread.join().ok();
-        let segments = segments?;
+        segments
+    }
 
-        if abort_flag.load(Ordering::SeqCst) {
-            self.clear_transcription_tracking();
-            return Ok(());
-        }
-
-        let transcript_path = self
-            .output
-            .transcript_path(&session_dir, &model_path, title);
+    /// Write the transcript file, optionally delete WAVs, and emit the Done event.
+    fn write_outputs(
+        &self,
+        segments: &[Segment],
+        notes: &[Note],
+        title: &str,
+        model_path: &Path,
+        config: &Config,
+        prepared: &PreparedAudio,
+    ) -> Result<()> {
+        let transcript_path = self.output.transcript_path(&prepared.session_dir, model_path, title);
         let model_name = model_path
             .file_stem()
             .map(|s| s.to_string_lossy().replace("ggml-", ""))
             .unwrap_or_else(|| "model".to_string());
+
         self.app
             .emit(
                 "scribe://state-changed",
@@ -439,8 +466,8 @@ impl ScribeController {
             )
             .ok();
         self.output.write_transcript(
-            &segments,
-            &notes,
+            segments,
+            notes,
             title,
             &model_name,
             config.include_timestamps,
@@ -458,10 +485,9 @@ impl ScribeController {
                     },
                 )
                 .ok();
-            self.output.delete_wav(&wav_path)?;
-            if speaker_capture_enabled {
-                let speaker_wav_path = session_dir.join("speaker.wav");
-                self.output.delete_wav(&speaker_wav_path)?;
+            self.output.delete_wav(&prepared.wav_path)?;
+            if prepared.speaker_capture_enabled {
+                self.output.delete_wav(&prepared.session_dir.join("speaker.wav"))?;
             }
         }
 
@@ -476,7 +502,6 @@ impl ScribeController {
                 },
             )
             .ok();
-
         Ok(())
     }
 

@@ -8,9 +8,9 @@
 	} = $props();
 
 	const styles: Record<Status, string> = {
-		idle: "bg-fillest",
+		idle: "bg-rim",
 		recording: "bg-destructive animate-pulse",
-		paused: "bg-fillest",
+		paused: "bg-rim",
 		error: "bg-destructive",
 	};
 </script>

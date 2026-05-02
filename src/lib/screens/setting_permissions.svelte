@@ -86,7 +86,7 @@
         {:else if status.can_request}
           <div class="flex gap-2">
             <span
-              class="size-4 shrink-0 rounded-full border-2 border-fillest"
+              class="size-4 shrink-0 rounded-full border-2 border-rim"
             ></span>
             <Button
               variant="normal"

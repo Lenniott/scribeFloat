@@ -34,7 +34,7 @@
            aria-disabled:opacity-40
            aria-disabled:pointer-events-none
            aria-disabled:cursor-not-allowed
-           focus-within:ring-2 focus-within:ring-orange-400 focus-within:ring-offset-2 focus-within:ring-offset-panel
+           focus-within:ring-2 focus-within:ring-focus focus-within:ring-offset-2 focus-within:ring-offset-canvas
            "
 >
     <textarea

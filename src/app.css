@@ -40,6 +40,7 @@
   --color-destructive-hover:  var(--sf-destructive-hover);
   --color-on-destructive:     var(--sf-on-destructive);
   --color-success:            var(--sf-success);
+  --color-on-success:         var(--sf-on-success);
   --color-focus:              var(--sf-focus);
   /* ── Type scale (size + paired line-height) ────────────────────────────── */
   --text-display-lg:              3.5rem;
@@ -118,6 +119,7 @@
   --sf-destructive-hover: oklch(0.43 0.21 26.5);
   --sf-on-destructive: oklch(0.93 0.0044 286.28);
   --sf-success:        oklch(0.609 0.2158 141.64);
+  --sf-on-success:     oklch(0.20 0 0);
 
   --sf-shadow-ambient: 0 4px 32px oklch(0 0 0 / 0.5);
 }
@@ -153,6 +155,7 @@
   --sf-destructive-hover: oklch(0.43 0.21 26.5);
   --sf-on-destructive: oklch(0.93 0.0044 286.28);
   --sf-success:        oklch(0.609 0.2158 141.64);
+  --sf-on-success:     oklch(0.20 0 0);
 
   --sf-shadow-ambient: 0 4px 32px oklch(0 0 0 / 0.5);
 }
@@ -187,6 +190,7 @@
   --sf-destructive-hover: oklch(0.38 0.21 26.5);
   --sf-on-destructive: oklch(0.98 0 0);
   --sf-success:        oklch(0.45 0.18 141.64);
+  --sf-on-success:     oklch(0.98 0 0);
 
   --sf-shadow-ambient: 0 4px 32px oklch(0 0 0 / 0.12);
 }
@@ -220,6 +224,7 @@
     --sf-destructive-hover: oklch(0.38 0.21 26.5);
     --sf-on-destructive: oklch(0.98 0 0);
     --sf-success:        oklch(0.45 0.18 141.64);
+    --sf-on-success:     oklch(0.98 0 0);
 
     --sf-shadow-ambient: 0 4px 32px oklch(0 0 0 / 0.12);
   }
@@ -268,9 +273,6 @@ html {
   .sf-btn-primary {
     @apply bg-brand text-on-brand font-mono text-label-md tracking-stamped rounded-md px-3 py-1.5;
   }
-  .sf-btn-secondary {
-    @apply border border-warning text-warning bg-transparent font-sans text-label-md rounded-md px-3 py-1.5;
-  }
   .sf-btn-ghost {
     @apply bg-transparent text-fg font-sans text-label-md rounded-md px-3 py-1.5;
   }
@@ -282,6 +284,6 @@ html {
 @layer base {
   /* Replace UA outline with design-system ring */
   :focus {
-    @apply outline-none ring-2 ring-orange-400 ring-offset-2 ring-offset-panel;
+    @apply outline-none ring-2 ring-focus ring-offset-2 ring-offset-canvas;
   }
 }

@@ -39,7 +39,7 @@
 		destructive: "bg-destructive text-on-destructive font-sans hover:bg-destructive-hover ",
 		ghost: "bg-transparent text-fg font-sans hover:bg-card",
 		normal: "bg-transparent border border-rim text-fg font-sans hover:bg-fill",
-		active: "bg-fillest text-fg font-sans hover:brightness-105",
+		active: "bg-rim text-fg font-sans hover:brightness-105",
 	};
 
 	const sizeLayout: Record<

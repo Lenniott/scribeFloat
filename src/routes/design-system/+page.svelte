@@ -85,8 +85,10 @@
     { token: "active", class: "bg-active" },
     { token: "on-active", class: "bg-on-active" },
     { token: "destructive", class: "bg-destructive" },
+    { token: "destructive-hover", class: "bg-destructive-hover" },
     { token: "on-destructive", class: "bg-on-destructive" },
     { token: "success", class: "bg-success" },
+    { token: "on-success", class: "bg-on-success" },
     { token: "focus", class: "bg-focus" },
   ];
 
@@ -95,6 +97,7 @@
     "destructive",
     "ghost",
     "normal",
+    "active",
   ] as const;
   /** IconButton intentionally supports fewer variants than Button */
   const iconButtonVariants = ["primary", "destructive", "normal"] as const;
@@ -138,9 +141,9 @@
     <p class="mt-3 text-body-md text-fg/65 leading-relaxed">
       Geist typography, semantic theme tokens, and the existing component variants:
       <code class="text-brand">primary</code>,
-      <code class="text-brand">secondary</code>,
       <code class="text-brand">normal</code>,
-      <code class="text-brand">transparent</code>, and
+      <code class="text-brand">ghost</code>,
+      <code class="text-brand">destructive</code>, and
       <code class="text-brand">active</code>.
     </p>
   </header>

@@ -135,7 +135,7 @@
             ],
             [
               "Multiple accent colours or rainbow status indicators",
-              "One primary accent colour (orange/`primary`). Red (`error`) is reserved for live/danger only. Simplicity builds trust."
+              "Reserve **brand** for the single primary CTA per view. **destructive** is for live recording and danger. **active**, **warning**, **success**, and **focus** each have a defined job — no decorative misuse. Simplicity builds trust."
             ]
           ]
         },
@@ -596,7 +596,7 @@
           "title": "Focus management",
           "items": [
             {
-              "text": "Use visible focus indicators on all interactive elements. A `2px` outline with offset works well and respects border radius."
+              "text": "Use visible focus indicators on all interactive elements. The app uses a global `2px` **focus**-token ring with offset (`ring-focus ring-offset-canvas` in `src/app.css` `@layer base`)."
             },
             {
               "text": "Focusable elements in menus, option lists, and similar sequential collections should support arrow-key navigation."
@@ -745,7 +745,7 @@
       "sections": [
         {
           "title": "Surfaces & depth",
-          "content": "**Dark mode:** lighter surface = higher elevation. Surface colour stepping alone communicates depth — no shadows on inner elements.\n**Light mode:** darker surface = higher elevation. Same token names; CSS vars swap automatically via .\n\nElevation is never communicated by shadow weight or border thickness. Only the top-level floating panel () uses a drop shadow.",
+          "content": "**Dark mode:** lighter surface = higher elevation. Surface colour stepping alone communicates depth — no shadows on inner elements.\n**Light mode:** darker surface = higher elevation. Same token names; CSS vars swap automatically via the `data-theme` attribute on the root.\n\nElevation is never communicated by shadow weight or border thickness. Only the top-level floating panel (PanelShell) uses a drop shadow.",
           "table": [
             [
               "Token",
@@ -754,34 +754,34 @@
               "ScribeFloat example"
             ],
             [
-              "void",
-              "bg-void",
+              "canvas",
+              "bg-canvas",
               "Page / window background only. Never a container.",
               "App window background"
             ],
             [
-              "surface-lowest",
-              "bg-surface-lowest",
-              "Primary panel face, modal body.",
+              "panel",
+              "bg-panel",
+              "Main panel face, modal body.",
               "Scribe panel, modal body"
             ],
             [
-              "surface-low",
-              "bg-surface-low",
+              "card",
+              "bg-card",
               "Cards, note items, waveform bg, dividers.",
               "Settings section bg, waveform container"
             ],
             [
-              "surface-high",
-              "bg-surface-high",
-              "Input borders, hover bg.",
-              "Input borders, hovered rows"
+              "fill",
+              "bg-fill",
+              "Hover bg, softer surface step.",
+              "Hovered rows, ghost button hover"
             ],
             [
-              "surface-highest",
-              "bg-surface-highest",
-              "Active pill, pressed states, toggle knob (off).",
-              "Active nav item, dropdown menus"
+              "rim",
+              "bg-rim",
+              "Borders, dividers, strong edge.",
+              "Input borders, toggle track border (off)"
             ]
           ]
         },
@@ -856,16 +856,16 @@
           "title": "Colour usage",
           "items": [
             {
-              "text": "Use **semantic colour tokens**, not raw hex or OKLCH literals. Every token is defined in  and switches automatically between dark and light mode."
+              "text": "Use **semantic colour tokens**, not raw hex or OKLCH literals. Every token is defined in `src/app.css` (`--sf-*` / `@theme inline`) and switches automatically between dark and light mode."
             },
             {
-              "text": "**One primary accent** ( /  — orange) for the single primary action button per screen. **One error accent** ( /  — red) for recording status dot and destructive actions. These are not interchangeable."
+              "text": "**Brand** (`bg-brand` / `text-on-brand`) for the single primary action button per screen. **Destructive** for recording status dot and danger actions. **Active** for selection and on-states (e.g. tabs, toggle on). **Focus** for keyboard focus rings only. **Warning** and **success** for caution and done — not interchangeable."
             },
             {
-              "text": "Yellow ( / ) is for secondary CTA outline/text only — one per screen. Blue () is for the active tab indicator only. Green () is for transient success text or a check icon — never persistent backgrounds or borders."
+              "text": "Build in grey surfaces first; add state colour only when it carries meaning. Do not use **brand** for waveform bars or decorative accents; do not use **active** as the keyboard focus substitute for **focus**."
             },
             {
-              "text": "Semantic colours must stay semantically correct. Do not use  as a decorative accent, or  for waveform bars. Build in grey first; add accent only when it carries a specific meaning."
+              "text": "Semantic colours must stay semantically correct. Do not use **brand** as a decorative accent, or **success** for waveform bars. Pair colour with text or icon so meaning is never colour-only."
             }
           ]
         },
@@ -1387,8 +1387,8 @@
               "Eyeball padding and margin"
             ],
             [
-              "Use one accent colour for primary actions",
-              "Introduce multiple brand accent colours"
+              "Use **brand** for the single primary CTA; use **focus**, **active**, **warning**, **success**, and **destructive** only for their semantic jobs",
+              "Introduce extra brand hues or rainbow decorative accents"
             ],
             [
               "Handle loading, empty, and error states",
@@ -1571,7 +1571,7 @@
               "text": "Are fonts subsetted for the relevant character set?"
             },
             {
-              "text": "Is only one accent colour used?"
+              "text": "Is decorative colour use restrained? One **brand** CTA per view; **focus**, **active**, **warning**, **success**, and **destructive** only where semantically correct?"
             },
             {
               "text": "Are all colours from semantic tokens, not raw values?"

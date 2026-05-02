@@ -25,7 +25,7 @@
 	>
 		{#each options as opt (opt.value)}
 			<label
-				class="flex cursor-pointer items-center justify-center rounded-sm px-3 py-1.5 text-label-md font-normal transition-colors outline-none focus-within:ring-2 focus-within:ring-orange-400 focus-within:ring-offset-2 focus-within:ring-offset-panel {selected ===
+				class="flex cursor-pointer items-center justify-center rounded-sm px-3 py-1.5 text-label-md font-normal transition-colors outline-none focus-within:ring-2 focus-within:ring-focus focus-within:ring-offset-2 focus-within:ring-offset-canvas {selected ===
 				opt.value
 					? 'bg-active text-on-active'
 					: 'text-fg hover:bg-panel'}"

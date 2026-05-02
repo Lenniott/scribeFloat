@@ -29,7 +29,7 @@
   <h3 class="bg-card border-0">
     <button
       type="button"
-      class="font-mono text-label-md flex w-full items-center justify-between px-3 py-2.5 text-left font-normal tracking-stamped text-fg uppercase hover:bg-fillest"
+      class="font-mono text-label-md flex w-full items-center justify-between px-3 py-2.5 text-left font-normal tracking-stamped text-fg uppercase hover:bg-rim"
       aria-expanded={isOpen}
       aria-controls={`panel-${id}`}
       id={`header-${id}`}

@@ -34,14 +34,14 @@
     "tokens": {
   
       "colors": {
-        "description": "OKLCH-based palette. Dark mode is default. Single-source knobs: --brand-hue shifts all brand colors; --canvas-l shifts the dark-mode surface scale. State tokens (warning, active, destructive, success) are first-class and unrestricted in number per screen.",
+        "description": "OKLCH-based palette. Dark mode is default. Single-source knobs: --brand-hue shifts all brand colors; --canvas-l shifts the dark-mode surface scale. State tokens (warning, active, destructive, success, focus) are first-class and unrestricted in number per screen.",
         "sourceKnobs": {
           "--brand-hue": "250 — change to shift ALL brand-tinted colors (both dark and light modes)",
           "--canvas-l":  "0.20 — dark-mode only; all 5 surface steps derive from this via calc()"
         },
         "dark": {
           "canvas":         { "value": "oklch(0.20 0 0)",            "tw": "bg-canvas",          "role": "Window / page background" },
-          "panel":          { "value": "oklch(0.24 0 0)",            "tw": "bg-panel",           "role": "Primary panel face, modal body" },
+          "panel":          { "value": "oklch(0.24 0 0)",            "tw": "bg-panel",           "role": "Main panel face, modal body" },
           "card":           { "value": "oklch(0.28 0 0)",            "tw": "bg-card",            "role": "Cards, list items, waveform bg" },
           "fill":           { "value": "oklch(0.32 0 0)",            "tw": "bg-fill",            "role": "Input bg, hover states" },
           "rim":            { "value": "oklch(0.40 0 0)",            "tw": "bg-rim",             "role": "Borders, dividers, toggle knob (off)" },
@@ -50,13 +50,18 @@
           "fg-muted":       { "value": "oklch(0.40 0 0)",            "tw": "text-fg-muted",      "role": "Disabled text, placeholders" },
           "brand":          { "value": "oklch(0.700 0.16 var(--brand-hue))", "tw": "bg-brand text-brand", "role": "Primary CTA only. Source: --brand-hue." },
           "on-brand":       { "value": "oklch(0.20 0 0)",            "tw": "text-on-brand",      "role": "Text on brand background" },
-          "warning":        { "value": "oklch(0.600 0.16 85)",       "tw": "bg-warning text-warning border-warning", "role": "Warnings, caution badges, attention states" },
+          "brand-hover":    { "value": "oklch(0.400 0.16 var(--brand-hue))", "tw": "bg-brand-hover text-brand-hover", "role": "Primary CTA hover background" },
+          "on-brand-hover": { "value": "oklch(0.93 0 0)",            "tw": "text-on-brand-hover","role": "Text on brand-hover background" },
+          "warning":        { "value": "oklch(0.81 0.16 85)",       "tw": "bg-warning text-warning border-warning", "role": "Warnings, caution badges, attention states" },
           "on-warning":     { "value": "oklch(0.20 0 0)",            "tw": "text-on-warning",    "role": "Text on warning background" },
-          "active":         { "value": "oklch(0.72 0.16 240)",       "tw": "bg-active text-active border-active", "role": "Selected tab, active toggle, focus ring" },
+          "active":         { "value": "oklch(0.76 0.14 240)",       "tw": "bg-active text-active border-active", "role": "Selected tab, active toggle track, option highlight" },
           "on-active":      { "value": "oklch(0.20 0 0)",            "tw": "text-on-active",     "role": "Text on active background" },
+          "focus":          { "value": "oklch(0.73 0.17 55)",        "tw": "ring-focus border-focus", "role": "Keyboard focus ring (global :focus in app.css)" },
           "destructive":    { "value": "oklch(0.53 0.21 26.5)",      "tw": "bg-destructive text-destructive", "role": "Delete / danger actions, recording status dot" },
+          "destructive-hover": { "value": "oklch(0.43 0.21 26.5)",   "tw": "bg-destructive-hover", "role": "Destructive control hover" },
           "on-destructive": { "value": "oklch(0.93 0.0044 286.28)",  "tw": "text-on-destructive","role": "Text on destructive background" },
-          "success":        { "value": "oklch(0.609 0.2158 141.64)", "tw": "bg-success text-success", "role": "Confirmed success. Transient use preferred." }
+          "success":        { "value": "oklch(0.609 0.2158 141.64)", "tw": "bg-success text-success", "role": "Confirmed success. Transient use preferred." },
+          "on-success":     { "value": "oklch(0.20 0 0)",            "tw": "text-on-success",    "role": "Text on success background" }
         },
         "light": {
           "canvas":         { "value": "oklch(0.98 0 0)",            "tw": "bg-canvas" },
@@ -69,13 +74,18 @@
           "fg-muted":       { "value": "oklch(0.65 0 0)",            "tw": "text-fg-muted" },
           "brand":          { "value": "oklch(0.500 0.16 var(--brand-hue))", "tw": "bg-brand text-brand", "note": "Lightness lowered for contrast on white" },
           "on-brand":       { "value": "oklch(0.98 0 0)",            "tw": "text-on-brand" },
-          "warning":        { "value": "oklch(0.52 0.16 77)",        "tw": "bg-warning text-warning border-warning" },
+          "brand-hover":    { "value": "oklch(0.400 0.16 var(--brand-hue))", "tw": "bg-brand-hover text-brand-hover" },
+          "on-brand-hover": { "value": "oklch(0.93 0 0)",            "tw": "text-on-brand-hover" },
+          "warning":        { "value": "oklch(0.81 0.16 77)",        "tw": "bg-warning text-warning border-warning" },
           "on-warning":     { "value": "oklch(0.98 0 0)",            "tw": "text-on-warning" },
           "active":         { "value": "oklch(0.50 0.16 240)",       "tw": "bg-active text-active border-active" },
           "on-active":      { "value": "oklch(0.98 0 0)",            "tw": "text-on-active" },
+          "focus":          { "value": "oklch(0.66 0.17 55)",        "tw": "ring-focus border-focus" },
           "destructive":    { "value": "oklch(0.48 0.20 26.5)",      "tw": "bg-destructive text-destructive" },
+          "destructive-hover": { "value": "oklch(0.38 0.21 26.5)",   "tw": "bg-destructive-hover" },
           "on-destructive": { "value": "oklch(0.98 0 0)",            "tw": "text-on-destructive" },
-          "success":        { "value": "oklch(0.45 0.18 141.64)",    "tw": "bg-success text-success" }
+          "success":        { "value": "oklch(0.45 0.18 141.64)",    "tw": "bg-success text-success" },
+          "on-success":     { "value": "oklch(0.98 0 0)",            "tw": "text-on-success" }
         }
       },
   
@@ -172,7 +182,7 @@
           "1":  { "px": 4,  "tw": "p-1 gap-1",   "usage": "Internal icon padding. Gap between dot and label. Chip inner spacing." },
           "2":  { "px": 8,  "tw": "p-2 gap-2",   "usage": "Icon button padding. Gap between label and value. Within a form field row." },
           "3":  { "px": 12, "tw": "p-3 gap-3",   "usage": "Panel section padding. Note card padding. Gap between form fields. Modal body." },
-          "4":  { "px": 16, "tw": "p-4 gap-4",   "usage": "Panel header horizontal padding. Modal header. Primary CTA footer zone." },
+          "4":  { "px": 16, "tw": "p-4 gap-4",   "usage": "Panel header horizontal padding. Modal header. Main CTA footer zone." },
           "6":  { "px": 24, "tw": "p-6 gap-6",   "usage": "Onboarding step padding. Between major layout zones (left/right split)." },
           "8":  { "px": 32, "tw": "p-8 gap-8",   "usage": "Onboarding illustration breathing room. Never inside a Scribe panel." }
         },
@@ -216,29 +226,35 @@
       "colors": {
         "principles": [
           "Build every screen in grey first. Add a state color only when it carries meaning.",
-          "Each token has a semantic job. brand = primary action. destructive = danger. warning = caution. active = selected. success = done. They are not interchangeable.",
-          "State tokens (warning, active, destructive, success) may appear freely — there is no per-screen cap. Use as many as the content warrants.",
+          "Each token has a semantic job. brand = primary action. focus = keyboard focus ring. destructive = danger. warning = caution. active = selected / on state. success = done. They are not interchangeable.",
+          "State tokens (warning, active, destructive, success, focus) may appear freely — there is no per-screen cap. Use as many as the content warrants.",
           "Use opacity variants (fg/60, fg/40) to dim text. Do not tint surfaces with brand or state colors.",
           "Iterate quickly: change --brand-hue in :root to shift the entire brand palette. Change --canvas-l to shift all dark-mode surfaces."
         ],
         "tokens": {
           "brand": {
-            "color": "blue (hue 250 by default, shifts with --brand-hue)",
-            "job": "Primary CTA button and brand-tinted interactive elements",
-            "use": ["Primary action button (Stop and Save, Record)", "Active toggle track on-state"],
-            "never": ["Waveform bars", "Underlines or decorative strokes", "Multiple simultaneous buttons", "Tab indicators", "Focus rings"]
+            "color": "blue-purple (hue 250 by default, shifts with --brand-hue)",
+            "job": "Primary CTA button",
+            "use": ["Primary action button (Stop and Save, Record)"],
+            "never": ["Waveform bars", "Underlines or decorative strokes", "Multiple simultaneous filled brand buttons", "Tab indicators", "Keyboard focus ring (use focus token)"]
           },
           "warning": {
             "color": "amber (hue 85)",
             "job": "Warnings, caution states, attention-requiring labels",
-            "use": ["Warning badges", "Caution text labels", "Secondary CTA outline button (border-warning text-warning)", "Status indicators that need attention but are not errors"],
+            "use": ["Warning banners and badges", "Caution text labels", "Status indicators that need attention but are not errors"],
             "never": ["Errors or destructive actions (use destructive)", "Decorative color"]
           },
           "active": {
             "color": "blue (hue 240)",
-            "job": "Selected, focused, or active UI state",
-            "use": ["Active tab indicator", "Active toggle / pill", "Selected item highlight", "Focus ring when needed"],
-            "never": ["Buttons", "Text outside a selection/focus context"]
+            "job": "Selected UI state and on-state surfaces (not the keyboard focus ring)",
+            "use": ["Active tab underline + bg-active/15 tint", "Toggle track when on", "Selected list / option row", "Progress accent where meaningful"],
+            "never": ["Primary CTA fills (use brand)", "Random body text color"]
+          },
+          "focus": {
+            "color": "orange (hue 55)",
+            "job": "Keyboard focus visibility only",
+            "use": ["Global :focus ring via ring-focus (see src/app.css @layer base)"],
+            "never": ["Filled buttons", "Tab selection fill", "Decorative strokes"]
           },
           "destructive": {
             "color": "red (hue 26.5)",
@@ -249,7 +265,7 @@
           "success": {
             "color": "green (hue 141.6)",
             "job": "Confirmed success",
-            "use": ["Inline success text", "Permission granted check icon", "Done-state badges"],
+            "use": ["Inline success text (text-success)", "Filled success badges (bg-success text-on-success)", "Permission granted check icon"],
             "note": "Prefer transient use (auto-dismiss), but persistent success badges are allowed when the state is meaningful."
           }
         },
@@ -263,12 +279,12 @@
             "fix": "Use fill border for permission rows. Show success check icon only."
           },
           {
-            "bad": "Multiple warning buttons on one screen with no hierarchy",
-            "fix": "Demote lower-priority actions to ghost (sf-btn-ghost). Reserve warning outline for the one most important secondary action."
+            "bad": "Multiple warning-outlined actions on one screen with no hierarchy",
+            "fix": "Demote lower-priority actions to ghost. At most one attention-driving outline per zone; use normal (border-rim) for the rest."
           },
           {
             "bad": "Title input focus underline in brand color",
-            "fix": "Use rim (1px border-bottom) or fg/20 outline for focus states."
+            "fix": "Rely on the global focus ring (focus token / ring-focus in app.css), or a neutral rim underline — never brand for focus."
           }
         ]
       },
@@ -294,9 +310,9 @@
   
       "surfaces": {
         "elevationModel": "Lighter surface = higher elevation (dark mode). Darker surface = higher elevation (light mode). Never use shadow or border weight to indicate elevation.",
-        "waveform": "Use fg-dim (0.60) for idle waveform bars — not rim (0.40). On void background, rim has ~2:1 contrast (near invisible). fg-dim gives ~3.5:1.",
+        "waveform": "Use fg-dim (0.60) for idle waveform bars — not rim (0.40). On canvas background, rim has ~2:1 contrast (near invisible). fg-dim gives ~3.5:1.",
         "principles": [
-          "void is never used as a card or container surface — page/window only",
+          "canvas is never used as a card or container surface for inner chrome — window / page only",
           "Elevation is communicated purely by background lightness — no shadows on inner elements",
           "No colored surface tints (no green/red/orange at low opacity as persistent backgrounds)"
         ]
@@ -306,36 +322,39 @@
     "components": {
   
       "button": {
-        "description": "Four variants. Primary is orange-filled. Secondary is yellow-outline. Ghost is transparent. Destructive is red-filled.",
+        "description": "Five variants implemented in src/lib/components/Button.svelte. No separate yellow-outline secondary; use normal (border-rim) or ghost for non-primary actions.",
         "rules": [
-          "Max one primary button per screen",
-          "Max one secondary button per screen",
-          "If secondary would appear without a primary, use ghost instead",
-          "Font: Geist Mono for primary, Geist for all others",
+          "Max one primary (brand-filled) button per screen",
+          "Font: Geist Sans for all variants in the component (tracking-stamped on primary only)",
           "Radius: rounded-md (4px) always",
+          "Heights: normal size h-10; small size h-6",
           "No pill or full-round buttons"
         ],
+        "sizes": {
+          "normal": { "height": "h-10", "text": "text-label-md", "icon": "size-4", "paddingPlain": "px-4", "paddingWithIcon": "pl-3.5 pr-4" },
+          "small": { "height": "h-6", "text": "text-label-sm", "icon": "size-3.5", "paddingPlain": "px-2.5", "paddingWithIcon": "px-2.5" }
+        },
         "variants": {
           "primary": {
-            "tw": "bg-brand text-on-brand font-mono text-label-sm uppercase tracking-stamped rounded-md px-3 py-1.5",
-            "hover": "hover:bg-brand-hover hover:text-on-brand-hover",
-            "disabled": "opacity-40 pointer-events-none",
+            "tw": "bg-brand text-on-brand tracking-stamped rounded-md hover:bg-brand-hover hover:text-on-brand-hover",
+            "disabled": "opacity-40 pointer-events-none (via base)",
             "usage": "The single most important action on screen"
           },
           "normal": {
-            "tw": "bg-transparent border border-fill text-fg font-sans",
-            "hover":"hover:bg-brand-hover hover:border-brand-hover",
-            "usage": "normal non primary actions"
+            "tw": "bg-transparent border border-rim text-fg font-sans rounded-md hover:bg-fill",
+            "usage": "Default non-primary actions (outlined)"
           },
           "ghost": {
-            "tw": "bg-transparent text-fg font-sans text-label-md rounded-md px-3 py-1.5",
-            "hover": "hover:bg-fill",
+            "tw": "bg-transparent text-fg font-sans rounded-md hover:bg-card",
             "usage": "Low-priority actions, icon-adjacent text buttons"
           },
           "destructive": {
-            "tw": "bg-destructive text-on-destructive font-sans text-label-md rounded-md px-3 py-1.5",
-            "hover": "hover:bg-destructive/70",
+            "tw": "bg-destructive text-on-destructive font-sans rounded-md hover:bg-destructive-hover",
             "usage": "Cancel recording, delete actions only"
+          },
+          "active": {
+            "tw": "bg-rim text-fg font-sans rounded-md hover:brightness-105",
+            "usage": "Pressed/segmented control active slot (see in-app usage)"
           }
         }
       },
@@ -351,22 +370,22 @@
       },
   
       "toggle": {
-        "description": "On/off switch. Orange track when on, panel when off. Knob is full-round.",
+        "description": "On/off switch. Active (blue) track when on, panel when off. Knob is full-round; on-state knob uses on-brand fill.",
         "tw": {
-          "track": "relative w-10 h-6 rounded-full transition-colors",
-          "trackOn": "bg-brand",
-          "trackOff": "bg-panel",
-          "knob": "absolute top-1 w-4 h-4 rounded-full transition-[left,right]",
-          "knobOn": "bg-on-brand right-1",
-          "knobOff": "bg-rim left-1"
+          "track": "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border transition-colors",
+          "trackOn": "bg-active border-active",
+          "trackOff": "bg-panel border-rim",
+          "knob": "absolute left-1 h-4 w-4 rounded-full transition-transform",
+          "knobOn": "translate-x-4 bg-on-brand",
+          "knobOff": "translate-x-0 bg-fg"
         }
       },
   
       "input": {
-        "tw": "bg-panel border border-fill rounded-md text-fg font-sans text-label-md px-2 py-1.5 outline-none",
-        "focusTw": "focus:border-rim",
+        "tw": "bg-panel border border-rim rounded-md h-10 flex items-center text-body-md text-fg font-sans px-2 py-2 outline-none placeholder:text-fg-muted",
+        "focusTw": "Global: src/app.css @layer base :focus uses ring-2 ring-focus ring-offset-2 ring-offset-canvas",
         "rules": [
-          "Focus ring: rim border only — no orange",
+          "Fixed control height h-10 for single-line fields (matches Button normal size)",
           "Placeholder text: text-fg-muted",
           "Always pair with a label in label-sm style above"
         ]
@@ -377,6 +396,7 @@
         "tw": "inline-block w-2 h-2 rounded-full flex-shrink-0",
         "states": {
           "idle":      { "tw": "bg-rim", "animation": "none" },
+          "paused":    { "tw": "bg-rim", "animation": "none" },
           "recording": { "tw": "bg-destructive", "animation": "animate-pulse" },
           "error":     { "tw": "bg-destructive", "animation": "none" }
         },
@@ -418,26 +438,29 @@
       },
   
       "tabs": {
-        "description": "Settings modal navigation. Active tab uses tertiary (blue) indicator.",
-        "tabTw": "font-sans text-label-md px-3 py-2 border-b-2",
-        "activeTw": "border-active text-fg",
-        "inactiveTw": "border-transparent text-fg-dim hover:text-fg",
-        "rules": ["Blue used only for the active tab bottom border — nothing else in the UI uses blue"]
+        "description": "Settings and in-panel navigation (TabPage.svelte).",
+        "tabTw": "font-normal tracking-stamped whitespace-nowrap uppercase transition-colors border-0 border-b-2 px-3 py-2 text-label-md (panel mode)",
+        "activeTw": "border-active bg-active/15",
+        "inactiveTw": "border-transparent text-fg/70 hover:bg-fill hover:text-fg",
+        "rules": [
+          "Active state pairs bottom border-active with a subtle bg-active/15 tint",
+          "Active (blue) is for selection — keyboard focus still uses the global focus ring (focus token)"
+        ]
       },
   
       "waveformVisualizer": {
         "container": "bg-card rounded-md overflow-hidden",
         "bars": {
-          "idle": "fill: fg-dim (oklch 0.60) — NOT primary orange",
+          "idle": "fill: fg-dim (oklch 0.60) — NOT brand",
           "active": "fill: fg at 40% opacity",
-          "note": "fg-dim gives ~3.5:1 contrast on void bg. rim gives ~2:1 — too low."
+          "note": "fg-dim gives ~3.5:1 contrast on canvas bg. rim gives ~2:1 — too low."
         }
       }
     },
   
     "surfaces": {
       "scribeWindow": {
-        "description": "Primary floating panel. Menu-bar app, no Dock icon.",
+        "description": "Main floating panel. Menu-bar app, no Dock icon.",
         "shell": "bg-canvas shadow-ambient rounded-md overflow-hidden",
         "header": "flex items-center justify-between min-h-[52px] border-b border-card px-4 gap-3 flex-shrink-0 bg-panel",
         "body": "grid grid-cols-[1.05fr_0.95fr] flex-1 min-h-0",

@@ -36,7 +36,7 @@
 		bind:value
 		type="text"
 		{placeholder}
-		class="h-10 px-2 bg-panel rounded-sm text-headline-sm w-full max-w-md tracking-tight text-fg outline-none"
+		class="h-10 px-2 bg-panel rounded-sm text-headline-sm w-full max-w-md tracking-tight text-fg outline-none border border-rim"
 		onblur={commit}
 		{onkeydown}
 	/>

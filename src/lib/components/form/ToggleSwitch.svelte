@@ -20,9 +20,9 @@
 	{id}
 	aria-checked={checked}
 	aria-label={ariaLabel}
-	class="relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors disabled:opacity-40 {checked
-		? 'bg-brand'
-		: 'bg-panel'}"
+	class="relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors border disabled:opacity-40 {checked
+		? 'bg-active border-active'
+		: 'bg-panel border-rim'}"
 	{disabled}
 	onclick={() => {
 		if (!disabled) {
@@ -34,6 +34,6 @@
 	<span
 		class="absolute left-1 h-4 w-4 rounded-full transition-transform {checked
 			? 'translate-x-4 bg-on-brand'
-			: 'translate-x-0 bg-fg-dim'}"
+			: 'translate-x-0 bg-fg'}"
 	></span>
 </button>

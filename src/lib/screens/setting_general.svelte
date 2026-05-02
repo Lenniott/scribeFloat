@@ -98,27 +98,6 @@
 		</span>
 		<ToggleSwitch checked={scribeCaptureSpeaker} aria-label="Toggle default speaker capture" onchange={(next) => (scribeCaptureSpeaker = next)} />
 	</div>
-	<div class="flex flex-col gap-1.5 text-left">
-		<label
-			for="speaker-device-select"
-			class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase"
-		>
-			Speaker capture device
-		</label>
-		<select
-			id="speaker-device-select"
-			class="h-8 rounded-md border-0 border-b border-transparent bg-panel py-2 pr-8 pl-2 text-body-md text-fg"
-			bind:value={preferredSpeakerDevice}
-		>
-			<option value="">System default</option>
-			{#each outputDevices as device (device)}
-				<option value={device}>{device}</option>
-			{/each}
-		</select>
-		<p class="text-label-sm text-fg/50">
-			Pick your Audio MIDI multi-output device if it appears here.
-		</p>
-	</div>
 	<LabeledTextField
 		label="Speaker capture device name"
 		bind:value={preferredSpeakerDevice}

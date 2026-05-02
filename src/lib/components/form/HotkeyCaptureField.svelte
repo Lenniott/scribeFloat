@@ -111,7 +111,7 @@
 			type="text"
 			readonly
 			value={value || placeholder}
-			class="h-10 flex items-center font-mono text-label-md min-w-0 flex-1 truncate rounded-md bg-panel px-2 py-2 tracking-stamped text-fg/90"
+			class="h-10 flex items-center font-mono text-label-md min-w-0 flex-1 truncate rounded-md bg-panel px-2 py-2 tracking-stamped text-fg/90 border border-rim"
 			title={value || placeholder}
 		/>
 		<Button variant="normal" onclick={startCapture}>

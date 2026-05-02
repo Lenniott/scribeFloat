@@ -25,14 +25,20 @@ unsafe impl Send for MicSession {}
 impl MicSession {
     /// Stop the stream and return (mono_f32_pcm, sample_rate).
     pub fn stop_and_take(self) -> (Vec<f32>, u32) {
-        let rate = self.sample_rate;
-        // Drop stream first — stops callbacks before we drain the channel.
-        drop(self._stream);
+        let MicSession {
+            _stream,
+            receiver,
+            sample_rate,
+        } = self;
+        // Pause before teardown — on macOS dropping alone can leave TCC / menu-bar mic active briefly
+        // or until another route tick; pause asks CoreAudio to release capture promptly.
+        let _ = _stream.pause();
+        drop(_stream);
         let mut all = Vec::new();
-        while let Ok(chunk) = self.receiver.try_recv() {
+        while let Ok(chunk) = receiver.try_recv() {
             all.extend(chunk);
         }
-        (all, rate)
+        (all, sample_rate)
     }
 }
 

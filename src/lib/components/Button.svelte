@@ -38,35 +38,42 @@
 		primary: "bg-brand text-on-brand tracking-stamped hover:bg-brand-hover hover:text-on-brand-hover",
 		destructive: "bg-destructive text-on-destructive font-sans hover:bg-destructive-hover ",
 		ghost: "bg-transparent text-fg font-sans hover:bg-card",
-		normal: "bg-transparent border border-fill text-fg font-sans hover:bg-fill",
+		normal: "bg-transparent border border-rim text-fg font-sans hover:bg-fill",
 		active: "bg-fillest text-fg font-sans hover:brightness-105",
 	};
 
-	const sizeClass: Record<Size, { pad: string; text: string; icon: string }> = {
+	const sizeLayout: Record<
+		Size,
+		{ padWithIcon: string; padPlain: string; text: string; icon: string }
+	> = {
 		normal: {
-			pad: "px-4 py-2",
+			padWithIcon: "pl-3.5 pr-4 h-10",
+			padPlain: "px-4 h-10",
 			text: "text-label-md",
 			icon: "size-4",
 		},
 		small: {
-			pad: "px-2.5 py-1.5",
+			padWithIcon: "px-2.5 h-6",
+			padPlain: "px-2.5 h-6",
 			text: "text-label-sm",
 			icon: "size-3.5",
 		},
 	};
 
+	let padClass = $derived(Icon ? sizeLayout[size].padWithIcon : sizeLayout[size].padPlain);
+
 	let classes = $derived(
 		[
 			base,
 			variantClass[variant],
-			`${sizeClass[size].pad} ${sizeClass[size].text} rounded-md`,
+			`${padClass} ${sizeLayout[size].text} rounded-md`,
 			className,
 		]
 			.filter(Boolean)
 			.join(" "),
 	);
 
-	let iconClass = $derived(sizeClass[size].icon);
+	let iconClass = $derived(sizeLayout[size].icon);
 </script>
 
 <button

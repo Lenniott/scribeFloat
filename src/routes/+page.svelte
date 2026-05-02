@@ -12,6 +12,7 @@
 
 	let appScreen = $state<AppScreen>("recording");
 	let processingTitle = $state("Recording");
+	/** One-shot: set true only when opening Scribe from the app (see CLAUDE.md “Scribe recording auto-start”). */
 	let autoStartRecording = $state(false);
 
 	function beginProcessing(title: string) {
@@ -48,7 +49,7 @@
 				onRecordAgain={returnToRecording}
 			/>
 		{:else}
-			<ScribeScreen processingStart={beginProcessing} autoStart={autoStartRecording} />
+			<ScribeScreen processingStart={beginProcessing} bind:autoStart={autoStartRecording} />
 		{/if}
 	</main>
 {/if}

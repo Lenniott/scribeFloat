@@ -36,7 +36,7 @@
 			id={fieldId}
 			type="text"
 			bind:value={path}
-			class="h-10 flex items-center min-w-0 flex-1 rounded-md border-0 border-b border-transparent bg-panel p-2 text-body-md text-fg placeholder:text-fg-dim"
+			class="h-10 flex items-center min-w-0 flex-1 rounded-md border border-rim bg-panel p-2 text-body-md text-fg placeholder:text-fg-dim"
 			onblur={() => onChange?.(path)}
 		/>
 		<Button variant="normal" onclick={choosePath}>Change</Button>

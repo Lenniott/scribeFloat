@@ -78,6 +78,19 @@ panel (HTML/JS)
 
 ---
 
+## Scribe UI — recording auto-start (do not regress)
+
+The Scribe webview is **prewarmed at startup** (`prewarm_scribe_window` in `src-tauri/src/lib.rs`). If the frontend defaults **`autoStart` / `autoStartRecording` to `true`**, the mic starts as soon as that hidden window loads — **not** when the user opens Scribe.
+
+**Rules for agents:**
+
+- **Never** default global Scribe auto-record to `true` in `src/routes/+page.svelte` to “fix” timing races.
+- Recording should start only when the user **opens Scribe** (tray / hotkey → `open_scribe_window` emits `scribe://open-requested`; `+page.svelte` sets `autoStartRecording = true`) or taps **Start recording** / **Record again**.
+- Use **`bind:autoStart`** on `ScribeScreen` and **`$bindable(false)`** in `scribe.svelte`; clear **`autoStart`** after a successful **`scribe_start`** so returning to **idle** does not immediately reopen the mic.
+- Reopen/discard edge cases: rely on **`$effect`** + **`$bindable`** (and focus **`maybeAutoStartRecording`**), not **`autoStart = true` by default**.
+
+---
+
 ## How to add a new IPC command
 
 1. Add a `#[tauri::command]` fn to the relevant file in `commands/`.

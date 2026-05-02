@@ -48,6 +48,9 @@ struct Inner {
 
 pub struct ScribeController {
     inner: Mutex<Inner>,
+    /// Ensures `cancel`/`stop` never run while `start` is between `start_mic` and session commit
+    /// (state still Idle but CPAL already recording — that used to make discard a no-op on streams).
+    capture_sync: Mutex<()>,
     audio: Arc<AudioService>,
     model: Arc<ModelService>,
     output: Arc<OutputService>,
@@ -71,6 +74,7 @@ impl ScribeController {
                 transcription_abort: None,
                 transcription_wav_path: None,
             }),
+            capture_sync: Mutex::new(()),
             audio,
             model,
             output,
@@ -86,10 +90,13 @@ impl ScribeController {
         preferred_speaker: Option<String>,
         capture_speaker: bool,
     ) -> Result<()> {
+        let _capture = self.capture_guard();
         {
             let inner = self.lock();
             Self::ensure_start_allowed(&inner.state)?;
         }
+
+        self.emit_capture_levels_idle();
 
         let cfg = self.config.get();
         let session_dir = self.output.make_session_dir(&cfg.save_folder)?;
@@ -169,6 +176,7 @@ impl ScribeController {
     /// Transition RECORDING → IDLE. Discards the audio buffer and removes the
     /// session directory if no files were written into it yet.
     pub fn cancel(&self) -> Result<()> {
+        let _capture = self.capture_guard();
         let session = {
             let mut inner = self.lock();
             if inner.state != ScribeState::Recording {
@@ -182,14 +190,27 @@ impl ScribeController {
             session
         };
         if let Some(session) = session {
-            self.restore_output_device(session.previous_output_device.as_deref());
-            self.output.delete_session_dir_if_empty(&session.session_dir);
+            let ActiveSession {
+                mic,
+                speaker,
+                previous_output_device,
+                session_dir,
+                ..
+            } = session;
+            let _ = mic.stop_and_take();
+            if let Some(spk) = speaker {
+                let _ = spk.stop_and_take();
+            }
+            self.restore_output_device(previous_output_device.as_deref());
+            self.emit_capture_levels_idle();
+            self.output.delete_session_dir_if_empty(&session_dir);
         }
         Ok(())
     }
 
     /// Stop recording, write `mic.wav` + `notes.json`, return to IDLE without Whisper.
     pub fn save_recording_only(&self, title: Option<String>) -> Result<PathBuf> {
+        let _capture = self.capture_guard();
         let title =
             title.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d %H:%M").to_string());
 
@@ -207,14 +228,25 @@ impl ScribeController {
             inner.state = ScribeState::Idle;
             (session, notes)
         };
-        self.restore_output_device(session.previous_output_device.as_deref());
+        let ActiveSession {
+            mic,
+            speaker,
+            previous_output_device,
+            session_dir,
+            ..
+        } = session;
+        let wav_path = session_dir.join("mic.wav");
+        let (raw_pcm, native_rate) = mic.stop_and_take();
+        if let Some(spk) = speaker {
+            let _ = spk.stop_and_take();
+        }
+        self.restore_output_device(previous_output_device.as_deref());
+        self.emit_capture_levels_idle();
 
-        let wav_path = session.session_dir.join("mic.wav");
-        let (raw_pcm, native_rate) = session.mic.stop_and_take();
         let pcm = resample_linear(&raw_pcm, native_rate, WHISPER_SAMPLE_RATE);
         self.output.write_wav(&pcm, WHISPER_SAMPLE_RATE, &wav_path)?;
         self.output
-            .write_session_notes(&session.session_dir, &title, "mic.wav", &notes)?;
+            .write_session_notes(&session_dir, &title, "mic.wav", &notes)?;
 
         self.emit_idle_optional_wav(Some(&wav_path));
         Ok(wav_path)
@@ -248,6 +280,7 @@ impl ScribeController {
         let abort_flag = Arc::new(AtomicBool::new(false));
         // Extract session under lock then release immediately.
         let (session, notes) = {
+            let _capture = this.capture_guard();
             let mut inner = this.lock();
             if inner.state != ScribeState::Recording {
                 return Err(anyhow!("cannot stop: not recording"));
@@ -258,6 +291,29 @@ impl ScribeController {
                 inner.session.take().expect("session exists when Recording"),
                 inner.notes.clone(),
             )
+        };
+
+        // Stop capture before emitting TRANSCRIBING so the mic is never active while we are not Recording.
+        let prepared = match this.prepare_audio(session) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("prepare_audio after stop: {e}");
+                this.clear_transcription_tracking();
+                {
+                    let mut inner = this.lock();
+                    inner.state = ScribeState::Error;
+                }
+                this.app
+                    .emit(
+                        "scribe://state-changed",
+                        ScribeStateEvent {
+                            error: Some(format!("failed to finalize recording: {e}")),
+                            ..ScribeStateEvent::new(ScribeState::Error)
+                        },
+                    )
+                    .ok();
+                return Err(e);
+            }
         };
 
         this.app
@@ -278,7 +334,7 @@ impl ScribeController {
             let ctrl = Arc::clone(&this);
             let result =
                 tokio::task::spawn_blocking(move || {
-                    ctrl.do_transcription(session, notes, &title, abort_flag)
+                    ctrl.do_transcription(prepared, notes, &title, abort_flag)
                 })
                     .await;
 
@@ -321,16 +377,15 @@ impl ScribeController {
         Ok(())
     }
 
-    /// Blocking transcription pipeline. Called inside spawn_blocking.
+    /// Whisper + transcript write. Capture is already stopped (`prepare_audio` ran in `stop_and_save`).
     fn do_transcription(
         &self,
-        session: ActiveSession,
+        prepared: PreparedAudio,
         notes: Vec<Note>,
         title: &str,
         abort_flag: Arc<AtomicBool>,
     ) -> Result<()> {
         let config = self.config.get();
-        let prepared = self.prepare_audio(session)?;
 
         let model_path = resolve_model_path(&config, &self.model);
         if !self.model.model_available(&model_path) {
@@ -365,6 +420,7 @@ impl ScribeController {
         let (raw_pcm, native_rate) = mic.stop_and_take();
         let speaker_raw = speaker.map(|s| s.stop_and_take());
         self.restore_output_device(previous_output_device.as_deref());
+        self.emit_capture_levels_idle();
 
         let pcm_16k = resample_linear(&raw_pcm, native_rate, WHISPER_SAMPLE_RATE);
         let wav_path = session_dir.join("mic.wav");
@@ -590,12 +646,24 @@ impl ScribeController {
         })
     }
 
+    fn capture_guard(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.capture_sync.lock().unwrap_or_else(|p| {
+            eprintln!("scribe: recovering from poisoned capture mutex");
+            p.into_inner()
+        })
+    }
+
     fn restore_output_device(&self, previous: Option<&str>) {
         if let Some(device) = previous {
             if let Err(e) = self.audio.set_output_device(device) {
                 eprintln!("failed to restore output device to `{device}`: {e}");
             }
         }
+    }
+
+    fn emit_capture_levels_idle(&self) {
+        let _ = self.app.emit("scribe://audio-level", 0.0_f32);
+        let _ = self.app.emit("scribe://speaker-level", 0.0_f32);
     }
 
     fn ensure_start_allowed(state: &ScribeState) -> Result<()> {

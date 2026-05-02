@@ -26,6 +26,6 @@
 		bind:value
 		{placeholder}
 		{disabled}
-		class="rounded-md h-10 flex items-center border-0 border-b border-transparent bg-panel p-2 text-body-md text-fg placeholder:text-fg-dim disabled:opacity-40"
+		class="rounded-md h-10 flex items-center border border-rim bg-panel p-2 text-body-md text-fg placeholder:text-fg-dim disabled:opacity-40"
 	/>
 </div>

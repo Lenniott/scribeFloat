@@ -66,17 +66,28 @@
 
   const recordingStatuses = ["idle", "recording", "paused", "error"] as const;
 
+  /** Every `--color-*` from `app.css` @theme (shown as bg-* swatches) */
   const colorTokens: { token: string; class: string }[] = [
     { token: "canvas", class: "bg-canvas" },
     { token: "panel", class: "bg-panel" },
     { token: "card", class: "bg-card" },
     { token: "fill", class: "bg-fill" },
     { token: "rim", class: "bg-rim" },
+    { token: "fg", class: "bg-fg" },
+    { token: "fg-dim", class: "bg-fg-dim" },
+    { token: "fg-muted", class: "bg-fg-muted" },
     { token: "brand", class: "bg-brand" },
+    { token: "on-brand", class: "bg-on-brand" },
+    { token: "brand-hover", class: "bg-brand-hover" },
+    { token: "on-brand-hover", class: "bg-on-brand-hover" },
     { token: "warning", class: "bg-warning" },
+    { token: "on-warning", class: "bg-on-warning" },
     { token: "active", class: "bg-active" },
+    { token: "on-active", class: "bg-on-active" },
     { token: "destructive", class: "bg-destructive" },
+    { token: "on-destructive", class: "bg-on-destructive" },
     { token: "success", class: "bg-success" },
+    { token: "focus", class: "bg-focus" },
   ];
 
   const variants = [
@@ -177,10 +188,10 @@
       {/each}
     </div>
     <p class="text-label-sm mt-4 text-fg/50">
-      Text: <span class="text-fg">fg</span> ·
-      <span class="text-fg-dim">fg-dim</span> ·
-      <span class="text-fg-muted">fg-muted</span> ·
-      <span class="bg-destructive text-on-destructive px-1 rounded">on-destructive</span>
+      Utilities mirror tokens — use <code class="text-fg/80">bg-*</code>,
+      <code class="text-fg/80">text-*</code>, or
+      <code class="text-fg/80">border-*</code> with the same name (for example
+      <code class="text-fg/80">border-active</code>).
     </p>
   </section>
 
@@ -443,7 +454,7 @@
     >
       Accordion
     </h2>
-    <div class="max-w-md overflow-hidden">
+    <div class="max-w-md">
       <Accordion>
         <AccordionItem id="ds-1" title="First section">
           <SettingsSection title="Inner title">

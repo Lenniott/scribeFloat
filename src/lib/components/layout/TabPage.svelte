@@ -73,9 +73,9 @@
 				aria-selected={activeId === tab.id}
 				aria-controls={`tab-panel-${tab.id}`}
 				disabled={tab.disabled}
-				class="{tabButtonClass[mode]} rounded-sm font-normal tracking-stamped whitespace-nowrap uppercase transition-colors disabled:opacity-40 {activeId === tab.id
-					? 'bg-fillest text-fg'
-					: 'text-fg/70 hover:bg-fill hover:text-fg'}"
+				class="{tabButtonClass[mode]} font-normal tracking-stamped whitespace-nowrap uppercase transition-colors disabled:opacity-40 {activeId === tab.id
+					? 'border-0 border-b-2 border-active bg-active/15'
+					: 'border-0 border-b-2 border-transparent text-fg/70 hover:bg-fill hover:text-fg'}"
 				onclick={() => (activeId = tab.id)}
 			>
 				{tab.label}

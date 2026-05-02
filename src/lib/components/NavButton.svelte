@@ -18,7 +18,7 @@
 		[
 			base,
 			active
-				? "bg-fillest text-fg before:absolute before:top-0 before:left-0 before:h-full before:w-1 before:bg-on-surface/40"
+				? "bg-active/15 text-fg before:absolute before:top-0 before:left-0 before:h-full before:w-1 before:bg-active"
 				: "text-fg/60 hover:bg-fill hover:text-fg",
 		].join(" "),
 	);

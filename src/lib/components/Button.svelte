@@ -36,7 +36,7 @@
 
 	const variantClass: Record<Variant, string> = {
 		primary: "bg-brand text-on-brand tracking-stamped hover:bg-brand-hover hover:text-on-brand-hover",
-		destructive: "bg-destructive text-on-destructive font-sans hover:bg-destructive/70",
+		destructive: "bg-destructive text-on-destructive font-sans hover:bg-destructive-hover ",
 		ghost: "bg-transparent text-fg font-sans hover:bg-card",
 		normal: "bg-transparent border border-fill text-fg font-sans hover:bg-fill",
 		active: "bg-fillest text-fg font-sans hover:brightness-105",

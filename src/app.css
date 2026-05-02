@@ -20,26 +20,27 @@
   --font-mono: "Geist Mono", ui-monospace, monospace;
 
   /* ── Colors — forwarded via var() so :root / [data-theme] overrides work ── */
-  --color-canvas:          var(--sf-canvas);
-  --color-panel:           var(--sf-panel);
-  --color-card:            var(--sf-card);
-  --color-fill:            var(--sf-fill);
-  --color-rim:             var(--sf-rim);
-  --color-fg:              var(--sf-fg);
-  --color-fg-dim:          var(--sf-fg-dim);
-  --color-fg-muted:        var(--sf-fg-muted);
-  --color-brand:           var(--sf-brand);
-  --color-on-brand:        var(--sf-on-brand);
-  --color-brand-hover:     var(--sf-brand-hover);
-  --color-on-brand-hover:  var(--sf-on-brand-hover);
-  --color-warning:         var(--sf-warning);
-  --color-on-warning:      var(--sf-on-warning);
-  --color-active:          var(--sf-active);
-  --color-on-active:       var(--sf-on-active);
-  --color-destructive:     var(--sf-destructive);
-  --color-on-destructive:  var(--sf-on-destructive);
-  --color-success:         var(--sf-success);
-
+  --color-canvas:             var(--sf-canvas);
+  --color-panel:              var(--sf-panel);
+  --color-card:               var(--sf-card);
+  --color-fill:               var(--sf-fill);
+  --color-rim:                var(--sf-rim);
+  --color-fg:                 var(--sf-fg);
+  --color-fg-dim:             var(--sf-fg-dim);
+  --color-fg-muted:           var(--sf-fg-muted);
+  --color-brand:              var(--sf-brand);
+  --color-on-brand:           var(--sf-on-brand);
+  --color-brand-hover:        var(--sf-brand-hover);
+  --color-on-brand-hover:     var(--sf-on-brand-hover);
+  --color-warning:            var(--sf-warning);
+  --color-on-warning:         var(--sf-on-warning);
+  --color-active:             var(--sf-active);
+  --color-on-active:          var(--sf-on-active);
+  --color-destructive:        var(--sf-destructive);
+  --color-destructive-hover:  var(--sf-destructive-hover);
+  --color-on-destructive:     var(--sf-on-destructive);
+  --color-success:            var(--sf-success);
+  --color-focus:              var(--sf-focus);
   /* ── Type scale (size + paired line-height) ────────────────────────────── */
   --text-display-lg:              3.5rem;
   --text-display-lg--line-height:  1.1;
@@ -107,12 +108,14 @@
   --sf-on-brand: oklch(0.20 0 0);
   --sf-brand-hover: oklch(0.400 0.16 var(--brand-hue));
   --sf-on-brand-hover: oklch(0.93 0 0);
+  --sf-focus: oklch(0.73 0.17 55);
   /* State colors */
-  --sf-warning:        oklch(0.600 0.16 85);
+  --sf-warning:        oklch(0.81 0.16 85);
   --sf-on-warning:     oklch(0.20 0 0);
-  --sf-active:         oklch(0.72 0.16 240);
+  --sf-active:         oklch(0.76 0.14 240);
   --sf-on-active:      oklch(0.20 0 0);
   --sf-destructive:    oklch(0.53 0.21 26.5);
+  --sf-destructive-hover: oklch(0.43 0.21 26.5);
   --sf-on-destructive: oklch(0.93 0.0044 286.28);
   --sf-success:        oklch(0.609 0.2158 141.64);
 
@@ -140,12 +143,14 @@
   --sf-on-brand: oklch(0.20 0 0);
   --sf-brand-hover: oklch(0.400 0.16 var(--brand-hue));
   --sf-on-brand-hover: oklch(0.93 0 0);
+  --sf-focus: oklch(0.73 0.17 55);
 
-  --sf-warning:        oklch(0.600 0.16 85);
+  --sf-warning:        oklch(0.81 0.16 85);
   --sf-on-warning:     oklch(0.20 0 0);
-  --sf-active:         oklch(0.72 0.16 240);
+  --sf-active:         oklch(0.76 0.14 240);
   --sf-on-active:      oklch(0.20 0 0);
   --sf-destructive:    oklch(0.53 0.21 26.5);
+  --sf-destructive-hover: oklch(0.43 0.21 26.5);
   --sf-on-destructive: oklch(0.93 0.0044 286.28);
   --sf-success:        oklch(0.609 0.2158 141.64);
 
@@ -172,12 +177,14 @@
   --sf-on-brand: oklch(0.98 0 0);
   --sf-brand-hover: oklch(0.400 0.16 var(--brand-hue));
   --sf-on-brand-hover: oklch(0.93 0 0);
+  --sf-focus: oklch(0.66 0.17 55);
 
-  --sf-warning:        oklch(0.52 0.16 77);
+  --sf-warning:        oklch(0.81 0.16 77);
   --sf-on-warning:     oklch(0.98 0 0);
   --sf-active:         oklch(0.50 0.16 240);
   --sf-on-active:      oklch(0.98 0 0);
   --sf-destructive:    oklch(0.48 0.20 26.5);
+  --sf-destructive-hover: oklch(0.38 0.21 26.5);
   --sf-on-destructive: oklch(0.98 0 0);
   --sf-success:        oklch(0.45 0.18 141.64);
 
@@ -203,12 +210,14 @@
     --sf-on-brand: oklch(0.98 0 0);
     --sf-brand-hover: oklch(0.400 0.16 var(--brand-hue));
     --sf-on-brand-hover: oklch(0.93 0 0);
+    --sf-focus: oklch(0.66 0.17 55);
 
-    --sf-warning:        oklch(0.52 0.16 77);
+    --sf-warning:        oklch(0.81 0.16 77);
     --sf-on-warning:     oklch(0.98 0 0);
     --sf-active:         oklch(0.50 0.16 240);
     --sf-on-active:      oklch(0.98 0 0);
     --sf-destructive:    oklch(0.48 0.20 26.5);
+    --sf-destructive-hover: oklch(0.38 0.21 26.5);
     --sf-on-destructive: oklch(0.98 0 0);
     --sf-success:        oklch(0.45 0.18 141.64);
 
@@ -273,6 +282,6 @@ html {
 @layer base {
   /* Replace UA outline with design-system ring */
   :focus {
-    @apply outline-none ring-2 ring-warning;
+    @apply outline-none ring-2 ring-orange-400 ring-offset-2 ring-offset-panel;
   }
 }

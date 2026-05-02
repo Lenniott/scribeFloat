@@ -16,6 +16,7 @@
 		type = "button",
 		disabled = false,
 		class: className = "",
+		iconExtraClass = "",
 		onclick,
 		"aria-label": ariaLabel,
 	}: {
@@ -25,6 +26,7 @@
 		type?: "button" | "submit" | "reset";
 		disabled?: boolean;
 		class?: string;
+		iconExtraClass?: string;
 		onclick?: (e: MouseEvent) => void;
 		"aria-label": string;
 	} = $props();
@@ -50,7 +52,7 @@
 	};
 
 	let classes = $derived([base, variantClass[variant], sizeClass[size].button, className].filter(Boolean).join(" "));
-	let iconClass = $derived(sizeClass[size].icon);
+	let iconClass = $derived([sizeClass[size].icon, iconExtraClass].filter(Boolean).join(" "));
 </script>
 
 <button

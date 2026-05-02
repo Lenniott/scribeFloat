@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Model Management — Scribefloat</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root { height: 100%; }
+  body {
+    background: oklch(0.20 0 0);
+    font-family: "Inter", sans-serif;
+    color: oklch(0.93 0.0044 286.28);
+    -webkit-font-smoothing: antialiased;
+    color-scheme: dark;
+  }
+  * { scrollbar-width: thin; scrollbar-color: oklch(0.32 0 0) transparent; }
+  @keyframes sfPulse { 0%,100%{opacity:1}50%{opacity:.35} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const C = {
+  void:        'oklch(0.20 0 0)',
+  white:       'oklch(0.93 0.0044 286.28)',
+  orange:      'oklch(0.70 0.1867 47.6)',
+  blue:        'oklch(0.72 0.16 240)',
+  green:       'oklch(0.609 0.2158 141.64)',
+  red:         'oklch(0.53 0.21 26.5)',
+  surfLowest:  'oklch(0.24 0 0)',
+  surfLow:     'oklch(0.28 0 0)',
+  surfHigh:    'oklch(0.32 0 0)',
+  surfHighest: 'oklch(0.40 0 0)',
+  dim:         'oklch(0.93 0.0044 286.28 / 0.4)',
+  mid:         'oklch(0.93 0.0044 286.28 / 0.6)',
+};
+
+// ── Icons ──────────────────────────────────────────────────────────────────
+const IconDownload = ({s=14}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
+const IconTrash   = ({s=14}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
+const IconRefresh = ({s=14}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>;
+const IconCheck   = ({s=12}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
+const IconX       = ({s=14}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>;
+
+// ── IBtn ──────────────────────────────────────────────────────────────────
+function IBtn({ icon: Icon, ariaLabel, onClick, disabled, danger, active, size = 14 }) {
+  const [hover, setHover] = React.useState(false);
+  return (
+    <button
+      aria-label={ariaLabel}
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 28, height: 28, border: 'none', borderRadius: 2, cursor: disabled ? 'default' : 'pointer',
+        background: hover && !disabled ? (danger ? 'oklch(0.53 0.21 26.5 / 0.15)' : C.surfHigh) : 'transparent',
+        color: disabled ? C.dim : danger ? (hover ? C.red : C.mid) : active ? C.blue : C.mid,
+        opacity: disabled ? 0.35 : 1,
+        transition: 'background 0.12s, color 0.12s',
+      }}
+    >
+      <Icon s={size} />
+    </button>
+  );
+}
+
+// ── Pill badge ─────────────────────────────────────────────────────────────
+function Badge({ children, color }) {
+  return (
+    <span style={{
+      fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
+      padding: '2px 5px', borderRadius: 2,
+      background: color + ' / 0.12', color,
+      border: `1px solid ${color} / 0.25`,
+    }}>{children}</span>
+  );
+}
+
+// ── Select ────────────────────────────────────────────────────────────────
+function ModelSelect({ value, onChange, options, disabled }) {
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      disabled={disabled}
+      style={{
+        background: C.surfLowest, border: `1px solid ${C.surfHigh}`, borderRadius: 2,
+        color: disabled ? C.dim : C.white, fontFamily: "'Inter',sans-serif",
+        fontSize: '0.75rem', padding: '4px 24px 4px 8px', outline: 'none',
+        cursor: disabled ? 'not-allowed' : 'pointer', minWidth: 160,
+        appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='oklch(0.6 0 0)' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+        backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center',
+      }}
+    >
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}
+
+// ── Section header ────────────────────────────────────────────────────────
+function SectionHead({ children, action }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+      <span style={{ fontSize: '0.6875rem', fontWeight: 500, letterSpacing: '0.05em', textTransform: 'uppercase', color: C.dim }}>
+        {children}
+      </span>
+      {action}
+    </div>
+  );
+}
+
+// ── Progress bar ──────────────────────────────────────────────────────────
+function ProgressBar({ pct }) {
+  return (
+    <div style={{ height: 2, background: C.surfHigh, borderRadius: 1, overflow: 'hidden', marginTop: 6 }}>
+      <div style={{ height: '100%', background: C.mid, width: `${pct}%`, borderRadius: 1, transition: 'width 0.1s' }} />
+    </div>
+  );
+}
+
+// ── Model row ─────────────────────────────────────────────────────────────
+function ModelRow({ model, progress, downloading, onInstall, onRemove }) {
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: '1fr auto auto auto', alignItems: 'center',
+      gap: 8, padding: '7px 10px', borderBottom: `1px solid ${C.surfLowest}`,
+    }}>
+      {/* Info */}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <span style={{ fontSize: '0.75rem', fontWeight: model.downloaded ? 500 : 400, color: model.downloaded ? C.white : C.mid, fontFamily: "'Space Grotesk',sans-serif" }}>
+            {model.label}
+          </span>
+          {model.scribeDefault && <span style={{ fontSize: '0.5625rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.orange, border: `1px solid oklch(0.70 0.1867 47.6 / 0.4)`, padding: '1px 4px', borderRadius: 1 }}>scribe</span>}
+          {model.dictateDefault && <span style={{ fontSize: '0.5625rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.blue, border: `1px solid oklch(0.72 0.16 240 / 0.4)`, padding: '1px 4px', borderRadius: 1 }}>dictate</span>}
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 1 }}>
+          <span style={{ fontSize: '0.6rem', color: C.dim }}>{model.size}</span>
+          {model.description && <span style={{ fontSize: '0.6rem', color: C.dim }}>· {model.description}</span>}
+        </div>
+        {downloading && <ProgressBar pct={progress} />}
+        {downloading && (
+          <span style={{ fontSize: '0.6rem', fontFamily: "'Space Grotesk',sans-serif", color: C.dim, marginTop: 3, display: 'block' }}>
+            {progress < 100 ? `${progress}%` : 'Finalising…'}
+          </span>
+        )}
+      </div>
+
+      {/* Status dot */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20 }}>
+        {model.downloaded && !downloading && (
+          <span style={{ color: C.mid, display: 'flex' }}><IconCheck s={11} /></span>
+        )}
+        {downloading && (
+          <span style={{ width: 6, height: 6, borderRadius: 9999, background: C.mid, display: 'inline-block', animation: 'sfPulse 1.2s ease-in-out infinite' }} />
+        )}
+      </div>
+
+      {/* Install */}
+      <IBtn
+        icon={IconDownload}
+        ariaLabel={`Install ${model.label}`}
+        onClick={() => onInstall(model.id)}
+        disabled={model.downloaded || downloading}
+        size={13}
+      />
+
+      {/* Remove */}
+      <IBtn
+        icon={IconTrash}
+        ariaLabel={`Remove ${model.id}`}
+        onClick={() => onRemove(model.id)}
+        disabled={!model.downloaded || downloading}
+        danger={true}
+        size={13}
+      />
+    </div>
+  );
+}
+
+// ── Main screen ────────────────────────────────────────────────────────────
+const INITIAL_MODELS = [
+  { id: 'tiny',   label: 'whisper-tiny.en',   size: '75 MB',  description: 'fastest, lower accuracy', downloaded: true,  scribeDefault: false, dictateDefault: true  },
+  { id: 'base',   label: 'whisper-base.en',   size: '142 MB', description: 'balanced',                downloaded: true,  scribeDefault: true,  dictateDefault: false },
+  { id: 'small',  label: 'whisper-small.en',  size: '466 MB', description: 'accurate',                downloaded: false, scribeDefault: false, dictateDefault: false },
+  { id: 'medium', label: 'whisper-medium.en', size: '1.5 GB', description: 'high accuracy',           downloaded: false, scribeDefault: false, dictateDefault: false },
+  { id: 'large',  label: 'whisper-large-v3',  size: '2.9 GB', description: 'best accuracy, slowest',  downloaded: false, scribeDefault: false, dictateDefault: false },
+];
+
+function ModelsScreen() {
+  const [models, setModels] = React.useState(INITIAL_MODELS);
+  const [downloading, setDownloading] = React.useState({});
+  const [progress, setProgress] = React.useState({});
+  const [scribeDefault, setScribeDefault] = React.useState('base');
+  const [dictateDefault, setDictateDefault] = React.useState('tiny');
+
+  const downloadedModels = models.filter(m => m.downloaded);
+  const downloadedOptions = downloadedModels.map(m => ({ value: m.id, label: m.label }));
+
+  function install(id) {
+    setDownloading(d => ({ ...d, [id]: true }));
+    setProgress(p => ({ ...p, [id]: 0 }));
+    const iv = setInterval(() => {
+      setProgress(p => {
+        const next = Math.min(100, (p[id] || 0) + Math.random() * 9 + 3);
+        if (next >= 100) {
+          clearInterval(iv);
+          setDownloading(d => ({ ...d, [id]: false }));
+          setModels(m => m.map(x => x.id === id ? { ...x, downloaded: true } : x));
+          return { ...p, [id]: 100 };
+        }
+        return { ...p, [id]: Math.round(next) };
+      });
+    }, 140);
+  }
+
+  function remove(id) {
+    // If removing the current default, clear it
+    if (scribeDefault === id) setScribeDefault('');
+    if (dictateDefault === id) setDictateDefault('');
+    setModels(m => m.map(x => x.id === id ? { ...x, downloaded: false } : x));
+  }
+
+  // Sync badge labels from defaults
+  const modelsWithBadges = models.map(m => ({
+    ...m,
+    scribeDefault: m.id === scribeDefault,
+    dictateDefault: m.id === dictateDefault,
+  }));
+
+  const labelSt = {
+    fontSize: '0.6875rem', fontWeight: 400, color: C.mid,
+    display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between',
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.surfLowest }}>
+
+      {/* ── Defaults zone ── */}
+      <div style={{ padding: '14px 16px 12px', borderBottom: `1px solid ${C.surfLow}`, flexShrink: 0 }}>
+        <SectionHead>Active model</SectionHead>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={labelSt}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '0.5625rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.orange, border: `1px solid oklch(0.70 0.1867 47.6 / 0.4)`, padding: '2px 5px', borderRadius: 1, minWidth: 44, textAlign: 'center' }}>Scribe</span>
+              <span style={{ fontSize: '0.6875rem', color: C.dim }}>used for transcription</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+              <ModelSelect value={scribeDefault} onChange={setScribeDefault} disabled={downloadedOptions.length === 0} options={[{ value: '', label: 'None selected' }, ...downloadedOptions]} />
+              {scribeDefault && <span style={{ fontSize: '0.5625rem', color: C.orange, letterSpacing: '0.04em' }}>active</span>}
+            </div>
+          </div>
+          <div style={{ height: 1, background: C.surfLow }} />
+          <div style={labelSt}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '0.5625rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.blue, border: `1px solid oklch(0.72 0.16 240 / 0.4)`, padding: '2px 5px', borderRadius: 1, minWidth: 44, textAlign: 'center' }}>Dictate</span>
+              <span style={{ fontSize: '0.6875rem', color: C.dim }}>used for dictation</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+              <ModelSelect value={dictateDefault} onChange={setDictateDefault} disabled={downloadedOptions.length === 0} options={[{ value: '', label: 'None selected' }, ...downloadedOptions]} />
+              {dictateDefault && <span style={{ fontSize: '0.5625rem', color: C.blue, letterSpacing: '0.04em' }}>active</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Model library ── */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+        <SectionHead action={<IBtn icon={IconRefresh} ariaLabel="Refresh model list" onClick={() => {}} size={13} />}>
+          Installed &amp; available
+        </SectionHead>
+        <div style={{ background: C.surfLow, borderRadius: 2, overflow: 'hidden', border: `1px solid ${C.surfHigh}` }}>
+          {/* Column headers */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr auto auto auto',
+            gap: 8, padding: '4px 10px',
+            background: C.surfLowest, borderBottom: `1px solid ${C.surfHigh}`,
+          }}>
+            <span style={{ fontSize: '0.5625rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.dim }}>Model</span>
+            <span style={{ fontSize: '0.5625rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.dim, width: 20, textAlign: 'center' }}>OK</span>
+            <span style={{ fontSize: '0.5625rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.dim, width: 28, textAlign: 'center' }}>↓</span>
+            <span style={{ fontSize: '0.5625rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.dim, width: 28, textAlign: 'center' }}>✕</span>
+          </div>
+          {modelsWithBadges.map((m, i) => (
+            <ModelRow
+              key={m.id}
+              model={m}
+              progress={progress[m.id] || 0}
+              downloading={!!downloading[m.id]}
+              onInstall={install}
+              onRemove={remove}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Window wrapper ─────────────────────────────────────────────────────────
+function App() {
+  const W = Math.min(window.innerWidth - 40, 520);
+  const H = Math.min(window.innerHeight - 80, 480);
+  return (
+    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{
+        width: W, height: H, borderRadius: 4, overflow: 'hidden',
+        boxShadow: '0 16px 48px oklch(0 0 0 / 0.6)',
+        border: `1px solid ${C.surfHigh}`,
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {/* Chrome */}
+        <div style={{ height: 36, background: 'oklch(0.22 0 0)', borderBottom: `1px solid ${C.surfLow}`, display: 'flex', alignItems: 'center', padding: '0 12px', gap: 8, flexShrink: 0 }}>
+          {['oklch(0.60 0.18 25)','oklch(0.70 0.18 75)','oklch(0.55 0.20 145)'].map((c,i) => (
+            <div key={i} style={{ width: 10, height: 10, borderRadius: 9999, background: c }} />
+          ))}
+          <span style={{ position: 'absolute', left: 0, right: 0, textAlign: 'center', fontSize: '0.6rem', color: C.dim, letterSpacing: '0.04em', pointerEvents: 'none' }}>Settings · Models</span>
+        </div>
+        <ModelsScreen />
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

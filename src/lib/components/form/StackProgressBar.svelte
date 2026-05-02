@@ -95,8 +95,8 @@
       <span
         class={`h-full shrink-0 transition-colors duration-200 ${
           block < activeBlockCount
-            ? "bg-on-surface"
-            : "bg-fillest"
+            ? "bg-focus"
+            : "bg-rim"
         }`}
         style={`width: ${variantConfig.blockWidth};`}
         aria-hidden="true"
@@ -117,8 +117,8 @@
           <span
             class={`grid size-5 shrink-0 place-items-center rounded border text-label-sm font-normal ${
               step.complete
-                ? "border-on-surface bg-on-surface text-void"
-                : "border-on-surface/70 text-transparent"
+                ? "border-brand bg-brand text-void"
+                : "border-rim text-transparent"
             }`}
             aria-hidden="true"
           >

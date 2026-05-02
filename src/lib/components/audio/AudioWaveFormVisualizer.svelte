@@ -62,8 +62,10 @@
 	function syncPaletteFromTheme() {
 		if (typeof document === "undefined") return;
 		const cs = getComputedStyle(document.documentElement);
-		palette.primary = cs.getPropertyValue("--color-on-surface-dim").trim();
-		palette.active = cs.getPropertyValue("--color-on-surface").trim();
+		/* Canvas fillStyle needs a resolved color. Tailwind --color-* tokens are
+		   aliases (var(--sf-*)); read --sf-* from :root so we always get plain oklch/rgb. */
+		palette.primary = cs.getPropertyValue("--sf-focus").trim();
+		palette.active = cs.getPropertyValue("--sf-active").trim();
 	}
 
 	function normalize(level: number): number {
@@ -151,7 +153,7 @@
 				const y = bottomY - (l + 1) * unitH;
 				if (bottomY - y > maxReachPx) break;
 				if (l < spkLayers) {
-					ctx.globalAlpha = 0.4;
+					ctx.globalAlpha = 1;
 					ctx.fillStyle = palette.active;
 					ctx.fillRect(x, y, sideW, Math.max(1, unitH - 1));
 				}

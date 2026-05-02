@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { browser } from "$app/environment";
+	import { listen } from "@tauri-apps/api/event";
 	import { getCurrentWindow } from "@tauri-apps/api/window";
 	import ScribeScreen from "@lib/screens/scribe.svelte";
 	import ScribeProcessingScreen from "@lib/screens/scribe-processing.svelte";
@@ -11,6 +12,7 @@
 
 	let appScreen = $state<AppScreen>("recording");
 	let processingTitle = $state("Recording");
+	/** One-shot: set true only when opening Scribe from the app (see CLAUDE.md “Scribe recording auto-start”). */
 	let autoStartRecording = $state(false);
 
 	function beginProcessing(title: string) {
@@ -26,6 +28,15 @@
 	async function closeStandaloneSettings() {
 		await getCurrentWindow().close();
 	}
+
+	import { onMount } from "svelte";
+	onMount(() => {
+		if (standaloneSettings) return;
+		void listen('scribe://open-requested', () => {
+			autoStartRecording = true;
+			appScreen = "recording";
+		});
+	});
 </script>
 
 {#if standaloneSettings}
@@ -38,7 +49,7 @@
 				onRecordAgain={returnToRecording}
 			/>
 		{:else}
-			<ScribeScreen processingStart={beginProcessing} autoStart={autoStartRecording} />
+			<ScribeScreen processingStart={beginProcessing} bind:autoStart={autoStartRecording} />
 		{/if}
 	</main>
 {/if}

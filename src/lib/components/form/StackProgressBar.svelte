@@ -88,15 +88,15 @@
   aria-label={`Processing ${Math.round(safeProgress)}% complete`}
 >
   <div
-    class={`flex relative ${variantConfig.barHeight} rounded-xs bg-surface-low ${variantConfig.padding}`}
+    class={`flex relative ${variantConfig.barHeight} rounded-xs bg-card ${variantConfig.padding}`}
     style={`width: ${resolvedBarWidth}; gap: ${blockGap};`}
   >
     {#each blocks as block (block)}
       <span
         class={`h-full shrink-0 transition-colors duration-200 ${
           block < activeBlockCount
-            ? "bg-on-surface"
-            : "bg-surface-highest"
+            ? "bg-focus"
+            : "bg-rim"
         }`}
         style={`width: ${variantConfig.blockWidth};`}
         aria-hidden="true"
@@ -104,7 +104,7 @@
     {/each}
     {#if variantConfig.showPercent}
       <p
-        class="absolute -bottom-6 left-0 font-mono text-label-sm tracking-stamped text-on-surface/55"
+        class="absolute -bottom-6 left-0 font-mono text-label-sm tracking-stamped text-fg/55"
       >
         {Math.round(safeProgress)}%
       </p>
@@ -117,15 +117,15 @@
           <span
             class={`grid size-5 shrink-0 place-items-center rounded border text-label-sm font-normal ${
               step.complete
-                ? "border-on-surface bg-on-surface text-void"
-                : "border-on-surface/70 text-transparent"
+                ? "border-brand bg-brand text-void"
+                : "border-rim text-transparent"
             }`}
             aria-hidden="true"
           >
             ✓
           </span>
           <span
-            class={`truncate text-label-md ${step.complete ? "text-on-surface" : "text-on-surface/55"}`}
+            class={`truncate text-label-md ${step.complete ? "text-fg" : "text-fg/55"}`}
           >
             {step.label}
           </span>
@@ -134,7 +134,7 @@
     </div>
   {/if}
   {#if variantConfig.showCurrentStep && currentStep}
-  <p class="m-0 ml-auto truncate text-label-md font-normal text-on-surface">
+  <p class="m-0 ml-auto truncate text-label-md font-normal text-fg">
 	{currentStep.label}
   </p>
 {/if}

@@ -26,3 +26,8 @@ pub fn model_download(
 pub fn model_select(model_id: String, ctrl: State<'_, Arc<ModelController>>) -> Result<(), String> {
     ctrl.select_model(model_id)
 }
+
+#[tauri::command]
+pub fn model_remove(model_id: String, ctrl: State<'_, Arc<ModelController>>) -> Result<(), String> {
+    ctrl.remove_model(model_id)
+}

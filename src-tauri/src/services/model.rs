@@ -81,6 +81,23 @@ impl ModelService {
             .unwrap_or(false)
     }
 
+    /// Removes the downloaded file for `model_id`. Only paths under [`Self::models_dir`]
+    /// for known catalog entries are touched.
+    pub fn delete_downloaded_model(&self, model_id: &str) -> Result<(), String> {
+        let path = self
+            .model_path_for_id(model_id)
+            .ok_or_else(|| format!("unknown model id: {model_id}"))?;
+        if !self.model_downloaded(model_id) {
+            return Err(format!("model {model_id} is not downloaded"));
+        }
+        std::fs::remove_file(&path).map_err(|e| format!("failed to remove model file: {e}"))?;
+        let tmp = path.with_extension("tmp");
+        if tmp.is_file() {
+            let _ = std::fs::remove_file(tmp);
+        }
+        Ok(())
+    }
+
     pub async fn download_model(&self, model_id: &str, app: &AppHandle) -> Result<()> {
         let item = self
             .catalog_item(model_id)
@@ -243,6 +260,54 @@ impl ModelService {
 
         Ok(segments)
     }
+
+    /// Merge dual-source segments chronologically and label channel origin.
+    /// `in:` = speaker/system audio, `out:` = local microphone.
+    pub fn merge_dual_source(
+        &self,
+        mic_segments: &[Segment],
+        speaker_segments: &[Segment],
+    ) -> Vec<Segment> {
+        #[derive(Clone)]
+        struct Tagged {
+            seg: Segment,
+            is_speaker: bool,
+        }
+
+        let mut merged: Vec<Tagged> = Vec::with_capacity(mic_segments.len() + speaker_segments.len());
+        merged.extend(mic_segments.iter().cloned().map(|seg| Tagged {
+            seg,
+            is_speaker: false,
+        }));
+        merged.extend(speaker_segments.iter().cloned().map(|seg| Tagged {
+            seg,
+            is_speaker: true,
+        }));
+        merged.sort_by_key(|item| item.seg.start_ms);
+
+        let mut out: Vec<Segment> = Vec::with_capacity(merged.len());
+        for item in merged {
+            // Product semantics:
+            // in: local microphone (what I say)
+            // out: speaker/system audio (what I hear)
+            let label = if item.is_speaker { "out:" } else { "in:" };
+            let text = format!("{label} {}", item.seg.text.trim());
+            // Suppress likely mic bleed duplicates when same text appears very close in time.
+            let is_near_duplicate = out.last().is_some_and(|prev| {
+                prev.text.ends_with(item.seg.text.trim())
+                    && (item.seg.start_ms - prev.start_ms).abs() <= 1_500
+            });
+            if is_near_duplicate {
+                continue;
+            }
+            out.push(Segment {
+                start_ms: item.seg.start_ms,
+                end_ms: item.seg.end_ms,
+                text,
+            });
+        }
+        out
+    }
 }
 
 fn progress_from_segment_end(end_timestamp: i64, total_ms: f32) -> f32 {
@@ -302,5 +367,25 @@ mod tests {
         assert_eq!(progress_from_segment_end(50, 1_000.0), 0.5);
         assert_eq!(progress_from_segment_end(100, 1_000.0), 1.0);
         assert_eq!(progress_from_segment_end(150, 1_000.0), 1.0);
+    }
+
+    #[test]
+    fn merge_dual_source_orders_and_labels_segments() {
+        let service = ModelService::new(temp_models_dir());
+        let mic = vec![Segment {
+            start_ms: 2_000,
+            end_ms: 2_500,
+            text: "hello from mic".to_string(),
+        }];
+        let speaker = vec![Segment {
+            start_ms: 1_000,
+            end_ms: 1_500,
+            text: "hello from speaker".to_string(),
+        }];
+        let merged = service.merge_dual_source(&mic, &speaker);
+        assert_eq!(merged.len(), 2);
+        // Sorted by start_ms: speaker (1000ms) before mic (2000ms).
+        assert!(merged[0].text.starts_with("out: "));
+        assert!(merged[1].text.starts_with("in: "));
     }
 }

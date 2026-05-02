@@ -62,8 +62,10 @@
 	function syncPaletteFromTheme() {
 		if (typeof document === "undefined") return;
 		const cs = getComputedStyle(document.documentElement);
-		palette.primary = cs.getPropertyValue("--color-on-surface-dim").trim();
-		palette.active = cs.getPropertyValue("--color-on-surface").trim();
+		/* Canvas fillStyle needs a resolved color. Tailwind --color-* tokens are
+		   aliases (var(--sf-*)); read --sf-* from :root so we always get plain oklch/rgb. */
+		palette.primary = cs.getPropertyValue("--sf-focus").trim();
+		palette.active = cs.getPropertyValue("--sf-active").trim();
 	}
 
 	function normalize(level: number): number {
@@ -151,7 +153,7 @@
 				const y = bottomY - (l + 1) * unitH;
 				if (bottomY - y > maxReachPx) break;
 				if (l < spkLayers) {
-					ctx.globalAlpha = 0.4;
+					ctx.globalAlpha = 1;
 					ctx.fillStyle = palette.active;
 					ctx.fillRect(x, y, sideW, Math.max(1, unitH - 1));
 				}
@@ -176,7 +178,7 @@
 
 		const micOut = Math.min(1, smoothMic * 1.02);
 		const spkOut = Math.min(1, smoothSpk * 1.1);
-		if (speakerEnabled && spkOut > 0.02) {
+		if (speakerEnabled) {
 			drawSplitBottomStacks(micOut, spkOut);
 		} else {
 			drawSingleBottomStacks(micOut, palette.primary);
@@ -199,7 +201,7 @@
 
 <div
 	bind:this={wrap}
-	class="relative overflow-hidden rounded-md bg-surface-low {className}"
+	class="relative overflow-hidden rounded-md bg-card {className}"
 	style="width: {currentPreset().width}px; height: {currentPreset().height}px;"
 >
 	<canvas bind:this={canvas} class="block h-full w-full" aria-hidden="true"></canvas>

@@ -11,12 +11,13 @@ impl PermissionsService {
     }
 
     pub fn statuses(&self) -> Vec<PermissionStatus> {
-        ["microphone", "accessibility", "input_monitoring"]
+        ["microphone", "accessibility", "input_monitoring", "speaker_capture"]
             .iter()
             .map(|kind| PermissionStatus {
                 kind: kind.to_string(),
                 granted: permissions_impl::permission_granted(kind),
                 can_request: permissions_impl::permission_can_request(kind),
+                hint: permissions_impl::permission_hint(kind),
             })
             .collect()
     }
@@ -41,7 +42,12 @@ mod tests {
         let kinds: Vec<_> = statuses.iter().map(|p| p.kind.as_str()).collect();
         assert_eq!(
             kinds,
-            vec!["microphone", "accessibility", "input_monitoring"]
+            vec![
+                "microphone",
+                "accessibility",
+                "input_monitoring",
+                "speaker_capture"
+            ]
         );
     }
 

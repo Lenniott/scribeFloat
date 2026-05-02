@@ -13,10 +13,20 @@ export function resolveThemeMode(mode: ThemeMode): ResolvedTheme {
 	return themeQuery()?.matches ? "dark" : "light";
 }
 
+/** Clears inline paints from `app.html` boot script so `html { background-color: var(--sf-canvas) }` applies. */
+function clearBootInlineThemeStyles() {
+	const s = document.documentElement.style;
+	s.removeProperty("background-color");
+	s.removeProperty("--sf-bg");
+	s.removeProperty("--sf-line");
+	s.removeProperty("--sf-sk");
+}
+
 export function applyThemeMode(mode: ThemeMode) {
 	if (typeof document === "undefined") return;
 	const resolved = resolveThemeMode(mode);
 	document.documentElement.dataset.theme = resolved;
+	clearBootInlineThemeStyles();
 	try { localStorage.setItem('sf_theme_mode', mode); } catch (_) {}
 }
 

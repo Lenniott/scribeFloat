@@ -66,26 +66,32 @@
 
   const recordingStatuses = ["idle", "recording", "paused", "error"] as const;
 
+  /** Every `--color-*` from `app.css` @theme (shown as bg-* swatches) */
   const colorTokens: { token: string; class: string }[] = [
-    { token: "void", class: "bg-void" },
-    { token: "surface", class: "bg-surface" },
-    { token: "surface-container", class: "bg-surface-container" },
-    { token: "primary", class: "bg-primary" },
-    { token: "secondary", class: "bg-secondary" },
+    { token: "canvas", class: "bg-canvas" },
+    { token: "panel", class: "bg-panel" },
+    { token: "card", class: "bg-card" },
+    { token: "fill", class: "bg-fill" },
+    { token: "rim", class: "bg-rim" },
+    { token: "fg", class: "bg-fg" },
+    { token: "fg-dim", class: "bg-fg-dim" },
+    { token: "fg-muted", class: "bg-fg-muted" },
+    { token: "brand", class: "bg-brand" },
+    { token: "on-brand", class: "bg-on-brand" },
+    { token: "brand-hover", class: "bg-brand-hover" },
+    { token: "on-brand-hover", class: "bg-on-brand-hover" },
+    { token: "warning", class: "bg-warning" },
+    { token: "on-warning", class: "bg-on-warning" },
     { token: "active", class: "bg-active" },
-    { token: "surface-lowest", class: "bg-surface-lowest" },
-    { token: "surface-low", class: "bg-surface-low" },
-    { token: "surface-high", class: "bg-surface-high" },
-    {
-      token: "surface-highest",
-      class: "bg-surface-highest",
-    },
-    { token: "error", class: "bg-error" },
+    { token: "on-active", class: "bg-on-active" },
+    { token: "destructive", class: "bg-destructive" },
+    { token: "on-destructive", class: "bg-on-destructive" },
+    { token: "success", class: "bg-success" },
+    { token: "focus", class: "bg-focus" },
   ];
 
   const variants = [
     "primary",
-    "secondary",
     "destructive",
     "ghost",
     "normal",
@@ -120,43 +126,43 @@
   });
 </script>
 
-<main class="mx-auto text-left p-4">
+<main class="mx-auto min-h-screen bg-canvas text-left p-4">
   <a href="/">scribe</a>
   <header class="mb-14 max-w-2xl">
-    <p class="font-mono text-label-sm tracking-stamped text-on-surface/50 uppercase">
+    <p class="font-mono text-label-sm tracking-stamped text-fg/50 uppercase">
       liscribe · design system
     </p>
-    <h1 class="text-display-lg font-light tracking-heading text-on-surface">
+    <h1 class="text-display-lg font-light tracking-heading text-fg">
       Design <span class="font-medium">system</span>
     </h1>
-    <p class="mt-3 text-body-md text-on-surface/65 leading-relaxed">
+    <p class="mt-3 text-body-md text-fg/65 leading-relaxed">
       Geist typography, semantic theme tokens, and the existing component variants:
-      <code class="text-primary">primary</code>,
-      <code class="text-primary">secondary</code>,
-      <code class="text-primary">normal</code>,
-      <code class="text-primary">transparent</code>, and
-      <code class="text-primary">active</code>.
+      <code class="text-brand">primary</code>,
+      <code class="text-brand">secondary</code>,
+      <code class="text-brand">normal</code>,
+      <code class="text-brand">transparent</code>, and
+      <code class="text-brand">active</code>.
     </p>
   </header>
 
   <section class="mb-16" aria-labelledby="sec-theme">
     <h2
       id="sec-theme"
-      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
+      class="mb-6 text-headline-lg font-light tracking-heading text-fg"
     >
       Theme Modes
     </h2>
-    <div class="max-w-md rounded-md bg-surface-low p-6">
+    <div class="max-w-md rounded-md bg-card p-6">
       <OptionGroup
         name="theme-preview"
         label="Preview theme"
         options={themeOptions}
         bind:selected={previewTheme}
       />
-      <p class="mt-4 text-body-md text-on-surface/65">
-        The app stores <code class="text-primary">system</code>,
-        <code class="text-primary">dark</code>, or
-        <code class="text-primary">light</code> in settings and resolves those to document-level
+      <p class="mt-4 text-body-md text-fg/65">
+        The app stores <code class="text-brand">system</code>,
+        <code class="text-brand">dark</code>, or
+        <code class="text-brand">light</code> in settings and resolves those to document-level
         theme tokens.
       </p>
     </div>
@@ -165,74 +171,76 @@
   <section class="mb-16" aria-labelledby="sec-colors">
     <h2
       id="sec-colors"
-      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
+      class="mb-6 text-headline-lg font-light tracking-heading text-fg"
     >
       Color Roles
     </h2>
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
       {#each colorTokens as { token, class: c } (token)}
         <div class="flex flex-col gap-2">
-          <div class="rounded-md bg-surface-low p-2">
+          <div class="rounded-md bg-card p-2">
             <div class="h-12 rounded-md {c}"></div>
           </div>
-          <span class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/90"
+          <span class="font-mono text-label-sm font-normal tracking-stamped text-fg/90"
             >{token}</span
           >
         </div>
       {/each}
     </div>
-    <p class="text-label-sm mt-4 text-on-surface/50">
-      Text: <span class="text-on-surface">on-surface</span> ·
-      <span class="text-on-error">on-error</span>
+    <p class="text-label-sm mt-4 text-fg/50">
+      Utilities mirror tokens — use <code class="text-fg/80">bg-*</code>,
+      <code class="text-fg/80">text-*</code>, or
+      <code class="text-fg/80">border-*</code> with the same name (for example
+      <code class="text-fg/80">border-active</code>).
     </p>
   </section>
 
   <section class="mb-16" aria-labelledby="sec-type">
     <h2
       id="sec-type"
-      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
+      class="mb-6 text-headline-lg font-light tracking-heading text-fg"
     >
       Typography
     </h2>
-    <div class="flex flex-col gap-6 bg-surface-low p-6 rounded-md">
+    <div class="flex flex-col gap-6 bg-card p-6 rounded-md">
       <div>
-        <p class="text-label-sm text-on-surface/45 mb-1">
+        <p class="text-label-sm text-fg/45 mb-1">
           display-lg · Geist
         </p>
-        <p class="text-display-lg font-light tracking-heading text-on-surface">
+        <p class="text-display-lg font-light tracking-heading text-fg">
           Record <span class="font-medium">clearly</span>
         </p>
       </div>
       <div>
-        <p class="text-label-sm text-on-surface/45 mb-1">
+        <p class="text-label-sm text-fg/45 mb-1">
           headline-lg · Geist
         </p>
         <p
-          class="text-headline-lg font-light tracking-heading text-on-surface"
+          class="text-headline-lg font-light tracking-heading text-fg"
         >
           Section header
         </p>
       </div>
       <div>
-        <p class="text-label-sm text-on-surface/45 mb-1">
+        <p class="text-label-sm text-fg/45 mb-1">
           mono label · Geist Mono
         </p>
-        <p class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase">
+        <p class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
           transcript · input
         </p>
       </div>
       <div>
-        <p class="text-label-sm text-on-surface/45 mb-1">body-md · Geist</p>
-        <p class="text-body-md text-on-surface/90">
+        <p class="text-label-sm text-fg/45 mb-1">body-md · Geist</p>
+        <p class="text-body-md text-fg/90">
           Standard UI copy defaults to light weight with relaxed leading for dense layouts.
         </p>
       </div>
       <div>
-        <p class="text-label-sm text-on-surface/45 mb-1">label-sm / label-md</p>
-        <p class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase">
+        <p class="text-label-sm text-fg/45 mb-1">label-sm / label-md</p>
+        <p class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
           Metadata
         </p>
-        <p class="text-label-md font-normal text-on-surface/70">
+        <p class="text-label-md font-normal text-fg/70">
           Secondary label
         </p>
       </div>
@@ -242,18 +250,18 @@
   <section class="mb-16" aria-labelledby="sec-geo">
     <h2
       id="sec-geo"
-      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
+      class="mb-6 text-headline-lg font-light tracking-heading text-fg"
     >
       Geometry
     </h2>
     <div class="flex flex-wrap items-end gap-6">
       <div class="flex flex-col gap-2">
-        <span class="text-label-sm text-on-surface/50">radius-md (4px)</span>
-        <div class="h-16 w-16 rounded-md bg-surface-highest"></div>
+        <span class="text-label-sm text-fg/50">radius-md (4px)</span>
+        <div class="h-16 w-16 rounded-md bg-card"></div>
       </div>
       <div class="flex flex-col gap-2">
-        <span class="text-label-sm text-on-surface/50">radius-sm (2px)</span>
-        <div class="h-16 w-16 rounded-sm bg-surface-highest"></div>
+        <span class="text-label-sm text-fg/50">radius-sm (2px)</span>
+        <div class="h-16 w-16 rounded-sm bg-card"></div>
       </div>
     </div>
   </section>
@@ -261,14 +269,14 @@
   <section class="mb-16" aria-labelledby="sec-buttons">
     <h2
       id="sec-buttons"
-      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
+      class="mb-6 text-headline-lg font-light tracking-heading text-fg"
     >
       Button
     </h2>
     <div class="flex flex-col gap-8">
       {#each sizes as size (size)}
         <div>
-          <p class="text-label-sm text-on-surface/45 mb-3 uppercase">
+          <p class="text-label-sm text-fg/45 mb-3 uppercase">
             Size · {size}
           </p>
           <div class="flex flex-wrap gap-3">
@@ -279,10 +287,10 @@
         </div>
       {/each}
       <div>
-        <p class="text-label-sm text-on-surface/45 mb-3 uppercase">With icon</p>
+        <p class="text-label-sm text-fg/45 mb-3 uppercase">With icon</p>
         <div class="flex flex-wrap gap-3">
           <Button variant="primary" icon={ChevronRight}>Next</Button>
-          <Button variant="secondary" size="small" icon={Plus}>Add</Button>
+          <Button variant="normal" size="small" icon={Plus}>Add</Button>
           <Button variant="destructive" icon={Trash2}>Remove</Button>
         </div>
       </div>
@@ -292,21 +300,21 @@
   <section class="mb-16" aria-labelledby="sec-icon-buttons">
     <h2
       id="sec-icon-buttons"
-      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
+      class="mb-6 text-headline-lg font-light tracking-heading text-fg"
     >
       IconButton
     </h2>
-    <p class="text-body-md text-on-surface/65 mb-6 max-w-xl">
-      Icon-only control. Requires <code class="text-primary">aria-label</code>.
+    <p class="text-body-md text-fg/65 mb-6 max-w-xl">
+      Icon-only control. Requires <code class="text-brand">aria-label</code>.
       Variants:
-      <code class="text-primary">primary</code>,
-      <code class="text-primary">destructive</code>,
-      <code class="text-primary">normal</code>.
+      <code class="text-brand">primary</code>,
+      <code class="text-brand">destructive</code>,
+      <code class="text-brand">normal</code>.
     </p>
     <div class="flex flex-col gap-8">
       {#each sizes as size (size)}
         <div>
-          <p class="text-label-sm text-on-surface/45 mb-3 uppercase">
+          <p class="text-label-sm text-fg/45 mb-3 uppercase">
             Size · {size}
           </p>
           <div class="flex flex-wrap items-center gap-3">
@@ -327,12 +335,12 @@
   <section class="mb-16" aria-labelledby="sec-forms">
     <h2
       id="sec-forms"
-      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
+      class="mb-6 text-headline-lg font-light tracking-heading text-fg"
     >
       Form
     </h2>
     <div
-      class="flex max-w-md flex-col gap-6 bg-surface-low p-6 rounded-md"
+      class="flex max-w-md flex-col gap-6 bg-card p-6 rounded-md"
     >
       <ConfigField
         label="ConfigField (select)"
@@ -347,14 +355,14 @@
       />
       <div class="flex items-center justify-between gap-4">
         <span
-          class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase"
+          class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase"
           >ToggleSwitch</span
         >
         <ToggleSwitch aria-label="Demo toggle" bind:checked={toggleA} />
       </div>
       <div class="flex items-center justify-between gap-4">
         <span
-          class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase"
+          class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase"
           >Checkbox</span
         >
         <Checkbox aria-label="Demo checkbox" bind:checked={checkboxA} />
@@ -383,7 +391,7 @@
         onButtonClick={() => {}}
       />
       <div>
-        <p class="text-label-sm text-on-surface/45 mb-2">EditableTitleField</p>
+        <p class="text-label-sm text-fg/45 mb-2">EditableTitleField</p>
         <EditableTitleField bind:value={titleDemo} />
       </div>
     </div>
@@ -392,7 +400,7 @@
   <section class="mb-16" aria-labelledby="sec-tabs">
     <h2
       id="sec-tabs"
-      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
+      class="mb-6 text-headline-lg font-light tracking-heading text-fg"
     >
       TabPage
     </h2>
@@ -400,7 +408,7 @@
       <TabPage tabs={panelTabs} bind:activeId={activePanelTab}>
         {#snippet children(activeTab)}
           {#if activeTab?.id === "setup"}
-            <p class="text-body-md text-on-surface/80">
+            <p class="text-body-md text-fg/80">
               Use this mode when a tab owns the full panel body.
             </p>
           {:else if activeTab?.id === "status"}
@@ -442,21 +450,21 @@
   <section class="mb-16" aria-labelledby="sec-acc">
     <h2
       id="sec-acc"
-      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
+      class="mb-6 text-headline-lg font-light tracking-heading text-fg"
     >
       Accordion
     </h2>
-    <div class="max-w-md overflow-hidden">
+    <div class="max-w-md">
       <Accordion>
         <AccordionItem id="ds-1" title="First section">
           <SettingsSection title="Inner title">
-            <p class="text-body-md text-on-surface/75">
+            <p class="text-body-md text-fg/75">
               SettingsSection + AccordionItem body.
             </p>
           </SettingsSection>
         </AccordionItem>
         <AccordionItem id="ds-2" title="Second section">
-          <p class="text-body-md text-on-surface/75">Another panel.</p>
+          <p class="text-body-md text-fg/75">Another panel.</p>
         </AccordionItem>
       </Accordion>
     </div>
@@ -465,14 +473,14 @@
   <section class="mb-16" aria-labelledby="sec-audio">
     <h2
       id="sec-audio"
-      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
+      class="mb-6 text-headline-lg font-light tracking-heading text-fg"
     >
       Audio (static demo)
     </h2>
     <div class="flex flex-col gap-10 lg:flex-row lg:items-start">
       <div class="flex flex-col items-center gap-8">
         <div class="flex flex-col items-center gap-2">
-          <p class="text-label-sm text-on-surface/45">Normal (with speaker audio)</p>
+          <p class="text-label-sm text-fg/45">Normal (with speaker audio)</p>
           <AudioWaveFormVisualizer
             micLevel={0.55}
             speakerLevel={0.35}
@@ -481,7 +489,7 @@
           />
         </div>
         <div class="flex flex-col items-center gap-2">
-          <p class="text-label-sm text-on-surface/45">Normal (without speaker audio)</p>
+          <p class="text-label-sm text-fg/45">Normal (without speaker audio)</p>
           <AudioWaveFormVisualizer
             micLevel={0.55}
             speakerLevel={0.35}
@@ -490,8 +498,8 @@
           />
         </div>
         <div class="flex flex-col items-center gap-2">
-          <p class="text-label-sm text-on-surface/45">DicateRecordScreen</p>
-          <div class="flex gap-2 justify-between items-center w-60 py-2 pl-3 pr-2 bg-surface-lowest">
+          <p class="text-label-sm text-fg/45">DicateRecordScreen</p>
+          <div class="flex gap-2 justify-between items-center w-60 py-2 pl-3 pr-2 bg-panel">
             <div class="flex gap-4">
               <div
                 class="flex items-center gap-2"
@@ -512,24 +520,24 @@
       </div>
       <div class="flex flex-col gap-6">
         <div>
-          <p class="text-label-sm text-on-surface/45 mb-2">
+          <p class="text-label-sm text-fg/45 mb-2">
             RecordingStatusDot
           </p>
           <div class="flex flex-wrap gap-4">
             {#each recordingStatuses as s (s)}
               <div class="flex items-center gap-2">
                 <RecordingStatusDot status={s} />
-                <span class="text-label-md text-on-surface/70">{s}</span>
+                <span class="text-label-md text-fg/70">{s}</span>
               </div>
             {/each}
           </div>
         </div>
         <div>
-          <p class="text-label-sm text-on-surface/45 mb-2">RecordingTimer</p>
+          <p class="text-label-sm text-fg/45 mb-2">RecordingTimer</p>
           <RecordingTimer elapsedSeconds={3723} />
         </div>
         <div>
-          <p class="text-label-sm text-on-surface/45 mb-2">ScribeHeader</p>
+          <p class="text-label-sm text-fg/45 mb-2">ScribeHeader</p>
           <div class="flex justify-between items-end min-h-11">
             <EditableTitleField bind:value={titleDemo} />
             <div class="flex gap-2 items-center">
@@ -539,7 +547,7 @@
           </div>
         </div>
         <div>
-          <p class="text-label-sm text-on-surface/45 mb-2">
+          <p class="text-label-sm text-fg/45 mb-2">
             StackProgressBar Large (variant defaults)
           </p>
           <StackProgressBar
@@ -549,7 +557,7 @@
           />
         </div>
         <div>
-          <p class="text-label-sm text-on-surface/45 mb-2">
+          <p class="text-label-sm text-fg/45 mb-2">
             StackProgressBar Small (current state only)
           </p>
           <div class="w-60 pr-2">
@@ -561,8 +569,8 @@
           </div>
         </div>
         <div>
-          <p class="text-label-sm text-on-surface/45 mb-2">AudioLayerLegend</p>
-          <div class="rounded-md bg-surface-low px-4 py-3">
+          <p class="text-label-sm text-fg/45 mb-2">AudioLayerLegend</p>
+          <div class="rounded-md bg-card px-4 py-3">
             <AudioLayerLegend speakerEnabled={true} />
           </div>
         </div>
@@ -573,28 +581,28 @@
   <section class="mb-20" aria-labelledby="sec-notes">
     <h2
       id="sec-notes"
-      class="mb-6 text-headline-lg font-light tracking-heading text-on-surface"
+      class="mb-6 text-headline-lg font-light tracking-heading text-fg"
     >
       Notes
     </h2>
     <div class="flex max-w-md flex-col gap-6">
       <div>
-        <p class="text-label-sm text-on-surface/45 mb-2">TimestampLabel</p>
+        <p class="text-label-sm text-fg/45 mb-2">TimestampLabel</p>
         <TimestampLabel at={94_000} />
       </div>
       <div>
-        <p class="text-label-sm text-on-surface/45 mb-2">NoteCard</p>
+        <p class="text-label-sm text-fg/45 mb-2">NoteCard</p>
         <NoteCard
           note={{ id: "x", text: "Standalone card.", recordedAtMs: 73_000 }}
           selected={false}
         />
       </div>
       <div>
-        <p class="text-label-sm text-on-surface/45 mb-2">NotesList</p>
+        <p class="text-label-sm text-fg/45 mb-2">NotesList</p>
         <NotesList notes={notesDemo} bind:selectedId={selectedNoteId} />
       </div>
       <div>
-        <p class="text-label-sm text-on-surface/45 mb-2">NoteComposer</p>
+        <p class="text-label-sm text-fg/45 mb-2">NoteComposer</p>
         <NoteComposer bind:value={draft} onSubmit={onComposerDone} />
       </div>
     </div>

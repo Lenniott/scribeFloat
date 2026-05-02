@@ -16,6 +16,6 @@
 			<NoteCard {note} selected={selectedId === note.id} onselect={(id) => (selectedId = id)} />
 		</div>
 	{:else}
-		<p class="text-label-md text-on-surface/45 py-6 text-left">No notes yet.</p>
+		<p class="text-label-md text-fg/45 py-6 text-left">No notes yet.</p>
 	{/each}
 </div>

@@ -8,10 +8,10 @@
 	} = $props();
 
 	const styles: Record<Status, string> = {
-		idle: "bg-surface-highest",
-		recording: "bg-error animate-pulse",
-		paused: "bg-surface-highest",
-		error: "bg-error",
+		idle: "bg-fillest",
+		recording: "bg-destructive animate-pulse",
+		paused: "bg-fillest",
+		error: "bg-destructive",
 	};
 </script>
 

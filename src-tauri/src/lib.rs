@@ -15,28 +15,20 @@ pub(crate) const SCRIBE_WINDOW_LABEL: &str = "scribe";
 const SETTINGS_WINDOW_LABEL: &str = "settings";
 const OPEN_SCRIBE_MENU_ID: &str = "open_scribe";
 const OPEN_SETTINGS_MENU_ID: &str = "open_settings";
-const CLOSE_WINDOWS_MENU_ID: &str = "close_windows";
 const QUIT_MENU_ID: &str = "quit";
 
 fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
     let open_scribe =
-        MenuItem::with_id(app, OPEN_SCRIBE_MENU_ID, "Open Scribe", true, None::<&str>)?;
+        MenuItem::with_id(app, OPEN_SCRIBE_MENU_ID, "Scribe", true, None::<&str>)?;
     let open_settings = MenuItem::with_id(
         app,
         OPEN_SETTINGS_MENU_ID,
-        "Open Settings",
-        true,
-        None::<&str>,
-    )?;
-    let close_windows = MenuItem::with_id(
-        app,
-        CLOSE_WINDOWS_MENU_ID,
-        "Close Windows",
+        "Settings",
         true,
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, QUIT_MENU_ID, "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open_scribe, &open_settings, &close_windows, &quit])?;
+    let menu = Menu::with_items(app, &[&open_scribe, &open_settings, &quit])?;
 
     let mut tray = TrayIconBuilder::with_id("main")
         .menu(&menu)
@@ -52,7 +44,6 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
                     eprintln!("failed to open settings window: {err}");
                 }
             }
-            CLOSE_WINDOWS_MENU_ID => close_all_windows(app),
             QUIT_MENU_ID => app.exit(0),
             _ => {}
         });
@@ -107,6 +98,30 @@ pub(crate) fn open_settings_window(app: &AppHandle) -> tauri::Result<WebviewWind
     )
 }
 
+/// Show, restore, and focus. On Windows, `show()` applies visibility asynchronously; a deferred
+/// `set_focus` runs after so Tao sees `VISIBLE` and can call `SetForegroundWindow`.
+fn raise_webview_window(app: &AppHandle, window: &WebviewWindow) -> tauri::Result<()> {
+    window.show()?;
+    window.unminimize()?;
+    window.set_focus()?;
+
+    #[cfg(target_os = "windows")]
+    {
+        let label = window.label().to_string();
+        let app_handle = app.clone();
+        app.run_on_main_thread(move || {
+            if let Some(w) = app_handle.get_webview_window(&label) {
+                let _ = w.set_focus();
+            }
+        })?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    let _ = app;
+
+    Ok(())
+}
+
 fn open_or_focus_window(
     app: &AppHandle,
     label: &str,
@@ -119,9 +134,7 @@ fn open_or_focus_window(
         if let Some(icon) = app.default_window_icon() {
             window.set_icon(icon.clone())?;
         }
-        window.show()?;
-        window.unminimize()?;
-        window.set_focus()?;
+        raise_webview_window(app, &window)?;
         window
     } else {
         let mut builder = WebviewWindowBuilder::new(app, label, url)
@@ -132,21 +145,13 @@ fn open_or_focus_window(
             builder = builder.icon(icon.clone())?;
         }
 
-        builder.build()?
+        let window = builder.build()?;
+        raise_webview_window(app, &window)?;
+        window
     };
 
     platform::window_impl::set_has_visible_windows(app, true);
     Ok(window)
-}
-
-fn close_all_windows(app: &AppHandle) {
-    for window in app.webview_windows().values() {
-        if let Err(err) = window.hide() {
-            eprintln!("failed to hide window {}: {err}", window.label());
-        }
-    }
-
-    platform::window_impl::set_has_visible_windows(app, false);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -170,6 +175,8 @@ pub fn run() {
                 services::hotkeys::TauriHotkeyRegistrar::new(app.handle().clone()),
             );
 
+            let is_first_run = !config.get().onboarding_complete;
+
             let models_dir = data_dir.join("models");
             std::fs::create_dir_all(&models_dir)?;
             let model = services::model::ModelService::new(models_dir);
@@ -178,7 +185,9 @@ pub fn run() {
             let settings_ctrl = controllers::settings::SettingsController::new(
                 Arc::clone(&config),
                 Arc::clone(&hotkeys),
+                Arc::clone(&output),
                 Arc::clone(&permissions),
+                Arc::clone(&audio),
             );
             if let Err(err) = settings_ctrl.rehydrate_hotkeys() {
                 eprintln!("hotkey rehydration skipped: {err}");
@@ -197,10 +206,30 @@ pub fn run() {
             app.manage(model_ctrl); // model command orchestration
             app.manage(settings_ctrl); // settings orchestration
             app.manage(ctrl); // for scribe commands
+
+            if is_first_run {
+                open_settings_window(app.handle())?;
+                app.state::<Arc<controllers::settings::SettingsController>>()
+                    .complete_onboarding()
+                    .ok();
+            }
             prewarm_scribe_window(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label() == SCRIBE_WINDOW_LABEL && matches!(event, WindowEvent::Destroyed) {
+                // Release mic/speaker streams if the webview is torn down before invoke(`scribe_cancel`)
+                // completes (crash or exceptional teardown — normal close uses hide, not destroy).
+                if let Some(ctrl) = window
+                    .app_handle()
+                    .try_state::<Arc<controllers::scribe::ScribeController>>()
+                {
+                    let _ = ctrl.cancel();
+                }
+                platform::window_impl::sync_activation_policy(window.app_handle());
+                return;
+            }
+
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == SCRIBE_WINDOW_LABEL {
                     api.prevent_close();
@@ -230,17 +259,24 @@ pub fn run() {
             commands::scribe::scribe_get_include_timestamps,
             commands::scribe::scribe_set_include_timestamps,
             commands::scribe::scribe_list_input_devices,
+            commands::scribe::scribe_list_output_devices,
             commands::scribe::scribe_read_transcript,
             commands::model::model_setup_status,
             commands::model::model_list,
             commands::model::model_download,
             commands::model::model_select,
+            commands::model::model_remove,
             commands::settings::settings_get_output_path,
             commands::settings::settings_set_output_path,
             commands::settings::settings_get_hotkeys,
             commands::settings::settings_set_hotkeys,
             commands::settings::settings_get_input_labels,
             commands::settings::settings_set_input_labels,
+            commands::settings::settings_get_preferred_audio_devices,
+            commands::settings::settings_set_preferred_audio_devices,
+            commands::settings::settings_list_output_devices,
+            commands::settings::settings_get_scribe_capture_speaker,
+            commands::settings::settings_set_scribe_capture_speaker,
             commands::settings::settings_get_open_with_app_path,
             commands::settings::settings_set_open_with_app_path,
             commands::settings::settings_open_transcript,

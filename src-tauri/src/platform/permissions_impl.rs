@@ -6,6 +6,7 @@ pub fn permission_granted(kind: &str) -> bool {
         "microphone" => macos::microphone_granted(),
         "accessibility" => macos::accessibility_granted(),
         "input_monitoring" => macos::input_monitoring_granted(),
+        "speaker_capture" => macos::speaker_capture_ready(),
         _ => false,
     }
 }
@@ -16,6 +17,8 @@ pub fn permission_granted(kind: &str) -> bool {
         "microphone" => windows::microphone_granted(),
         // No explicit OS grant prompt exists for these in current flow.
         "accessibility" | "input_monitoring" => true,
+        // WASAPI loopback is built into Windows and needs no extra driver.
+        "speaker_capture" => true,
         _ => false,
     }
 }
@@ -27,7 +30,7 @@ pub fn permission_granted(_kind: &str) -> bool {
 
 #[cfg(target_os = "macos")]
 pub fn permission_can_request(kind: &str) -> bool {
-    permission_settings_url(kind).is_some()
+    kind != "speaker_capture" && permission_settings_url(kind).is_some()
 }
 
 #[cfg(target_os = "windows")]
@@ -37,7 +40,7 @@ pub fn permission_can_request(kind: &str) -> bool {
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub fn permission_can_request(kind: &str) -> bool {
-    permission_settings_url(kind).is_some()
+    kind != "speaker_capture" && permission_settings_url(kind).is_some()
 }
 
 #[cfg(target_os = "macos")]
@@ -52,6 +55,7 @@ pub fn permission_settings_url(kind: &str) -> Option<&'static str> {
         "input_monitoring" => {
             Some("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")
         }
+        "speaker_capture" => None,
         _ => None,
     }
 }
@@ -62,8 +66,36 @@ pub fn permission_settings_url(kind: &str) -> Option<&'static str> {
         "microphone" => Some("ms-settings:privacy-microphone"),
         "accessibility" => Some("ms-settings:easeofaccess-display"),
         "input_monitoring" => Some("ms-settings:privacy"),
+        "speaker_capture" => None,
         _ => None,
     }
+}
+
+#[cfg(target_os = "macos")]
+pub fn permission_hint(kind: &str) -> Option<String> {
+    match kind {
+        "speaker_capture" => Some(
+            "Speaker capture requires BlackHole 2ch installed and selected in your audio routing."
+                .to_string(),
+        ),
+        _ => None,
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn permission_hint(kind: &str) -> Option<String> {
+    match kind {
+        "speaker_capture" => Some(
+            "Windows speaker capture uses WASAPI loopback and does not require BlackHole."
+                .to_string(),
+        ),
+        _ => None,
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub fn permission_hint(_kind: &str) -> Option<String> {
+    None
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -106,6 +138,7 @@ pub fn open_permission_settings(kind: &str) -> Result<bool> {
 
 #[cfg(target_os = "macos")]
 mod macos {
+    use cpal::traits::{DeviceTrait, HostTrait};
     use std::ffi::{c_char, c_void};
 
     #[link(name = "ApplicationServices", kind = "framework")]
@@ -154,6 +187,16 @@ mod macos {
         microphone_auth_status() == 3
     }
 
+    pub fn speaker_capture_ready() -> bool {
+        let host = cpal::default_host();
+        let Ok(devices) = host.input_devices() else {
+            return false;
+        };
+        devices
+            .filter_map(|device| device.name().ok())
+            .any(|name| looks_like_blackhole_name(&name))
+    }
+
     fn microphone_auth_status() -> isize {
         unsafe {
             let ns_string_cls = objc_getClass(b"NSString\0".as_ptr() as *const c_char);
@@ -180,6 +223,10 @@ mod macos {
 
             objc_msg_send_isize_arg(av_capture_cls, status_sel, media_type)
         }
+    }
+
+    fn looks_like_blackhole_name(name: &str) -> bool {
+        name.to_ascii_lowercase().contains("blackhole")
     }
 }
 
@@ -212,7 +259,7 @@ mod windows {
 
 #[cfg(test)]
 mod tests {
-    use super::{open_permission_settings, permission_settings_url};
+    use super::{open_permission_settings, permission_hint, permission_settings_url};
 
     #[test]
     fn unknown_permission_has_no_settings_target() {
@@ -224,5 +271,16 @@ mod tests {
         let opened =
             open_permission_settings("not_real").expect("unknown permission should not error");
         assert!(!opened);
+    }
+
+    #[test]
+    fn speaker_capture_does_not_have_settings_deeplink() {
+        assert!(permission_settings_url("speaker_capture").is_none());
+    }
+
+    #[test]
+    fn speaker_capture_has_platform_specific_hint() {
+        let hint = permission_hint("speaker_capture");
+        assert!(hint.is_some());
     }
 }

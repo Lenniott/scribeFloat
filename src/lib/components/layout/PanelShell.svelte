@@ -11,7 +11,7 @@
 </script>
 
 <div
-	class="shadow-ambient flex h-[min(720px,90dvh)] w-full max-w-5xl flex-col overflow-hidden rounded-md bg-surface-low {className}"
+	class="shadow-ambient flex h-[min(720px,90dvh)] w-full max-w-5xl flex-col overflow-hidden rounded-md bg-card {className}"
 >
 	{@render children?.()}
 </div>

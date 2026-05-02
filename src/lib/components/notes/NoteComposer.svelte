@@ -30,19 +30,19 @@
 
 <div
     aria-disabled={disabled}
-    class="group relative flex gap-2 rounded-md border-b border-surface-high bg-surface-high px-2 py-2 text-body-md text-on-surface transition
-           focus-within:border-surface-highest
-           focus-within:bg-surface-high
+    class="group relative flex gap-2 rounded-md border-b border-fill bg-fill px-2 py-2 text-body-md text-fg transition
            aria-disabled:opacity-40
            aria-disabled:pointer-events-none
-           aria-disabled:cursor-not-allowed"
+           aria-disabled:cursor-not-allowed
+           focus-within:ring-2 focus-within:ring-orange-400 focus-within:ring-offset-2 focus-within:ring-offset-panel
+           "
 >
     <textarea
         bind:value
         {placeholder}
         {disabled}
         rows="3"
-        class="min-h-18 min-w-0 flex-1 resize-none bg-transparent outline-none placeholder:text-on-surface/40"
+        class="min-h-18 min-w-0 flex-1 resize-none bg-transparent outline-none placeholder:text-fg-dim outline-0 ring-0 ring-offset-0"
         onkeydown={onkeydown}
     ></textarea>
 
@@ -54,7 +54,7 @@
             aria-label="Add note"
             disabled={disabled || !value.trim()}
             onclick={submit}
-            class="rounded-full"
+            class="outline-0 ring-0 ring-offset-0"
         />
     </div>
 </div>

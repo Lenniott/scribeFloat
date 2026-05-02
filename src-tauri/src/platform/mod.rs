@@ -45,3 +45,58 @@ pub fn open_file(path: &str, app: Option<&str>) -> Result<(), String> {
         .map(|_| ())
         .map_err(|e| format!("failed to open file: {e}"))
 }
+
+#[cfg(target_os = "macos")]
+pub fn get_default_output_device() -> Result<String, String> {
+    let output = std::process::Command::new("/opt/homebrew/bin/SwitchAudioSource")
+        .args(["-c", "-t", "output"])
+        .output()
+        .map_err(|e| format!("failed to query current output device: {e}"))?;
+    if !output.status.success() {
+        return Err("failed to query current output device".to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[cfg(target_os = "macos")]
+pub fn set_default_output_device(device_name: &str) -> Result<(), String> {
+    let status = std::process::Command::new("/opt/homebrew/bin/SwitchAudioSource")
+        .args(["-s", device_name, "-t", "output"])
+        .status()
+        .map_err(|e| format!("failed to set output device `{device_name}`: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "switching output device to `{device_name}` failed with status {status}"
+        ))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn get_default_output_device() -> Result<String, String> {
+    Ok(String::new())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn set_default_output_device(_device_name: &str) -> Result<(), String> {
+    Ok(())
+}
+
+/// Returns true if the named output device exists on the system.
+/// Uses `system_profiler` on macOS; returns false on other platforms.
+#[cfg(target_os = "macos")]
+pub fn output_device_exists(device_name: &str) -> bool {
+    let Ok(output) = std::process::Command::new("system_profiler")
+        .args(["SPAudioDataType", "-json"])
+        .output()
+    else {
+        return false;
+    };
+    String::from_utf8_lossy(&output.stdout).contains(device_name)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn output_device_exists(_device_name: &str) -> bool {
+    false
+}

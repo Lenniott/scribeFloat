@@ -15,10 +15,10 @@
 <div
 	class="grid min-h-0 flex-1 grid-cols-1 gap-0 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] {className}"
 >
-	<div class="flex min-h-0 min-w-0 flex-col bg-surface-low">
+	<div class="flex min-h-0 min-w-0 flex-col bg-card">
 		{@render left?.()}
 	</div>
-	<div class="flex min-h-0 min-w-0 flex-col bg-surface-lowest">
+	<div class="flex min-h-0 min-w-0 flex-col bg-panel">
 		{@render right?.()}
 	</div>
 </div>

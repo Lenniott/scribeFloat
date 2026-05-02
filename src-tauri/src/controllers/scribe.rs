@@ -4,8 +4,10 @@ use crate::services::{
     model::ModelService,
     output::OutputService,
 };
-use crate::types::{Config, Note, ProcessingStage, ScribeState, ScribeStateEvent};
+use crate::services::audio::WHISPER_SAMPLE_RATE;
+use crate::types::{Config, Note, ProcessingStage, ScribeState, ScribeStateEvent, Segment};
 use anyhow::{anyhow, Result};
+use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
@@ -14,8 +16,19 @@ use tauri::{AppHandle, Emitter};
 
 struct ActiveSession {
     mic: MicSession,
+    speaker: Option<MicSession>,
+    previous_output_device: Option<String>,
     session_dir: PathBuf,
     started_at: Instant,
+}
+
+/// Intermediate state produced by prepare_audio and consumed by run_transcription / write_outputs.
+struct PreparedAudio {
+    session_dir: PathBuf,
+    wav_path: PathBuf,
+    pcm_16k: Vec<f32>,
+    speaker_pcm_16k: Option<Vec<f32>>,
+    speaker_capture_enabled: bool,
 }
 
 enum ProgressMessage {
@@ -35,6 +48,9 @@ struct Inner {
 
 pub struct ScribeController {
     inner: Mutex<Inner>,
+    /// Ensures `cancel`/`stop` never run while `start` is between `start_mic` and session commit
+    /// (state still Idle but CPAL already recording — that used to make discard a no-op on streams).
+    capture_sync: Mutex<()>,
     audio: Arc<AudioService>,
     model: Arc<ModelService>,
     output: Arc<OutputService>,
@@ -58,6 +74,7 @@ impl ScribeController {
                 transcription_abort: None,
                 transcription_wav_path: None,
             }),
+            capture_sync: Mutex::new(()),
             audio,
             model,
             output,
@@ -67,27 +84,87 @@ impl ScribeController {
     }
 
     /// Transition IDLE → RECORDING. Opens mic and creates session directory.
-    pub fn start(&self, preferred_mic: Option<String>) -> Result<()> {
+    pub fn start(
+        &self,
+        preferred_mic: Option<String>,
+        preferred_speaker: Option<String>,
+        capture_speaker: bool,
+    ) -> Result<()> {
+        let _capture = self.capture_guard();
         {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.lock();
             Self::ensure_start_allowed(&inner.state)?;
         }
+
+        self.emit_capture_levels_idle();
 
         let cfg = self.config.get();
         let session_dir = self.output.make_session_dir(&cfg.save_folder)?;
         let app = self.app.clone();
         let mic = self.audio.start_mic(
             preferred_mic.as_deref(),
+            true,
             Some(Arc::new(move |level| {
                 app.emit("scribe://audio-level", level).ok();
             })),
         )?;
+        let mut previous_output_device: Option<String> = None;
+        let speaker = if capture_speaker {
+            previous_output_device = self.audio.get_output_device();
+            if let Some(target_output) = preferred_speaker
+                .as_ref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                if let Err(err) = self.audio.set_output_device(target_output) {
+                    eprintln!("failed to switch output route to `{target_output}`: {err}");
+                }
+            }
+            let input_devices = self.audio.list_input_devices();
+            let speaker_name = preferred_speaker.clone().unwrap_or_default();
+            let input_match = input_devices.iter().any(|name| name == &speaker_name);
+            let mut speaker_capture_name = preferred_speaker.clone();
+            let has_preferred_output = self.audio.output_device_exists(&speaker_name);
+            let has_blackhole_input =
+                input_devices.iter().any(|name| name.eq_ignore_ascii_case("BlackHole 2ch"));
+            if !input_match && has_preferred_output && has_blackhole_input {
+                speaker_capture_name = Some("BlackHole 2ch".to_string());
+            }
+            let app = self.app.clone();
+            match self.audio.start_mic(
+                speaker_capture_name.as_deref(),
+                false,
+                Some(Arc::new(move |level| {
+                    app.emit("scribe://speaker-level", level).ok();
+                })),
+            ) {
+                Ok(stream) => Some(stream),
+                Err(err) => {
+                    // Keep recording reliable: if speaker stream cannot attach,
+                    // continue with mic-only instead of failing the whole start.
+                    self.app
+                        .emit(
+                            "scribe://speaker-capture-unavailable",
+                            json!({
+                                "reason": err.to_string(),
+                                "requestedSpeakerDevice": preferred_speaker
+                            }),
+                        )
+                        .ok();
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.lock();
         Self::ensure_start_allowed(&inner.state)?;
         inner.state = ScribeState::Recording;
         inner.session = Some(ActiveSession {
             mic,
+            speaker,
+            previous_output_device,
             session_dir,
             started_at: Instant::now(),
         });
@@ -99,34 +176,46 @@ impl ScribeController {
     /// Transition RECORDING → IDLE. Discards the audio buffer and removes the
     /// session directory if no files were written into it yet.
     pub fn cancel(&self) -> Result<()> {
-        let session_dir = {
-            let mut inner = self.inner.lock().unwrap();
+        let _capture = self.capture_guard();
+        let session = {
+            let mut inner = self.lock();
             if inner.state != ScribeState::Recording {
                 return Err(anyhow!("cannot cancel: not recording"));
             }
-            let dir = inner
-                .session
-                .as_ref()
-                .map(|s| s.session_dir.clone());
+            let session = inner.session.take();
             inner.session = None;
             inner.state = ScribeState::Idle;
             inner.notes.clear();
             self.emit_state(&inner);
-            dir
+            session
         };
-        if let Some(dir) = session_dir {
-            self.output.delete_session_dir_if_empty(&dir);
+        if let Some(session) = session {
+            let ActiveSession {
+                mic,
+                speaker,
+                previous_output_device,
+                session_dir,
+                ..
+            } = session;
+            let _ = mic.stop_and_take();
+            if let Some(spk) = speaker {
+                let _ = spk.stop_and_take();
+            }
+            self.restore_output_device(previous_output_device.as_deref());
+            self.emit_capture_levels_idle();
+            self.output.delete_session_dir_if_empty(&session_dir);
         }
         Ok(())
     }
 
     /// Stop recording, write `mic.wav` + `notes.json`, return to IDLE without Whisper.
     pub fn save_recording_only(&self, title: Option<String>) -> Result<PathBuf> {
+        let _capture = self.capture_guard();
         let title =
             title.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d %H:%M").to_string());
 
         let (session, notes) = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.lock();
             if inner.state != ScribeState::Recording {
                 return Err(anyhow!("cannot save recording-only: not recording"));
             }
@@ -139,13 +228,25 @@ impl ScribeController {
             inner.state = ScribeState::Idle;
             (session, notes)
         };
+        let ActiveSession {
+            mic,
+            speaker,
+            previous_output_device,
+            session_dir,
+            ..
+        } = session;
+        let wav_path = session_dir.join("mic.wav");
+        let (raw_pcm, native_rate) = mic.stop_and_take();
+        if let Some(spk) = speaker {
+            let _ = spk.stop_and_take();
+        }
+        self.restore_output_device(previous_output_device.as_deref());
+        self.emit_capture_levels_idle();
 
-        let wav_path = session.session_dir.join("mic.wav");
-        let (raw_pcm, native_rate) = session.mic.stop_and_take();
-        let pcm_16k = resample_linear(&raw_pcm, native_rate, 16_000);
-        self.output.write_wav(&pcm_16k, 16_000, &wav_path)?;
+        let pcm = resample_linear(&raw_pcm, native_rate, WHISPER_SAMPLE_RATE);
+        self.output.write_wav(&pcm, WHISPER_SAMPLE_RATE, &wav_path)?;
         self.output
-            .write_session_notes(&session.session_dir, &title, "mic.wav", &notes)?;
+            .write_session_notes(&session_dir, &title, "mic.wav", &notes)?;
 
         self.emit_idle_optional_wav(Some(&wav_path));
         Ok(wav_path)
@@ -154,7 +255,7 @@ impl ScribeController {
     /// Request cooperative cancellation before transcript write (WAV retained). UI may IDLE immediately.
     pub fn abort_transcription_keep_wav(&self) -> Result<()> {
         let wav = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.lock();
             if inner.state != ScribeState::Transcribing {
                 return Err(anyhow!("cannot abort transcription: not transcribing"));
             }
@@ -179,7 +280,8 @@ impl ScribeController {
         let abort_flag = Arc::new(AtomicBool::new(false));
         // Extract session under lock then release immediately.
         let (session, notes) = {
-            let mut inner = this.inner.lock().unwrap();
+            let _capture = this.capture_guard();
+            let mut inner = this.lock();
             if inner.state != ScribeState::Recording {
                 return Err(anyhow!("cannot stop: not recording"));
             }
@@ -189,6 +291,29 @@ impl ScribeController {
                 inner.session.take().expect("session exists when Recording"),
                 inner.notes.clone(),
             )
+        };
+
+        // Stop capture before emitting TRANSCRIBING so the mic is never active while we are not Recording.
+        let prepared = match this.prepare_audio(session) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("prepare_audio after stop: {e}");
+                this.clear_transcription_tracking();
+                {
+                    let mut inner = this.lock();
+                    inner.state = ScribeState::Error;
+                }
+                this.app
+                    .emit(
+                        "scribe://state-changed",
+                        ScribeStateEvent {
+                            error: Some(format!("failed to finalize recording: {e}")),
+                            ..ScribeStateEvent::new(ScribeState::Error)
+                        },
+                    )
+                    .ok();
+                return Err(e);
+            }
         };
 
         this.app
@@ -209,7 +334,7 @@ impl ScribeController {
             let ctrl = Arc::clone(&this);
             let result =
                 tokio::task::spawn_blocking(move || {
-                    ctrl.do_transcription(session, notes, &title, abort_flag)
+                    ctrl.do_transcription(prepared, notes, &title, abort_flag)
                 })
                     .await;
 
@@ -219,7 +344,7 @@ impl ScribeController {
                     eprintln!("transcription error: {e}");
                     this.clear_transcription_tracking();
                     {
-                        let mut inner = this.inner.lock().unwrap();
+                        let mut inner = this.lock();
                         inner.state = ScribeState::Error;
                     }
                     this.app
@@ -235,6 +360,16 @@ impl ScribeController {
                 Err(e) => {
                     this.clear_transcription_tracking();
                     eprintln!("transcription task panicked: {e}");
+                    this.lock().state = ScribeState::Error;
+                    this.app
+                        .emit(
+                            "scribe://state-changed",
+                            ScribeStateEvent {
+                                error: Some("Transcription crashed unexpectedly.".to_string()),
+                                ..ScribeStateEvent::new(ScribeState::Error)
+                            },
+                        )
+                        .ok();
                 }
             }
         });
@@ -242,30 +377,17 @@ impl ScribeController {
         Ok(())
     }
 
-    /// Blocking transcription pipeline. Called inside spawn_blocking.
+    /// Whisper + transcript write. Capture is already stopped (`prepare_audio` ran in `stop_and_save`).
     fn do_transcription(
         &self,
-        session: ActiveSession,
+        prepared: PreparedAudio,
         notes: Vec<Note>,
         title: &str,
         abort_flag: Arc<AtomicBool>,
     ) -> Result<()> {
-        let (raw_pcm, native_rate) = session.mic.stop_and_take();
-
-        let pcm_16k = resample_linear(&raw_pcm, native_rate, 16_000);
-
         let config = self.config.get();
-        let wav_path = session.session_dir.join("mic.wav");
-        self.output.write_wav(&pcm_16k, 16_000, &wav_path)?;
 
-        {
-            let mut inner = self.inner.lock().unwrap();
-            inner.transcription_wav_path = Some(wav_path.clone());
-        }
-
-        // Use configured path, then selected model id, then built-in default path.
         let model_path = resolve_model_path(&config, &self.model);
-
         if !self.model.model_available(&model_path) {
             self.clear_transcription_tracking();
             self.transition(ScribeState::NoModel);
@@ -273,7 +395,7 @@ impl ScribeController {
                 .emit(
                     "scribe://state-changed",
                     ScribeStateEvent {
-                        wav_path: Some(wav_path.to_string_lossy().into()),
+                        wav_path: Some(prepared.wav_path.to_string_lossy().into()),
                         ..ScribeStateEvent::new(ScribeState::NoModel)
                     },
                 )
@@ -281,18 +403,59 @@ impl ScribeController {
             return Ok(());
         }
 
+        let segments = self.run_transcription(&model_path, &prepared, &abort_flag)?;
+        if abort_flag.load(Ordering::SeqCst) {
+            self.clear_transcription_tracking();
+            return Ok(());
+        }
+
+        self.write_outputs(&segments, &notes, title, &model_path, &config, &prepared)
+    }
+
+    /// Stop audio streams, resample to WHISPER_SAMPLE_RATE, and write WAV files.
+    /// Sets transcription_wav_path so abort UX can reference the file.
+    fn prepare_audio(&self, session: ActiveSession) -> Result<PreparedAudio> {
+        let ActiveSession { mic, speaker, previous_output_device, session_dir, .. } = session;
+        let speaker_capture_enabled = speaker.is_some();
+        let (raw_pcm, native_rate) = mic.stop_and_take();
+        let speaker_raw = speaker.map(|s| s.stop_and_take());
+        self.restore_output_device(previous_output_device.as_deref());
+        self.emit_capture_levels_idle();
+
+        let pcm_16k = resample_linear(&raw_pcm, native_rate, WHISPER_SAMPLE_RATE);
+        let wav_path = session_dir.join("mic.wav");
+        self.output.write_wav(&pcm_16k, WHISPER_SAMPLE_RATE, &wav_path)?;
+        self.lock().transcription_wav_path = Some(wav_path.clone());
+
+        let speaker_pcm_16k = if let Some((s_raw, s_rate)) = speaker_raw {
+            let s16k = resample_linear(&s_raw, s_rate, WHISPER_SAMPLE_RATE);
+            self.output.write_wav(&s16k, WHISPER_SAMPLE_RATE, &session_dir.join("speaker.wav"))?;
+            Some(s16k)
+        } else {
+            None
+        };
+
+        Ok(PreparedAudio { session_dir, wav_path, pcm_16k, speaker_pcm_16k, speaker_capture_enabled })
+    }
+
+    /// Run Whisper on the prepared audio, reporting progress via state events.
+    fn run_transcription(
+        &self,
+        model_path: &Path,
+        prepared: &PreparedAudio,
+        _abort_flag: &AtomicBool,
+    ) -> Result<Vec<Segment>> {
         let (progress_tx, progress_rx) = mpsc::channel::<ProgressMessage>();
-        let callback_progress_tx = progress_tx.clone();
         let progress_app = self.app.clone();
         let progress_thread = std::thread::spawn(move || {
             while let Ok(message) = progress_rx.recv() {
                 match message {
-                    ProgressMessage::Progress(progress) => {
+                    ProgressMessage::Progress(p) => {
                         progress_app
                             .emit(
                                 "scribe://state-changed",
                                 ScribeStateEvent {
-                                    progress: Some(progress),
+                                    progress: Some(p),
                                     processing_stage: Some(ProcessingStage::TranscribingAudio),
                                     ..ScribeStateEvent::new(ScribeState::Transcribing)
                                 },
@@ -304,29 +467,50 @@ impl ScribeController {
             }
         });
 
-        let segments =
-            self.model
-                .transcribe_pcm_with_progress(&model_path, &pcm_16k, move |progress| {
-                    callback_progress_tx
-                        .send(ProgressMessage::Progress(progress))
-                        .ok();
-                });
+        let segments = if let Some(speaker_pcm) = &prepared.speaker_pcm_16k {
+            let tx1 = progress_tx.clone();
+            let mic_segs = self.model.transcribe_pcm_with_progress(
+                model_path,
+                &prepared.pcm_16k,
+                move |p| { tx1.send(ProgressMessage::Progress(p * 0.5)).ok(); },
+            )?;
+            let tx2 = progress_tx.clone();
+            let speaker_segs = self.model.transcribe_pcm_with_progress(
+                model_path,
+                speaker_pcm,
+                move |p| { tx2.send(ProgressMessage::Progress(0.5 + p * 0.5)).ok(); },
+            )?;
+            Ok(self.model.merge_dual_source(&mic_segs, &speaker_segs))
+        } else {
+            let tx = progress_tx.clone();
+            self.model.transcribe_pcm_with_progress(
+                model_path,
+                &prepared.pcm_16k,
+                move |p| { tx.send(ProgressMessage::Progress(p)).ok(); },
+            )
+        };
+
         progress_tx.send(ProgressMessage::Finished).ok();
         progress_thread.join().ok();
-        let segments = segments?;
+        segments
+    }
 
-        if abort_flag.load(Ordering::SeqCst) {
-            self.clear_transcription_tracking();
-            return Ok(());
-        }
-
-        let transcript_path = self
-            .output
-            .transcript_path(&session.session_dir, &model_path, title);
+    /// Write the transcript file, optionally delete WAVs, and emit the Done event.
+    fn write_outputs(
+        &self,
+        segments: &[Segment],
+        notes: &[Note],
+        title: &str,
+        model_path: &Path,
+        config: &Config,
+        prepared: &PreparedAudio,
+    ) -> Result<()> {
+        let transcript_path = self.output.transcript_path(&prepared.session_dir, model_path, title);
         let model_name = model_path
             .file_stem()
             .map(|s| s.to_string_lossy().replace("ggml-", ""))
             .unwrap_or_else(|| "model".to_string());
+
         self.app
             .emit(
                 "scribe://state-changed",
@@ -338,8 +522,8 @@ impl ScribeController {
             )
             .ok();
         self.output.write_transcript(
-            &segments,
-            &notes,
+            segments,
+            notes,
             title,
             &model_name,
             config.include_timestamps,
@@ -357,7 +541,10 @@ impl ScribeController {
                     },
                 )
                 .ok();
-            self.output.delete_wav(&wav_path)?;
+            self.output.delete_wav(&prepared.wav_path)?;
+            if prepared.speaker_capture_enabled {
+                self.output.delete_wav(&prepared.session_dir.join("speaker.wav"))?;
+            }
         }
 
         self.clear_transcription_tracking();
@@ -371,7 +558,6 @@ impl ScribeController {
                 },
             )
             .ok();
-
         Ok(())
     }
 
@@ -387,7 +573,7 @@ impl ScribeController {
 
     /// Add a timestamped note. Only valid while recording.
     pub fn add_note(&self, text: String) -> Result<Note> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.lock();
         if inner.state != ScribeState::Recording {
             return Err(anyhow!("cannot add note: not recording"));
         }
@@ -406,11 +592,11 @@ impl ScribeController {
     }
 
     fn transition(&self, state: ScribeState) {
-        self.inner.lock().unwrap().state = state;
+        self.lock().state = state;
     }
 
     fn clear_transcription_tracking(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.lock();
         inner.transcription_abort = None;
         inner.transcription_wav_path = None;
     }
@@ -434,8 +620,50 @@ impl ScribeController {
         self.audio.list_input_devices()
     }
 
+    pub fn list_output_devices(&self) -> Vec<String> {
+        self.audio.list_output_devices()
+    }
+
     pub fn read_transcript_at(&self, path: &str) -> Result<String, String> {
-        std::fs::read_to_string(path).map_err(|e| format!("failed to read transcript: {e}"))
+        let path = Path::new(path);
+        let canonical = path
+            .canonicalize()
+            .map_err(|_| "invalid or inaccessible transcript path".to_string())?;
+        let save_folder = self.config.get().save_folder;
+        let base = Path::new(&save_folder)
+            .canonicalize()
+            .map_err(|_| "save folder is not accessible".to_string())?;
+        if !canonical.starts_with(&base) {
+            return Err("transcript path is outside the configured save folder".to_string());
+        }
+        self.output.read_transcript(&canonical)
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
+        self.inner.lock().unwrap_or_else(|p| {
+            eprintln!("scribe: recovering from poisoned mutex");
+            p.into_inner()
+        })
+    }
+
+    fn capture_guard(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.capture_sync.lock().unwrap_or_else(|p| {
+            eprintln!("scribe: recovering from poisoned capture mutex");
+            p.into_inner()
+        })
+    }
+
+    fn restore_output_device(&self, previous: Option<&str>) {
+        if let Some(device) = previous {
+            if let Err(e) = self.audio.set_output_device(device) {
+                eprintln!("failed to restore output device to `{device}`: {e}");
+            }
+        }
+    }
+
+    fn emit_capture_levels_idle(&self) {
+        let _ = self.app.emit("scribe://audio-level", 0.0_f32);
+        let _ = self.app.emit("scribe://speaker-level", 0.0_f32);
     }
 
     fn ensure_start_allowed(state: &ScribeState) -> Result<()> {

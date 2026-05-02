@@ -17,9 +17,9 @@
 	} = $props();
 
 	const variantClass: Record<ToastState, string> = {
-		success: 'border-surface-high bg-surface-low text-green',
-		error: 'border-error/40 bg-error text-on-error',
-		normal: 'border-surface-low/20 bg-surface-low text-on-surface',
+		success: 'border-fill bg-card text-success',
+		error: 'border-destructive/40 bg-destructive text-on-destructive',
+		normal: 'border-card/20 bg-card text-fg',
 	};
 
 	const positionClass = $derived(

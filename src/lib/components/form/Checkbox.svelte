@@ -22,7 +22,7 @@
 
 <label
 	for={id}
-	class={`inline-flex items-center gap-2 text-on-surface ${disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer"} ${className}`.trim()}
+	class={`inline-flex items-center gap-2 text-fg ${disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer"} ${className}`.trim()}
 >
 	<input
 		type="checkbox"
@@ -32,11 +32,11 @@
 		bind:checked
 		{disabled}
 		aria-label={ariaLabel}
-		class="peer sr-only"
+		class="peer sr-only focus:ring-0"
 	/>
 	<span
 		aria-hidden="true"
-		class="relative inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-white/85 bg-transparent text-transparent transition-colors peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary peer-checked:border-primary peer-checked:bg-primary peer-checked:text-on-primary"
+		class="relative inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-rim bg-panel text-transparent transition-colors peer-checked:border-brand peer-checked:bg-brand peer-checked:text-on-brand peer-focus:ring-2 peer-focus:ring-warning peer-focus:ring-offset-2 peer-focus:ring-offset-panel peer-focus:rounded-sm"
 	>
 		<span class="text-label-md leading-none font-normal">✓</span>
 	</span>

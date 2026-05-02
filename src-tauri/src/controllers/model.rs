@@ -1,6 +1,7 @@
 use crate::services::config::ConfigService;
 use crate::services::model::ModelService;
 use crate::types::ModelListItem;
+use std::path::Path;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 
@@ -78,6 +79,41 @@ impl ModelController {
             })
             .map_err(|e| e.to_string())
     }
+
+    /// Deletes the downloaded file for `model_id` and clears config if it pointed at that file.
+    pub fn remove_model(&self, model_id: String) -> Result<(), String> {
+        let id = model_id.trim();
+        if id.is_empty() {
+            return Err("model id is required".into());
+        }
+        let resolved = self
+            .model
+            .model_path_for_id(id)
+            .ok_or_else(|| format!("unknown model id: {id}"))?;
+        let normalized = resolved
+            .canonicalize()
+            .unwrap_or_else(|_| resolved.clone());
+
+        let cfg_snap = self.config.get();
+        let matches_config =
+            cfg_snap.selected_model_id.as_deref() == Some(id)
+                || cfg_snap.scribe_model_path.as_ref().is_some_and(|stored| {
+                    let p = Path::new(stored);
+                    p == resolved.as_path() || p == normalized.as_path()
+                });
+
+        self.model.delete_downloaded_model(id)?;
+
+        if matches_config {
+            self.config
+                .update(|cfg| {
+                    cfg.selected_model_id = None;
+                    cfg.scribe_model_path = None;
+                })
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -126,5 +162,39 @@ mod tests {
             cfg.scribe_model_path.as_deref(),
             Some(tiny_path.to_string_lossy().as_ref())
         );
+    }
+
+    #[test]
+    fn remove_requires_download() {
+        let models_dir = temp_dir("liscribe-model-remove-missing-models");
+        let config_path = temp_dir("liscribe-model-remove-missing-config").join("config.json");
+        let model = ModelService::new(models_dir);
+        let config = ConfigService::load(config_path).expect("load config");
+        let ctrl = ModelController::new(model, config);
+
+        let err = ctrl
+            .remove_model("tiny".to_string())
+            .expect_err("should reject missing file");
+        assert!(err.contains("not downloaded"));
+    }
+
+    #[test]
+    fn remove_deletes_and_clears_when_selected() {
+        let models_dir = temp_dir("liscribe-model-remove-models");
+        let config_path = temp_dir("liscribe-model-remove-config").join("config.json");
+        let tiny_path = models_dir.join("ggml-tiny.bin");
+        std::fs::write(&tiny_path, [7, 7, 7]).expect("write model file");
+
+        let model = ModelService::new(models_dir.clone());
+        let config = ConfigService::load(config_path).expect("load config");
+        let ctrl = ModelController::new(Arc::clone(&model), Arc::clone(&config));
+
+        ctrl.select_model("tiny".to_string()).expect("select");
+        ctrl.remove_model("tiny".to_string()).expect("remove");
+
+        assert!(!tiny_path.exists(), "binary should be deleted");
+        let cfg = config.get();
+        assert!(cfg.selected_model_id.is_none());
+        assert!(cfg.scribe_model_path.is_none());
     }
 }

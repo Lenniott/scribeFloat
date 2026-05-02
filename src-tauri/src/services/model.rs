@@ -81,6 +81,23 @@ impl ModelService {
             .unwrap_or(false)
     }
 
+    /// Removes the downloaded file for `model_id`. Only paths under [`Self::models_dir`]
+    /// for known catalog entries are touched.
+    pub fn delete_downloaded_model(&self, model_id: &str) -> Result<(), String> {
+        let path = self
+            .model_path_for_id(model_id)
+            .ok_or_else(|| format!("unknown model id: {model_id}"))?;
+        if !self.model_downloaded(model_id) {
+            return Err(format!("model {model_id} is not downloaded"));
+        }
+        std::fs::remove_file(&path).map_err(|e| format!("failed to remove model file: {e}"))?;
+        let tmp = path.with_extension("tmp");
+        if tmp.is_file() {
+            let _ = std::fs::remove_file(tmp);
+        }
+        Ok(())
+    }
+
     pub async fn download_model(&self, model_id: &str, app: &AppHandle) -> Result<()> {
         let item = self
             .catalog_item(model_id)
@@ -367,7 +384,8 @@ mod tests {
         }];
         let merged = service.merge_dual_source(&mic, &speaker);
         assert_eq!(merged.len(), 2);
-        assert!(merged[0].text.starts_with("in: "));
-        assert!(merged[1].text.starts_with("out: "));
+        // Sorted by start_ms: speaker (1000ms) before mic (2000ms).
+        assert!(merged[0].text.starts_with("out: "));
+        assert!(merged[1].text.starts_with("in: "));
     }
 }

@@ -19,18 +19,14 @@
   }
 
   let requestingKind = $state<string | null>(null);
-  const microphoneReady = $derived(
-    statuses.find((status) => status.kind === "microphone")?.granted ?? false,
-  );
-
-  $effect(() => {
-    ready = microphoneReady;
-  });
 
   async function refresh() {
-    statuses = await invoke<PermissionStatus[]>(
+    const next = await invoke<PermissionStatus[]>(
       "settings_permissions_status",
     ).catch(() => []);
+    statuses = next;
+    ready =
+      next.find((status) => status.kind === "microphone")?.granted ?? false;
   }
 
   async function grantPermission(kind: string) {

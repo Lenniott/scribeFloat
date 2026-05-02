@@ -1,10 +1,13 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { invoke } from '@tauri-apps/api/core';
 	import NavButton from '@components/NavButton.svelte';
 	import SettingGeneral from '@lib/screens/setting_general.svelte';
 	import SettingPermissions from '@lib/screens/setting_permissions.svelte';
 	import SettingModels from '@lib/screens/setting_models.svelte';
 	import IconButton from '@components/IconButton.svelte';
 	import { X } from 'lucide-svelte';
+	import type { PermissionStatus, ModelListItem } from '$lib/types';
 
 	type SettingsTab = 'general' | 'permissions' | 'models';
 
@@ -17,8 +20,22 @@
 	} = $props();
 
 	let activeTab = $state<SettingsTab>('general');
+	let permissionsKnown = $state(false);
+	let modelKnown = $state(false);
 	let permissionsReady = $state(false);
 	let modelReady = $state(false);
+
+	onMount(async () => {
+		const [statuses, list] = await Promise.all([
+			invoke<PermissionStatus[]>('settings_permissions_status').catch(() => []),
+			invoke<ModelListItem[]>('model_list').catch(() => []),
+		]);
+		permissionsReady =
+			statuses.find((s) => s.kind === 'microphone')?.granted ?? false;
+		permissionsKnown = true;
+		modelReady = list.some((m) => m.downloaded && m.selected);
+		modelKnown = true;
+	});
 
 	const tabs: Array<{ id: SettingsTab; label: string }> = [
 		{ id: 'general', label: 'General' },
@@ -34,15 +51,15 @@
 			<IconButton aria-label="close settings" variant="normal" icon={X} onclick={() => onClose?.()} />
 		</header>
 
-		{#if !permissionsReady || !modelReady}
+		{#if (permissionsKnown && !permissionsReady) || (modelKnown && !modelReady)}
 			<div class="flex flex-col gap-1 border-b border-warning bg-warning/15 px-4 py-2">
-				{#if !permissionsReady}
+				{#if permissionsKnown && !permissionsReady}
 					<p class="text-label-sm text-fg">
 						Microphone access needed —
 						<button class="underline cursor-pointer" onclick={() => (activeTab = 'permissions')}>go to Permissions</button>.
 					</p>
 				{/if}
-				{#if !modelReady}
+				{#if modelKnown && !modelReady}
 					<p class="text-label-sm text-fg">
 						No transcription model installed —
 						<button class="underline cursor-pointer" onclick={() => (activeTab = 'models')}>go to Models</button>.

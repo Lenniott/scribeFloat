@@ -247,6 +247,7 @@ pub fn run() {
             commands::model::model_list,
             commands::model::model_download,
             commands::model::model_select,
+            commands::model::model_remove,
             commands::settings::settings_get_output_path,
             commands::settings::settings_set_output_path,
             commands::settings::settings_get_hotkeys,

@@ -16,16 +16,30 @@ export function createModelDownloadStore() {
 	async function refresh() {
 		const list = await invoke<ModelListItem[]>('model_list').catch(() => [] as ModelListItem[]);
 		models = list;
+
+		const prevDownloading = { ...downloadingByModel };
+
+		let nextProg: Record<string, number> = {};
+		let nextDown: Record<string, boolean> = {};
+		let nextStat: Record<string, string> = {};
+
 		for (const m of list) {
 			if (m.downloaded) {
-				progressByModel = { ...progressByModel, [m.id]: 1 };
-				downloadingByModel = { ...downloadingByModel, [m.id]: false };
-				statusByModel = {
-					...statusByModel,
-					[m.id]: m.selected ? 'Installed and selected' : 'Installed',
-				};
+				nextProg[m.id] = 1;
+				nextDown[m.id] = false;
+				nextStat[m.id] = m.selected ? 'Installed and selected' : 'Installed';
+			} else if (prevDownloading[m.id]) {
+				nextDown[m.id] = true;
+				nextProg[m.id] = progressByModel[m.id] ?? 0;
+				nextStat[m.id] =
+					statusByModel[m.id] ??
+					`Installing… ${Math.round((progressByModel[m.id] ?? 0) * 100)}%`;
 			}
 		}
+
+		progressByModel = nextProg;
+		downloadingByModel = nextDown;
+		statusByModel = nextStat;
 
 		if (!autoSelectInFlight) {
 			const downloaded = list.filter((m) => m.downloaded);
@@ -56,6 +70,14 @@ export function createModelDownloadStore() {
 	async function select(modelId: string) {
 		error = '';
 		await invoke('model_select', { modelId }).catch((e) => {
+			error = String(e);
+		});
+		await refresh();
+	}
+
+	async function remove(modelId: string) {
+		error = '';
+		await invoke('model_remove', { modelId }).catch((e) => {
 			error = String(e);
 		});
 		await refresh();
@@ -116,6 +138,7 @@ export function createModelDownloadStore() {
 		refresh,
 		download,
 		select,
+		remove,
 		subscribe,
 	};
 }

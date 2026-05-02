@@ -120,7 +120,7 @@
 		</p>
 	</div>
 	<LabeledTextField
-		label="Speaker capture device (manual name)"
+		label="Speaker capture device name"
 		bind:value={preferredSpeakerDevice}
 		placeholder="Type the exact Audio MIDI device name"
 	/>

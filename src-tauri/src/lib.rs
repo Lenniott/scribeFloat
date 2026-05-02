@@ -19,6 +19,16 @@ const OPEN_SCRIBE_MENU_ID: &str = "open_scribe";
 const OPEN_SETTINGS_MENU_ID: &str = "open_settings";
 const QUIT_MENU_ID: &str = "quit";
 
+const SCRIBE_WINDOW_W: f64 = 800.0;
+const SCRIBE_WINDOW_H: f64 = 600.0;
+const SETTINGS_WINDOW_W: f64 = 960.0;
+const SETTINGS_WINDOW_H: f64 = 680.0;
+const DICTATE_WINDOW_W: f64 = 240.0;
+const DICTATE_WINDOW_H: f64 = 52.0;
+/// Margin from the right and top edge of the primary monitor.
+const DICTATE_MARGIN_RIGHT: f64 = 16.0;
+const DICTATE_MARGIN_TOP: f64 = 28.0;
+
 fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
     let open_scribe =
         MenuItem::with_id(app, OPEN_SCRIBE_MENU_ID, "Scribe", true, None::<&str>)?;
@@ -63,7 +73,7 @@ fn prewarm_scribe_window(app: &AppHandle) {
         let url = WebviewUrl::App("index.html".into());
         let mut builder = WebviewWindowBuilder::new(app, SCRIBE_WINDOW_LABEL, url)
             .title("Scribe")
-            .inner_size(800.0, 600.0)
+            .inner_size(SCRIBE_WINDOW_W, SCRIBE_WINDOW_H)
             .visible(false);
         if let Some(icon) = app.default_window_icon() {
             builder = builder.icon(icon.clone())?;
@@ -84,7 +94,7 @@ fn prewarm_dictate_window(app: &AppHandle) {
             DICTATE_WINDOW_LABEL,
             WebviewUrl::App("?view=dictate".into()),
         )
-        .inner_size(240.0, 52.0)
+        .inner_size(DICTATE_WINDOW_W, DICTATE_WINDOW_H)
         .decorations(false)
         .resizable(false)
         .always_on_top(true)
@@ -106,8 +116,8 @@ pub(crate) fn open_scribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow
         SCRIBE_WINDOW_LABEL,
         "Scribe",
         WebviewUrl::App("index.html".into()),
-        800.0,
-        600.0,
+        SCRIBE_WINDOW_W,
+        SCRIBE_WINDOW_H,
     )?;
     let _ = window.emit("scribe://open-requested", serde_json::json!({}));
     Ok(window)
@@ -119,8 +129,8 @@ pub(crate) fn open_settings_window(app: &AppHandle) -> tauri::Result<WebviewWind
         SETTINGS_WINDOW_LABEL,
         "Settings",
         WebviewUrl::App("?view=settings".into()),
-        960.0,
-        680.0,
+        SETTINGS_WINDOW_W,
+        SETTINGS_WINDOW_H,
     )
 }
 
@@ -139,7 +149,7 @@ pub(crate) fn open_dictate_window(app: &AppHandle) -> tauri::Result<WebviewWindo
         DICTATE_WINDOW_LABEL,
         WebviewUrl::App("?view=dictate".into()),
     )
-    .inner_size(240.0, 52.0)
+    .inner_size(DICTATE_WINDOW_W, DICTATE_WINDOW_H)
     .decorations(false)
     .resizable(false)
     .always_on_top(true)
@@ -163,8 +173,8 @@ fn primary_monitor_dictate_position(app: &AppHandle) -> (f64, f64) {
         })
         .unwrap_or((1440.0, 1.0));
     let _ = scale;
-    let x = width - 240.0 - 16.0;
-    let y = 28.0;
+    let x = width - DICTATE_WINDOW_W - DICTATE_MARGIN_RIGHT;
+    let y = DICTATE_MARGIN_TOP;
     (x, y)
 }
 

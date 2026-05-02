@@ -19,22 +19,26 @@ const DICTATE_STATE_EVENT: &str = "dictate://state-changed";
 
 // ── Key tracker constants ────────────────────────────────────────────────────
 //
-// Two activation modes share one mic session:
+// Two activation modes — mic only opens on the SECOND Left Control press:
 //
-// • Hold-to-talk: key-down opens the mic immediately; releasing after
-//   HOLD_THRESHOLD_MS runs stop → transcribe → paste.
+// • Hold-to-talk: double-tap to open mic; keep second press held ≥
+//   HOLD_THRESHOLD_MS then release to stop → transcribe → paste.
 //
-// • Toggle (double-tap then tap to stop): first key-down starts mic. A short
-//   release (< HOLD_THRESHOLD_MS) waits for a second tap within
-//   DOUBLE_TAP_WINDOW_MS (otherwise cancel). Second key-down confirms toggle.
-//   Third key-down after TOGGLE_STOP_COOLDOWN_MS runs stop → transcribe → paste.
+// • Toggle: double-tap quickly opens mic (both presses < HOLD_THRESHOLD_MS).
+//   A third press after TOGGLE_STOP_COOLDOWN_MS stops → transcribe → paste.
+//   A third press within the cooldown is ignored (prevents key-repeat noise).
+//
+// Modifier protection: a first press held ≥ FIRST_PRESS_MAX_MS is treated as
+// a modifier combo (Ctrl+C, Ctrl+V, etc.) and resets the state machine to Idle
+// without ever opening the mic.
 
-/// Key-up after at least this many ms counts as hold-to-talk "release stop".
-const HOLD_THRESHOLD_MS: u128 = 120;
-/// Time (ms) from first key-UP to second key-DOWN for double-tap to register.
+/// Max ms for the first press to count as a tap (not a modifier hold).
+const FIRST_PRESS_MAX_MS: u128 = 300;
+/// Second press held ≥ this many ms = hold-to-talk mode (release stops).
+const HOLD_THRESHOLD_MS: u128 = 500;
+/// Max ms from first key-UP to second key-DOWN for double-tap to register.
 const DOUBLE_TAP_WINDOW_MS: u128 = 400;
-/// Minimum time (ms) after entering toggle-mode before a third tap can stop.
-/// Prevents macOS key-repeat from immediately re-triggering stop.
+/// Minimum ms after entering toggle-mode before a third tap can stop.
 const TOGGLE_STOP_COOLDOWN_MS: u128 = 1000;
 /// How long (ms) the Done panel stays visible before auto-dismissing.
 const DONE_DISMISS_MS: u64 = 2500;
@@ -44,8 +48,13 @@ const DONE_DISMISS_MS: u64 = 2500;
 #[derive(Debug)]
 enum DictateKeyState {
     Idle,
-    Held { down_at: Instant },
+    /// First press is down; waiting to see if it's a tap or a modifier hold.
+    FirstPressed { down_at: Instant },
+    /// First press was a short tap; waiting for the second press.
     AwaitingSecondTap { up_at: Instant },
+    /// Second press is down — mic is now recording.
+    SecondHeld { down_at: Instant },
+    /// Second press was short; mic is recording in toggle mode.
     ToggleRecording { started_at: Instant },
 }
 
@@ -54,7 +63,6 @@ pub(crate) enum DictateAction {
     None,
     Start,
     Stop,
-    Cancel,
 }
 
 struct DictateKeyTracker {
@@ -69,13 +77,27 @@ impl DictateKeyTracker {
     fn on_key_down(&mut self, now: Instant) -> DictateAction {
         match self.state {
             DictateKeyState::Idle => {
-                self.state = DictateKeyState::Held { down_at: now };
-                DictateAction::Start
+                // First press — no action yet; wait to see if it's a tap or modifier hold.
+                self.state = DictateKeyState::FirstPressed { down_at: now };
+                DictateAction::None
+            }
+            DictateKeyState::FirstPressed { .. } => {
+                // Key-repeat while first press held — ignore.
+                DictateAction::None
             }
             DictateKeyState::AwaitingSecondTap { up_at } => {
                 if now.duration_since(up_at).as_millis() < DOUBLE_TAP_WINDOW_MS {
-                    self.state = DictateKeyState::ToggleRecording { started_at: now };
+                    // Second press within window — open mic.
+                    self.state = DictateKeyState::SecondHeld { down_at: now };
+                    DictateAction::Start
+                } else {
+                    // Second press too late — treat as a new first press.
+                    self.state = DictateKeyState::FirstPressed { down_at: now };
+                    DictateAction::None
                 }
+            }
+            DictateKeyState::SecondHeld { .. } => {
+                // Key-repeat while second press held — ignore.
                 DictateAction::None
             }
             DictateKeyState::ToggleRecording { started_at } => {
@@ -83,22 +105,35 @@ impl DictateKeyTracker {
                     self.state = DictateKeyState::Idle;
                     DictateAction::Stop
                 } else {
+                    // Within cooldown — ignore to prevent key-repeat false stops.
                     DictateAction::None
                 }
             }
-            DictateKeyState::Held { .. } => DictateAction::None,
         }
     }
 
     fn on_key_up(&mut self, now: Instant) -> DictateAction {
         match self.state {
-            DictateKeyState::Held { down_at } => {
+            DictateKeyState::FirstPressed { down_at } => {
+                let held_ms = now.duration_since(down_at).as_millis();
+                if held_ms < FIRST_PRESS_MAX_MS {
+                    // Short first press = tap; wait for second.
+                    self.state = DictateKeyState::AwaitingSecondTap { up_at: now };
+                } else {
+                    // Held too long = modifier combo (Ctrl+C, etc.) — reset.
+                    self.state = DictateKeyState::Idle;
+                }
+                DictateAction::None
+            }
+            DictateKeyState::SecondHeld { down_at } => {
                 let held_ms = now.duration_since(down_at).as_millis();
                 if held_ms >= HOLD_THRESHOLD_MS {
+                    // Long second press = hold-to-talk; release stops.
                     self.state = DictateKeyState::Idle;
                     DictateAction::Stop
                 } else {
-                    self.state = DictateKeyState::AwaitingSecondTap { up_at: now };
+                    // Short second press = toggle mode; mic keeps recording.
+                    self.state = DictateKeyState::ToggleRecording { started_at: now };
                     DictateAction::None
                 }
             }
@@ -107,15 +142,24 @@ impl DictateKeyTracker {
         }
     }
 
-    /// Called every 50 ms to expire the double-tap window.
-    fn check_timeout(&mut self, now: Instant) -> DictateAction {
-        if let DictateKeyState::AwaitingSecondTap { up_at } = self.state {
-            if now.duration_since(up_at).as_millis() >= DOUBLE_TAP_WINDOW_MS {
-                self.state = DictateKeyState::Idle;
-                return DictateAction::Cancel;
+    /// Called every 50 ms to expire timed states.
+    fn check_timeout(&mut self, now: Instant) {
+        match self.state {
+            DictateKeyState::FirstPressed { down_at } => {
+                // Key held longer than FIRST_PRESS_MAX_MS without a key_up yet
+                // (e.g. OS held it while composing a modifier chord) — reset.
+                if now.duration_since(down_at).as_millis() >= FIRST_PRESS_MAX_MS {
+                    self.state = DictateKeyState::Idle;
+                }
             }
+            DictateKeyState::AwaitingSecondTap { up_at } => {
+                if now.duration_since(up_at).as_millis() >= DOUBLE_TAP_WINDOW_MS {
+                    // Double-tap window expired — reset silently (no mic was open).
+                    self.state = DictateKeyState::Idle;
+                }
+            }
+            _ => {}
         }
-        DictateAction::None
     }
 }
 
@@ -168,17 +212,16 @@ impl DictateController {
         std::thread::spawn(move || {
             let tracker = Arc::new(Mutex::new(DictateKeyTracker::new()));
 
-            // Timeout thread: fires Cancel when the double-tap window expires.
+            // Timeout thread: advances timed states (FirstPressed and AwaitingSecondTap)
+            // so the state machine resets to Idle when windows expire.
             {
                 let tracker_clone = Arc::clone(&tracker);
-                let ctrl_clone = Arc::clone(&self);
                 std::thread::spawn(move || loop {
                     std::thread::sleep(std::time::Duration::from_millis(50));
-                    let action =
-                        tracker_clone.lock().unwrap_or_else(|p| p.into_inner()).check_timeout(Instant::now());
-                    if action == DictateAction::Cancel {
-                        Self::dispatch_action(Arc::clone(&ctrl_clone), action);
-                    }
+                    tracker_clone
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .check_timeout(Instant::now());
                 });
             }
 
@@ -223,9 +266,6 @@ impl DictateController {
                 if let Err(e) = Self::stop_and_transcribe(Arc::clone(&this)) {
                     eprintln!("dictate: failed to stop: {e}");
                 }
-            }
-            DictateAction::Cancel => {
-                let _ = this.cancel();
             }
             DictateAction::None => {}
         }

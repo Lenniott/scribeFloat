@@ -9,7 +9,8 @@ use std::time::Instant;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    WindowEvent,
 };
 
 pub(crate) const SCRIBE_WINDOW_LABEL: &str = "scribe";
@@ -168,10 +169,23 @@ fn primary_monitor_dictate_position(app: &AppHandle) -> (f64, f64) {
     (x, y)
 }
 
-// ── Dictate key tracker ─────────────────────────────────────────────────────
+// ── Dictate key tracker (global `rdev` listener, macOS: Left Control only) ──
+//
+// Two activation modes share one mic session:
+//
+// • Hold-to-talk: key-down opens the mic immediately; releasing after HOLD_THRESHOLD_MS
+//   milliseconds runs stop → transcribe → clipboard (→ paste when `dictate_auto_paste` is on).
+//
+// • Toggle (double-tap then tap to stop): first key-down starts mic. A *short* release
+//   (< HOLD_THRESHOLD_MS) waits for a second tap within DOUBLE_TAP_WINDOW_MS (otherwise cancel).
+//   Second key-down confirms hands-free toggle while recording stays on. Third key-down, after
+//   TOGGLE_STOP_COOLDOWN_MS, runs stop → transcribe → clipboard (→ paste).
+//
+// Windows uses Alt instead of Left Control (`is_dictate_key`).
 
-/// Key must be held this long (ms) for a single press to count as hold-to-record.
-const HOLD_THRESHOLD_MS: u128 = 500;
+/// Key-up after at least this many ms pressed counts as push-to-talk "release stop" vs a quick
+/// tap (await possible second tap for toggle). Kept modest so short bursts still stop on release.
+const HOLD_THRESHOLD_MS: u128 = 120;
 /// Time (ms) from first key-UP to second key-DOWN for a double-tap to register.
 const DOUBLE_TAP_WINDOW_MS: u128 = 400;
 /// Minimum time (ms) after entering toggle-mode before a third tap can stop recording.
@@ -591,6 +605,15 @@ pub fn run() {
             commands::dictate::dictate_cancel,
             commands::dictate::dictate_get_history,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, event| {
+            if let RunEvent::ExitRequested { code, api, .. } = event {
+                // Tray-backed app: default event loop exits when the last window is torn down.
+                // Programmatic `app.exit(n)` uses `Some(n)` and must not be prevented.
+                if code.is_none() {
+                    api.prevent_exit();
+                }
+            }
+        });
 }

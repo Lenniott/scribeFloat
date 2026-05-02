@@ -152,6 +152,13 @@ impl DictateController {
         let (raw_pcm, native_rate) = session.mic.stop_and_take();
         let pcm_16k = resample_linear(&raw_pcm, native_rate, WHISPER_SAMPLE_RATE);
 
+        // whisper-rs rejects empty / ~no audio with NoSamples; treat very short captures as silence.
+        const MIN_PCM_SAMPLES_16K: usize = WHISPER_SAMPLE_RATE as usize / 10;
+        if pcm_16k.len() < MIN_PCM_SAMPLES_16K {
+            self.transition_to_idle();
+            return Ok(());
+        }
+
         // Resolve model path: prefer dictate_model_id, then selected_model_id, then default.
         let model_path: PathBuf = if let Some(id) = &config.dictate_model_id {
             self.model
@@ -231,12 +238,11 @@ impl DictateController {
             eprintln!("dictate: failed to write history: {e}");
         }
 
-        // Copy to clipboard.
+        // Copy to clipboard; optional paste inserts at OS focus (e.g. text field in foreground app).
         if let Err(e) = self.app.clipboard().write_text(text.clone()) {
             eprintln!("dictate: failed to write clipboard: {e}");
         }
 
-        // Simulate paste if enabled.
         if config.dictate_auto_paste {
             if let Err(e) = crate::platform::paste_impl::paste_text() {
                 eprintln!("dictate: paste simulation failed: {e}");

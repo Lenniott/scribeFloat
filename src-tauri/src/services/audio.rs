@@ -35,7 +35,9 @@ impl MicSession {
         let _ = _stream.pause();
         drop(_stream);
         let mut all = Vec::new();
-        while let Ok(chunk) = receiver.try_recv() {
+        // Drain until the stream callback's sender is dropped — try_recv alone can miss the
+        // final chunks if the main thread runs ahead of the audio thread.
+        while let Ok(chunk) = receiver.recv() {
             all.extend(chunk);
         }
         (all, sample_rate)

@@ -4,8 +4,7 @@ mod platform;
 mod services;
 mod types;
 
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::sync::Arc;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -169,229 +168,6 @@ fn primary_monitor_dictate_position(app: &AppHandle) -> (f64, f64) {
     (x, y)
 }
 
-// ── Dictate key tracker (global `rdev` listener, macOS: Left Control only) ──
-//
-// Two activation modes share one mic session:
-//
-// • Hold-to-talk: key-down opens the mic immediately; releasing after HOLD_THRESHOLD_MS
-//   milliseconds runs stop → transcribe → clipboard (→ paste when `dictate_auto_paste` is on).
-//
-// • Toggle (double-tap then tap to stop): first key-down starts mic. A *short* release
-//   (< HOLD_THRESHOLD_MS) waits for a second tap within DOUBLE_TAP_WINDOW_MS (otherwise cancel).
-//   Second key-down confirms hands-free toggle while recording stays on. Third key-down, after
-//   TOGGLE_STOP_COOLDOWN_MS, runs stop → transcribe → clipboard (→ paste).
-//
-// Windows uses Alt instead of Left Control (`is_dictate_key`).
-
-/// Key-up after at least this many ms pressed counts as push-to-talk "release stop" vs a quick
-/// tap (await possible second tap for toggle). Kept modest so short bursts still stop on release.
-const HOLD_THRESHOLD_MS: u128 = 120;
-/// Time (ms) from first key-UP to second key-DOWN for a double-tap to register.
-const DOUBLE_TAP_WINDOW_MS: u128 = 400;
-/// Minimum time (ms) after entering toggle-mode before a third tap can stop recording.
-/// Prevents macOS key-repeat from immediately re-triggering stop.
-const TOGGLE_STOP_COOLDOWN_MS: u128 = 1000;
-
-#[derive(Debug)]
-enum DictateKeyState {
-    /// No activity.
-    Idle,
-    /// Key is currently held down; we haven't decided hold vs. tap yet.
-    Held { down_at: Instant },
-    /// First tap released quickly; waiting to see if a second tap arrives.
-    /// `up_at` is the moment the key was released — the double-tap window
-    /// is measured from here, not from the original keydown.
-    AwaitingSecondTap { up_at: Instant },
-    /// Double-tap confirmed; recording in toggle mode.
-    /// `started_at` guards against key-repeat firing an immediate stop.
-    ToggleRecording { started_at: Instant },
-}
-
-#[derive(Debug, PartialEq)]
-enum DictateAction {
-    None,
-    Start,
-    Stop,
-    Cancel,
-}
-
-struct DictateKeyTracker {
-    state: DictateKeyState,
-}
-
-impl DictateKeyTracker {
-    fn new() -> Self {
-        Self { state: DictateKeyState::Idle }
-    }
-
-    fn on_key_down(&mut self, now: Instant) -> DictateAction {
-        match self.state {
-            DictateKeyState::Idle => {
-                // Start recording immediately; classify hold vs. tap on key-up.
-                self.state = DictateKeyState::Held { down_at: now };
-                DictateAction::Start
-            }
-            DictateKeyState::AwaitingSecondTap { up_at } => {
-                if now.duration_since(up_at).as_millis() < DOUBLE_TAP_WINDOW_MS {
-                    // Second tap within window — switch to toggle mode.
-                    self.state =
-                        DictateKeyState::ToggleRecording { started_at: now };
-                }
-                // If the window expired the timeout thread will handle cleanup.
-                DictateAction::None
-            }
-            DictateKeyState::ToggleRecording { started_at } => {
-                // Third tap stops toggle recording — but only after cooldown to
-                // ignore macOS key-repeat events.
-                if now.duration_since(started_at).as_millis() >= TOGGLE_STOP_COOLDOWN_MS {
-                    self.state = DictateKeyState::Idle;
-                    DictateAction::Stop
-                } else {
-                    DictateAction::None
-                }
-            }
-            // Key is already held — ignore OS auto-repeat.
-            DictateKeyState::Held { .. } => DictateAction::None,
-        }
-    }
-
-    fn on_key_up(&mut self, now: Instant) -> DictateAction {
-        match self.state {
-            DictateKeyState::Held { down_at } => {
-                let held_ms = now.duration_since(down_at).as_millis();
-                if held_ms >= HOLD_THRESHOLD_MS {
-                    // Long hold released — stop and transcribe.
-                    self.state = DictateKeyState::Idle;
-                    DictateAction::Stop
-                } else {
-                    // Quick tap — wait for a potential second tap.
-                    self.state = DictateKeyState::AwaitingSecondTap { up_at: now };
-                    DictateAction::None
-                }
-            }
-            // Key-up during toggle recording is the second-tap key-up; recording
-            // continues until a third key-down arrives.
-            DictateKeyState::ToggleRecording { .. } => DictateAction::None,
-            _ => DictateAction::None,
-        }
-    }
-
-    /// Called every 50 ms from a background thread to time out the double-tap
-    /// window. The window is measured from `up_at` (first key release), so
-    /// holding the key never triggers a cancel.
-    fn check_timeout(&mut self, now: Instant) -> DictateAction {
-        if let DictateKeyState::AwaitingSecondTap { up_at } = self.state {
-            if now.duration_since(up_at).as_millis() >= DOUBLE_TAP_WINDOW_MS {
-                self.state = DictateKeyState::Idle;
-                return DictateAction::Cancel;
-            }
-        }
-        DictateAction::None
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn is_dictate_key(event: &rdev::Event) -> bool {
-    matches!(
-        event.event_type,
-        rdev::EventType::KeyPress(rdev::Key::ControlLeft)
-            | rdev::EventType::KeyRelease(rdev::Key::ControlLeft)
-    )
-}
-
-#[cfg(target_os = "windows")]
-fn is_dictate_key(event: &rdev::Event) -> bool {
-    matches!(
-        event.event_type,
-        rdev::EventType::KeyPress(rdev::Key::Alt)
-            | rdev::EventType::KeyRelease(rdev::Key::Alt)
-    )
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn is_dictate_key(_event: &rdev::Event) -> bool {
-    false
-}
-
-fn dispatch_dictate_action(
-    action: DictateAction,
-    app: &AppHandle,
-    dictate_ctrl: &Arc<controllers::dictate::DictateController>,
-) {
-    match action {
-        DictateAction::Start => {
-            // Spam guard: ignore if not idle (e.g. key fires while transcribing).
-            if dictate_ctrl.current_state() != crate::types::DictateState::Idle {
-                return;
-            }
-            if let Err(e) = open_dictate_window(app) {
-                eprintln!("dictate: failed to open window: {e}");
-                return;
-            }
-            if let Err(e) = dictate_ctrl.start() {
-                eprintln!("dictate: failed to start: {e}");
-            }
-        }
-        DictateAction::Stop => {
-            if let Err(e) =
-                controllers::dictate::DictateController::stop_and_transcribe(Arc::clone(dictate_ctrl))
-            {
-                eprintln!("dictate: failed to stop: {e}");
-            }
-        }
-        DictateAction::Cancel => {
-            let _ = dictate_ctrl.cancel();
-            if let Some(w) = app.get_webview_window(DICTATE_WINDOW_LABEL) {
-                let _ = w.hide();
-            }
-        }
-        DictateAction::None => {}
-    }
-}
-
-fn setup_dictate_key_listener(
-    app: AppHandle,
-    dictate_ctrl: Arc<controllers::dictate::DictateController>,
-) {
-    std::thread::spawn(move || {
-        let tracker = Arc::new(Mutex::new(DictateKeyTracker::new()));
-
-        // Background thread: cancel recording if double-tap window expires with no second tap.
-        {
-            let tracker_clone = Arc::clone(&tracker);
-            let app_clone = app.clone();
-            let ctrl_clone = Arc::clone(&dictate_ctrl);
-            std::thread::spawn(move || loop {
-                std::thread::sleep(std::time::Duration::from_millis(50));
-                let action = tracker_clone.lock().unwrap().check_timeout(Instant::now());
-                if action == DictateAction::Cancel {
-                    dispatch_dictate_action(action, &app_clone, &ctrl_clone);
-                }
-            });
-        }
-
-        let tracker_main = Arc::clone(&tracker);
-        let app_main = app.clone();
-        let ctrl_main = Arc::clone(&dictate_ctrl);
-
-        if let Err(e) = rdev::listen(move |event| {
-            if !is_dictate_key(&event) {
-                return;
-            }
-            let action = {
-                let mut t = tracker_main.lock().unwrap();
-                match event.event_type {
-                    rdev::EventType::KeyPress(_) => t.on_key_down(Instant::now()),
-                    rdev::EventType::KeyRelease(_) => t.on_key_up(Instant::now()),
-                    _ => DictateAction::None,
-                }
-            };
-            dispatch_dictate_action(action, &app_main, &ctrl_main);
-        }) {
-            eprintln!("dictate: rdev listener stopped: {e:?}");
-        }
-    });
-}
 
 /// Show, restore, and focus. On Windows, `show()` applies visibility asynchronously; a deferred
 /// `set_focus` runs after so Tao sees `VISIBLE` and can call `SetForegroundWindow`.
@@ -511,7 +287,7 @@ pub fn run() {
             app.manage(ctrl); // for scribe commands
             app.manage(Arc::clone(&dictate_ctrl)); // for dictate commands
 
-            setup_dictate_key_listener(app.handle().clone(), dictate_ctrl);
+            dictate_ctrl.start_key_listener();
 
             if is_first_run {
                 open_settings_window(app.handle())?;
@@ -603,6 +379,7 @@ pub fn run() {
             commands::settings::settings_get_dictate_model_id,
             commands::settings::settings_set_dictate_model_id,
             commands::dictate::dictate_cancel,
+            commands::dictate::dictate_dismiss,
             commands::dictate::dictate_get_history,
         ])
         .build(tauri::generate_context!())

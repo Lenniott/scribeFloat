@@ -231,7 +231,16 @@ pub enum DictateState {
     Recording,
     Transcribing,
     Pasting,
+    /// Transcription complete, text pasted. Window stays visible briefly.
+    Done,
     Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DictateProcessingStage {
+    LoadingModel,
+    TranscribingAudio,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -240,12 +249,17 @@ pub struct DictateStateEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub processing_stage: Option<DictateProcessingStage>,
+    /// Populated on Done state — the text that was pasted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
 impl DictateStateEvent {
     pub fn new(state: DictateState) -> Self {
-        Self { state, progress: None, error: None }
+        Self { state, progress: None, processing_stage: None, text: None, error: None }
     }
 }
 

@@ -1,19 +1,16 @@
 use crate::controllers::dictate::DictateController;
 use crate::types::DictateHistoryEntry;
 use std::sync::Arc;
-use tauri::{AppHandle, Manager, State};
+use tauri::State;
 
 #[tauri::command]
-pub fn dictate_cancel(
-    ctrl: State<'_, Arc<DictateController>>,
-    app: AppHandle,
-) -> Result<(), String> {
-    ctrl.cancel().map_err(|e| e.to_string())?;
-    if let Some(w) = app.get_webview_window(crate::DICTATE_WINDOW_LABEL) {
-        w.hide().map_err(|e| e.to_string())?;
-        crate::platform::window_impl::sync_activation_policy(&app);
-    }
-    Ok(())
+pub fn dictate_cancel(ctrl: State<'_, Arc<DictateController>>) -> Result<(), String> {
+    ctrl.cancel().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn dictate_dismiss(ctrl: State<'_, Arc<DictateController>>) {
+    ctrl.dismiss();
 }
 
 #[tauri::command]

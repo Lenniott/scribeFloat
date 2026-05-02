@@ -2,6 +2,31 @@ pub mod paste_impl;
 pub mod permissions_impl;
 pub mod window_impl;
 
+/// Returns true when `event` is the key press or release used to trigger Dictate.
+/// macOS uses Left Control (modifier-only, avoids conflicting with global shortcuts).
+/// Windows uses Alt.
+#[cfg(target_os = "macos")]
+pub fn dictate_key_matches(event: &rdev::Event) -> bool {
+    matches!(
+        event.event_type,
+        rdev::EventType::KeyPress(rdev::Key::ControlLeft)
+            | rdev::EventType::KeyRelease(rdev::Key::ControlLeft)
+    )
+}
+
+#[cfg(target_os = "windows")]
+pub fn dictate_key_matches(event: &rdev::Event) -> bool {
+    matches!(
+        event.event_type,
+        rdev::EventType::KeyPress(rdev::Key::Alt) | rdev::EventType::KeyRelease(rdev::Key::Alt)
+    )
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub fn dictate_key_matches(_event: &rdev::Event) -> bool {
+    false
+}
+
 /// Open a file, optionally with a specific application.
 /// On macOS `app` is either a bare app name ("Obsidian") or a full path ("/Applications/Obsidian.app").
 /// On Windows `app` is the full path to the executable.

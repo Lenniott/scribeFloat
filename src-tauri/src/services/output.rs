@@ -216,6 +216,17 @@ impl OutputService {
         serde_json::from_str(&raw).context("parse dictate_history.json")
     }
 
+    /// Simulate Cmd/Ctrl+V into the currently focused application.
+    /// Requires Accessibility permission on macOS. Caller must write text to clipboard first.
+    pub fn paste_text(&self) -> Result<(), String> {
+        crate::platform::paste_impl::paste_text()
+    }
+
+    /// Simulate pressing Enter in the currently focused application.
+    pub fn send_enter(&self) -> Result<(), String> {
+        crate::platform::paste_impl::send_enter()
+    }
+
     /// Remove the session directory if it contains no files (i.e. recording was cancelled
     /// before any WAV was written). Silent no-op if the directory is non-empty or gone.
     pub fn delete_session_dir_if_empty(&self, dir: &Path) {

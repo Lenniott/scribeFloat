@@ -57,6 +57,19 @@ pub struct Config {
 
     #[serde(default)]
     pub onboarding_complete: bool,
+
+    /// Whisper model ID for Dictate. None = fall back to selected_model_id.
+    #[serde(default)]
+    pub dictate_model_id: Option<String>,
+
+    /// Simulate Cmd/Ctrl+V into the focused input after dictation.
+    /// Requires Accessibility permission on macOS.
+    #[serde(default = "default_true")]
+    pub dictate_auto_paste: bool,
+
+    /// Simulate Enter after paste (useful for chat/message apps). Default off.
+    #[serde(default)]
+    pub dictate_auto_enter: bool,
 }
 
 impl Default for Config {
@@ -77,6 +90,9 @@ impl Default for Config {
             theme_mode: ThemeMode::System,
             open_with_app_path: None,
             onboarding_complete: false,
+            dictate_model_id: None,
+            dictate_auto_paste: true,
+            dictate_auto_enter: false,
         }
     }
 }
@@ -206,6 +222,38 @@ pub struct PermissionStatus {
     pub can_request: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DictateState {
+    Idle,
+    Recording,
+    Transcribing,
+    Pasting,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DictateStateEvent {
+    pub state: DictateState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl DictateStateEvent {
+    pub fn new(state: DictateState) -> Self {
+        Self { state, progress: None, error: None }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DictateHistoryEntry {
+    pub id: String,
+    pub timestamp: String,
+    pub text: String,
 }
 
 impl ScribeStateEvent {

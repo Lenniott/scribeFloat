@@ -675,7 +675,7 @@ impl ScribeController {
 }
 
 /// Linear interpolation resampler. Good enough for speech at 16 kHz target.
-fn resample_linear(input: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
+pub(crate) fn resample_linear(input: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
     if from_rate == to_rate || input.is_empty() {
         return input.to_vec();
     }

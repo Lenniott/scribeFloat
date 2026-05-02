@@ -237,6 +237,40 @@ impl SettingsController {
             .map_err(|e| format!("failed to request permission for {kind}: {e}"))
     }
 
+    pub fn get_dictate_auto_paste(&self) -> bool {
+        self.config.get().dictate_auto_paste
+    }
+
+    pub fn set_dictate_auto_paste(&self, enabled: bool) -> Result<(), String> {
+        self.config
+            .update(|cfg| cfg.dictate_auto_paste = enabled)
+            .map_err(|e| format!("failed to persist dictate_auto_paste: {e}"))
+    }
+
+    pub fn get_dictate_auto_enter(&self) -> bool {
+        self.config.get().dictate_auto_enter
+    }
+
+    pub fn set_dictate_auto_enter(&self, enabled: bool) -> Result<(), String> {
+        self.config
+            .update(|cfg| cfg.dictate_auto_enter = enabled)
+            .map_err(|e| format!("failed to persist dictate_auto_enter: {e}"))
+    }
+
+    pub fn get_dictate_model_id(&self) -> Option<String> {
+        self.config.get().dictate_model_id
+    }
+
+    pub fn set_dictate_model_id(&self, model_id: Option<String>) -> Result<(), String> {
+        let model_id = model_id.and_then(|id| {
+            let trimmed = id.trim().to_string();
+            if trimmed.is_empty() { None } else { Some(trimmed) }
+        });
+        self.config
+            .update(|cfg| cfg.dictate_model_id = model_id)
+            .map_err(|e| format!("failed to persist dictate_model_id: {e}"))
+    }
+
     pub fn is_onboarding_complete(&self) -> bool {
         self.config.get().onboarding_complete
     }

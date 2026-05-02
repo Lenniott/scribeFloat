@@ -1,4 +1,4 @@
-use crate::types::{Note, Segment};
+use crate::types::{DictateHistoryEntry, Note, Segment};
 use anyhow::{Context, Result};
 use hound::{SampleFormat, WavSpec, WavWriter};
 use serde::Serialize;
@@ -182,6 +182,38 @@ impl OutputService {
     /// so that controllers do not call the platform layer directly.
     pub fn open_file_for_user(&self, path: &str, app: Option<&str>) -> Result<(), String> {
         crate::platform::open_file(path, app)
+    }
+
+    /// Prepend a new entry to `{save_folder}/dictate_history.json`.
+    /// Creates the file if it does not exist. The list is newest-first.
+    pub fn write_dictate_history_entry(&self, save_folder: &str, text: &str) -> Result<()> {
+        let path = PathBuf::from(save_folder).join("dictate_history.json");
+        let mut entries: Vec<DictateHistoryEntry> = if path.exists() {
+            let raw = std::fs::read_to_string(&path).context("read dictate_history.json")?;
+            serde_json::from_str(&raw).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        entries.insert(0, DictateHistoryEntry {
+            id: uuid::Uuid::new_v4().to_string(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            text: text.to_string(),
+        });
+        let json = serde_json::to_string_pretty(&entries)
+            .context("serialize dictate_history.json")?;
+        std::fs::write(&path, json).context("write dictate_history.json")?;
+        Ok(())
+    }
+
+    /// Read all entries from `{save_folder}/dictate_history.json` (newest-first).
+    /// Returns an empty list if the file does not exist.
+    pub fn read_dictate_history(&self, save_folder: &str) -> Result<Vec<DictateHistoryEntry>> {
+        let path = PathBuf::from(save_folder).join("dictate_history.json");
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let raw = std::fs::read_to_string(&path).context("read dictate_history.json")?;
+        serde_json::from_str(&raw).context("parse dictate_history.json")
     }
 
     /// Remove the session directory if it contains no files (i.e. recording was cancelled

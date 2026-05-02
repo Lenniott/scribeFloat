@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for app windows",
-  "windows": ["scribe", "settings"],
+  "windows": ["scribe", "settings", "dictate"],
   "permissions": [
     "core:default",
     "core:window:allow-close",

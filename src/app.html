@@ -8,6 +8,8 @@
     <script>
       // Apply saved theme before first paint to prevent flash-of-wrong-theme.
       // Mirrors the logic in theme.ts — keep in sync if ThemeMode changes.
+      // Inline background/--sf-* are cleared on first applyThemeMode() so app.css
+      // html { background-color: var(--sf-canvas) } tracks runtime theme toggles.
       try {
         var saved = localStorage.getItem('sf_theme_mode') || 'system';
         var resolved = saved === 'dark' ? 'dark'

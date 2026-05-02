@@ -10,7 +10,7 @@
  * Tailwind v4 @theme inline stamps values onto every element via the * selector
  * inside @layer theme, which prevents CSS inheritance from propagating theme
  * overrides. By using var(--sf-*) forwarding, @theme inline still registers
- * the utility class names (bg-void, text-on-surface, etc.) while the actual
+ * the utility class names (bg-canvas, text-fg, etc.) while the actual
  * color values remain inheritable from :root / [data-theme].
  */
 @theme inline {
@@ -20,23 +20,25 @@
   --font-mono: "Geist Mono", ui-monospace, monospace;
 
   /* ── Colors — forwarded via var() so :root / [data-theme] overrides work ── */
-  --color-void:              var(--sf-void);
-  --color-primary:           var(--sf-primary);
-  --color-on-primary:        var(--sf-on-primary);
-  --color-secondary:         var(--sf-secondary);
-  --color-on-secondary:      var(--sf-on-secondary);
-  --color-tertiary:          var(--sf-tertiary);
-  --color-on-tertiary:       var(--sf-on-tertiary);
-  --color-error:             var(--sf-error);
-  --color-on-error:          var(--sf-on-error);
-  --color-green:             var(--sf-green);
-  --color-surface-lowest:    var(--sf-surface-lowest);
-  --color-surface-low:       var(--sf-surface-low);
-  --color-surface-high:      var(--sf-surface-high);
-  --color-surface-highest:   var(--sf-surface-highest);
-  --color-on-surface:        var(--sf-on-surface);
-  --color-on-surface-dim:    var(--sf-on-surface-dim);
-  --color-on-surface-faint:  var(--sf-on-surface-faint);
+  --color-canvas:          var(--sf-canvas);
+  --color-panel:           var(--sf-panel);
+  --color-card:            var(--sf-card);
+  --color-fill:            var(--sf-fill);
+  --color-rim:             var(--sf-rim);
+  --color-fg:              var(--sf-fg);
+  --color-fg-dim:          var(--sf-fg-dim);
+  --color-fg-muted:        var(--sf-fg-muted);
+  --color-brand:           var(--sf-brand);
+  --color-on-brand:        var(--sf-on-brand);
+  --color-brand-hover:     var(--sf-brand-hover);
+  --color-on-brand-hover:  var(--sf-on-brand-hover);
+  --color-warning:         var(--sf-warning);
+  --color-on-warning:      var(--sf-on-warning);
+  --color-active:          var(--sf-active);
+  --color-on-active:       var(--sf-on-active);
+  --color-destructive:     var(--sf-destructive);
+  --color-on-destructive:  var(--sf-on-destructive);
+  --color-success:         var(--sf-success);
 
   /* ── Type scale (size + paired line-height) ────────────────────────────── */
   --text-display-lg:              3.5rem;
@@ -71,100 +73,153 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    Color values — non-layered so they beat @layer theme output from @theme.
    :root provides dark defaults; [data-theme] and @media override as needed.
+
+   Brand source variables:
+     --brand-hue   change to shift ALL brand-tinted colors at once
+     --canvas-l    change to shift the entire dark-mode surface scale
+
+   Dark surfaces derive via calc — edit --canvas-l and all 5 steps move together.
+   Light surfaces use absolute values (direction inverts; calc would fight itself).
    ───────────────────────────────────────────────────────────────────────────── */
 
 /* Dark defaults */
 :root {
   color-scheme: dark;
-  --sf-void:              oklch(0.20 0 0);
-  --sf-primary:           oklch(0.70 0.1867 47.6);
-  --sf-on-primary:        oklch(0.20 0 0);
-  --sf-secondary:         oklch(0.815 0.19 77);
-  --sf-on-secondary:      oklch(0.20 0 0);
-  --sf-tertiary:          oklch(0.72 0.16 240);
-  --sf-on-tertiary:       oklch(0.20 0 0);
-  --sf-error:             oklch(0.53 0.21 26.5);
-  --sf-on-error:          oklch(0.93 0.0044 286.28);
-  --sf-green:             oklch(0.609 0.2158 141.64);
-  --sf-surface-lowest:    oklch(0.24 0 0);
-  --sf-surface-low:       oklch(0.28 0 0);
-  --sf-surface-high:      oklch(0.32 0 0);
-  --sf-surface-highest:   oklch(0.40 0 0);
-  --sf-on-surface:        oklch(0.93 0.0044 286.28);
-  --sf-on-surface-dim:    oklch(0.60 0 0);
-  --sf-on-surface-faint:  oklch(0.40 0 0);
-  --sf-shadow-ambient:    0 4px 32px oklch(0 0 0 / 0.5);
+
+  /* Single-source knobs */
+  --brand-hue: 250;
+  --canvas-l:  0.20;
+
+  /* Surfaces — derived from --canvas-l in dark mode */
+  --sf-canvas:  oklch(var(--canvas-l) 0 0);
+  --sf-panel:   oklch(calc(var(--canvas-l) + 0.04) 0 0);
+  --sf-card:    oklch(calc(var(--canvas-l) + 0.08) 0 0);
+  --sf-fill:    oklch(calc(var(--canvas-l) + 0.12) 0 0);
+  --sf-rim:     oklch(calc(var(--canvas-l) + 0.20) 0 0);
+
+  /* Foreground text */
+  --sf-fg:       oklch(0.93 0.0044 286.28);
+  --sf-fg-dim:   oklch(0.60 0 0);
+  --sf-fg-muted: oklch(0.40 0 0);
+
+  /* Brand — all tints share --brand-hue */
+  --sf-brand:    oklch(0.700 0.16 var(--brand-hue));
+  --sf-on-brand: oklch(0.20 0 0);
+  --sf-brand-hover: oklch(0.400 0.16 var(--brand-hue));
+  --sf-on-brand-hover: oklch(0.93 0 0);
+  /* State colors */
+  --sf-warning:        oklch(0.600 0.16 85);
+  --sf-on-warning:     oklch(0.20 0 0);
+  --sf-active:         oklch(0.72 0.16 240);
+  --sf-on-active:      oklch(0.20 0 0);
+  --sf-destructive:    oklch(0.53 0.21 26.5);
+  --sf-on-destructive: oklch(0.93 0.0044 286.28);
+  --sf-success:        oklch(0.609 0.2158 141.64);
+
+  --sf-shadow-ambient: 0 4px 32px oklch(0 0 0 / 0.5);
 }
 
 /* Explicit dark */
 [data-theme="dark"] {
   color-scheme: dark;
-  --sf-void:              oklch(0.20 0 0);
-  --sf-primary:           oklch(0.70 0.1867 47.6);
-  --sf-on-primary:        oklch(0.20 0 0);
-  --sf-secondary:         oklch(0.815 0.19 77);
-  --sf-on-secondary:      oklch(0.20 0 0);
-  --sf-tertiary:          oklch(0.72 0.16 240);
-  --sf-on-tertiary:       oklch(0.20 0 0);
-  --sf-error:             oklch(0.53 0.21 26.5);
-  --sf-on-error:          oklch(0.93 0.0044 286.28);
-  --sf-green:             oklch(0.609 0.2158 141.64);
-  --sf-surface-lowest:    oklch(0.24 0 0);
-  --sf-surface-low:       oklch(0.28 0 0);
-  --sf-surface-high:      oklch(0.32 0 0);
-  --sf-surface-highest:   oklch(0.40 0 0);
-  --sf-on-surface:        oklch(0.93 0.0044 286.28);
-  --sf-on-surface-dim:    oklch(0.60 0 0);
-  --sf-on-surface-faint:  oklch(0.40 0 0);
-  --sf-shadow-ambient:    0 4px 32px oklch(0 0 0 / 0.5);
+
+  --brand-hue: 250;
+  --canvas-l:  0.20;
+
+  --sf-canvas:  oklch(var(--canvas-l) 0 0);
+  --sf-panel:   oklch(calc(var(--canvas-l) + 0.04) 0 0);
+  --sf-card:    oklch(calc(var(--canvas-l) + 0.08) 0 0);
+  --sf-fill:    oklch(calc(var(--canvas-l) + 0.12) 0 0);
+  --sf-rim:     oklch(calc(var(--canvas-l) + 0.20) 0 0);
+
+  --sf-fg:       oklch(0.93 0.0044 286.28);
+  --sf-fg-dim:   oklch(0.60 0 0);
+  --sf-fg-muted: oklch(0.40 0 0);
+
+  --sf-brand:    oklch(0.700 0.16 var(--brand-hue));
+  --sf-on-brand: oklch(0.20 0 0);
+  --sf-brand-hover: oklch(0.400 0.16 var(--brand-hue));
+  --sf-on-brand-hover: oklch(0.93 0 0);
+
+  --sf-warning:        oklch(0.600 0.16 85);
+  --sf-on-warning:     oklch(0.20 0 0);
+  --sf-active:         oklch(0.72 0.16 240);
+  --sf-on-active:      oklch(0.20 0 0);
+  --sf-destructive:    oklch(0.53 0.21 26.5);
+  --sf-on-destructive: oklch(0.93 0.0044 286.28);
+  --sf-success:        oklch(0.609 0.2158 141.64);
+
+  --sf-shadow-ambient: 0 4px 32px oklch(0 0 0 / 0.5);
 }
 
 /* Explicit light */
 [data-theme="light"] {
   color-scheme: light;
-  --sf-void:              oklch(0.98 0 0);
-  --sf-primary:           oklch(0.58 0.18 47.6);
-  --sf-on-primary:        oklch(0.98 0 0);
-  --sf-secondary:         oklch(0.52 0.16 77);
-  --sf-on-secondary:      oklch(0.98 0 0);
-  --sf-tertiary:          oklch(0.50 0.16 240);
-  --sf-on-tertiary:       oklch(0.98 0 0);
-  --sf-error:             oklch(0.48 0.20 26.5);
-  --sf-on-error:          oklch(0.98 0 0);
-  --sf-green:             oklch(0.45 0.18 141.64);
-  --sf-surface-lowest:    oklch(0.96 0 0);
-  --sf-surface-low:       oklch(0.92 0 0);
-  --sf-surface-high:      oklch(0.87 0 0);
-  --sf-surface-highest:   oklch(0.80 0 0);
-  --sf-on-surface:        oklch(0.18 0 0);
-  --sf-on-surface-dim:    oklch(0.45 0 0);
-  --sf-on-surface-faint:  oklch(0.65 0 0);
-  --sf-shadow-ambient:    0 4px 32px oklch(0 0 0 / 0.12);
+
+  /* Light surfaces count downward from near-white */
+  --sf-canvas:  oklch(0.98 0 0);
+  --sf-panel:   oklch(0.96 0 0);
+  --sf-card:    oklch(0.92 0 0);
+  --sf-fill:    oklch(0.87 0 0);
+  --sf-rim:     oklch(0.80 0 0);
+
+  --sf-fg:       oklch(0.18 0 0);
+  --sf-fg-dim:   oklch(0.45 0 0);
+  --sf-fg-muted: oklch(0.65 0 0);
+
+  /* --brand-hue inherited from :root */
+  --sf-brand:    oklch(0.500 0.16 var(--brand-hue));
+  --sf-on-brand: oklch(0.98 0 0);
+  --sf-brand-hover: oklch(0.400 0.16 var(--brand-hue));
+  --sf-on-brand-hover: oklch(0.93 0 0);
+
+  --sf-warning:        oklch(0.52 0.16 77);
+  --sf-on-warning:     oklch(0.98 0 0);
+  --sf-active:         oklch(0.50 0.16 240);
+  --sf-on-active:      oklch(0.98 0 0);
+  --sf-destructive:    oklch(0.48 0.20 26.5);
+  --sf-on-destructive: oklch(0.98 0 0);
+  --sf-success:        oklch(0.45 0.18 141.64);
+
+  --sf-shadow-ambient: 0 4px 32px oklch(0 0 0 / 0.12);
 }
 
 /* System preference fallback (no explicit data-theme set) */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     color-scheme: light;
-    --sf-void:              oklch(0.98 0 0);
-    --sf-primary:           oklch(0.58 0.18 47.6);
-    --sf-on-primary:        oklch(0.98 0 0);
-    --sf-secondary:         oklch(0.52 0.16 77);
-    --sf-on-secondary:      oklch(0.98 0 0);
-    --sf-tertiary:          oklch(0.50 0.16 240);
-    --sf-on-tertiary:       oklch(0.98 0 0);
-    --sf-error:             oklch(0.48 0.20 26.5);
-    --sf-on-error:          oklch(0.98 0 0);
-    --sf-green:             oklch(0.45 0.18 141.64);
-    --sf-surface-lowest:    oklch(0.96 0 0);
-    --sf-surface-low:       oklch(0.92 0 0);
-    --sf-surface-high:      oklch(0.87 0 0);
-    --sf-surface-highest:   oklch(0.80 0 0);
-    --sf-on-surface:        oklch(0.18 0 0);
-    --sf-on-surface-dim:    oklch(0.45 0 0);
-    --sf-on-surface-faint:  oklch(0.65 0 0);
-    --sf-shadow-ambient:    0 4px 32px oklch(0 0 0 / 0.12);
+
+    --sf-canvas:  oklch(0.98 0 0);
+    --sf-panel:   oklch(0.96 0 0);
+    --sf-card:    oklch(0.92 0 0);
+    --sf-fill:    oklch(0.87 0 0);
+    --sf-rim:     oklch(0.80 0 0);
+
+    --sf-fg:       oklch(0.18 0 0);
+    --sf-fg-dim:   oklch(0.45 0 0);
+    --sf-fg-muted: oklch(0.65 0 0);
+
+    --sf-brand:    oklch(0.500 0.16 var(--brand-hue));
+    --sf-on-brand: oklch(0.98 0 0);
+    --sf-brand-hover: oklch(0.400 0.16 var(--brand-hue));
+    --sf-on-brand-hover: oklch(0.93 0 0);
+
+    --sf-warning:        oklch(0.52 0.16 77);
+    --sf-on-warning:     oklch(0.98 0 0);
+    --sf-active:         oklch(0.50 0.16 240);
+    --sf-on-active:      oklch(0.98 0 0);
+    --sf-destructive:    oklch(0.48 0.20 26.5);
+    --sf-on-destructive: oklch(0.98 0 0);
+    --sf-success:        oklch(0.45 0.18 141.64);
+
+    --sf-shadow-ambient: 0 4px 32px oklch(0 0 0 / 0.12);
   }
+}
+
+/* Viewport fill — uses tokens from :root / [data-theme]. Boot script sets inline
+   fills until applyThemeMode() clears them (see theme.ts). */
+html {
+  background-color: var(--sf-canvas);
 }
 
 
@@ -195,22 +250,29 @@
   }
 
   /* Surface shortcuts */
-  .sf-panel      { @apply bg-surface-lowest rounded-md; }
-  .sf-card       { @apply bg-surface-low rounded-md; }
-  .sf-input      { @apply bg-surface-lowest border border-surface-high rounded-md text-on-surface font-sans text-label-md; }
-  .sf-divider    { @apply border-t border-surface-low; }
+  .sf-panel   { @apply bg-panel rounded-md; }
+  .sf-card    { @apply bg-card rounded-md; }
+  .sf-input   { @apply bg-panel border border-fill rounded-md text-fg font-sans text-label-md; }
+  .sf-divider { @apply border-t border-card; }
 
   /* Button variants */
   .sf-btn-primary {
-    @apply bg-primary text-on-primary font-mono text-label-md tracking-stamped rounded-md px-3 py-1.5;
+    @apply bg-brand text-on-brand font-mono text-label-md tracking-stamped rounded-md px-3 py-1.5;
   }
   .sf-btn-secondary {
-    @apply border border-secondary text-secondary bg-transparent font-sans text-label-md rounded-md px-3 py-1.5;
+    @apply border border-warning text-warning bg-transparent font-sans text-label-md rounded-md px-3 py-1.5;
   }
   .sf-btn-ghost {
-    @apply bg-transparent text-on-surface font-sans text-label-md rounded-md px-3 py-1.5;
+    @apply bg-transparent text-fg font-sans text-label-md rounded-md px-3 py-1.5;
   }
   .sf-btn-destructive {
-    @apply bg-error text-on-error font-sans text-label-md rounded-md px-3 py-1.5;
+    @apply bg-destructive text-on-destructive font-sans text-label-md rounded-md px-3 py-1.5;
+  }
+}
+
+@layer base {
+  /* Replace UA outline with design-system ring */
+  :focus {
+    @apply outline-none ring-2 ring-warning;
   }
 }

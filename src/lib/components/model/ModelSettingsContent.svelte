@@ -81,31 +81,31 @@
 	{/if}
 
 	{#if selectedModel}
-		<p class="text-body-md text-on-surface/70">
+		<p class="text-body-md text-fg/70">
 			Active Scribe model:
-			<span class="font-normal text-on-surface">{selectedModel.label}</span>
+			<span class="font-normal text-fg">{selectedModel.label}</span>
 		</p>
 	{:else}
-		<p class="text-body-md text-on-surface/70">No model selected yet.</p>
+		<p class="text-body-md text-fg/70">No model selected yet.</p>
 	{/if}
 
 	{#if modelStore.error}
-		<p class="rounded-md border border-surface-high px-3 py-2 text-body-md text-error">
+		<p class="rounded-md border border-fill px-3 py-2 text-body-md text-destructive">
 			{modelStore.error}
 		</p>
 	{/if}
 	<div class="space-y-3">
 		{#each modelStore.models as model (model.id)}
 			<div
-				class={`rounded-md border ${model.selected ? 'border-surface-highest' : 'border-surface-high'} px-3 py-3`}
+				class={`rounded-md border ${model.selected ? 'border-fillest' : 'border-fill'} px-3 py-3`}
 			>
 				<div class="flex items-center">
 					<div class="flex min-w-0 grow items-center gap-2">
-						<p class="text-label-md font-normal text-on-surface">
+						<p class="text-label-md font-normal text-fg">
 							{model.label}
 						</p>
 						{#if modelStore.statusByModel[model.id]}
-							<p class="text-label-md text-on-surface/70">
+							<p class="text-label-md text-fg/70">
 								{modelStore.statusByModel[model.id]}
 							</p>
 						{/if}
@@ -113,7 +113,7 @@
 					<div class="flex items-center gap-2">
 						{#if model.downloaded}
 							{#if model.selected}
-								<span class="flex size-6 items-center justify-center p-1 text-on-surface">
+								<span class="flex size-6 items-center justify-center p-1 text-fg">
 									<CircleCheckBig />
 								</span>
 							{:else}
@@ -134,13 +134,13 @@
 					</div>
 				</div>
 				{#if !model.downloaded && (modelStore.downloadingByModel[model.id] || (modelStore.progressByModel[model.id] ?? 0) > 0)}
-					<div class="h-2 w-full overflow-hidden rounded bg-surface-high">
+					<div class="h-2 w-full overflow-hidden rounded bg-fill">
 						<div
 							class="h-full bg-on-surface-dim transition-all"
 							style={`width:${Math.round((modelStore.progressByModel[model.id] ?? 0) * 100)}%`}
 						></div>
 					</div>
-					<p class="mt-1 text-label-sm text-on-surface/70">
+					<p class="mt-1 text-label-sm text-fg/70">
 						{Math.round((modelStore.progressByModel[model.id] ?? 0) * 100)}%
 					</p>
 				{/if}

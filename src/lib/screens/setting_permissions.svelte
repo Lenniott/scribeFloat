@@ -73,7 +73,7 @@
 <section class="space-y-3 h-full">
   <h2 class="sf-headline-sm">Permissions</h2>
   {#each statuses as status (status.kind)}
-    <div class="rounded-md border border-surface-high px-3 py-2 transition bg-surface-low">
+    <div class="rounded-md border border-fill px-3 py-2 transition bg-card">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-2">
           <div>
@@ -83,17 +83,17 @@
           </div>
         </div>
         {#if status.granted}
-          <div class="flex gap-2 items-center text-green">
+          <div class="flex gap-2 items-center text-success">
 			<CircleCheckBig class='size-4'/>
             <span class="text-label-sm font-medium">Granted</span>
           </div>
         {:else if status.can_request}
           <div class="flex gap-2">
             <span
-              class="size-4 shrink-0 rounded-full border-2 border-surface-highest"
+              class="size-4 shrink-0 rounded-full border-2 border-fillest"
             ></span>
             <Button
-              variant="secondary"
+              variant="normal"
               disabled={requestingKind === status.kind}
               onclick={() => grantPermission(status.kind)}
             >
@@ -104,22 +104,22 @@
           </div>
         {:else}
           <div class="flex gap-2">
-            <span class="text-label-sm text-on-surface/50">Not supported</span>
+            <span class="text-label-sm text-fg/50">Not supported</span>
             <span
-              class="size-4 shrink-0 rounded-full border-2 border-surface-high"
+              class="size-4 shrink-0 rounded-full border-2 border-fill"
             ></span>
           </div>
         {/if}
       </div>
       {#if !status.granted && status.can_request && status.kind !== "microphone"}
-        <p class="mt-1.5 text-label-sm text-on-surface/50">
+        <p class="mt-1.5 text-label-sm text-fg/50">
           {status.kind === "accessibility"
             ? "System Settings will open → Privacy & Security → Accessibility. Enable the toggle next to this app."
             : "System Settings will open → Privacy & Security → Input Monitoring. Enable the toggle next to this app."}
         </p>
       {/if}
       {#if status.hint}
-        <p class="mt-1.5 text-label-sm text-on-surface/50">
+        <p class="mt-1.5 text-label-sm text-fg/50">
           {status.hint}
         </p>
       {/if}

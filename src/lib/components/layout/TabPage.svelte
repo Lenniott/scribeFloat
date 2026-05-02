@@ -44,15 +44,15 @@
 	let activeTab = $derived(tabs.find((tab) => tab.id === activeId));
 
 	const wrapperClass: Record<Mode, string> = {
-		panel: "rounded-md bg-surface-low shadow-ambient",
-		section: "rounded-md border border-surface-low/60 bg-surface-low/50",
+		panel: "rounded-md bg-card shadow-ambient",
+		section: "rounded-md border border-card/60 bg-card/50",
 	};
 
 	const tabListClass: Record<Mode, string> = {
 		panel:
-			"flex items-center gap-1 overflow-x-auto border-b border-surface-low/60 bg-surface-lowest p-2",
+			"flex items-center gap-1 overflow-x-auto border-b border-card/60 bg-panel p-2",
 		section:
-			"flex items-center gap-1 overflow-x-auto border-b border-surface-low/60 bg-surface-lowest/70 p-1.5",
+			"flex items-center gap-1 overflow-x-auto border-b border-card/60 bg-panel/70 p-1.5",
 	};
 	const tabButtonClass: Record<Mode, string> = {
 		panel: "px-3 py-2 text-label-md",
@@ -74,8 +74,8 @@
 				aria-controls={`tab-panel-${tab.id}`}
 				disabled={tab.disabled}
 				class="{tabButtonClass[mode]} rounded-sm font-normal tracking-stamped whitespace-nowrap uppercase transition-colors disabled:opacity-40 {activeId === tab.id
-					? 'bg-surface-highest text-on-surface'
-					: 'text-on-surface/70 hover:bg-surface-high hover:text-on-surface'}"
+					? 'bg-fillest text-fg'
+					: 'text-fg/70 hover:bg-fill hover:text-fg'}"
 				onclick={() => (activeId = tab.id)}
 			>
 				{tab.label}

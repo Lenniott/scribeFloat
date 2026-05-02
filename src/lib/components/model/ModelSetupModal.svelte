@@ -24,6 +24,6 @@
 	<ModelSettingsContent showHeader={false} showToast={false} bind:ready={canClose} />
 
 	{#snippet footer()}
-		<Button variant="secondary" disabled={!canClose} onclick={onClose}>Close</Button>
+		<Button variant="normal" disabled={!canClose} onclick={onClose}>Close</Button>
 	{/snippet}
 </Modal>

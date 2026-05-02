@@ -33,10 +33,9 @@
 		"inline-flex shrink-0 items-center justify-center rounded-md cursor-pointer transition-[opacity,background-color,color] disabled:pointer-events-none disabled:opacity-40";
 
 	const variantClass: Record<Variant, string> = {
-		primary: "bg-primary text-on-primary hover:brightness-110",
-		destructive:
-			"bg-transparent text-error hover:bg-error hover:text-on-error",
-		normal: "bg-transparent text-on-surface hover:bg-surface-high",
+		primary: "bg-brand text-on-brand tracking-stamped hover:bg-brand-hover hover:text-on-brand-hover",
+		destructive: "bg-transparent text-destructive hover:bg-destructive hover:text-on-destructive",
+		normal: "bg-transparent text-fg font-sans hover:bg-card",
 	};
 
 	const sizeClass: Record<Size, { button: string; icon: string }> = {

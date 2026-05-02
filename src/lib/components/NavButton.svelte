@@ -18,8 +18,8 @@
 		[
 			base,
 			active
-				? "bg-surface-highest text-on-surface before:absolute before:top-0 before:left-0 before:h-full before:w-1 before:bg-on-surface/40"
-				: "text-on-surface/60 hover:bg-surface-high hover:text-on-surface",
+				? "bg-fillest text-fg before:absolute before:top-0 before:left-0 before:h-full before:w-1 before:bg-on-surface/40"
+				: "text-fg/60 hover:bg-fill hover:text-fg",
 		].join(" "),
 	);
 </script>

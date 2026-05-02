@@ -101,13 +101,13 @@
 	<div class="flex flex-col gap-1.5 text-left">
 		<label
 			for="speaker-device-select"
-			class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase"
+			class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase"
 		>
 			Speaker capture device
 		</label>
 		<select
 			id="speaker-device-select"
-			class="h-8 rounded-md border-0 border-b border-transparent bg-surface-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:border-b-surface-highest focus:bg-surface-high focus:ring-0 focus:outline-none"
+			class="h-8 rounded-md border-0 border-b border-transparent bg-panel py-2 pr-8 pl-2 text-body-md text-fg"
 			bind:value={preferredSpeakerDevice}
 		>
 			<option value="">System default</option>
@@ -115,7 +115,7 @@
 				<option value={device}>{device}</option>
 			{/each}
 		</select>
-		<p class="text-label-sm text-on-surface/50">
+		<p class="text-label-sm text-fg/50">
 			Pick your Audio MIDI multi-output device if it appears here.
 		</p>
 	</div>
@@ -127,7 +127,7 @@
 	<div class="flex items-center gap-3">
 		<Button variant="primary" onclick={saveAll}>Save</Button>
 		{#if message}
-			<p class="text-label-sm text-on-surface/70">{message}</p>
+			<p class="text-label-sm text-fg/70">{message}</p>
 		{/if}
 	</div>
 </section>

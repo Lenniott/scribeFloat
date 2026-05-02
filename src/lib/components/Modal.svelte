@@ -32,13 +32,13 @@
 			role="dialog"
 			aria-modal="true"
 			aria-label={title}
-			class={`flex max-h-full w-full ${maxWidthClass} flex-col rounded-md border border-surface-low/20 bg-surface-lowest px-5 py-4 shadow-ambient`}
+			class={`flex max-h-full w-full ${maxWidthClass} flex-col rounded-md border border-card/20 bg-panel px-5 py-4 shadow-ambient`}
 		>
 			<header class="mb-3 flex items-start justify-between gap-4">
 				<div>
-					<h2 class="sf-headline-sm text-on-surface">{title}</h2>
+					<h2 class="sf-headline-sm text-fg">{title}</h2>
 					{#if description}
-						<p class="text-body-md text-on-surface/70">{description}</p>
+						<p class="text-body-md text-fg/70">{description}</p>
 					{/if}
 				</div>
 				{#if showCloseButton}

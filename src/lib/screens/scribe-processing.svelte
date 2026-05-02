@@ -166,11 +166,11 @@
   });
 </script>
 
-<div class="mx-auto flex flex-col text-on-surface">
-  <section class="flex h-screen flex-col overflow-hidden bg-surface-lowest">
+<div class="mx-auto flex flex-col text-fg">
+  <section class="flex h-screen flex-col overflow-hidden bg-panel">
     <header class="flex min-h-14 items-end justify-between border-b border-b-surface-low px-5 py-2">
       <div class="flex min-w-0 flex-1 flex-col gap-1">
-        <p class="font-mono text-label-sm tracking-stamped text-on-surface/55 uppercase">
+        <p class="font-mono text-label-sm tracking-stamped text-fg/55 uppercase">
           {title || "Recording"}
         </p>
         <h1 class="sf-headline-sm">
@@ -200,7 +200,7 @@
         <div class="flex flex-col gap-4">
           {#if phase === "done"}
             <div class="flex items-center justify-between">
-              <p class="text-body-md text-on-surface/80">Transcript saved.</p>
+              <p class="text-body-md text-fg/80">Transcript saved.</p>
               <div class="flex gap-2">
                 <IconButton
                   aria-label="copy transcript to clipboard"
@@ -217,24 +217,24 @@
               </div>
             </div>
           {:else if phase === "no_model"}
-            <p class="text-body-md text-on-surface/80">
+            <p class="text-body-md text-fg/80">
               No transcription model is installed. Your recording was saved as
               a WAV file and can be transcribed once a model is downloaded.
             </p>
             <Button
-              variant="secondary"
+              variant="normal"
               onclick={() => void invoke("settings_show_window").catch(() => {})}
             >
               Open Settings
             </Button>
           {:else}
-            <p class="text-body-md text-error">{errorMessage}</p>
+            <p class="text-body-md text-destructive">{errorMessage}</p>
           {/if}
 
           {#if displayPath}
             <button class="cursor-pointer group p-0 text-left" onclick={openTranscript}>
               <p
-                class="truncate font-mono text-body-md text-on-surface underline decoration-on-surface-dim group-hover:underline-offset-2"
+                class="truncate font-mono text-body-md text-fg underline decoration-on-surface-dim group-hover:underline-offset-2"
                 title={displayPath}
               >
                 {displayPath}
@@ -247,10 +247,10 @@
 
     <footer class="flex flex-wrap justify-end gap-3 border-t border-t-surface-low px-5 py-3">
       {#if phase === "done"}
-        <Button variant="secondary" onclick={onRecordAgain}>Record Again</Button>
+        <Button variant="normal" onclick={onRecordAgain}>Record Again</Button>
       {:else if phase === "no_model"}
         <Button
-          variant="secondary"
+          variant="normal"
           disabled={!displayPath}
           onclick={() => displayPath && navigator.clipboard.writeText(displayPath)}
         >Copy WAV Path</Button>

@@ -397,8 +397,8 @@
 	});
 </script>
 
-<div class="mx-auto flex flex-col gap-4 text-on-surface">
-	<section class="flex h-screen flex-col overflow-hidden bg-surface-lowest">
+<div class="mx-auto flex flex-col gap-4 text-fg">
+	<section class="flex h-screen flex-col overflow-hidden bg-panel">
 
 		<!-- Header -->
 		<header class="flex min-h-14 items-end justify-between border-b border-b-surface-low px-5 py-2">
@@ -414,7 +414,7 @@
 					onclick={openSettingsWindow}
 				/>
 				{#if modelStore.activeDownloadModelId}
-					<span class="font-mono text-label-sm text-on-surface/60 uppercase tracking-stamped">
+					<span class="font-mono text-label-sm text-fg/60 uppercase tracking-stamped">
 						Model {Math.round((modelStore.progressByModel[modelStore.activeDownloadModelId] ?? 0) * 100)}%
 					</span>
 				{/if}
@@ -449,7 +449,7 @@
 						<AccordionItem id="basic" title="Basic">
 							<div class="space-y-4">
 								<div class="flex flex-col gap-1.5 text-left">
-									<label for="mic-select" class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase">
+									<label for="mic-select" class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
 										Selected mic
 									</label>
 									<select
@@ -470,7 +470,7 @@
 												await startRecording();
 											}
 										}}
-										class="h-8 rounded-md border-0 border-b border-transparent bg-surface-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:border-b-surface-highest focus:bg-surface-high focus:ring-0 focus:outline-none"
+										class="h-8 rounded-md border-0 border-b border-transparent bg-panel py-2 pr-8 pl-2 text-body-md text-fg"
 									>
 										{#each micOptions as opt (opt.value)}
 											<option value={opt.value}>{opt.label}</option>
@@ -479,7 +479,7 @@
 								</div>
 								{#if downloadedModelOptions.length > 0}
 									<div class="flex flex-col gap-1.5 text-left">
-										<label for="model-select" class="font-mono text-label-sm font-normal tracking-stamped text-on-surface/80 uppercase">
+										<label for="model-select" class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
 											Model
 										</label>
 										<select
@@ -490,7 +490,7 @@
 												selectedModelId = id;
 												await modelStore.select(id);
 											}}
-											class="h-8 rounded-md border-0 border-b border-transparent bg-surface-lowest py-2 pr-8 pl-2 text-body-md text-on-surface focus:border-b-surface-highest focus:bg-surface-high focus:ring-0 focus:outline-none"
+											class="h-8 rounded-md border-0 border-b border-transparent bg-panel py-2 pr-8 pl-2 text-body-md text-fg"
 										>
 											{#each downloadedModelOptions as opt (opt.value)}
 												<option value={opt.value}>{opt.label}</option>
@@ -537,17 +537,17 @@
 				<!-- Footer -->
 				<footer class="flex flex-col gap-2 py-3">
 					{#if speakerWarning}
-						<p class="text-label-sm text-on-surface/60">{speakerWarning}</p>
+						<p class="text-label-sm text-fg/60">{speakerWarning}</p>
 					{/if}
 					{#if saveFolder}
-						<p class="truncate text-label-sm text-on-surface/40" title={saveFolder}>
+						<p class="truncate text-label-sm text-fg/40" title={saveFolder}>
 							Saving to {saveFolder}
 						</p>
 					{/if}
 					<div class="flex items-center gap-3">
 					{#if phase === 'idle'}
 						{#if autoStart}
-							<span class="font-mono text-label-sm text-on-surface/50 uppercase tracking-stamped">
+							<span class="font-mono text-label-sm text-fg/50 uppercase tracking-stamped">
 								Starting…
 							</span>
 						{:else}
@@ -559,11 +559,11 @@
 
 					{:else if phase === 'no_model'}
 						<div class="flex flex-col gap-2">
-							<p class="text-label-sm text-on-surface/80">
+							<p class="text-label-sm text-fg/80">
 								No transcription model selected. Install and select one in Settings → Models.
 							</p>
 							<div class="flex flex-wrap gap-2">
-								<Button variant="secondary" onclick={() => (modelSetupOpen = true)}>
+								<Button variant="normal" onclick={() => (modelSetupOpen = true)}>
 									Model quick setup
 								</Button>
 								<Button variant="ghost" onclick={openSettingsWindow}>Full settings</Button>
@@ -572,12 +572,12 @@
 
 					{:else if phase === 'error'}
 						<div class="flex flex-col gap-2">
-							<p class="text-label-sm text-error">{errorMessage}</p>
+							<p class="text-label-sm text-destructive">{errorMessage}</p>
 							<div class="flex flex-wrap gap-2">
 								{#if errorMessage.includes('Microphone')}
-									<Button variant="secondary" onclick={openSettingsWindow}>Open Settings</Button>
+									<Button variant="normal" onclick={openSettingsWindow}>Open Settings</Button>
 								{/if}
-								<Button variant="secondary" onclick={recordAgain}>Try Again</Button>
+								<Button variant="normal" onclick={recordAgain}>Try Again</Button>
 							</div>
 						</div>
 					{/if}
@@ -587,9 +587,9 @@
 
 			<!-- Right: notes -->
 			<div
-				class="flex min-h-0 flex-col border-l border-l-surface-low bg-surface-lowest p-3"
+				class="flex min-h-0 flex-col border-l border-l-surface-low bg-panel p-3"
 			>
-				<p class="mb-2 font-mono text-label-md tracking-stamped text-on-surface/80 uppercase">
+				<p class="mb-2 font-mono text-label-md tracking-stamped text-fg/80 uppercase">
 					add notes
 				</p>
 				<div class="min-h-0 flex-1 overflow-y-auto">
@@ -621,7 +621,7 @@
 	{#snippet footer()}
 		<div class="flex gap-2">
 			<Button
-				variant="secondary"
+				variant="normal"
 				disabled={discardInProgress}
 				onclick={() => (discardConfirmOpen = false)}
 			>
@@ -652,12 +652,12 @@
 	}}
 >
 	{#if closeRecordingError}
-		<p class="mb-3 text-label-sm text-error">{closeRecordingError}</p>
+		<p class="mb-3 text-label-sm text-destructive">{closeRecordingError}</p>
 	{/if}
 	{#snippet footer()}
 		<div class="flex flex-wrap justify-end gap-2">
 			<Button
-				variant="secondary"
+				variant="normal"
 				disabled={closeRecordingFlowBusy}
 				onclick={() => {
 					closeRecordingChoiceOpen = false;

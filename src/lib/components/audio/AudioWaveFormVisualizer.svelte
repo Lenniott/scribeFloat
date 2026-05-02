@@ -199,7 +199,7 @@
 
 <div
 	bind:this={wrap}
-	class="relative overflow-hidden rounded-md bg-surface-low {className}"
+	class="relative overflow-hidden rounded-md bg-card {className}"
 	style="width: {currentPreset().width}px; height: {currentPreset().height}px;"
 >
 	<canvas bind:this={canvas} class="block h-full w-full" aria-hidden="true"></canvas>

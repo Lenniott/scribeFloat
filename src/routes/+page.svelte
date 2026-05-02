@@ -12,7 +12,7 @@
 
 	let appScreen = $state<AppScreen>("recording");
 	let processingTitle = $state("Recording");
-	let autoStartRecording = $state(true);
+	let autoStartRecording = $state(false);
 
 	function beginProcessing(title: string) {
 		processingTitle = title || "Recording";

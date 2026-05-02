@@ -15,7 +15,7 @@
 </script>
 
 <header
-	class="flex shrink-0 items-center justify-between gap-4 bg-surface-lowest px-4 py-3 {className}"
+	class="flex shrink-0 items-center justify-between gap-4 bg-panel px-4 py-3 {className}"
 >
 	<div class="min-w-0 flex-1 text-left">{@render left?.()}</div>
 	<div class="shrink-0">{@render center?.()}</div>

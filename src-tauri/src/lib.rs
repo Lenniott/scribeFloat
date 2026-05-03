@@ -305,6 +305,10 @@ pub fn run() {
             }
             prewarm_scribe_window(app.handle());
             prewarm_dictate_window(app.handle());
+            // Tao applies Regular activation at launch; `set_dock_visibility(false)` only runs when we
+            // call it. Sync once after prewarm so a tray-only start hides the Dock (plist LSUIElement
+            // is not sufficient on its own).
+            platform::window_impl::sync_activation_policy(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {

@@ -73,7 +73,7 @@
 
 	async function handleClose() {
 		try {
-			if (dictateState === "DONE") {
+			if (dictateState === "DONE" || dictateState === "ERROR") {
 				await invoke("dictate_dismiss");
 			} else {
 				await invoke("dictate_cancel");

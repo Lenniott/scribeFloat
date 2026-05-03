@@ -325,11 +325,11 @@ impl DictateController {
         Ok(())
     }
 
-    /// Dismiss the Done panel → Idle. No-op from any other state.
+    /// Dismiss the Done or Error panel → Idle. No-op from any other state.
     pub fn dismiss(&self) {
         let should_hide = {
             let mut inner = self.lock();
-            if inner.state != DictateState::Done {
+            if !matches!(inner.state, DictateState::Done | DictateState::Error) {
                 return;
             }
             inner.state = DictateState::Idle;

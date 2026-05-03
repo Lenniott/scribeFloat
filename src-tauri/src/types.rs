@@ -253,13 +253,28 @@ pub struct DictateStateEvent {
     /// Populated on Done state — the text that was pasted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// Done state only: auto-paste was on but keyboard simulation failed (nothing to paste into,
+    /// missing Accessibility permission, etc.). Clipboard still has the text.
+    #[serde(default, skip_serializing_if = "crate::types::is_false")]
+    pub paste_failed: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
 impl DictateStateEvent {
     pub fn new(state: DictateState) -> Self {
-        Self { state, progress: None, processing_stage: None, text: None, error: None }
+        Self {
+            state,
+            progress: None,
+            processing_stage: None,
+            text: None,
+            paste_failed: false,
+            error: None,
+        }
     }
 }
 

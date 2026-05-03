@@ -479,9 +479,22 @@ impl DictateController {
             eprintln!("[dictate] failed to write clipboard: {e}");
         }
 
+        let mut paste_failed = false;
         if config.dictate_auto_paste {
-            if let Err(e) = self.paste_on_main_thread(config.dictate_auto_enter) {
-                eprintln!("[dictate] paste simulation failed: {e}");
+            match self.paste_on_main_thread(config.dictate_auto_enter) {
+                Ok((paste_res, enter_res)) => {
+                    if let Err(e) = paste_res {
+                        eprintln!("[dictate] paste simulation failed: {e}");
+                        paste_failed = true;
+                    }
+                    if let Err(e) = enter_res {
+                        eprintln!("[dictate] enter simulation failed: {e}");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[dictate] paste dispatch failed: {e}");
+                    paste_failed = true;
+                }
             }
         }
 
@@ -494,6 +507,7 @@ impl DictateController {
                     DICTATE_STATE_EVENT,
                     DictateStateEvent {
                         text: Some(text),
+                        paste_failed,
                         ..DictateStateEvent::new(DictateState::Done)
                     },
                 )
@@ -573,26 +587,34 @@ impl DictateController {
     /// enigo uses CGEventCreateKeyboardEvent which requires the main dispatch queue on macOS.
     /// Hides the dictate window first so the OS restores focus to the previous app before
     /// Cmd+V fires. Called from spawn_blocking, bridged via a sync channel.
-    fn paste_on_main_thread(&self, auto_enter: bool) -> Result<(), String> {
-        let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    ///
+    /// Returns `(paste_result, enter_result)`; `enter_result` is `Ok(())` when Enter was skipped.
+    fn paste_on_main_thread(
+        &self,
+        auto_enter: bool,
+    ) -> Result<(Result<(), String>, Result<(), String>), String> {
+        let (tx, rx) =
+            std::sync::mpsc::channel::<(Result<(), String>, Result<(), String>)>();
         let output = Arc::clone(&self.output);
         let app = self.app.clone();
-        self.app.run_on_main_thread(move || {
-            // Hide the HUD so the previous app regains focus before we simulate Cmd+V.
-            if let Some(w) = app.get_webview_window(crate::DICTATE_WINDOW_LABEL) {
-                let _ = w.hide();
-            }
-            // Give the OS a moment to restore focus to the previously active app.
-            std::thread::sleep(std::time::Duration::from_millis(150));
-            let result = output.paste_text();
-            let result = if result.is_ok() && auto_enter {
-                output.send_enter()
-            } else {
-                result
-            };
-            let _ = tx.send(result);
-        }).map_err(|e| e.to_string())?;
-        rx.recv().map_err(|e| e.to_string())?
+        self.app
+            .run_on_main_thread(move || {
+                // Hide the HUD so the previous app regains focus before we simulate Cmd+V.
+                if let Some(w) = app.get_webview_window(crate::DICTATE_WINDOW_LABEL) {
+                    let _ = w.hide();
+                }
+                // Give the OS a moment to restore focus to the previously active app.
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                let paste_res = output.paste_text();
+                let enter_res = if paste_res.is_ok() && auto_enter {
+                    output.send_enter()
+                } else {
+                    Ok(())
+                };
+                let _ = tx.send((paste_res, enter_res));
+            })
+            .map_err(|e| e.to_string())?;
+        rx.recv().map_err(|e| e.to_string())
     }
 
     fn emit_state_event(&self, inner: &Inner) {

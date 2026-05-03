@@ -14,6 +14,7 @@
 		state: DictateState;
 		progress?: number;
 		text?: string;
+		paste_failed?: boolean;
 		error?: string;
 	};
 
@@ -21,6 +22,7 @@
 	let micLevel = $state(0);
 	let elapsedSeconds = $state(0);
 	let resultText = $state("");
+	let pasteFailed = $state(false);
 	let errorText = $state("");
 
 	let recordingStartedAt: number | null = null;
@@ -51,6 +53,7 @@
 
 		if (ev.state === "DONE") {
 			resultText = ev.text ?? "";
+			pasteFailed = Boolean(ev.paste_failed);
 		} else if (ev.state === "ERROR") {
 			errorText = ev.error ?? "Something went wrong.";
 		}
@@ -66,6 +69,7 @@
 				elapsedSeconds = 0;
 				recordingStartedAt = null;
 				resultText = "";
+				pasteFailed = false;
 				errorText = "";
 			}
 		}
@@ -119,9 +123,20 @@
 	class="flex w-60 items-center justify-between gap-2 rounded-lg bg-panel py-2 pl-3 pr-2 shadow-lg"
 >
 	{#if dictateState === "DONE"}
-		<div class="flex min-w-0 flex-1 items-center gap-2">
-			<span class="inline-block h-2 w-2 flex-shrink-0 rounded-full bg-success"></span>
-			<span class="truncate text-label-md font-sans font-medium text-fg">{resultText}</span>
+		<div class="flex min-w-0 flex-1 flex-col gap-0.5">
+			<div class="flex min-w-0 items-center gap-2">
+				<span class="inline-block h-2 w-2 shrink-0 rounded-full bg-success"></span>
+				{#if pasteFailed}
+					<span class="truncate text-label-md font-sans font-medium text-fg"
+						>Copied to clipboard</span
+					>
+				{:else}
+					<span class="truncate text-label-md font-sans font-medium text-fg">{resultText}</span>
+				{/if}
+			</div>
+			{#if pasteFailed && resultText.trim()}
+				<p class="line-clamp-2 pl-4 text-label-sm font-sans text-fg-dim">{resultText}</p>
+			{/if}
 		</div>
 	{:else if dictateState === "ERROR"}
 		<div class="flex min-w-0 flex-1 items-center gap-2">

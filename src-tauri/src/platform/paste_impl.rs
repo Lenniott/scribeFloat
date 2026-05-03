@@ -1,5 +1,9 @@
 use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 
+/// Carbon `kVK_ANSI_V` — physical key used for the standard Paste shortcut (⌘V).
+#[cfg(target_os = "macos")]
+const MACOS_KEYCODE_ANSI_V: u16 = 0x09;
+
 /// Simulate Cmd+V (macOS) or Ctrl+V (Windows) to paste clipboard contents
 /// into the currently focused application.
 ///
@@ -9,8 +13,10 @@ use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 pub fn paste_text() -> Result<(), String> {
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
     enigo.key(Key::Meta, Direction::Press).map_err(|e| e.to_string())?;
+    // Use layout-independent keycode + enigo's tracked Command flag (not Unicode),
+    // so paste is a real shortcut rather than typing "v".
     enigo
-        .key(Key::Unicode('v'), Direction::Click)
+        .raw(MACOS_KEYCODE_ANSI_V, Direction::Click)
         .map_err(|e| e.to_string())?;
     enigo.key(Key::Meta, Direction::Release).map_err(|e| e.to_string())?;
     Ok(())

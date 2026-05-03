@@ -319,4 +319,108 @@ mod tests {
         assert!(raw.contains("mic.wav"));
         assert!(raw.contains("remember this"));
     }
+
+    // ── format_ms ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn format_ms_zero() {
+        assert_eq!(format_ms(0), "00:00:00");
+    }
+
+    #[test]
+    fn format_ms_seconds_only() {
+        assert_eq!(format_ms(12_000), "00:00:12");
+    }
+
+    #[test]
+    fn format_ms_minutes_and_seconds() {
+        assert_eq!(format_ms(90_000), "00:01:30");
+    }
+
+    #[test]
+    fn format_ms_hours_minutes_seconds() {
+        assert_eq!(format_ms(3_661_000), "01:01:01");
+    }
+
+    #[test]
+    fn format_ms_pads_single_digits() {
+        assert_eq!(format_ms(3_600_000 + 60_000 + 5_000), "01:01:05");
+    }
+
+    // ── transcript_path slug ─────────────────────────────────────────────────
+
+    #[test]
+    fn transcript_path_replaces_spaces_with_underscores() {
+        let svc = OutputService;
+        let dir = std::env::temp_dir();
+        let model = std::path::Path::new("/models/ggml-tiny.bin");
+        let path = svc.transcript_path(&dir, model, "my title");
+        let name = path.file_name().unwrap().to_string_lossy();
+        assert!(name.starts_with("my_title_"));
+    }
+
+    #[test]
+    fn transcript_path_replaces_forbidden_chars_with_dashes() {
+        let svc = OutputService;
+        let dir = std::env::temp_dir();
+        let model = std::path::Path::new("/models/ggml-tiny.bin");
+        let path = svc.transcript_path(&dir, model, "foo/bar:baz");
+        let name = path.file_name().unwrap().to_string_lossy();
+        assert!(name.starts_with("foo-bar-baz_"));
+    }
+
+    // ── write_dictate_history_entry / read_dictate_history ───────────────────
+
+    fn temp_save_folder() -> String {
+        let dir = std::env::temp_dir()
+            .join(format!("liscribe-dictate-tests-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn read_dictate_history_returns_empty_when_file_missing() {
+        let svc = OutputService;
+        let folder = temp_save_folder();
+        let entries = svc.read_dictate_history(&folder).expect("read");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn write_then_read_dictate_history_entry() {
+        let svc = OutputService;
+        let folder = temp_save_folder();
+
+        svc.write_dictate_history_entry(&folder, "hello world").expect("write");
+
+        let entries = svc.read_dictate_history(&folder).expect("read");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].text, "hello world");
+    }
+
+    #[test]
+    fn dictate_history_entries_are_newest_first() {
+        let svc = OutputService;
+        let folder = temp_save_folder();
+
+        svc.write_dictate_history_entry(&folder, "first").expect("write first");
+        svc.write_dictate_history_entry(&folder, "second").expect("write second");
+
+        let entries = svc.read_dictate_history(&folder).expect("read");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].text, "second");
+        assert_eq!(entries[1].text, "first");
+    }
+
+    #[test]
+    fn dictate_history_entry_has_non_empty_id_and_timestamp() {
+        let svc = OutputService;
+        let folder = temp_save_folder();
+
+        svc.write_dictate_history_entry(&folder, "test entry").expect("write");
+
+        let entries = svc.read_dictate_history(&folder).expect("read");
+        assert!(!entries[0].id.is_empty());
+        assert!(!entries[0].timestamp.is_empty());
+    }
 }

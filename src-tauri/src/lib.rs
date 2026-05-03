@@ -139,7 +139,6 @@ pub(crate) fn open_dictate_window(app: &AppHandle) -> tauri::Result<WebviewWindo
         let (x, y) = primary_monitor_dictate_position(app);
         let _ = window.set_position(tauri::LogicalPosition::new(x, y));
         window.show()?;
-        window.set_focus()?;
         return Ok(window);
     }
 
@@ -247,7 +246,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
-            platform::window_impl::set_has_visible_windows(app.handle(), false);
             create_tray(app)?;
 
             let data_dir = app.path().app_data_dir()?;
@@ -338,7 +336,10 @@ pub fn run() {
                 if let Err(err) = window.hide() {
                     eprintln!("failed to hide window {}: {err}", window.label());
                 }
-                platform::window_impl::sync_activation_policy(window.app_handle());
+                // Dictate is a HUD overlay — its close should never affect Dock visibility.
+                if window.label() != DICTATE_WINDOW_LABEL {
+                    platform::window_impl::sync_activation_policy(window.app_handle());
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![

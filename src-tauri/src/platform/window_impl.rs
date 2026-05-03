@@ -4,14 +4,20 @@ use tauri::Manager;
 pub fn sync_activation_policy(app: &tauri::AppHandle) {
     let has_visible_window = app
         .webview_windows()
-        .values()
-        .any(|window| window.is_visible().unwrap_or(false));
+        .iter()
+        .filter(|(label, _)| label.as_str() != crate::DICTATE_WINDOW_LABEL)
+        .any(|(_, w)| w.is_visible().unwrap_or(false));
 
     set_has_visible_windows(app, has_visible_window);
 }
 
 #[cfg(target_os = "macos")]
 pub fn set_has_visible_windows(app: &tauri::AppHandle, has_visible_window: bool) {
+    // The dictate HUD is intentionally excluded from Dock visibility — it is a
+    // floating overlay, not a user-facing content window. Only Scribe/Settings
+    // windows should cause the Dock icon to appear.
+    // LSUIElement=true in Info.plist keeps us menu-bar-only by default; this
+    // call makes the Dock icon appear/disappear as real windows open/close.
     if let Err(err) = app.set_dock_visibility(has_visible_window) {
         eprintln!("failed to update macOS Dock visibility: {err}");
     }

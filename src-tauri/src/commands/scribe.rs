@@ -15,11 +15,16 @@ pub fn scribe_start(
 }
 
 #[tauri::command]
-pub fn scribe_stop_and_save(
+pub async fn scribe_stop_and_save(
     ctrl: State<'_, Arc<ScribeController>>,
     title: Option<String>,
 ) -> Result<(), String> {
-    ScribeController::stop_and_save(Arc::clone(&ctrl), title).map_err(|e| e.to_string())
+    let ctrl = Arc::clone(&ctrl);
+    tokio::task::spawn_blocking(move || {
+        ScribeController::stop_and_save(ctrl, title).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

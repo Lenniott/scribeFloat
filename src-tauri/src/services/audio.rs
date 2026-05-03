@@ -35,10 +35,15 @@ impl MicSession {
         let _ = _stream.pause();
         drop(_stream);
         let mut all = Vec::new();
-        // Drain until the stream callback's sender is dropped — try_recv alone can miss the
-        // final chunks if the main thread runs ahead of the audio thread.
-        while let Ok(chunk) = receiver.recv() {
-            all.extend(chunk);
+        // Drain buffered chunks. CoreAudio tears down its audio unit asynchronously, so
+        // the callback closure (and the cloned Sender inside it) may not drop immediately
+        // after we drop the Stream. Using recv_timeout avoids an indefinite hang on short
+        // recordings where the audio thread hasn't flushed yet when the stream is dropped.
+        loop {
+            match receiver.recv_timeout(std::time::Duration::from_millis(200)) {
+                Ok(chunk) => all.extend(chunk),
+                Err(_) => break, // disconnected or timeout — no more chunks coming
+            }
         }
         (all, sample_rate)
     }

@@ -209,42 +209,31 @@ impl DictateController {
     /// Spawn the global key listener on a background thread.
     /// Must be called once after the controller is created.
     pub fn start_key_listener(self: Arc<Self>) {
-        std::thread::spawn(move || {
-            let tracker = Arc::new(Mutex::new(DictateKeyTracker::new()));
+        let tracker = Arc::new(Mutex::new(DictateKeyTracker::new()));
 
-            // Timeout thread: advances timed states (FirstPressed and AwaitingSecondTap)
-            // so the state machine resets to Idle when windows expire.
-            {
-                let tracker_clone = Arc::clone(&tracker);
-                std::thread::spawn(move || loop {
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                    tracker_clone
-                        .lock()
-                        .unwrap_or_else(|p| p.into_inner())
-                        .check_timeout(Instant::now());
-                });
-            }
+        // Timeout thread: advances timed states so the state machine resets
+        // to Idle when tap windows expire without a second keypress.
+        {
+            let tracker_clone = Arc::clone(&tracker);
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                tracker_clone
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .check_timeout(Instant::now());
+            });
+        }
 
-            let tracker_main = Arc::clone(&tracker);
-            let ctrl_main = Arc::clone(&self);
-
-            if let Err(e) = rdev::listen(move |event| {
-                if !crate::platform::dictate_key_matches(&event) {
-                    return;
+        crate::platform::key_listener::start_modifier_listener(move |event| {
+            use crate::platform::key_listener::KeyEventKind;
+            let action = {
+                let mut t = tracker.lock().unwrap_or_else(|p| p.into_inner());
+                match event.kind {
+                    KeyEventKind::Down => t.on_key_down(Instant::now()),
+                    KeyEventKind::Up => t.on_key_up(Instant::now()),
                 }
-                let action = {
-                    let mut t =
-                        tracker_main.lock().unwrap_or_else(|p| p.into_inner());
-                    match event.event_type {
-                        rdev::EventType::KeyPress(_) => t.on_key_down(Instant::now()),
-                        rdev::EventType::KeyRelease(_) => t.on_key_up(Instant::now()),
-                        _ => DictateAction::None,
-                    }
-                };
-                Self::dispatch_action(Arc::clone(&ctrl_main), action);
-            }) {
-                eprintln!("dictate: rdev listener stopped: {e:?}");
-            }
+            };
+            Self::dispatch_action(Arc::clone(&self), action);
         });
     }
 
@@ -254,17 +243,31 @@ impl DictateController {
                 if this.current_state() != DictateState::Idle {
                     return;
                 }
-                if let Err(e) = crate::open_dictate_window(&this.app) {
-                    eprintln!("dictate: failed to open window: {e}");
-                    return;
-                }
-                if let Err(e) = this.start() {
-                    eprintln!("dictate: failed to start: {e}");
-                }
+                // Open window on the main thread, then start mic on a tokio thread.
+                // The rdev callback thread is not safe for CoreAudio stream creation
+                // or AppKit window operations on macOS.
+                tauri::async_runtime::spawn(async move {
+                    let app = this.app.clone();
+                    let open_result = std::sync::Arc::new(std::sync::Mutex::new(Ok(())));
+                    let open_result_clone = std::sync::Arc::clone(&open_result);
+                    let app2 = app.clone();
+                    let _ = app.run_on_main_thread(move || {
+                        *open_result_clone.lock().unwrap() =
+                            crate::open_dictate_window(&app2).map(|_| ());
+                    });
+                    // Give main thread a tick to process the window open.
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    if open_result.lock().unwrap().is_err() {
+                        return;
+                    }
+                    if let Err(e) = this.start() {
+                        eprintln!("[dictate] failed to start mic: {e}");
+                    }
+                });
             }
             DictateAction::Stop => {
                 if let Err(e) = Self::stop_and_transcribe(Arc::clone(&this)) {
-                    eprintln!("dictate: failed to stop: {e}");
+                    eprintln!("[dictate] failed to stop: {e}");
                 }
             }
             DictateAction::None => {}
@@ -307,7 +310,7 @@ impl DictateController {
     pub fn cancel(&self) -> Result<()> {
         let session = {
             let mut inner = self.lock();
-            match inner.state {
+            match &inner.state {
                 DictateState::Idle => return Ok(()),
                 DictateState::Recording | DictateState::Done => {}
                 other => {
@@ -373,24 +376,20 @@ impl DictateController {
 
             match result {
                 Ok(Ok(true)) => {
-                    // Done: panel visible. Auto-dismiss after DONE_DISMISS_MS.
                     tokio::time::sleep(std::time::Duration::from_millis(DONE_DISMISS_MS)).await;
                     this.auto_dismiss();
                 }
                 Ok(Ok(false)) => {
-                    // Error (too short / no model) or silent abort.
-                    // Error state stays visible briefly; Idle state already hid the window.
                     tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
                     this.auto_dismiss();
                 }
                 Ok(Err(e)) => {
-                    eprintln!("dictate transcription error: {e}");
                     this.set_error_state(e.to_string());
                     tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
                     this.auto_dismiss();
                 }
                 Err(e) => {
-                    eprintln!("dictate transcription panicked: {e}");
+                    eprintln!("[dictate] transcription panicked: {e}");
                     this.set_error_state("Transcription crashed unexpectedly.".to_string());
                     tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
                     this.auto_dismiss();
@@ -413,7 +412,6 @@ impl DictateController {
         let (raw_pcm, native_rate) = session.mic.stop_and_take();
         let pcm_16k = resample_linear(&raw_pcm, native_rate, WHISPER_SAMPLE_RATE);
 
-        // Whisper rejects very short / silent captures — treat as user spoke too briefly.
         const MIN_PCM_SAMPLES_16K: usize = WHISPER_SAMPLE_RATE as usize / 10; // 100 ms
         if pcm_16k.len() < MIN_PCM_SAMPLES_16K {
             self.set_error_state("Recording too short — try again.".to_string());
@@ -464,7 +462,6 @@ impl DictateController {
             .collect::<Vec<_>>()
             .join(" ");
 
-        // Brief Pasting state so the UI can show the transition.
         {
             let mut inner = self.lock();
             inner.state = DictateState::Pasting;
@@ -474,27 +471,20 @@ impl DictateController {
                 .ok();
         }
 
-        // Write to history log.
         if let Err(e) = self.output.write_dictate_history_entry(&config.save_folder, &text) {
-            eprintln!("dictate: failed to write history: {e}");
+            eprintln!("[dictate] failed to write history: {e}");
         }
 
-        // Copy to clipboard first; paste simulation reads from there.
         if let Err(e) = self.app.clipboard().write_text(text.clone()) {
-            eprintln!("dictate: failed to write clipboard: {e}");
+            eprintln!("[dictate] failed to write clipboard: {e}");
         }
 
         if config.dictate_auto_paste {
-            if let Err(e) = self.output.paste_text() {
-                eprintln!("dictate: paste simulation failed: {e}");
-            } else if config.dictate_auto_enter {
-                if let Err(e) = self.output.send_enter() {
-                    eprintln!("dictate: enter simulation failed: {e}");
-                }
+            if let Err(e) = self.paste_on_main_thread(config.dictate_auto_enter) {
+                eprintln!("[dictate] paste simulation failed: {e}");
             }
         }
 
-        // Transition to Done — window stays visible; auto-dismiss handled by caller.
         {
             let mut inner = self.lock();
             inner.state = DictateState::Done;
@@ -568,10 +558,41 @@ impl DictateController {
     }
 
     fn hide_window(&self) {
-        if let Some(w) = self.app.get_webview_window(crate::DICTATE_WINDOW_LABEL) {
-            let _ = w.hide();
-            crate::platform::window_impl::sync_activation_policy(&self.app);
-        }
+        let app = self.app.clone();
+        let _ = self.app.run_on_main_thread(move || {
+            if let Some(w) = app.get_webview_window(crate::DICTATE_WINDOW_LABEL) {
+                // Do NOT call sync_activation_policy — the dictate HUD is not a
+                // user-facing content window and its visibility should never affect
+                // the Dock icon or trigger an exit when no other windows are open.
+                let _ = w.hide();
+            }
+        });
+    }
+
+    /// Run paste (and optionally Enter) on the main thread.
+    /// enigo uses CGEventCreateKeyboardEvent which requires the main dispatch queue on macOS.
+    /// Hides the dictate window first so the OS restores focus to the previous app before
+    /// Cmd+V fires. Called from spawn_blocking, bridged via a sync channel.
+    fn paste_on_main_thread(&self, auto_enter: bool) -> Result<(), String> {
+        let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+        let output = Arc::clone(&self.output);
+        let app = self.app.clone();
+        self.app.run_on_main_thread(move || {
+            // Hide the HUD so the previous app regains focus before we simulate Cmd+V.
+            if let Some(w) = app.get_webview_window(crate::DICTATE_WINDOW_LABEL) {
+                let _ = w.hide();
+            }
+            // Give the OS a moment to restore focus to the previously active app.
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            let result = output.paste_text();
+            let result = if result.is_ok() && auto_enter {
+                output.send_enter()
+            } else {
+                result
+            };
+            let _ = tx.send(result);
+        }).map_err(|e| e.to_string())?;
+        rx.recv().map_err(|e| e.to_string())?
     }
 
     fn emit_state_event(&self, inner: &Inner) {
@@ -581,10 +602,7 @@ impl DictateController {
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
-        self.inner.lock().unwrap_or_else(|p| {
-            eprintln!("dictate: recovering from poisoned mutex");
-            p.into_inner()
-        })
+        self.inner.lock().unwrap_or_else(|p| p.into_inner())
     }
 }
 
@@ -595,5 +613,215 @@ fn resolve_dictate_model_path(config: &Config, model: &ModelService) -> PathBuf 
         model.model_path_for_id(id).unwrap_or_else(|| model.default_model_path())
     } else {
         model.default_model_path()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    // Helper: produce an Instant offset from now by a given number of milliseconds.
+    // Using addition rather than real sleeps keeps the tests instant and deterministic.
+    fn ms_ago(ms: u64) -> Instant {
+        Instant::now() - Duration::from_millis(ms)
+    }
+
+    // ── First press behaviour ────────────────────────────────────────────────
+
+    #[test]
+    fn first_keydown_returns_none_and_enters_first_pressed() {
+        let mut t = DictateKeyTracker::new();
+        assert_eq!(t.on_key_down(Instant::now()), DictateAction::None);
+        assert!(matches!(t.state, DictateKeyState::FirstPressed { .. }));
+    }
+
+    #[test]
+    fn key_repeat_while_first_pressed_returns_none() {
+        let mut t = DictateKeyTracker::new();
+        t.on_key_down(Instant::now());
+        assert_eq!(t.on_key_down(Instant::now()), DictateAction::None);
+    }
+
+    #[test]
+    fn short_first_press_keyup_enters_awaiting_second_tap() {
+        let mut t = DictateKeyTracker::new();
+        let down = ms_ago(50);
+        t.on_key_down(down);
+        t.on_key_up(Instant::now());
+        assert!(matches!(t.state, DictateKeyState::AwaitingSecondTap { .. }));
+    }
+
+    #[test]
+    fn long_first_press_keyup_resets_to_idle() {
+        // Held longer than FIRST_PRESS_MAX_MS (300 ms) — treated as modifier combo.
+        let mut t = DictateKeyTracker::new();
+        let down = ms_ago(FIRST_PRESS_MAX_MS as u64 + 10);
+        t.on_key_down(down);
+        t.on_key_up(Instant::now());
+        assert!(matches!(t.state, DictateKeyState::Idle));
+    }
+
+    // ── Double-tap window ────────────────────────────────────────────────────
+
+    #[test]
+    fn second_press_within_window_returns_start() {
+        let mut t = DictateKeyTracker::new();
+        let first_up = ms_ago(DOUBLE_TAP_WINDOW_MS as u64 - 50);
+        t.state = DictateKeyState::AwaitingSecondTap { up_at: first_up };
+        assert_eq!(t.on_key_down(Instant::now()), DictateAction::Start);
+        assert!(matches!(t.state, DictateKeyState::SecondHeld { .. }));
+    }
+
+    #[test]
+    fn second_press_outside_window_treats_as_new_first_press() {
+        let mut t = DictateKeyTracker::new();
+        let first_up = ms_ago(DOUBLE_TAP_WINDOW_MS as u64 + 50);
+        t.state = DictateKeyState::AwaitingSecondTap { up_at: first_up };
+        assert_eq!(t.on_key_down(Instant::now()), DictateAction::None);
+        assert!(matches!(t.state, DictateKeyState::FirstPressed { .. }));
+    }
+
+    // ── Hold-to-talk ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn long_second_press_keyup_returns_stop_and_goes_idle() {
+        let mut t = DictateKeyTracker::new();
+        let second_down = ms_ago(HOLD_THRESHOLD_MS as u64 + 10);
+        t.state = DictateKeyState::SecondHeld { down_at: second_down };
+        assert_eq!(t.on_key_up(Instant::now()), DictateAction::Stop);
+        assert!(matches!(t.state, DictateKeyState::Idle));
+    }
+
+    #[test]
+    fn short_second_press_keyup_enters_toggle_recording() {
+        let mut t = DictateKeyTracker::new();
+        let second_down = ms_ago(HOLD_THRESHOLD_MS as u64 - 100);
+        t.state = DictateKeyState::SecondHeld { down_at: second_down };
+        assert_eq!(t.on_key_up(Instant::now()), DictateAction::None);
+        assert!(matches!(t.state, DictateKeyState::ToggleRecording { .. }));
+    }
+
+    // ── Toggle mode ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn third_press_after_cooldown_returns_stop_and_goes_idle() {
+        let mut t = DictateKeyTracker::new();
+        let started = ms_ago(TOGGLE_STOP_COOLDOWN_MS as u64 + 10);
+        t.state = DictateKeyState::ToggleRecording { started_at: started };
+        assert_eq!(t.on_key_down(Instant::now()), DictateAction::Stop);
+        assert!(matches!(t.state, DictateKeyState::Idle));
+    }
+
+    #[test]
+    fn third_press_within_cooldown_is_ignored() {
+        let mut t = DictateKeyTracker::new();
+        let started = ms_ago(TOGGLE_STOP_COOLDOWN_MS as u64 - 200);
+        t.state = DictateKeyState::ToggleRecording { started_at: started };
+        assert_eq!(t.on_key_down(Instant::now()), DictateAction::None);
+        assert!(matches!(t.state, DictateKeyState::ToggleRecording { .. }));
+    }
+
+    #[test]
+    fn keyup_in_toggle_mode_is_ignored() {
+        let mut t = DictateKeyTracker::new();
+        t.state = DictateKeyState::ToggleRecording { started_at: Instant::now() };
+        assert_eq!(t.on_key_up(Instant::now()), DictateAction::None);
+        assert!(matches!(t.state, DictateKeyState::ToggleRecording { .. }));
+    }
+
+    // ── Timeout / check_timeout ──────────────────────────────────────────────
+
+    #[test]
+    fn timeout_expires_first_pressed_to_idle() {
+        let mut t = DictateKeyTracker::new();
+        let down = ms_ago(FIRST_PRESS_MAX_MS as u64 + 1);
+        t.state = DictateKeyState::FirstPressed { down_at: down };
+        t.check_timeout(Instant::now());
+        assert!(matches!(t.state, DictateKeyState::Idle));
+    }
+
+    #[test]
+    fn timeout_does_not_expire_recent_first_pressed() {
+        let mut t = DictateKeyTracker::new();
+        let down = ms_ago(FIRST_PRESS_MAX_MS as u64 - 50);
+        t.state = DictateKeyState::FirstPressed { down_at: down };
+        t.check_timeout(Instant::now());
+        assert!(matches!(t.state, DictateKeyState::FirstPressed { .. }));
+    }
+
+    #[test]
+    fn timeout_expires_awaiting_second_tap_to_idle() {
+        let mut t = DictateKeyTracker::new();
+        let up = ms_ago(DOUBLE_TAP_WINDOW_MS as u64 + 1);
+        t.state = DictateKeyState::AwaitingSecondTap { up_at: up };
+        t.check_timeout(Instant::now());
+        assert!(matches!(t.state, DictateKeyState::Idle));
+    }
+
+    #[test]
+    fn timeout_does_not_affect_second_held_or_toggle() {
+        let mut t = DictateKeyTracker::new();
+        t.state = DictateKeyState::SecondHeld { down_at: ms_ago(9999) };
+        t.check_timeout(Instant::now());
+        assert!(matches!(t.state, DictateKeyState::SecondHeld { .. }));
+
+        t.state = DictateKeyState::ToggleRecording { started_at: ms_ago(9999) };
+        t.check_timeout(Instant::now());
+        assert!(matches!(t.state, DictateKeyState::ToggleRecording { .. }));
+    }
+
+    // ── Full flows ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn full_hold_to_talk_flow() {
+        let mut t = DictateKeyTracker::new();
+        let t0 = Instant::now();
+
+        // First tap: down then quick up.
+        assert_eq!(t.on_key_down(t0), DictateAction::None);
+        assert_eq!(t.on_key_up(t0 + Duration::from_millis(80)), DictateAction::None);
+
+        // Second press (within double-tap window): down → Start.
+        let second_down = t0 + Duration::from_millis(200);
+        assert_eq!(t.on_key_down(second_down), DictateAction::Start);
+
+        // Hold the second press past HOLD_THRESHOLD_MS then release → Stop.
+        let second_up = second_down + Duration::from_millis(HOLD_THRESHOLD_MS as u64 + 50);
+        assert_eq!(t.on_key_up(second_up), DictateAction::Stop);
+        assert!(matches!(t.state, DictateKeyState::Idle));
+    }
+
+    #[test]
+    fn full_toggle_flow() {
+        let mut t = DictateKeyTracker::new();
+        let t0 = Instant::now();
+
+        // First tap.
+        assert_eq!(t.on_key_down(t0), DictateAction::None);
+        assert_eq!(t.on_key_up(t0 + Duration::from_millis(80)), DictateAction::None);
+
+        // Second press quickly (< HOLD_THRESHOLD_MS) → Start, then up → ToggleRecording.
+        let second_down = t0 + Duration::from_millis(200);
+        assert_eq!(t.on_key_down(second_down), DictateAction::Start);
+        let second_up = second_down + Duration::from_millis(100);
+        assert_eq!(t.on_key_up(second_up), DictateAction::None);
+        assert!(matches!(t.state, DictateKeyState::ToggleRecording { .. }));
+
+        // Third press after cooldown → Stop.
+        let third = second_up + Duration::from_millis(TOGGLE_STOP_COOLDOWN_MS as u64 + 10);
+        assert_eq!(t.on_key_down(third), DictateAction::Stop);
+        assert!(matches!(t.state, DictateKeyState::Idle));
+    }
+
+    #[test]
+    fn modifier_combo_protection_resets_on_long_first_press() {
+        // Simulate Ctrl+C: first press held too long (user presses C while holding Ctrl).
+        let mut t = DictateKeyTracker::new();
+        let t0 = Instant::now();
+        t.on_key_down(t0);
+        // check_timeout fires after FIRST_PRESS_MAX_MS — simulates the background timer.
+        t.check_timeout(t0 + Duration::from_millis(FIRST_PRESS_MAX_MS as u64 + 1));
+        assert!(matches!(t.state, DictateKeyState::Idle));
     }
 }

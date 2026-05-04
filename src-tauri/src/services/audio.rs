@@ -35,8 +35,15 @@ impl MicSession {
         let _ = _stream.pause();
         drop(_stream);
         let mut all = Vec::new();
-        while let Ok(chunk) = receiver.try_recv() {
-            all.extend(chunk);
+        // Drain buffered chunks. CoreAudio tears down its audio unit asynchronously, so
+        // the callback closure (and the cloned Sender inside it) may not drop immediately
+        // after we drop the Stream. Using recv_timeout avoids an indefinite hang on short
+        // recordings where the audio thread hasn't flushed yet when the stream is dropped.
+        loop {
+            match receiver.recv_timeout(std::time::Duration::from_millis(200)) {
+                Ok(chunk) => all.extend(chunk),
+                Err(_) => break, // disconnected or timeout — no more chunks coming
+            }
         }
         (all, sample_rate)
     }
@@ -188,6 +195,24 @@ fn level_from_mono(mono: &[f32]) -> f32 {
     }
     let rms = (mono.iter().map(|s| s * s).sum::<f32>() / mono.len() as f32).sqrt();
     (rms * LEVEL_GAIN).clamp(0.0, 1.0)
+}
+
+/// Linear interpolation resampler. Good enough for speech at 16 kHz target.
+pub(crate) fn resample_linear(input: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
+    if from_rate == to_rate || input.is_empty() {
+        return input.to_vec();
+    }
+    let ratio = from_rate as f64 / to_rate as f64;
+    let out_len = (input.len() as f64 / ratio) as usize;
+    let mut out = Vec::with_capacity(out_len);
+    for i in 0..out_len {
+        let src = i as f64 * ratio;
+        let lo = src.floor() as usize;
+        let hi = (lo + 1).min(input.len() - 1);
+        let frac = (src - lo as f64) as f32;
+        out.push(input[lo] * (1.0 - frac) + input[hi] * frac);
+    }
+    out
 }
 
 #[cfg(test)]

@@ -8,14 +8,26 @@ use std::sync::Arc;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    WindowEvent,
 };
 
 pub(crate) const SCRIBE_WINDOW_LABEL: &str = "scribe";
 const SETTINGS_WINDOW_LABEL: &str = "settings";
+pub(crate) const DICTATE_WINDOW_LABEL: &str = "dictate";
 const OPEN_SCRIBE_MENU_ID: &str = "open_scribe";
 const OPEN_SETTINGS_MENU_ID: &str = "open_settings";
 const QUIT_MENU_ID: &str = "quit";
+
+const SCRIBE_WINDOW_W: f64 = 800.0;
+const SCRIBE_WINDOW_H: f64 = 600.0;
+const SETTINGS_WINDOW_W: f64 = 960.0;
+const SETTINGS_WINDOW_H: f64 = 680.0;
+const DICTATE_WINDOW_W: f64 = 240.0;
+const DICTATE_WINDOW_H: f64 = 52.0;
+/// Margin from the right and top edge of the primary monitor.
+const DICTATE_MARGIN_RIGHT: f64 = 16.0;
+const DICTATE_MARGIN_TOP: f64 = 28.0;
 
 fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
     let open_scribe =
@@ -61,7 +73,7 @@ fn prewarm_scribe_window(app: &AppHandle) {
         let url = WebviewUrl::App("index.html".into());
         let mut builder = WebviewWindowBuilder::new(app, SCRIBE_WINDOW_LABEL, url)
             .title("Scribe")
-            .inner_size(800.0, 600.0)
+            .inner_size(SCRIBE_WINDOW_W, SCRIBE_WINDOW_H)
             .visible(false);
         if let Some(icon) = app.default_window_icon() {
             builder = builder.icon(icon.clone())?;
@@ -74,14 +86,38 @@ fn prewarm_scribe_window(app: &AppHandle) {
     }
 }
 
+fn prewarm_dictate_window(app: &AppHandle) {
+    let result: tauri::Result<()> = (|| {
+        let (x, y) = primary_monitor_dictate_position(app);
+        WebviewWindowBuilder::new(
+            app,
+            DICTATE_WINDOW_LABEL,
+            WebviewUrl::App("?view=dictate".into()),
+        )
+        .inner_size(DICTATE_WINDOW_W, DICTATE_WINDOW_H)
+        .decorations(false)
+        .resizable(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .shadow(true)
+        .position(x, y)
+        .visible(false)
+        .build()?;
+        Ok(())
+    })();
+    if let Err(err) = result {
+        eprintln!("failed to prewarm dictate window: {err}");
+    }
+}
+
 pub(crate) fn open_scribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let window = open_or_focus_window(
         app,
         SCRIBE_WINDOW_LABEL,
         "Scribe",
         WebviewUrl::App("index.html".into()),
-        800.0,
-        600.0,
+        SCRIBE_WINDOW_W,
+        SCRIBE_WINDOW_H,
     )?;
     let _ = window.emit("scribe://open-requested", serde_json::json!({}));
     Ok(window)
@@ -93,10 +129,54 @@ pub(crate) fn open_settings_window(app: &AppHandle) -> tauri::Result<WebviewWind
         SETTINGS_WINDOW_LABEL,
         "Settings",
         WebviewUrl::App("?view=settings".into()),
-        960.0,
-        680.0,
+        SETTINGS_WINDOW_W,
+        SETTINGS_WINDOW_H,
     )
 }
+
+pub(crate) fn open_dictate_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    if let Some(window) = app.get_webview_window(DICTATE_WINDOW_LABEL) {
+        let (x, y) = primary_monitor_dictate_position(app);
+        let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+        window.show()?;
+        return Ok(window);
+    }
+
+    let (x, y) = primary_monitor_dictate_position(app);
+    let window = WebviewWindowBuilder::new(
+        app,
+        DICTATE_WINDOW_LABEL,
+        WebviewUrl::App("?view=dictate".into()),
+    )
+    .inner_size(DICTATE_WINDOW_W, DICTATE_WINDOW_H)
+    .decorations(false)
+    .resizable(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .shadow(true)
+    .position(x, y)
+    .visible(true)
+    .build()?;
+    Ok(window)
+}
+
+fn primary_monitor_dictate_position(app: &AppHandle) -> (f64, f64) {
+    let (width, scale) = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| {
+            let size = m.size();
+            let sf = m.scale_factor();
+            (size.width as f64 / sf, sf)
+        })
+        .unwrap_or((1440.0, 1.0));
+    let _ = scale;
+    let x = width - DICTATE_WINDOW_W - DICTATE_MARGIN_RIGHT;
+    let y = DICTATE_MARGIN_TOP;
+    (x, y)
+}
+
 
 /// Show, restore, and focus. On Windows, `show()` applies visibility asynchronously; a deferred
 /// `set_focus` runs after so Tao sees `VISIBLE` and can call `SetForegroundWindow`.
@@ -166,7 +246,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
-            platform::window_impl::set_has_visible_windows(app.handle(), false);
             create_tray(app)?;
 
             let data_dir = app.path().app_data_dir()?;
@@ -201,11 +280,22 @@ pub fn run() {
                 app.handle().clone(),
             );
 
+            let dictate_ctrl = controllers::dictate::DictateController::new(
+                Arc::clone(&audio),
+                Arc::clone(&model),
+                Arc::clone(&output),
+                Arc::clone(&config),
+                app.handle().clone(),
+            );
+
             app.manage(model); // shared model service
             app.manage(config); // shared config service
             app.manage(model_ctrl); // model command orchestration
             app.manage(settings_ctrl); // settings orchestration
             app.manage(ctrl); // for scribe commands
+            app.manage(Arc::clone(&dictate_ctrl)); // for dictate commands
+
+            dictate_ctrl.start_key_listener();
 
             if is_first_run {
                 open_settings_window(app.handle())?;
@@ -214,6 +304,11 @@ pub fn run() {
                     .ok();
             }
             prewarm_scribe_window(app.handle());
+            prewarm_dictate_window(app.handle());
+            // Tao applies Regular activation at launch; `set_dock_visibility(false)` only runs when we
+            // call it. Sync once after prewarm so a tray-only start hides the Dock (plist LSUIElement
+            // is not sufficient on its own).
+            platform::window_impl::sync_activation_policy(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -245,7 +340,10 @@ pub fn run() {
                 if let Err(err) = window.hide() {
                     eprintln!("failed to hide window {}: {err}", window.label());
                 }
-                platform::window_impl::sync_activation_policy(window.app_handle());
+                // Dictate is a HUD overlay — its close should never affect Dock visibility.
+                if window.label() != DICTATE_WINDOW_LABEL {
+                    platform::window_impl::sync_activation_policy(window.app_handle());
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -289,7 +387,25 @@ pub fn run() {
             commands::settings::settings_complete_onboarding,
             commands::settings::settings_reset_onboarding,
             commands::settings::settings_show_window,
+            commands::settings::settings_get_dictate_auto_paste,
+            commands::settings::settings_set_dictate_auto_paste,
+            commands::settings::settings_get_dictate_auto_enter,
+            commands::settings::settings_set_dictate_auto_enter,
+            commands::settings::settings_get_dictate_model_id,
+            commands::settings::settings_set_dictate_model_id,
+            commands::dictate::dictate_cancel,
+            commands::dictate::dictate_dismiss,
+            commands::dictate::dictate_get_history,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, event| {
+            if let RunEvent::ExitRequested { code, api, .. } = event {
+                // Tray-backed app: default event loop exits when the last window is torn down.
+                // Programmatic `app.exit(n)` uses `Some(n)` and must not be prevented.
+                if code.is_none() {
+                    api.prevent_exit();
+                }
+            }
+        });
 }

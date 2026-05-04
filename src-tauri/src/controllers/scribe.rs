@@ -4,7 +4,7 @@ use crate::services::{
     model::ModelService,
     output::OutputService,
 };
-use crate::services::audio::WHISPER_SAMPLE_RATE;
+use crate::services::audio::{resample_linear, WHISPER_SAMPLE_RATE};
 use crate::types::{Config, Note, ProcessingStage, ScribeState, ScribeStateEvent, Segment};
 use anyhow::{anyhow, Result};
 use serde_json::json;
@@ -672,24 +672,6 @@ impl ScribeController {
         }
         Ok(())
     }
-}
-
-/// Linear interpolation resampler. Good enough for speech at 16 kHz target.
-fn resample_linear(input: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
-    if from_rate == to_rate || input.is_empty() {
-        return input.to_vec();
-    }
-    let ratio = from_rate as f64 / to_rate as f64;
-    let out_len = (input.len() as f64 / ratio) as usize;
-    let mut out = Vec::with_capacity(out_len);
-    for i in 0..out_len {
-        let src = i as f64 * ratio;
-        let lo = src.floor() as usize;
-        let hi = (lo + 1).min(input.len() - 1);
-        let frac = (src - lo as f64) as f32;
-        out.push(input[lo] * (1.0 - frac) + input[hi] * frac);
-    }
-    out
 }
 
 fn resolve_model_path(config: &Config, model: &ModelService) -> PathBuf {

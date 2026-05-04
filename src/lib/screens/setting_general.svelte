@@ -18,6 +18,7 @@
 	let preferredSpeakerDevice = $state("");
 	let outputDevices = $state<string[]>([]);
 	let scribeCaptureSpeaker = $state(false);
+	let dictateAutoEnter = $state(false);
 	let themeMode = $state<ThemeMode>("system");
 	let openWithApp = $state("");
 	let message = $state("");
@@ -55,6 +56,7 @@
 		scribeCaptureSpeaker = await invoke<boolean>("settings_get_scribe_capture_speaker").catch(
 			() => false,
 		);
+		dictateAutoEnter = await invoke<boolean>("settings_get_dictate_auto_enter").catch(() => false);
 	}
 
 	async function saveAll() {
@@ -68,6 +70,7 @@
 				preferredSpeakerDevice: preferredSpeakerDevice.trim() || null,
 			});
 			await invoke("settings_set_scribe_capture_speaker", { enabled: scribeCaptureSpeaker });
+		await invoke("settings_set_dictate_auto_enter", { enabled: dictateAutoEnter });
 			await invoke("settings_set_theme_mode", { themeMode });
 			await invoke("settings_set_open_with_app_path", { path: openWithApp.trim() || null });
 			message = "Saved";
@@ -97,6 +100,12 @@
 			Capture speaker by default
 		</span>
 		<ToggleSwitch checked={scribeCaptureSpeaker} aria-label="Toggle default speaker capture" onchange={(next) => (scribeCaptureSpeaker = next)} />
+	</div>
+	<div class="flex items-center justify-between">
+		<span class="font-mono text-label-sm font-normal tracking-stamped uppercase">
+			Press Enter after dictate
+		</span>
+		<ToggleSwitch checked={dictateAutoEnter} aria-label="Press Enter after dictation paste" onchange={(next) => (dictateAutoEnter = next)} />
 	</div>
 	<LabeledTextField
 		label="Speaker capture device name"

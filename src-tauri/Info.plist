@@ -6,6 +6,8 @@
 	<string>Liscribe</string>
 	<key>CFBundleName</key>
 	<string>Liscribe</string>
+	<key>LSUIElement</key>
+	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Liscribe needs microphone access to capture and transcribe audio.</string>
 </dict>

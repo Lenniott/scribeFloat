@@ -1,3 +1,5 @@
+pub mod key_listener;
+pub mod paste_impl;
 pub mod permissions_impl;
 pub mod window_impl;
 

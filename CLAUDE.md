@@ -153,6 +153,36 @@ State lives entirely inside `Inner`. Methods on the controller lock, check the c
 - Long CPU-bound work (Whisper, WAV merge) runs in `tokio::task::spawn_blocking`.
 - Audio stream callbacks run on cpal's thread — never await or block inside them.
 - The macOS paste path (`run_on_main_sync`) must not be called from a Tauri async command handler — it will deadlock. Use `finish_session_async` pattern from `dictate_stop` command as the reference.
+- Tauri `#[tauri::command]` functions that call blocking code (e.g. `stop_and_take` which drains an audio channel) **must be `async`** and wrapped in `tokio::task::spawn_blocking`. Sync commands run on the main thread — blocking there hangs the entire UI event loop.
+
+---
+
+## macOS main-thread / dispatch-queue rules
+
+These rules exist because macOS 13+ strictly enforces which APIs may be called from which thread. Violations produce `dispatch_assert_queue_fail` (SIGTRAP / EXC_BREAKPOINT) and kill the process silently — no panic, no error message.
+
+**APIs that require the main dispatch queue:**
+- `enigo` keyboard simulation (`CGEventCreateKeyboardEvent`) — used in `platform/paste_impl.rs`
+- Any AppKit window operation: `show()`, `hide()`, `set_focus()`, `set_position()`
+- `TSMGetInputSourceProperty` — called internally by `rdev` on macOS for every key event
+
+**Rules:**
+1. Never call `paste_text()` or `send_enter()` from a tokio thread or `spawn_blocking`. Always dispatch via `app.run_on_main_thread(|| { ... })`. If you need the result back, bridge with a `std::sync::mpsc::channel`.
+2. Never call `window.show()`, `window.hide()`, or `window.set_focus()` from any thread other than the main thread. Use `app.run_on_main_thread` for all window visibility operations outside of Tauri command handlers (which already run on the main thread).
+3. **Never use `rdev::listen` on macOS.** rdev calls `TSMGetInputSourceProperty` for every key event on its listener thread, which asserts on macOS 13+. Use the `CGEventTap` implementation in `platform/key_listener.rs` instead — it reads raw keycodes with no string conversion.
+4. **`set_focus()` on a window while the app is in `.accessory` activation policy kills the process.** An app enters accessory mode via `setActivationPolicy(.accessory)` or `set_dock_visibility(false)`. Never call `set_focus()` on a window when the app may be in accessory mode. The dictate HUD intentionally never calls `set_focus()` for this reason.
+5. **`LSUIElement = true` in `Info.plist` is necessary but not sufficient:** Tao defaults to Regular activation at launch, so the Dock stays visible until `set_dock_visibility(false)` runs. **`setup` ends with `sync_activation_policy`** after prewarming windows so a tray-only start hides the Dock. Do not remove that call. Still avoid arbitrary `set_has_visible_windows(false)` elsewhere without respecting visibility logic — especially anywhere an `always_on_top` HUD might interact oddly with focus (`DictateController` deliberately skips `sync_activation_policy` on HUD lifecycle).
+
+**Paste focus timing:**
+When simulating a paste (Cmd+V) after dictation, the dictate HUD window must be hidden *before* the keypress is simulated. If the HUD is still visible, it holds focus and Cmd+V fires into the HUD rather than the previously active app. Hide first, sleep ~150ms for the OS to restore focus, then paste. See `DictateController::paste_on_main_thread`.
+
+---
+
+## Audio drain / MicSession rules
+
+`MicSession::stop_and_take()` blocks until the audio sender is dropped. On macOS, cpal tears down its CoreAudio stream **asynchronously** — the callback closure (which holds the `Sender`) may not be dropped immediately after `drop(_stream)`. For short recordings (< ~2 s), this causes an indefinite hang.
+
+**Rule:** Always use `recv_timeout` in the drain loop, not `recv`. The current implementation uses a 200ms timeout — if no chunk arrives within 200ms after the stream is dropped, the drain is considered complete. Never change this back to blocking `recv()`.
 
 ---
 

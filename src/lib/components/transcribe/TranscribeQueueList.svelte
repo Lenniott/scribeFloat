@@ -14,7 +14,7 @@
   } = $props();
 </script>
 
-<div class="rounded-md border border-rim bg-panel">
+<div class="rounded-md border border-rim bg-panel min-h-52">
   <div class="grid grid-cols-[2rem_minmax(0,1fr)_8.5rem_8rem_2.5rem] items-center gap-2 border-b border-rim px-2 py-2">
     <span class="font-mono text-label-sm text-fg/55 uppercase tracking-stamped">#</span>
     <span class="font-mono text-label-sm text-fg/55 uppercase tracking-stamped">File</span>

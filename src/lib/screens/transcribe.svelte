@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { open } from "@tauri-apps/plugin-dialog";
 
   import Button from "@lib/components/Button.svelte";
@@ -45,6 +46,7 @@
   let progress = $state(0);
   let stage = $state<ProcessingStage>("LOADING_MODEL");
   let errorMessage = $state("");
+  let isDraggingOverDropZone = $state(false);
 
   const modelStore = createModelDownloadStore();
   let modelUnlisteners: (() => void)[] = [];
@@ -58,6 +60,15 @@
   const hasQueue = $derived(queue.length > 0);
   const startDisabled = $derived(
     !hasQueue || !outputFolder || phase === "processing" || !selectedModelId,
+  );
+  const canAcceptDrop = $derived(phase !== "processing");
+  const dropZoneClass = $derived(
+    [
+      "w-full rounded-md border border-dashed px-4 py-5 text-center transition-[background-color,border-color]",
+      isDraggingOverDropZone && canAcceptDrop
+        ? "border-active bg-active/15"
+        : "border-rim bg-transparent",
+    ].join(" "),
   );
 
   const progressSequence: { label: string; stage: ProcessingStage }[] = [
@@ -75,12 +86,10 @@
   );
 
   function uniquePaths(paths: string[]): string[] {
-    const seen = new Set<string>();
     const out: string[] = [];
     for (const path of paths) {
       const trimmed = path.trim();
-      if (!trimmed || seen.has(trimmed)) continue;
-      seen.add(trimmed);
+      if (!trimmed || out.includes(trimmed)) continue;
       out.push(trimmed);
     }
     return out;
@@ -92,13 +101,19 @@
       queue = [];
       return;
     }
-    queue = await invoke<TranscribeQueueItemView[]>("transcribe_inspect_inputs", {
-      inputPaths: normalized,
-    });
+    queue = await invoke<TranscribeQueueItemView[]>(
+      "transcribe_inspect_inputs",
+      {
+        inputPaths: normalized,
+      },
+    );
   }
 
   async function queuePaths(nextPaths: string[]) {
-    const merged = uniquePaths([...queue.map((item) => item.source_path), ...nextPaths]);
+    const merged = uniquePaths([
+      ...queue.map((item) => item.source_path),
+      ...nextPaths,
+    ]);
     try {
       await inspectPaths(merged);
       errorMessage = "";
@@ -151,6 +166,8 @@
 
   function handleDrop(event: DragEvent) {
     event.preventDefault();
+    isDraggingOverDropZone = false;
+    if (!canAcceptDrop) return;
     const dropped = Array.from(event.dataTransfer?.files ?? [])
       .map((file) => (file as File & { path?: string }).path ?? "")
       .filter(Boolean);
@@ -161,6 +178,24 @@
 
   function handleDragOver(event: DragEvent) {
     event.preventDefault();
+    if (canAcceptDrop) {
+      isDraggingOverDropZone = true;
+    }
+  }
+
+  function handleDragEnter(event: DragEvent) {
+    event.preventDefault();
+    if (canAcceptDrop) {
+      isDraggingOverDropZone = true;
+    }
+  }
+
+  function handleDragLeave(event: DragEvent) {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && event.currentTarget instanceof Node) {
+      if (event.currentTarget.contains(nextTarget)) return;
+    }
+    isDraggingOverDropZone = false;
   }
 
   async function startTranscribe() {
@@ -233,14 +268,18 @@
   }
 
   onMount(async () => {
-    outputFolder = await invoke<string>("settings_get_output_path").catch(() => "");
-    includeTimestamps = await invoke<boolean>("scribe_get_include_timestamps").catch(
-      () => true,
+    outputFolder = await invoke<string>("settings_get_output_path").catch(
+      () => "",
     );
+    includeTimestamps = await invoke<boolean>(
+      "scribe_get_include_timestamps",
+    ).catch(() => true);
 
     modelUnlisteners = await modelStore.subscribe();
     await modelStore.refresh();
-    const selected = modelStore.models.find((model) => model.downloaded && model.selected);
+    const selected = modelStore.models.find(
+      (model) => model.downloaded && model.selected,
+    );
     selectedModelId = selected?.id ?? "";
 
     const ulState = await listen<TranscribeStatePayload>(
@@ -251,7 +290,24 @@
       "transcribe://item-progress",
       (event) => handleItemProgress(event.payload),
     );
-    unlisteners = [ulState, ulProgress];
+    const ulNativeDrop = await getCurrentWindow().onDragDropEvent((event) => {
+      if (event.payload.type === "enter" || event.payload.type === "over") {
+        if (canAcceptDrop) {
+          isDraggingOverDropZone = true;
+        }
+        return;
+      }
+      if (event.payload.type === "leave") {
+        isDraggingOverDropZone = false;
+        return;
+      }
+      if (event.payload.type === "drop") {
+        isDraggingOverDropZone = false;
+        if (!canAcceptDrop) return;
+        void queuePaths(event.payload.paths);
+      }
+    });
+    unlisteners = [ulState, ulProgress, ulNativeDrop];
   });
 
   onDestroy(() => {
@@ -261,7 +317,9 @@
 </script>
 
 <section class="flex h-screen flex-col overflow-hidden bg-panel text-fg">
-  <header class="flex min-h-14 items-center justify-between border-b border-rim px-5">
+  <header
+    class="flex min-h-14 items-center justify-between border-b border-rim px-5"
+  >
     <h1 class="sf-headline-sm">Transcribe</h1>
     {#if phase === "processing"}
       <p class="font-mono text-label-sm text-fg/55 uppercase tracking-stamped">
@@ -271,46 +329,7 @@
   </header>
 
   <div class="flex min-h-0 flex-1 flex-col gap-4 px-5 py-4">
-    <div
-      class="rounded-md border border-dashed border-rim px-4 py-5 text-center"
-      role="region"
-      aria-label="Drop audio files here"
-      ondrop={handleDrop}
-      ondragover={handleDragOver}
-    >
-      <p class="text-body-md text-fg/75">
-        Drag and drop audio files, or use Add files / Add folder.
-      </p>
-      <p class="text-label-sm text-fg/55">Supported: mp3, m4a, wav, ogg, flac.</p>
-    </div>
-
-    <div class="flex flex-wrap items-center gap-2">
-      <Button variant="normal" onclick={addFiles} disabled={phase === "processing"}>
-        Add files
-      </Button>
-      <Button variant="normal" onclick={addFolder} disabled={phase === "processing"}>
-        Add folder
-      </Button>
-      <Button
-        variant="normal"
-        onclick={() => {
-          queue = [];
-          errorMessage = "";
-          if (phase !== "processing") phase = "idle";
-        }}
-        disabled={phase === "processing" || queue.length === 0}
-      >
-        Clear list
-      </Button>
-    </div>
-
-    <TranscribeQueueList
-      items={queue}
-      canRemove={phase !== "processing"}
-      onRemove={removeQueueItem}
-    />
-
-    <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+    <div class="flex gap-2 justify-between">
       <div class="space-y-3">
         <PathSelectorField
           label="Save path"
@@ -340,19 +359,87 @@
           </select>
         </div>
 
-        <div class="flex items-center justify-between rounded-md border border-rim px-3 py-2">
-          <span class="font-mono text-label-sm text-fg/80 uppercase tracking-stamped">
+        <div
+          class="flex items-center justify-between rounded-md border border-rim px-3 py-2"
+        >
+          <span
+            class="font-mono text-label-sm text-fg/80 uppercase tracking-stamped"
+          >
             Timestamps
           </span>
-          <ToggleSwitch checked={includeTimestamps} onchange={(next) => (includeTimestamps = next)} />
+          <ToggleSwitch
+            checked={includeTimestamps}
+            onchange={(next) => (includeTimestamps = next)}
+          />
         </div>
       </div>
+      <div class="flex gap-1 max-w-xl mt-6">
+        <div
+          class={dropZoneClass}
+          role="region"
+          aria-label={isDraggingOverDropZone
+            ? "Release to add files"
+            : "Drop audio files here"}
+          ondragenter={handleDragEnter}
+          ondrop={handleDrop}
+          ondragover={handleDragOver}
+          ondragleave={handleDragLeave}
+        >
+          <p class="text-body-md text-fg/75">
+            {isDraggingOverDropZone
+              ? "Release to add to queue."
+              : "Drag and drop audio files, or use Add files / Add folder."}
+          </p>
+          <p class="text-label-sm text-fg/55">
+            {isDraggingOverDropZone
+              ? "Files and folders will be inspected before transcription."
+              : "Supported: mp3, m4a, wav, ogg, flac."}
+          </p>
+        </div>
+        <div class="flex flex-col gap-2 min-w-24">
+          <Button
+            variant="normal"
+            onclick={addFiles}
+            disabled={phase === "processing"}
+          >
+            Add files
+          </Button>
+          <Button
+            variant="normal"
+            onclick={addFolder}
+            disabled={phase === "processing"}
+          >
+            Add folder
+          </Button>
+          <Button
+            variant="normal"
+            onclick={() => {
+              queue = [];
+              errorMessage = "";
+              if (phase !== "processing") phase = "idle";
+            }}
+            disabled={phase === "processing" || queue.length === 0}
+          >
+            Clear list
+          </Button>
+        </div>
+      </div>
+    </div>
+    <TranscribeQueueList
+      items={queue}
+      canRemove={phase !== "processing"}
+      onRemove={removeQueueItem}
+    />
 
+    <div class="w-full">
       <div class="rounded-md border border-rim p-3">
         {#if phase === "processing"}
           <StackProgressBar {progress} {sequence} />
         {:else if phase === "done"}
-          <TranscribeProcessingSummary items={queue} onOpenTranscript={openTranscript} />
+          <TranscribeProcessingSummary
+            items={queue}
+            onOpenTranscript={openTranscript}
+          />
         {:else}
           <p class="text-body-md text-fg/70">
             Queue files, choose output path and model, then start transcription.
@@ -366,13 +453,20 @@
     </div>
   </div>
 
-  <footer class="flex items-center justify-end gap-2 border-t border-rim px-5 py-3">
+  <footer
+    class="flex items-center justify-end gap-2 border-t border-rim px-5 py-3"
+  >
     {#if phase === "done"}
-      <Button variant="normal" onclick={resetForAnotherRun}>Transcribe More</Button>
+      <Button variant="normal" onclick={resetForAnotherRun}
+        >Transcribe More</Button
+      >
     {/if}
-    <Button variant="primary" onclick={startTranscribe} disabled={startDisabled}>
+    <Button
+      variant="primary"
+      onclick={startTranscribe}
+      disabled={startDisabled}
+    >
       Transcribe
     </Button>
   </footer>
 </section>
-

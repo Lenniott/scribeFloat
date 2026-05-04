@@ -108,7 +108,7 @@ impl ModelService {
         std::fs::create_dir_all(&self.models_dir).context("create models dir")?;
 
         let client = reqwest::Client::builder()
-            .user_agent("liscribe_v8/0.1")
+            .user_agent("scribefloat/0.1")
             .connect_timeout(Duration::from_secs(15))
             .build()
             .context("failed to build download client")?;

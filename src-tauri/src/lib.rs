@@ -6,6 +6,7 @@ mod types;
 
 use std::sync::Arc;
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
     AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
@@ -13,14 +14,18 @@ use tauri::{
 };
 
 pub(crate) const SCRIBE_WINDOW_LABEL: &str = "scribe";
+const TRANSCRIBE_WINDOW_LABEL: &str = "transcribe";
 const SETTINGS_WINDOW_LABEL: &str = "settings";
 pub(crate) const DICTATE_WINDOW_LABEL: &str = "dictate";
 const OPEN_SCRIBE_MENU_ID: &str = "open_scribe";
+const OPEN_TRANSCRIBE_MENU_ID: &str = "open_transcribe";
 const OPEN_SETTINGS_MENU_ID: &str = "open_settings";
 const QUIT_MENU_ID: &str = "quit";
 
 const SCRIBE_WINDOW_W: f64 = 800.0;
 const SCRIBE_WINDOW_H: f64 = 600.0;
+const TRANSCRIBE_WINDOW_W: f64 = 800.0;
+const TRANSCRIBE_WINDOW_H: f64 = 600.0;
 const SETTINGS_WINDOW_W: f64 = 960.0;
 const SETTINGS_WINDOW_H: f64 = 680.0;
 const DICTATE_WINDOW_W: f64 = 240.0;
@@ -29,9 +34,41 @@ const DICTATE_WINDOW_H: f64 = 48.0;
 const DICTATE_MARGIN_RIGHT: f64 = 16.0;
 const DICTATE_MARGIN_TOP: f64 = 28.0;
 
+fn resolve_icon_path(app: &tauri::AppHandle, file_name: &str) -> Option<std::path::PathBuf> {
+    let resource_icon = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|dir| dir.join("icons").join(file_name));
+    let current_dir = std::env::current_dir().ok();
+    let cwd_src_icon = current_dir
+        .as_ref()
+        .map(|dir| dir.join("src-tauri/icons").join(file_name));
+    let cwd_icon = current_dir
+        .as_ref()
+        .map(|dir| dir.join("icons").join(file_name));
+
+    [resource_icon, cwd_src_icon, cwd_icon]
+        .into_iter()
+        .flatten()
+        .find(|path| path.exists())
+}
+
+fn load_icon(app: &tauri::AppHandle, file_name: &str) -> Option<Image<'static>> {
+    let path = resolve_icon_path(app, file_name)?;
+    Image::from_path(path).ok()
+}
+
 fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
     let open_scribe =
         MenuItem::with_id(app, OPEN_SCRIBE_MENU_ID, "Scribe", true, None::<&str>)?;
+    let open_transcribe = MenuItem::with_id(
+        app,
+        OPEN_TRANSCRIBE_MENU_ID,
+        "Transcribe",
+        true,
+        None::<&str>,
+    )?;
     let open_settings = MenuItem::with_id(
         app,
         OPEN_SETTINGS_MENU_ID,
@@ -40,7 +77,10 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, QUIT_MENU_ID, "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open_scribe, &open_settings, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[&open_scribe, &open_transcribe, &open_settings, &quit],
+    )?;
 
     let mut tray = TrayIconBuilder::with_id("main")
         .menu(&menu)
@@ -49,6 +89,11 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
             OPEN_SCRIBE_MENU_ID => {
                 if let Err(err) = open_scribe_window(app) {
                     eprintln!("failed to open scribe window: {err}");
+                }
+            }
+            OPEN_TRANSCRIBE_MENU_ID => {
+                if let Err(err) = open_transcribe_window(app) {
+                    eprintln!("failed to open transcribe window: {err}");
                 }
             }
             OPEN_SETTINGS_MENU_ID => {
@@ -60,8 +105,26 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
             _ => {}
         });
 
-    if let Some(icon) = app.default_window_icon() {
-        tray = tray.icon(icon.clone());
+    #[cfg(not(target_os = "macos"))]
+    {
+        let preferred_tray_icon = "sf_Transparent_tray_32x32.png";
+        if let Some(icon) =
+            load_icon(app.handle(), preferred_tray_icon).or_else(|| app.default_window_icon().cloned())
+        {
+            tray = tray.icon(icon.clone());
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // Prefer the generated app icon so tray updates immediately after icon regeneration.
+        if let Some(icon) =
+            load_icon(app.handle(), "icon.png").or_else(|| app.default_window_icon().cloned())
+        {
+            tray = tray.icon(icon);
+        }
+        // Keep original colors; template mode can mask icon changes.
+        tray = tray.icon_as_template(false);
     }
 
     tray.build(app)?;
@@ -83,6 +146,24 @@ fn prewarm_scribe_window(app: &AppHandle) {
     })();
     if let Err(err) = result {
         eprintln!("failed to prewarm scribe window: {err}");
+    }
+}
+
+fn prewarm_transcribe_window(app: &AppHandle) {
+    let result: tauri::Result<()> = (|| {
+        let url = WebviewUrl::App("?view=transcribe".into());
+        let mut builder = WebviewWindowBuilder::new(app, TRANSCRIBE_WINDOW_LABEL, url)
+            .title("Transcribe")
+            .inner_size(TRANSCRIBE_WINDOW_W, TRANSCRIBE_WINDOW_H)
+            .visible(false);
+        if let Some(icon) = app.default_window_icon() {
+            builder = builder.icon(icon.clone())?;
+        }
+        builder.build()?;
+        Ok(())
+    })();
+    if let Err(err) = result {
+        eprintln!("failed to prewarm transcribe window: {err}");
     }
 }
 
@@ -131,6 +212,17 @@ pub(crate) fn open_settings_window(app: &AppHandle) -> tauri::Result<WebviewWind
         WebviewUrl::App("?view=settings".into()),
         SETTINGS_WINDOW_W,
         SETTINGS_WINDOW_H,
+    )
+}
+
+pub(crate) fn open_transcribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    open_or_focus_window(
+        app,
+        TRANSCRIBE_WINDOW_LABEL,
+        "Transcribe",
+        WebviewUrl::App("?view=transcribe".into()),
+        TRANSCRIBE_WINDOW_W,
+        TRANSCRIBE_WINDOW_H,
     )
 }
 
@@ -239,6 +331,7 @@ pub fn run() {
     let audio = services::audio::AudioService::new();
     let output = services::output::OutputService::new();
     let permissions = services::permissions::PermissionsService::new();
+    let transcribe_input = services::transcribe_input::TranscribeInputService::new();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -287,6 +380,13 @@ pub fn run() {
                 Arc::clone(&config),
                 app.handle().clone(),
             );
+            let transcribe_ctrl = controllers::transcribe::TranscribeController::new(
+                Arc::clone(&transcribe_input),
+                Arc::clone(&model),
+                Arc::clone(&output),
+                Arc::clone(&config),
+                app.handle().clone(),
+            );
 
             app.manage(model); // shared model service
             app.manage(config); // shared config service
@@ -294,6 +394,7 @@ pub fn run() {
             app.manage(settings_ctrl); // settings orchestration
             app.manage(ctrl); // for scribe commands
             app.manage(Arc::clone(&dictate_ctrl)); // for dictate commands
+            app.manage(Arc::clone(&transcribe_ctrl)); // for transcribe commands
 
             dictate_ctrl.start_key_listener();
 
@@ -304,6 +405,7 @@ pub fn run() {
                     .ok();
             }
             prewarm_scribe_window(app.handle());
+            prewarm_transcribe_window(app.handle());
             prewarm_dictate_window(app.handle());
             // Tao applies Regular activation at launch; `set_dock_visibility(false)` only runs when we
             // call it. Sync once after prewarm so a tray-only start hides the Dock (plist LSUIElement
@@ -396,6 +498,10 @@ pub fn run() {
             commands::dictate::dictate_cancel,
             commands::dictate::dictate_dismiss,
             commands::dictate::dictate_get_history,
+            commands::transcribe::transcribe_inspect_inputs,
+            commands::transcribe::transcribe_start,
+            commands::transcribe::transcribe_open_output,
+            commands::transcribe::transcribe_show_window,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

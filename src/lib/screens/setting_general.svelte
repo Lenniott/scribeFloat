@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onDestroy, onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import Button from "@lib/components/Button.svelte";
 	import HotkeyCaptureField from "@lib/components/form/HotkeyCaptureField.svelte";
@@ -22,6 +22,7 @@
 	let themeMode = $state<ThemeMode>("system");
 	let openWithApp = $state("");
 	let message = $state("");
+	let messageClearId: ReturnType<typeof setTimeout> | undefined;
 
 	// Apply theme immediately as the user toggles it (live preview)
 	$effect(() => {
@@ -60,6 +61,10 @@
 	}
 
 	async function saveAll() {
+		if (messageClearId !== undefined) {
+			clearTimeout(messageClearId);
+			messageClearId = undefined;
+		}
 		message = "";
 		try {
 			await invoke("settings_set_output_path", { path: outputPath });
@@ -74,12 +79,19 @@
 			await invoke("settings_set_theme_mode", { themeMode });
 			await invoke("settings_set_open_with_app_path", { path: openWithApp.trim() || null });
 			message = "Saved";
+			messageClearId = setTimeout(() => {
+				message = "";
+				messageClearId = undefined;
+			}, 3000);
 		} catch (e) {
 			message = "Failed to save: " + String(e);
 		}
 	}
 
 	onMount(refresh);
+	onDestroy(() => {
+		if (messageClearId !== undefined) clearTimeout(messageClearId);
+	});
 </script>
 
 <section class="space-y-4">
@@ -95,14 +107,14 @@
 	<HotkeyCaptureField label="Dictate hotkey" bind:value={dictateHotkey} allowModifierOnly={true} />
 	<LabeledTextField label="Input label" bind:value={inputLabel} />
 	<LabeledTextField label="Output label" bind:value={outputLabel} />
-	<div class="flex items-center justify-between">
-		<span class="font-mono text-label-sm font-normal tracking-stamped uppercase">
+	<div class="flex flex-col items-start justify-center gap-1 h-10">
+		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
 			Capture speaker by default
 		</span>
 		<ToggleSwitch checked={scribeCaptureSpeaker} aria-label="Toggle default speaker capture" onchange={(next) => (scribeCaptureSpeaker = next)} />
 	</div>
-	<div class="flex items-center justify-between">
-		<span class="font-mono text-label-sm font-normal tracking-stamped uppercase">
+	<div class="flex flex-col items-start justify-center gap-1 h-10">
+		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
 			Press Enter after dictate
 		</span>
 		<ToggleSwitch checked={dictateAutoEnter} aria-label="Press Enter after dictation paste" onchange={(next) => (dictateAutoEnter = next)} />

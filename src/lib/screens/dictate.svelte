@@ -26,7 +26,9 @@
 	let errorText = $state("");
 
 	let recordingStartedAt: number | null = null;
-	let timerRaf = 0;
+	let timerInterval: ReturnType<typeof setInterval> | undefined;
+	let micLevelPending = 0;
+	let micFlushRaf = 0;
 
 	const dotStatus = $derived(
 		dictateState === "RECORDING"
@@ -40,11 +42,21 @@
 		dictateState === "TRANSCRIBING" || dictateState === "PASTING",
 	);
 
-	function tickTimer() {
-		if (recordingStartedAt !== null && dictateState === "RECORDING") {
-			elapsedSeconds = (Date.now() - recordingStartedAt) / 1000;
-			timerRaf = requestAnimationFrame(tickTimer);
+	function stopRecordingTimer() {
+		if (timerInterval !== undefined) {
+			clearInterval(timerInterval);
+			timerInterval = undefined;
 		}
+	}
+
+	function flushMicLevel() {
+		micFlushRaf = 0;
+		micLevel = micLevelPending;
+	}
+
+	function scheduleMicLevelFlush() {
+		if (micFlushRaf) return;
+		micFlushRaf = requestAnimationFrame(flushMicLevel);
 	}
 
 	function handleStateEvent(ev: DictateStateEvent) {
@@ -61,10 +73,14 @@
 		if (ev.state === "RECORDING" && prev !== "RECORDING") {
 			recordingStartedAt = Date.now();
 			elapsedSeconds = 0;
-			cancelAnimationFrame(timerRaf);
-			timerRaf = requestAnimationFrame(tickTimer);
+			stopRecordingTimer();
+			timerInterval = setInterval(() => {
+				if (recordingStartedAt !== null) {
+					elapsedSeconds = (Date.now() - recordingStartedAt) / 1000;
+				}
+			}, 250);
 		} else if (ev.state !== "RECORDING") {
-			cancelAnimationFrame(timerRaf);
+			stopRecordingTimer();
 			if (ev.state === "IDLE") {
 				elapsedSeconds = 0;
 				recordingStartedAt = null;
@@ -97,13 +113,18 @@
 		);
 		unlisten.push(
 			await listen<number>("dictate://audio-level", (e) => {
-				micLevel = e.payload;
+				micLevelPending = e.payload;
+				scheduleMicLevelFlush();
 			}),
 		);
 	});
 
 	onDestroy(() => {
-		cancelAnimationFrame(timerRaf);
+		stopRecordingTimer();
+		if (micFlushRaf) {
+			cancelAnimationFrame(micFlushRaf);
+			micFlushRaf = 0;
+		}
 		unlisten.forEach((u) => u());
 	});
 </script>
@@ -154,7 +175,7 @@
 	{:else}
 		<div class="flex items-center gap-4">
 			<div class="flex items-center gap-2">
-				<RecordingStatusDot status={dotStatus} />
+				<RecordingStatusDot status={dotStatus} pulseWhileRecording={false} />
 				<RecordingTimer {elapsedSeconds} />
 			</div>
 			<AudioWaveFormVisualizer

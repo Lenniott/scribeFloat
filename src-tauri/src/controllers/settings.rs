@@ -206,8 +206,20 @@ impl SettingsController {
     }
 
     pub fn open_transcript(&self, file_path: &str) -> Result<(), String> {
+        let path = std::path::Path::new(file_path);
+        let canonical = path
+            .canonicalize()
+            .map_err(|_| "invalid or inaccessible transcript path".to_string())?;
+        let save_folder = self.config.get().save_folder;
+        let base = std::path::Path::new(&save_folder)
+            .canonicalize()
+            .map_err(|_| "save folder is not accessible".to_string())?;
+        if !canonical.starts_with(&base) {
+            return Err("transcript path is outside the configured save folder".to_string());
+        }
         let app = self.config.get().open_with_app_path;
-        self.output.open_file_for_user(file_path, app.as_deref())
+        self.output
+            .open_file_for_user(canonical.to_str().unwrap_or(file_path), app.as_deref())
     }
 
     pub fn get_theme_mode(&self) -> ThemeMode {

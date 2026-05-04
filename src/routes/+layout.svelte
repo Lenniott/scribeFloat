@@ -12,7 +12,10 @@
 		const trackSystemScheme =
 			new URLSearchParams(window.location.search).get("view") !== "dictate";
 
-		let cleanup = watchThemeMode("system", { trackSystemScheme });
+		// Use localStorage to match the boot script's initial theme, avoiding a flash before
+		// the backend invoke resolves.
+		const localMode = (localStorage.getItem('sf_theme_mode') as ThemeMode | null) ?? "system";
+		let cleanup = watchThemeMode(localMode, { trackSystemScheme });
 		let mounted = true;
 		invoke<ThemeMode>("settings_get_theme_mode")
 			.catch(() => "system" as const)

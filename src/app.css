@@ -86,7 +86,9 @@
 
 /* Dark defaults */
 :root {
-  color-scheme: dark;
+  /* color-scheme is set by [data-theme] or the @media fallback below — not here.
+     Declaring it on :root would tell WebKit the webview is always dark, fighting
+     the OS on transparent windows (dictate HUD) before data-theme is applied. */
 
   /* Single-source knobs */
   --brand-hue: 250;
@@ -196,6 +198,12 @@
 }
 
 /* System preference fallback (no explicit data-theme set) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+  }
+}
+
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     color-scheme: light;

@@ -49,28 +49,46 @@ pub fn open_file(path: &str, app: Option<&str>) -> Result<(), String> {
 }
 
 #[cfg(target_os = "macos")]
+fn switch_audio_source_path() -> Result<std::path::PathBuf, String> {
+    const CANDIDATES: &[&str] = &[
+        "/opt/homebrew/bin/SwitchAudioSource", // Apple Silicon Homebrew
+        "/usr/local/bin/SwitchAudioSource",    // Intel Homebrew
+    ];
+    for candidate in CANDIDATES {
+        if std::path::Path::new(candidate).exists() {
+            return Ok(std::path::PathBuf::from(candidate));
+        }
+    }
+    Err("SwitchAudioSource not found (install via `brew install switchaudio-osx`)".to_string())
+}
+
+#[cfg(target_os = "macos")]
 pub fn get_default_output_device() -> Result<String, String> {
-    let output = std::process::Command::new("/opt/homebrew/bin/SwitchAudioSource")
+    let bin = switch_audio_source_path()?;
+    let output = std::process::Command::new(&bin)
         .args(["-c", "-t", "output"])
         .output()
         .map_err(|e| format!("failed to query current output device: {e}"))?;
     if !output.status.success() {
-        return Err("failed to query current output device".to_string());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("failed to query current output device: {stderr}"));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 #[cfg(target_os = "macos")]
 pub fn set_default_output_device(device_name: &str) -> Result<(), String> {
-    let status = std::process::Command::new("/opt/homebrew/bin/SwitchAudioSource")
+    let bin = switch_audio_source_path()?;
+    let output = std::process::Command::new(&bin)
         .args(["-s", device_name, "-t", "output"])
-        .status()
+        .output()
         .map_err(|e| format!("failed to set output device `{device_name}`: {e}"))?;
-    if status.success() {
+    if output.status.success() {
         Ok(())
     } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
         Err(format!(
-            "switching output device to `{device_name}` failed with status {status}"
+            "switching output device to `{device_name}` failed: {stderr}"
         ))
     }
 }
@@ -95,7 +113,18 @@ pub fn output_device_exists(device_name: &str) -> bool {
     else {
         return false;
     };
-    String::from_utf8_lossy(&output.stdout).contains(device_name)
+    let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
+        return false;
+    };
+    // Walk SPAudioDataType[*].devices[*]._name for an exact match
+    json["SPAudioDataType"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|section| section["devices"].as_array())
+        .flatten()
+        .filter_map(|device| device["_name"].as_str())
+        .any(|name| name == device_name)
 }
 
 #[cfg(not(target_os = "macos"))]

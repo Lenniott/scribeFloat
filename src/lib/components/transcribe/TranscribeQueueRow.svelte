@@ -1,5 +1,6 @@
 <script lang="ts">
   import IconButton from "@lib/components/IconButton.svelte";
+  import { SquareArrowOutUpRight } from "lucide-svelte";
   import Trash from "lucide-svelte/icons/trash-2";
 
   export type TranscribeQueueItemView = {
@@ -19,12 +20,16 @@
     item,
     canRemove = true,
     onRemove,
+    onOpenTranscript,
   }: {
     index: number;
     item: TranscribeQueueItemView;
     canRemove?: boolean;
     onRemove?: (id: string) => void;
+    onOpenTranscript?: (path: string) => void;
   } = $props();
+
+  const canOpenTranscript = $derived(item.status === "DONE" && Boolean(item.transcript_path));
 
   const statusLabel = $derived(
     item.status === "PROCESSING"
@@ -63,14 +68,24 @@
   <span class="justify-self-end text-label-sm text-fg/75">{durationLabel}</span>
   <span class="justify-self-end text-label-sm text-fg/75">{statusLabel}</span>
   <div class="justify-self-end">
-    <IconButton
-      variant="normal"
-      size="small"
-      icon={Trash}
-      aria-label="Remove file from queue"
-      disabled={!canRemove}
-      onclick={() => onRemove?.(item.id)}
-    />
+    {#if canOpenTranscript}
+      <IconButton
+        variant="normal"
+        size="small"
+        icon={SquareArrowOutUpRight}
+        aria-label="Open transcript"
+        onclick={() => onOpenTranscript?.(item.transcript_path!)}
+      />
+    {:else}
+      <IconButton
+        variant="normal"
+        size="small"
+        icon={Trash}
+        aria-label="Remove file from queue"
+        disabled={!canRemove}
+        onclick={() => onRemove?.(item.id)}
+      />
+    {/if}
   </div>
 </div>
 

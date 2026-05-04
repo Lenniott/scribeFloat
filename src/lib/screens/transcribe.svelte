@@ -11,7 +11,6 @@
   import StackProgressBar from "@lib/components/form/StackProgressBar.svelte";
   import { createModelDownloadStore } from "$lib/stores/modelDownload.svelte";
   import TranscribeQueueList from "@lib/components/transcribe/TranscribeQueueList.svelte";
-  import TranscribeProcessingSummary from "@lib/components/transcribe/TranscribeProcessingSummary.svelte";
   import type { TranscribeQueueItemView } from "@lib/components/transcribe/TranscribeQueueRow.svelte";
 
   type ProcessingStage =
@@ -62,6 +61,7 @@
     !hasQueue || !outputFolder || phase === "processing" || !selectedModelId,
   );
   const canAcceptDrop = $derived(phase !== "processing");
+  const showProcessingOverlay = $derived(phase === "processing");
   const dropZoneClass = $derived(
     [
       "w-full rounded-md border border-dashed px-4 py-5 text-center transition-[background-color,border-color]",
@@ -328,7 +328,7 @@
     {/if}
   </header>
 
-  <div class="flex min-h-0 flex-1 flex-col gap-4 px-5 py-4">
+  <div class="relative flex min-h-0 flex-1 flex-col gap-4 px-5 py-4">
     <div class="flex gap-2 justify-between">
       <div class="space-y-3">
         <PathSelectorField
@@ -359,9 +359,7 @@
           </select>
         </div>
 
-        <div
-          class="flex items-center justify-between rounded-md border border-rim px-3 py-2"
-        >
+        <div class="flex flex-col gap-1.5">
           <span
             class="font-mono text-label-sm text-fg/80 uppercase tracking-stamped"
           >
@@ -373,7 +371,7 @@
           />
         </div>
       </div>
-      <div class="flex gap-1 max-w-xl mt-6">
+      <div class="flex gap-1 max-w-xl mt-5">
         <div
           class={dropZoneClass}
           role="region"
@@ -385,12 +383,12 @@
           ondragover={handleDragOver}
           ondragleave={handleDragLeave}
         >
-          <p class="text-body-md text-fg/75">
+          <p class="text-body-md text-fg/75 w-full">
             {isDraggingOverDropZone
               ? "Release to add to queue."
               : "Drag and drop audio files, or use Add files / Add folder."}
           </p>
-          <p class="text-label-sm text-fg/55">
+          <p class="text-label-sm text-fg/55 w-full">
             {isDraggingOverDropZone
               ? "Files and folders will be inspected before transcription."
               : "Supported: mp3, m4a, wav, ogg, flac."}
@@ -411,17 +409,6 @@
           >
             Add folder
           </Button>
-          <Button
-            variant="normal"
-            onclick={() => {
-              queue = [];
-              errorMessage = "";
-              if (phase !== "processing") phase = "idle";
-            }}
-            disabled={phase === "processing" || queue.length === 0}
-          >
-            Clear list
-          </Button>
         </div>
       </div>
     </div>
@@ -429,33 +416,48 @@
       items={queue}
       canRemove={phase !== "processing"}
       onRemove={removeQueueItem}
+      onOpenTranscript={openTranscript}
     />
 
-    <div class="w-full">
-      <div class="rounded-md border border-rim p-3">
-        {#if phase === "processing"}
-          <StackProgressBar {progress} {sequence} />
-        {:else if phase === "done"}
-          <TranscribeProcessingSummary
-            items={queue}
-            onOpenTranscript={openTranscript}
-          />
-        {:else}
-          <p class="text-body-md text-fg/70">
-            Queue files, choose output path and model, then start transcription.
-          </p>
-        {/if}
+    {#if phase !== "processing" && queue.length === 0}
+      <p class="text-body-md text-fg/70">
+        Queue files, choose output path and model, then start transcription.
+      </p>
+    {/if}
+    {#if errorMessage}
+      <p class="text-label-sm text-destructive">{errorMessage}</p>
+    {/if}
 
-        {#if errorMessage}
-          <p class="mt-3 text-label-sm text-destructive">{errorMessage}</p>
-        {/if}
+    {#if showProcessingOverlay}
+      <div
+        class="absolute inset-0 z-10 flex items-center justify-center bg-canvas/70 backdrop-blur-[1px]"
+      >
+        <div class="w-full max-w-2xl rounded-md border border-rim bg-panel p-4">
+          <p
+            class="mb-3 font-mono text-label-sm text-fg/70 uppercase tracking-stamped"
+          >
+            Processing {progress}%
+          </p>
+          <StackProgressBar {progress} {sequence} />
+        </div>
       </div>
-    </div>
+    {/if}
   </div>
 
   <footer
     class="flex items-center justify-end gap-2 border-t border-rim px-5 py-3"
   >
+    <Button
+      variant="normal"
+      onclick={() => {
+        queue = [];
+        errorMessage = "";
+        if (phase !== "processing") phase = "idle";
+      }}
+      disabled={phase === "processing" || queue.length === 0}
+    >
+      Clear list
+    </Button>
     {#if phase === "done"}
       <Button variant="normal" onclick={resetForAnotherRun}
         >Transcribe More</Button

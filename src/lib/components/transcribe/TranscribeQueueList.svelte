@@ -7,10 +7,12 @@
     items,
     canRemove = true,
     onRemove,
+    onOpenTranscript,
   }: {
     items: TranscribeQueueItemView[];
     canRemove?: boolean;
     onRemove?: (id: string) => void;
+    onOpenTranscript?: (path: string) => void;
   } = $props();
 </script>
 
@@ -30,7 +32,7 @@
   {:else}
     <div class="max-h-56 overflow-y-auto">
       {#each items as item, index (item.id)}
-        <TranscribeQueueRow {index} {item} canRemove={canRemove} {onRemove} />
+        <TranscribeQueueRow {index} {item} canRemove={canRemove} {onRemove} {onOpenTranscript} />
       {/each}
     </div>
   {/if}

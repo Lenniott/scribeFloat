@@ -24,7 +24,7 @@ const SCRIBE_WINDOW_H: f64 = 600.0;
 const SETTINGS_WINDOW_W: f64 = 960.0;
 const SETTINGS_WINDOW_H: f64 = 680.0;
 const DICTATE_WINDOW_W: f64 = 240.0;
-const DICTATE_WINDOW_H: f64 = 52.0;
+const DICTATE_WINDOW_H: f64 = 48.0;
 /// Margin from the right and top edge of the primary monitor.
 const DICTATE_MARGIN_RIGHT: f64 = 16.0;
 const DICTATE_MARGIN_TOP: f64 = 28.0;

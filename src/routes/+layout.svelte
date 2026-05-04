@@ -8,14 +8,18 @@
 
 	onMount(() => {
 		document.getElementById('sf-loading')?.remove();
-		let cleanup = watchThemeMode("system");
+		// Transparent dictate HUD: WebKit can spam prefers-color-scheme "change" → theme flicker.
+		const trackSystemScheme =
+			new URLSearchParams(window.location.search).get("view") !== "dictate";
+
+		let cleanup = watchThemeMode("system", { trackSystemScheme });
 		let mounted = true;
 		invoke<ThemeMode>("settings_get_theme_mode")
 			.catch(() => "system" as const)
 			.then((themeMode) => {
 				if (!mounted) return;
 				cleanup();
-				cleanup = watchThemeMode(themeMode);
+				cleanup = watchThemeMode(themeMode, { trackSystemScheme });
 			});
 
 		// Sync theme changes made in other windows (e.g. settings window → scribe window).
@@ -23,7 +27,7 @@
 		function onStorage(e: StorageEvent) {
 			if (e.key === "sf_theme_mode" && e.newValue) {
 				cleanup();
-				cleanup = watchThemeMode(e.newValue as ThemeMode);
+				cleanup = watchThemeMode(e.newValue as ThemeMode, { trackSystemScheme });
 			}
 		}
 		window.addEventListener("storage", onStorage);

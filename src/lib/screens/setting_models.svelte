@@ -178,7 +178,7 @@
 			<div class="sf-body-md flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-fg-dim">
 				<div class="flex min-w-0 items-center gap-2">
 					<span
-						class="sf-label-sm shrink-0 rounded-sm border border-fill bg-fill/30 px-1.5 py-0.5 text-center min-w-11 text-fg-dim"
+						class="sf-label-sm shrink-0 rounded-sm border border-focus bg-focus/15 px-1 py-px text-focus"
 					>
 						Dictate
 					</span>
@@ -255,9 +255,9 @@
 								scribe
 							</span>
 						{/if}
-						{#if model.id === dictateModelId && model.downloaded}
+						{#if model.downloaded && (model.id === dictateModelId || (dictateModelId === null && model.selected))}
 							<span
-								class="sf-label-sm shrink-0 rounded-sm border border-fill bg-fill/30 px-1 py-px text-fg-dim"
+								class="sf-label-sm shrink-0 rounded-sm border border-focus bg-focus/15 px-1 py-px text-focus"
 							>
 								dictate
 							</span>

@@ -16,6 +16,8 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 
 const DICTATE_AUDIO_LEVEL_EVENT: &str = "dictate://audio-level";
 const DICTATE_STATE_EVENT: &str = "dictate://state-changed";
+/// Mic callbacks run per CoreAudio buffer (often 100+ Hz). Uncapped `emit` → IPC/WebKit repaint thrash (HUD flicker).
+const DICTATE_AUDIO_LEVEL_EMIT_MIN_INTERVAL_MS: u128 = 33;
 
 // ── Key tracker constants ────────────────────────────────────────────────────
 //
@@ -288,11 +290,23 @@ impl DictateController {
         }
 
         let app = self.app.clone();
+        let last_level_emit = Arc::new(Mutex::new(None::<Instant>));
         let mic = self.audio.start_mic(
             None,
             true,
             Some(Arc::new(move |level| {
-                app.emit(DICTATE_AUDIO_LEVEL_EVENT, level).ok();
+                let mut gate = last_level_emit.lock().unwrap_or_else(|p| p.into_inner());
+                let now = Instant::now();
+                let emit = match *gate {
+                    None => true,
+                    Some(t) => now.duration_since(t).as_millis() >= DICTATE_AUDIO_LEVEL_EMIT_MIN_INTERVAL_MS,
+                };
+                if !emit {
+                    return;
+                }
+                *gate = Some(now);
+                drop(gate);
+                let _ = app.emit(DICTATE_AUDIO_LEVEL_EVENT, level);
             })),
         )?;
 

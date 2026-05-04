@@ -197,6 +197,82 @@ pub enum ProcessingStage {
     CleaningUpAudio,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TranscribeState {
+    Idle,
+    Transcribing,
+    Done,
+    Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TranscribeItemStatus {
+    Queued,
+    Processing,
+    Done,
+    Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscribeSourceType {
+    SingleAudio,
+    DualSourceSession,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscribeQueueItem {
+    pub id: String,
+    pub source_path: String,
+    pub display_name: String,
+    pub source_type: TranscribeSourceType,
+    pub duration_ms: u64,
+    pub status: TranscribeItemStatus,
+    pub progress: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transcript_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscribeStateEvent {
+    pub state: TranscribeState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub processing_stage: Option<ProcessingStage>,
+    pub total_items: usize,
+    pub completed_items: usize,
+    pub failed_items: usize,
+    pub items: Vec<TranscribeQueueItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl TranscribeStateEvent {
+    pub fn new(state: TranscribeState, items: Vec<TranscribeQueueItem>) -> Self {
+        Self {
+            state,
+            progress: None,
+            processing_stage: None,
+            total_items: items.len(),
+            completed_items: items
+                .iter()
+                .filter(|item| item.status == TranscribeItemStatus::Done)
+                .count(),
+            failed_items: items
+                .iter()
+                .filter(|item| item.status == TranscribeItemStatus::Error)
+                .count(),
+            items,
+            error: None,
+        }
+    }
+}
+
 /// Emitted on `model://download-progress` while the default model downloads.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelDownloadEvent {

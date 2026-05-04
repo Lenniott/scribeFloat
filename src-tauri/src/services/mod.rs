@@ -4,3 +4,4 @@ pub mod hotkeys;
 pub mod model;
 pub mod output;
 pub mod permissions;
+pub mod transcribe_input;

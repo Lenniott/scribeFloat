@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    scribefloat_v8_lib::run()
+    scribefloat_lib::run()
 }

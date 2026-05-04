@@ -117,16 +117,14 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
 
     #[cfg(target_os = "macos")]
     {
-        // Keep startup on the most stable code path while we investigate
-        // custom tray icon regressions on macOS.
-        if let Some(icon) = app.default_window_icon().cloned() {
-            tray = tray.icon(icon.clone());
+        // Prefer the generated app icon so tray updates immediately after icon regeneration.
+        if let Some(icon) =
+            load_icon(app.handle(), "icon.png").or_else(|| app.default_window_icon().cloned())
+        {
+            tray = tray.icon(icon);
         }
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        tray = tray.icon_as_template(true);
+        // Keep original colors; template mode can mask icon changes.
+        tray = tray.icon_as_template(false);
     }
 
     tray.build(app)?;

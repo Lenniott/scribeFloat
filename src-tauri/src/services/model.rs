@@ -171,12 +171,20 @@ impl ModelService {
         }
 
         // Flush before rename
-        tokio::io::AsyncWriteExt::flush(&mut file).await?;
+        if let Err(e) = tokio::io::AsyncWriteExt::flush(&mut file).await {
+            drop(file);
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err(anyhow::Error::from(e));
+        }
         drop(file);
 
-        tokio::fs::rename(&tmp, &dest)
+        if let Err(e) = tokio::fs::rename(&tmp, &dest)
             .await
-            .context("failed to move model into place")?;
+            .context("failed to move model into place")
+        {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err(e);
+        }
 
         app.emit(
             "model://download-progress",

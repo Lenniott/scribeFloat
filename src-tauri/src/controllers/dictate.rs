@@ -485,12 +485,18 @@ impl DictateController {
                 .ok();
         }
 
-        if let Err(e) = self.output.write_dictate_history_entry(&config.save_folder, &text) {
-            eprintln!("[dictate] failed to write history: {e}");
-        }
+        let history_write_failed =
+            if let Err(e) = self.output.write_dictate_history_entry(&config.save_folder, &text) {
+                eprintln!("[dictate] failed to write history: {e}");
+                true
+            } else {
+                false
+            };
 
         if let Err(e) = self.app.clipboard().write_text(text.clone()) {
             eprintln!("[dictate] failed to write clipboard: {e}");
+            self.set_error_state(format!("Could not write to clipboard — {e}. Transcription: {text}"));
+            return Ok(true);
         }
 
         let mut paste_failed = false;
@@ -522,6 +528,7 @@ impl DictateController {
                     DictateStateEvent {
                         text: Some(text),
                         paste_failed,
+                        history_write_failed,
                         ..DictateStateEvent::new(DictateState::Done)
                     },
                 )

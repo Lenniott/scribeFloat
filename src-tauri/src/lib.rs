@@ -335,7 +335,32 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    use tauri_plugin_global_shortcut::ShortcutState;
+                    if event.state != ShortcutState::Pressed {
+                        return;
+                    }
+                    let Some(config) =
+                        app.try_state::<Arc<services::config::ConfigService>>()
+                    else {
+                        return;
+                    };
+                    let scribe_str = config.get().open_scribe_hotkey.clone();
+                    if let Ok(scribe_sc) =
+                        scribe_str.parse::<tauri_plugin_global_shortcut::Shortcut>()
+                    {
+                        if shortcut.id() == scribe_sc.id() {
+                            let handle = app.clone();
+                            let _ = app.run_on_main_thread(move || {
+                                open_scribe_window(&handle).ok();
+                            });
+                        }
+                    }
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {

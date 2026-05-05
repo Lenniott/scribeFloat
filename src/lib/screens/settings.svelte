@@ -5,11 +5,12 @@
 	import SettingGeneral from '@lib/screens/setting_general.svelte';
 	import SettingPermissions from '@lib/screens/setting_permissions.svelte';
 	import SettingModels from '@lib/screens/setting_models.svelte';
+	import SettingHelp from '@lib/screens/setting_help.svelte';
 	import IconButton from '@components/IconButton.svelte';
 	import { X } from 'lucide-svelte';
 	import type { PermissionStatus, ModelListItem } from '$lib/types';
 
-	type SettingsTab = 'general' | 'permissions' | 'models';
+	type SettingsTab = 'general' | 'permissions' | 'models' | 'help';
 
 	let {
 		onClose,
@@ -41,11 +42,12 @@
 		{ id: 'general', label: 'General' },
 		{ id: 'permissions', label: 'Permissions' },
 		{ id: 'models', label: 'Models' },
+		{ id: 'help', label: 'Help' },
 	];
 </script>
 
 <div class={standalone ? 'min-h-screen bg-card' : 'fixed inset-0 z-50 bg-black/50 p-4'}>
-	<div class="mx-auto flex h-screen max-w-5xl flex-col bg-panel shadow-lg">
+	<div class="mx-auto flex h-screen max-w-5xl flex-col bg-panel">
 		<header class="flex items-center justify-between border-b border-card px-4 py-3">
 			<h2 class="sf-headline-sm">Settings</h2>
 			<IconButton aria-label="close settings" variant="normal" icon={X} onclick={() => onClose?.()} />
@@ -86,6 +88,8 @@
 					<SettingGeneral />
 				{:else if activeTab === 'permissions'}
 					<SettingPermissions bind:ready={permissionsReady} />
+				{:else if activeTab === 'help'}
+					<SettingHelp />
 				{:else}
 					<div class="flex h-full min-h-0 flex-1 flex-col">
 						<SettingModels bind:ready={modelReady} />

@@ -11,12 +11,12 @@
 	aria-label="Layer legend"
 >
 	<div class="flex items-center gap-2">
-		<span class="h-2.5 w-2.5 shrink-0 rounded-sm bg-on-surface-dim" aria-hidden="true"></span>
+		<span class="h-2.5 w-2.5 shrink-0 rounded-sm bg-fg-muted" aria-hidden="true"></span>
 		<span>Mic</span>
 	</div>
 	{#if speakerEnabled}
 	<div class="flex items-center gap-2">
-		<span class="h-2.5 w-2.5 shrink-0 rounded-sm bg-on-surface/40" aria-hidden="true"></span>
+		<span class="h-2.5 w-2.5 shrink-0 rounded-sm bg-fg/40" aria-hidden="true"></span>
 		<span>Speaker</span>
 	</div>
 	{/if}

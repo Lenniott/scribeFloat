@@ -37,7 +37,7 @@
 	<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4">
 		<NotesList bind:selectedId {notes} />
 	</div>
-	<div class="shrink-0 border-t border-card/0 px-4 pt-3 pb-4" style="box-shadow: inset 0 1px 0 0 var(--color-surface-low);">
+	<div class="shrink-0 border-t border-card/0 px-4 pt-3 pb-4" style="box-shadow: inset 0 1px 0 0 var(--sf-card);">
 		<NoteComposer bind:value={draft} onSubmit={add} />
 	</div>
 </div>

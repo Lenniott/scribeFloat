@@ -5,11 +5,12 @@
 	import SettingGeneral from '@lib/screens/setting_general.svelte';
 	import SettingPermissions from '@lib/screens/setting_permissions.svelte';
 	import SettingModels from '@lib/screens/setting_models.svelte';
+	import SettingHelp from '@lib/screens/setting_help.svelte';
 	import IconButton from '@components/IconButton.svelte';
 	import { X } from 'lucide-svelte';
 	import type { PermissionStatus, ModelListItem } from '$lib/types';
 
-	type SettingsTab = 'general' | 'permissions' | 'models';
+	type SettingsTab = 'general' | 'permissions' | 'models' | 'help';
 
 	let {
 		onClose,
@@ -41,6 +42,7 @@
 		{ id: 'general', label: 'General' },
 		{ id: 'permissions', label: 'Permissions' },
 		{ id: 'models', label: 'Models' },
+		{ id: 'help', label: 'Help' },
 	];
 </script>
 
@@ -86,6 +88,8 @@
 					<SettingGeneral />
 				{:else if activeTab === 'permissions'}
 					<SettingPermissions bind:ready={permissionsReady} />
+				{:else if activeTab === 'help'}
+					<SettingHelp />
 				{:else}
 					<div class="flex h-full min-h-0 flex-1 flex-col">
 						<SettingModels bind:ready={modelReady} />

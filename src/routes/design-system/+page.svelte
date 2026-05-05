@@ -133,7 +133,7 @@
   <a href="/">scribe</a>
   <header class="mb-14 max-w-2xl">
     <p class="font-mono text-label-sm tracking-stamped text-fg/50 uppercase">
-      liscribe · design system
+      ScribeFloat · design system
     </p>
     <h1 class="text-display-lg font-light tracking-heading text-fg">
       Design <span class="font-medium">system</span>

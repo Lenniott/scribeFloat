@@ -2,8 +2,7 @@
 	import { onDestroy, onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import Button from "@lib/components/Button.svelte";
-	import HotkeyCaptureField from "@lib/components/form/HotkeyCaptureField.svelte";
-	import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
+import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	import OptionGroup from "@lib/components/form/OptionGroup.svelte";
 	import PathSelectorField from "@lib/components/form/PathSelectorField.svelte";
 	import ToggleSwitch from "@lib/components/form/ToggleSwitch.svelte";
@@ -103,8 +102,18 @@
 		bind:path={openWithApp}
 		directory={false}
 	/>
-	<HotkeyCaptureField label="Open Scribe hotkey" bind:value={openHotkey} />
-	<HotkeyCaptureField label="Dictate hotkey" bind:value={dictateHotkey} allowModifierOnly={true} />
+	<div class="flex flex-col gap-1">
+		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">Open Scribe hotkey</span>
+		<p class="text-label-sm text-fg/50">
+			<code class="font-mono bg-fill px-1 rounded">{openHotkey}</code> — opens the Scribe panel from anywhere. The hotkey is fixed and cannot be changed here.
+		</p>
+	</div>
+	<div class="flex flex-col gap-1">
+		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">Dictate hotkey</span>
+		<p class="text-label-sm text-fg/50">
+			<strong>Double-tap Ctrl</strong> to toggle recording on/off. The dictate hotkey is fixed and cannot be changed.
+		</p>
+	</div>
 	<LabeledTextField label="Input label" bind:value={inputLabel} />
 	<LabeledTextField label="Output label" bind:value={outputLabel} />
 	<div class="flex flex-col items-start justify-center gap-1 h-10">

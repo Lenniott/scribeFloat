@@ -162,7 +162,7 @@ OS app-data directories:
 `config.json` stores only user preferences and paths. It never contains audio data, transcript content, or credentials. Fields include:
 
 - `save_folder` — path to transcript output directory
-- `open_scribe_hotkey`, `dictate_hotkey` — hotkey strings
+- `open_scribe_hotkey`, `dictate_hotkey` — hotkey strings (stored in config; not currently editable via the Settings UI)
 - `selected_model_id`, `dictate_model_id`, `scribe_model_path` — local model file paths
 - `include_timestamps` — whether transcripts include timestamps
 - `scribe_capture_speaker` — whether speaker capture is enabled

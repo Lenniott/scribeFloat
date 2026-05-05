@@ -12,8 +12,8 @@ Who uses the system and what external systems it touches.
 
 ```mermaid
 graph LR
-    user["User\nMac or Windows\nUses Liscribe via GUI and hotkeys"]
-    scribefloat["Liscribe (scribefloat)\nLocal-first desktop transcription\nNo cloud. No accounts."]
+    user["User\nMac or Windows\nUses ScribeFloat via GUI and hotkeys"]
+    scribefloat["ScribeFloat (scribefloat)\nLocal-first desktop transcription\nNo cloud. No accounts."]
     hf["Hugging Face\nPublic model repository\nOne-time download only — no account required"]
     audio["OS Audio Layer\nmacOS: Core Audio + BlackHole\nWindows: WASAPI loopback"]
     clipboard["Clipboard and Input\nOS paste mechanism\nDictate output target"]

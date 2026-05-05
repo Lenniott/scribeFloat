@@ -1,8 +1,8 @@
-# Liscribe
+# ScribeFloat
 
 **Local-first AI transcription for macOS and Windows. No cloud. No accounts. No telemetry.**
 
-Liscribe runs OpenAI's [Whisper](https://github.com/openai/whisper) model entirely on your machine. Audio is never sent to any server. Transcripts live on your local file system.
+ScribeFloat runs OpenAI's [Whisper](https://github.com/openai/whisper) model entirely on your machine. Audio is never sent to any server. Transcripts live on your local file system.
 
 ---
 
@@ -101,7 +101,7 @@ Config is stored as JSON in the OS app-data directory:
 - **macOS**: `~/Library/Application Support/com.benjamin.scribefloat-v8/config.json`
 - **Windows**: `%APPDATA%\com.benjamin.scribefloat-v8\config.json`
 
-Transcripts and audio files are saved to `~/Documents/Liscribe/` by default. This can be changed in **Settings → General**.
+Transcripts and audio files are saved to `~/Documents/ScribeFloat/` by default. This can be changed in **Settings → General**.
 
 ---
 

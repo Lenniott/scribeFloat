@@ -117,7 +117,7 @@
           <span
             class={`grid size-5 shrink-0 place-items-center rounded border text-label-sm font-normal ${
               step.complete
-                ? "border-brand bg-brand text-void"
+                ? "border-brand bg-brand text-on-brand"
                 : "border-rim text-transparent"
             }`}
             aria-hidden="true"

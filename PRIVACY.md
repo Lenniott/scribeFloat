@@ -1,8 +1,8 @@
-# Data Privacy & Security Policy — Liscribe
+# Data Privacy & Security Policy — ScribeFloat
 
-**Version 1.0 | Last updated: 2026-05-04**
+**Version 1.0 | Last updated: 2026-05-05**
 
-This document is written for **security officers, IT auditors, and compliance teams** evaluating whether Liscribe can be deployed in their environment. It is intentionally comprehensive and direct.
+This document is written for **security officers, IT auditors, and compliance teams** evaluating whether ScribeFloat can be deployed in their environment. It is intentionally comprehensive and direct.
 
 ---
 
@@ -57,6 +57,8 @@ The Tauri WebView's Content Security Policy enforces this at the browser layer:
 ```
 default-src 'self' asset: https://asset.localhost;
 script-src 'self';
+style-src 'self' 'unsafe-inline';
+img-src 'self' asset: https://asset.localhost data:;
 connect-src 'self' ipc: http://ipc.localhost;
 ```
 
@@ -84,7 +86,7 @@ To verify no unexpected outbound connections:
 ### 2.2 System audio (speaker capture)
 
 - **Optional** — only active if the user explicitly enables the "Speaker capture" toggle in Scribe
-- **macOS**: captured via [BlackHole](https://existential.audio/blackhole/) virtual audio device, which must be separately installed by the user. BlackHole is an open-source virtual audio driver; Liscribe does not bundle or install it automatically.
+- **macOS**: captured via [BlackHole](https://existential.audio/blackhole/) virtual audio device, which must be separately installed by the user. BlackHole is an open-source virtual audio driver; ScribeFloat does not bundle or install it automatically.
 - **Windows**: captured via WASAPI loopback (built into Windows; no additional software required)
 - No additional OS permission is needed beyond what BlackHole or WASAPI provides
 
@@ -104,7 +106,7 @@ For Scribe recordings and the Transcribe file-import feature:
 |-------|-----------------------|------------------------------|
 | Audio written to disk | Yes — `mic.wav` (and `speaker.wav` if dual-source) | No — user's source file is read but not copied |
 | Written by | `OutputService` only | N/A |
-| Deleted after transcription | Yes, if "Keep WAV" setting is off and transcript is confirmed written and non-empty | N/A — user owns source file |
+| Deleted after transcription | Yes — automatically, once the transcript is confirmed written and non-empty | N/A — user owns source file |
 | Deleted by | `OutputService` only, after verifying transcript exists and is non-empty | N/A |
 | Location while on disk | User-configured save folder | N/A |
 
@@ -146,7 +148,7 @@ Revoking a permission does not delete any existing data. The affected feature de
 |------|----------|--------|
 | App configuration | OS app-data dir (`config.json`) | JSON |
 | Whisper model files | OS app-data dir (`models/`) | Binary (ggml) |
-| Transcripts | User save folder (default: `~/Documents/Liscribe/`) | Markdown (`.md`) |
+| Transcripts | User save folder (default: `~/Documents/ScribeFloat/`) | Markdown (`.md`) |
 | Audio recordings | User save folder, inside per-session subfolders | WAV |
 | Dictate history log | User save folder (`dictate.jsonl`) | JSONL |
 | Dictate audio buffer | RAM only | In-process memory |
@@ -162,14 +164,14 @@ OS app-data directories:
 - `save_folder` — path to transcript output directory
 - `open_scribe_hotkey`, `dictate_hotkey` — hotkey strings
 - `selected_model_id`, `dictate_model_id`, `scribe_model_path` — local model file paths
-- `keep_wav` — whether to retain WAV files after transcription
 - `include_timestamps` — whether transcripts include timestamps
 - `scribe_capture_speaker` — whether speaker capture is enabled
 - `preferred_input_device`, `preferred_speaker_device` — audio device names
+- `input_label`, `output_label` — display labels for the two Scribe audio sources
 - `theme_mode` — UI theme preference
+- `open_with_app_path` — application used to open completed transcripts (macOS: app name; Windows: full exe path)
 - `dictate_auto_paste`, `dictate_auto_enter` — Dictate behaviour flags
 - `onboarding_complete` — first-run flag
-- Word replacement rules
 
 ### 4.3 Transcript file format
 
@@ -240,7 +242,7 @@ Updates are delivered as a new installer or binary, distributed through the proj
 
 ## 8. Process isolation and sandboxing
 
-Liscribe is a Tauri v2 application. The frontend (HTML/JS) runs in the OS WebView with a strict CSP. All sensitive operations (file I/O, audio, IPC, OS permissions) are handled exclusively in the Rust backend. The WebView cannot make file system calls or spawn processes.
+ScribeFloat is a Tauri v2 application. The frontend (HTML/JS) runs in the OS WebView with a strict CSP. All sensitive operations (file I/O, audio, IPC, OS permissions) are handled exclusively in the Rust backend. The WebView cannot make file system calls or spawn processes.
 
 The Tauri capability model (`src-tauri/capabilities/default.json`) restricts which IPC actions each window can invoke. The declared capabilities are:
 
@@ -261,7 +263,7 @@ No capability grants filesystem read/write access directly to the WebView — al
 
 ### GDPR
 
-Liscribe does not transmit personal data to any server. There is no controller-processor relationship with any third party for user data. All data is user-controlled and stored locally. If an organisation deploys Liscribe to process personal data in audio (e.g. meeting transcriptions containing names), the data-controller obligations rest with the organisation, not with the application vendor — the application itself never receives or processes that data centrally.
+ScribeFloat does not transmit personal data to any server. There is no controller-processor relationship with any third party for user data. All data is user-controlled and stored locally. If an organisation deploys ScribeFloat to process personal data in audio (e.g. meeting transcriptions containing names), the data-controller obligations rest with the organisation, not with the application vendor — the application itself never receives or processes that data centrally.
 
 ### HIPAA
 
@@ -287,8 +289,8 @@ To completely remove all application data from a device:
    - **macOS**: `rm -rf ~/Library/Application\ Support/com.benjamin.scribefloat-v8/`
    - **Windows**: `rmdir /s "%APPDATA%\com.benjamin.scribefloat-v8"`
 4. Delete the transcript save folder (default):
-   - **macOS**: `rm -rf ~/Documents/Liscribe/`
-   - **Windows**: `rmdir /s "%USERPROFILE%\Documents\Liscribe"`
+   - **macOS**: `rm -rf ~/Documents/ScribeFloat/`
+   - **Windows**: `rmdir /s "%USERPROFILE%\Documents\ScribeFloat"`
 
 After these steps, no application data remains on the device.
 

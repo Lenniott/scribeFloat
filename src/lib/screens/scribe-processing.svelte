@@ -168,7 +168,7 @@
 
 <div class="mx-auto flex flex-col text-fg">
   <section class="flex h-screen flex-col overflow-hidden bg-panel">
-    <header class="flex min-h-14 items-end justify-between border-b border-b-surface-low px-5 py-2">
+    <header class="flex min-h-14 items-end justify-between border-b border-card px-5 py-2">
       <div class="flex min-w-0 flex-1 flex-col gap-1">
         <p class="font-mono text-label-sm tracking-stamped text-fg/55 uppercase">
           {title || "Recording"}
@@ -234,7 +234,7 @@
           {#if displayPath}
             <button class="cursor-pointer group p-0 text-left" onclick={openTranscript}>
               <p
-                class="truncate font-mono text-body-md text-fg underline decoration-on-surface-dim group-hover:underline-offset-2"
+                class="truncate font-mono text-body-md text-fg underline decoration-fg-muted group-hover:underline-offset-2"
                 title={displayPath}
               >
                 {displayPath}
@@ -245,7 +245,7 @@
       {/if}
     </div>
 
-    <footer class="flex flex-wrap justify-end gap-3 border-t border-t-surface-low px-5 py-3">
+    <footer class="flex flex-wrap justify-end gap-3 border-t border-card px-5 py-3">
       {#if phase === "done"}
         <Button variant="normal" onclick={onRecordAgain}>Record Again</Button>
       {:else if phase === "no_model"}

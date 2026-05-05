@@ -45,7 +45,7 @@
 </script>
 
 <div class={standalone ? 'min-h-screen bg-card' : 'fixed inset-0 z-50 bg-black/50 p-4'}>
-	<div class="mx-auto flex h-screen max-w-5xl flex-col bg-panel shadow-lg">
+	<div class="mx-auto flex h-screen max-w-5xl flex-col bg-panel">
 		<header class="flex items-center justify-between border-b border-card px-4 py-3">
 			<h2 class="sf-headline-sm">Settings</h2>
 			<IconButton aria-label="close settings" variant="normal" icon={X} onclick={() => onClose?.()} />

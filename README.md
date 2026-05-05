@@ -14,7 +14,7 @@ Liscribe runs OpenAI's [Whisper](https://github.com/openai/whisper) model entire
 | **Dictate** | Hotkey-driven voice-to-text paste. Speaks into any focused input, anywhere on screen. |
 | **Transcribe** | Drop an existing audio file (WAV, MP3, M4A, FLAC) and get a timestamped transcript. |
 | **Dual-source** | Scribe can capture mic and speaker simultaneously, merging them into a labelled `in:`/`out:` transcript. |
-| **Word replacement** | Apply find/replace rules to every transcript automatically. |
+| **Word replacement** | (Coming soon) Apply find/replace rules to every transcript automatically. |
 | **Local models** | Choose from several Whisper model sizes. Downloaded once from Hugging Face, then run offline. |
 
 ---

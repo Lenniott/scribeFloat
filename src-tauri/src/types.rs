@@ -333,6 +333,10 @@ pub struct DictateStateEvent {
     /// missing Accessibility permission, etc.). Clipboard still has the text.
     #[serde(default, skip_serializing_if = "crate::types::is_false")]
     pub paste_failed: bool,
+    /// Done state only: writing the history entry to disk failed (disk full, bad permissions, etc.).
+    /// The transcription was still pasted; the log entry is missing.
+    #[serde(default, skip_serializing_if = "crate::types::is_false")]
+    pub history_write_failed: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -349,6 +353,7 @@ impl DictateStateEvent {
             processing_stage: None,
             text: None,
             paste_failed: false,
+            history_write_failed: false,
             error: None,
         }
     }

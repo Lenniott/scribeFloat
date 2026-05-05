@@ -15,6 +15,7 @@
 		progress?: number;
 		text?: string;
 		paste_failed?: boolean;
+		history_write_failed?: boolean;
 		error?: string;
 	};
 
@@ -23,6 +24,7 @@
 	let elapsedSeconds = $state(0);
 	let resultText = $state("");
 	let pasteFailed = $state(false);
+	let historyWriteFailed = $state(false);
 	let errorText = $state("");
 
 	let recordingStartedAt: number | null = null;
@@ -66,6 +68,7 @@
 		if (ev.state === "DONE") {
 			resultText = ev.text ?? "";
 			pasteFailed = Boolean(ev.paste_failed);
+			historyWriteFailed = Boolean(ev.history_write_failed);
 		} else if (ev.state === "ERROR") {
 			errorText = ev.error ?? "Something went wrong.";
 		}
@@ -86,6 +89,7 @@
 				recordingStartedAt = null;
 				resultText = "";
 				pasteFailed = false;
+				historyWriteFailed = false;
 				errorText = "";
 			}
 		}
@@ -141,7 +145,7 @@
 </svelte:head>
 
 <div
-	class="flex w-60 items-center justify-between gap-2 rounded-lg bg-panel py-2 pl-3 pr-2 shadow-lg"
+	class="flex w-60 items-center justify-between gap-2 rounded-md bg-panel py-2 pl-3 pr-2 shadow-ambient"
 >
 	{#if dictateState === "DONE"}
 		<div class="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -157,6 +161,9 @@
 			</div>
 			{#if pasteFailed && resultText.trim()}
 				<p class="line-clamp-2 pl-4 text-label-sm font-sans text-fg-dim">{resultText}</p>
+			{/if}
+			{#if historyWriteFailed}
+				<p class="pl-4 text-label-sm font-sans text-fg-muted">History entry could not be saved — check save folder.</p>
 			{/if}
 		</div>
 	{:else if dictateState === "ERROR"}

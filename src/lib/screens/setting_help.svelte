@@ -22,6 +22,10 @@
 			updateState = 'error';
 		}
 	}
+
+	async function openDownloadPage() {
+		if (updateResult) await openUrl(updateResult.release_url);
+	}
 </script>
 
 <section class="space-y-8 max-w-2xl">
@@ -60,7 +64,7 @@
 				{/if}
 				<button
 					class="sf-button-primary text-body-sm"
-					onclick={() => updateResult && openUrl(updateResult.release_url)}
+					onclick={openDownloadPage}
 				>
 					Open download page
 				</button>

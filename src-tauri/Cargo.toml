@@ -1,6 +1,6 @@
 [package]
 name = "scribefloat"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -32,7 +32,7 @@ whisper-rs = "0.13"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1"
-reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls", "json"] }
 rdev = "0.5"
 enigo = "0.6"
 symphonia = { version = "0.5", features = ["aac", "flac", "isomp4", "mp3", "ogg", "pcm", "vorbis", "wav"] }

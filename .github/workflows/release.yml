@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: universal-apple-darwin
+            artifact_path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Add macOS targets
+        if: matrix.os == 'macos-14'
+        run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+        run: npm run tauri -- build --target "$BUILD_TARGET"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-artifact
+          path: ${{ matrix.artifact_path }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            **macOS (.dmg):** After opening the DMG, right-click the app → **Open** to bypass the Gatekeeper warning on first launch (the app is not yet notarized).
+
+            **Windows (.msi):** Run the installer. If Windows SmartScreen warns you, click **More info → Run anyway**.

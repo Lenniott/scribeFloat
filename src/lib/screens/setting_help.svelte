@@ -1,7 +1,74 @@
+<script lang="ts">
+	import { invoke } from '@tauri-apps/api/core';
+	import { openUrl } from '@tauri-apps/plugin-opener';
+	import type { UpdateCheckResult } from '$lib/types';
+
+	type UpdateState = 'idle' | 'checking' | 'up_to_date' | 'update_available' | 'error';
+
+	let updateState = $state<UpdateState>('idle');
+	let updateResult = $state<UpdateCheckResult | null>(null);
+	let updateError = $state('');
+
+	async function checkForUpdates() {
+		updateState = 'checking';
+		updateResult = null;
+		updateError = '';
+		try {
+			const result = await invoke<UpdateCheckResult>('update_check');
+			updateResult = result;
+			updateState = result.update_available ? 'update_available' : 'up_to_date';
+		} catch (e) {
+			updateError = typeof e === 'string' ? e : 'Could not reach update server.';
+			updateState = 'error';
+		}
+	}
+</script>
+
 <section class="space-y-8 max-w-2xl">
 	<div>
 		<h2 class="sf-headline-sm">Help</h2>
 		<p class="mt-1 text-body-sm text-fg-dim">How to use ScribeFloat and what every setting does.</p>
+	</div>
+
+	<!-- Updates -->
+	<div class="space-y-3">
+		<h3 class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">Updates</h3>
+		{#if updateResult}
+			<p class="text-body-sm text-fg-dim">
+				Current version: <code class="font-mono text-label-sm bg-fill px-1 rounded">{updateResult.current_version}</code>
+			</p>
+		{/if}
+		<div class="flex items-center gap-3">
+			<button
+				class="sf-button-secondary text-body-sm"
+				onclick={checkForUpdates}
+				disabled={updateState === 'checking'}
+			>
+				{updateState === 'checking' ? 'Checking…' : 'Check for updates'}
+			</button>
+			{#if updateState === 'up_to_date'}
+				<span class="text-body-sm text-fg-dim">You're on the latest version.</span>
+			{/if}
+		</div>
+		{#if updateState === 'update_available' && updateResult}
+			<div class="rounded-md border border-card bg-fill p-3 space-y-2">
+				<p class="text-body-sm text-fg font-medium">
+					Version {updateResult.latest_version} is available
+				</p>
+				{#if updateResult.release_notes}
+					<p class="text-body-sm text-fg-dim">{updateResult.release_notes}</p>
+				{/if}
+				<button
+					class="sf-button-primary text-body-sm"
+					onclick={() => updateResult && openUrl(updateResult.release_url)}
+				>
+					Open download page
+				</button>
+			</div>
+		{/if}
+		{#if updateState === 'error'}
+			<p class="text-body-sm text-fg-dim">Could not check for updates: {updateError}</p>
+		{/if}
 	</div>
 
 	<!-- Scribe -->

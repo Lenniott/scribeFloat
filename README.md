@@ -153,6 +153,25 @@ context/                   Architecture and design documentation
 
 ---
 
+## Releasing a new version
+
+1. Bump the version in all three config files:
+   ```bash
+   npm run bump -- 0.2.0
+   ```
+2. Commit and tag:
+   ```bash
+   git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+   git commit -m "chore: bump version to 0.2.0"
+   git tag v0.2.0
+   git push origin main --tags
+   ```
+3. GitHub Actions picks up the tag and builds macOS (universal `.dmg`) and Windows (`.msi`) automatically. The release is published to GitHub Releases once both builds complete (~15–20 min).
+
+The release body includes a note for macOS users to right-click → **Open** on first launch (the app is not notarized).
+
+---
+
 ## Contributing
 
 1. Read `context/architecture.md` before touching any Rust code

@@ -1,3 +1,11 @@
+export type UpdateCheckResult = {
+	update_available: boolean;
+	latest_version: string;
+	current_version: string;
+	release_url: string;
+	release_notes: string;
+};
+
 export type ModelListItem = {
 	id: string;
 	label: string;

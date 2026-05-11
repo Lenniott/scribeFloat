@@ -5,3 +5,4 @@ pub mod model;
 pub mod output;
 pub mod permissions;
 pub mod transcribe_input;
+pub mod update;

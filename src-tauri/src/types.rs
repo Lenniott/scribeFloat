@@ -379,6 +379,15 @@ impl ScribeStateEvent {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateCheckResult {
+    pub update_available: bool,
+    pub latest_version: String,
+    pub current_version: String,
+    pub release_url: String,
+    pub release_notes: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

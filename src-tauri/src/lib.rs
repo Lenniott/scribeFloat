@@ -413,6 +413,8 @@ pub fn run() {
                 app.handle().clone(),
             );
 
+            let update = services::update::UpdateService::new();
+
             app.manage(model); // shared model service
             app.manage(config); // shared config service
             app.manage(model_ctrl); // model command orchestration
@@ -420,6 +422,7 @@ pub fn run() {
             app.manage(ctrl); // for scribe commands
             app.manage(Arc::clone(&dictate_ctrl)); // for dictate commands
             app.manage(Arc::clone(&transcribe_ctrl)); // for transcribe commands
+            app.manage(update);
 
             dictate_ctrl.start_key_listener();
 
@@ -527,6 +530,7 @@ pub fn run() {
             commands::transcribe::transcribe_start,
             commands::transcribe::transcribe_open_output,
             commands::transcribe::transcribe_show_window,
+            commands::update::update_check,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

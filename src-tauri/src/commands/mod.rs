@@ -3,3 +3,4 @@ pub mod model;
 pub mod scribe;
 pub mod settings;
 pub mod transcribe;
+pub mod update;

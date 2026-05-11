@@ -14,9 +14,9 @@ This document is written for **security officers, IT auditors, and compliance te
 | Does the app send transcripts to any server? | **No — never** |
 | Does the app require an account or login? | **No** |
 | Does the app collect telemetry or analytics? | **No** |
-| Does the app phone home for updates? | **No** |
+| Does the app phone home for updates? | **No — but "Check for updates" in Settings → Help makes a single opt-in request to `api.github.com` if the user clicks the button** |
 | Does the app require an always-on internet connection? | **No** |
-| Is an internet connection ever required? | **Yes — once, to download an AI model** |
+| Is an internet connection ever required? | **Yes — once to download an AI model. Optionally when the user manually clicks "Check for updates".** |
 | Where is all user data stored? | **Exclusively on the user's local device** |
 | What AI model runs the transcription? | **OpenAI Whisper (ggml format), running locally** |
 | Does the AI model phone home? | **No — inference is fully offline** |
@@ -27,9 +27,13 @@ This document is written for **security officers, IT auditors, and compliance te
 
 ## 1. Network activity
 
-### 1.1 The only outbound request: model download
+### 1.1 Outbound requests
 
-The sole outbound network request made by this application is an **HTTP GET to `huggingface.co`**, initiated only when the user explicitly clicks "Download model" in Settings.
+The application makes at most two types of outbound network requests.
+
+**Request 1 — Model download**
+
+An **HTTP GET to `huggingface.co`**, initiated only when the user explicitly clicks "Download model" in Settings.
 
 | Attribute | Detail |
 |-----------|--------|
@@ -41,16 +45,27 @@ The sole outbound network request made by this application is an **HTTP GET to `
 | Protocol | HTTPS with certificate verification via `rustls-tls` |
 | After download | The model file is stored locally. No further contact with Hugging Face occurs. |
 
-### 1.2 No other network connections
+**Request 2 — Update check (opt-in, user-initiated only)**
 
-The application makes **no other network connections** of any kind. There is no:
+| Attribute | Detail |
+|-----------|--------|
+| Destination | `https://api.github.com` |
+| What is fetched | Latest release metadata: version string, release notes, release URL. No binary is downloaded automatically. |
+| When it occurs | Only when the user explicitly clicks **"Check for updates"** in Settings → Help. Never automatically on launch or in the background. |
+| What is sent | An HTTP GET request. `User-Agent: scribefloat/<version>` header. No audio, no transcripts, no personal data. |
+| Protocol | HTTPS with certificate verification via `rustls-tls` |
+| After fetch | If a newer version is found, a banner is shown with a "Open download page" button that opens the browser. Nothing is downloaded or installed automatically. |
+
+### 1.2 No automatic network connections
+
+The application makes **no automatic network connections** of any kind. There is no:
 
 - Analytics or telemetry endpoint
 - Crash reporting service
 - Licence validation server
-- Auto-update check
+- Background update check (the update check in Settings → Help is manual and user-initiated only)
 - WebSocket or long-lived connection
-- DNS resolution for any domain other than `huggingface.co` during model download
+- DNS resolution for any domain other than `huggingface.co` and (optionally) `api.github.com` on explicit user action
 
 The Tauri WebView's Content Security Policy enforces this at the browser layer:
 
@@ -201,7 +216,7 @@ All libraries run in-process with no network communication of their own.
 |---------|---------|---------|----------------|
 | [whisper-rs](https://github.com/tazz4843/whisper-rs) | 0.13 | Whisper model inference (wraps whisper.cpp) | None |
 | [cpal](https://github.com/RustAudio/cpal) | 0.15 | Cross-platform audio capture | None |
-| [reqwest](https://github.com/seanmonstar/reqwest) | 0.12 | HTTP download (model only) | `huggingface.co` during model download only |
+| [reqwest](https://github.com/seanmonstar/reqwest) | 0.12 | HTTP download (model) and update metadata fetch | `huggingface.co` during model download; `api.github.com` when user manually checks for updates |
 | [hound](https://github.com/ruud-v-a/hound) | 3.5 | WAV file read/write | None |
 | [symphonia](https://github.com/pdeljanov/Symphonia) | 0.5 | Decode MP3, M4A, FLAC for Transcribe | None |
 | [tauri](https://tauri.app) | 2 | App framework (Rust + OS WebView) | None at runtime |
@@ -228,15 +243,15 @@ The model files do not contain user data. They are model weights produced by tra
 
 ---
 
-## 7. No auto-update mechanism
+## 7. No automatic update mechanism
 
-The application has no built-in auto-update mechanism. It does not:
+The application has no automatic update mechanism. It does not:
 
-- Check a release server for new versions
-- Download and execute update payloads
+- Check for new versions on launch or in the background
+- Download or execute update payloads automatically
 - Schedule background processes for updates
 
-Updates are delivered as a new installer or binary, distributed through the project repository.
+Users can manually check for updates via **Settings → Help → "Check for updates"**. This button makes a single HTTP GET request to `api.github.com` to fetch the latest release metadata. If a newer version is available, the app shows a banner with release notes and a button to open the download page in the user's browser. No binary is downloaded or installed by the app itself.
 
 ---
 

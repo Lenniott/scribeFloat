@@ -2,6 +2,7 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import type { UpdateCheckResult } from '$lib/types';
+  import Button from '@lib/components/Button.svelte';
 
 	type UpdateState = 'idle' | 'checking' | 'up_to_date' | 'update_available' | 'error';
 
@@ -43,13 +44,13 @@
 			</p>
 		{/if}
 		<div class="flex items-center gap-3">
-			<button
-				class="sf-button-secondary text-body-sm"
+			<Button
+				variant="normal"
 				onclick={checkForUpdates}
 				disabled={updateState === 'checking'}
 			>
 				{updateState === 'checking' ? 'Checking…' : 'Check for updates'}
-			</button>
+		</Button>
 			{#if updateState === 'up_to_date'}
 				<span class="text-body-sm text-fg-dim">You're on the latest version.</span>
 			{/if}
@@ -209,6 +210,9 @@
 					</tr>
 				</tbody>
 			</table>
+			<div>
+				<p>Enjoying scribeFloat? <a href="https//:www.buymeacoffee.com/benjamiz">Send a tip</a></p>
+			</div>
 		</div>
 	</div>
 </section>

@@ -294,4 +294,8 @@ html {
   :focus {
     @apply outline-none ring-2 ring-focus ring-offset-2 ring-offset-canvas;
   }
+  a{
+    @apply underline text-warning hover:underline-offset-2
+  }
 }
+

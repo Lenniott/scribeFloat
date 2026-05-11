@@ -6,7 +6,7 @@ use std::time::Duration;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const RELEASES_URL: &str =
-    "https://api.github.com/repos/Lenniott/liscribe_v8/releases/latest";
+    "https://api.github.com/repos/Lenniott/scribefloat/releases/latest";
 
 #[derive(Deserialize)]
 struct GithubRelease {

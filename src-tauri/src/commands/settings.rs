@@ -1,5 +1,5 @@
 use crate::controllers::settings::SettingsController;
-use crate::types::{PermissionStatus, ThemeMode};
+use crate::types::{PermissionStatus, ReplacementRule, ThemeMode};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
@@ -219,4 +219,36 @@ pub fn settings_show_window(app: AppHandle) -> Result<(), String> {
         .map(|_| ())
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn settings_get_replacement_rules(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<Vec<ReplacementRule>, String> {
+    Ok(ctrl.get_replacement_rules())
+}
+
+#[tauri::command]
+pub fn settings_add_replacement_rule(
+    ctrl: State<'_, Arc<SettingsController>>,
+    rule: ReplacementRule,
+) -> Result<(), String> {
+    ctrl.add_replacement_rule(rule)
+}
+
+#[tauri::command]
+pub fn settings_update_replacement_rule(
+    ctrl: State<'_, Arc<SettingsController>>,
+    index: usize,
+    rule: ReplacementRule,
+) -> Result<(), String> {
+    ctrl.update_replacement_rule(index, rule)
+}
+
+#[tauri::command]
+pub fn settings_delete_replacement_rule(
+    ctrl: State<'_, Arc<SettingsController>>,
+    index: usize,
+) -> Result<(), String> {
+    ctrl.delete_replacement_rule(index)
 }

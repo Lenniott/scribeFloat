@@ -70,6 +70,9 @@ pub struct Config {
     /// Simulate Enter after paste (useful for chat/message apps). Default off.
     #[serde(default)]
     pub dictate_auto_enter: bool,
+
+    #[serde(default = "default_replacement_rules")]
+    pub replacement_rules: Vec<ReplacementRule>,
 }
 
 impl Default for Config {
@@ -93,22 +96,18 @@ impl Default for Config {
             dictate_model_id: None,
             dictate_auto_paste: true,
             dictate_auto_enter: false,
+            replacement_rules: default_replacement_rules(),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeMode {
+    #[default]
     System,
     Dark,
     Light,
-}
-
-impl Default for ThemeMode {
-    fn default() -> Self {
-        Self::System
-    }
 }
 
 impl ThemeMode {
@@ -120,6 +119,113 @@ impl ThemeMode {
             other => Err(format!("unsupported theme mode `{other}`")),
         }
     }
+}
+
+// ── Text replacement types ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ReplacementRuleType {
+    Simple,
+    Newline,
+    Wrap,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ReplacementScope {
+    Transcripts,
+    Dictate,
+    #[default]
+    Both,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum WordTransform {
+    #[default]
+    None,
+    Lower,
+    Upper,
+    Sentence,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplacementRule {
+    pub trigger: String,
+    /// Additional spoken forms that fire the same rule (e.g. "closed bracket" alongside "close bracket").
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(rename = "type")]
+    pub rule_type: ReplacementRuleType,
+    #[serde(default)]
+    pub output: String,
+    #[serde(default)]
+    pub scope: ReplacementScope,
+    /// wrap type only: text prepended to the following word
+    #[serde(default)]
+    pub prefix: String,
+    /// wrap type only: text appended to the following word
+    #[serde(default)]
+    pub suffix: String,
+    /// wrap type only: case transform applied to the following word
+    #[serde(default)]
+    pub transform: WordTransform,
+}
+
+fn default_replacement_rules() -> Vec<ReplacementRule> {
+    vec![
+        ReplacementRule {
+            trigger: "to do".to_string(),
+            aliases: vec![],
+            rule_type: ReplacementRuleType::Simple,
+            output: "[ ]".to_string(),
+            scope: ReplacementScope::Both,
+            prefix: String::new(),
+            suffix: String::new(),
+            transform: WordTransform::None,
+        },
+        ReplacementRule {
+            trigger: "open bracket".to_string(),
+            aliases: vec![],
+            rule_type: ReplacementRuleType::Simple,
+            output: "[".to_string(),
+            scope: ReplacementScope::Both,
+            prefix: String::new(),
+            suffix: String::new(),
+            transform: WordTransform::None,
+        },
+        ReplacementRule {
+            trigger: "close bracket".to_string(),
+            aliases: vec!["closed bracket".to_string()],
+            rule_type: ReplacementRuleType::Simple,
+            output: "]".to_string(),
+            scope: ReplacementScope::Both,
+            prefix: String::new(),
+            suffix: String::new(),
+            transform: WordTransform::None,
+        },
+        ReplacementRule {
+            trigger: "dash".to_string(),
+            aliases: vec![],
+            rule_type: ReplacementRuleType::Simple,
+            output: "-".to_string(),
+            scope: ReplacementScope::Both,
+            prefix: String::new(),
+            suffix: String::new(),
+            transform: WordTransform::None,
+        },
+        ReplacementRule {
+            trigger: "new line".to_string(),
+            aliases: vec!["newline".to_string()],
+            rule_type: ReplacementRuleType::Newline,
+            output: String::new(),
+            scope: ReplacementScope::Both,
+            prefix: String::new(),
+            suffix: String::new(),
+            transform: WordTransform::None,
+        },
+    ]
 }
 
 fn default_true() -> bool {
@@ -289,6 +395,9 @@ pub struct ModelListItem {
     pub file_name: String,
     pub downloaded: bool,
     pub selected: bool,
+    pub size_mb: u32,
+    pub wer: f32,
+    pub rtfx: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

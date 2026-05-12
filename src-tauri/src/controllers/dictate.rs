@@ -441,10 +441,13 @@ impl DictateController {
             return Ok(false);
         }
 
+        let vad_path = self.model.vad_model_path();
+        let vad = self.model.model_available(&vad_path).then_some(vad_path.as_path());
         let app_clone = self.app.clone();
         let segments = self.model.transcribe_pcm_with_progress(
             &model_path,
             &pcm_16k,
+            vad,
             move |p| {
                 app_clone
                     .emit(
@@ -469,12 +472,7 @@ impl DictateController {
             return Ok(false);
         }
 
-        let text: String = segments
-            .iter()
-            .map(|s| s.text.trim())
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ");
+        let text = self.output.format_dictate_text(&segments, &config.replacement_rules);
 
         {
             let mut inner = self.lock();

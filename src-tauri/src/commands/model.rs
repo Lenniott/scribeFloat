@@ -31,3 +31,16 @@ pub fn model_select(model_id: String, ctrl: State<'_, Arc<ModelController>>) -> 
 pub fn model_remove(model_id: String, ctrl: State<'_, Arc<ModelController>>) -> Result<(), String> {
     ctrl.remove_model(model_id)
 }
+
+#[tauri::command]
+pub fn model_vad_status(ctrl: State<'_, Arc<ModelController>>) -> bool {
+    ctrl.vad_model_status()
+}
+
+#[tauri::command]
+pub fn model_vad_download(
+    ctrl: State<'_, Arc<ModelController>>,
+    app: AppHandle,
+) -> Result<(), String> {
+    Arc::clone(&ctrl).download_vad_model(app)
+}

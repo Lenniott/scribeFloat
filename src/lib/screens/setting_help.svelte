@@ -210,7 +210,7 @@
 					</tr>
 				</tbody>
 			</table>
-			<div>
+			<div class="mt-4 text-fg-dim">
 				<p>Enjoying scribeFloat? <a href="https//:www.buymeacoffee.com/benjamiz">Send a tip</a></p>
 			</div>
 		</div>

@@ -3,7 +3,7 @@ use crate::services::hotkeys::HotkeyService;
 use crate::services::output::OutputService;
 use crate::services::permissions::PermissionsService;
 use crate::services::audio::AudioService;
-use crate::types::{PermissionStatus, ThemeMode};
+use crate::types::{PermissionStatus, ReplacementRule, ReplacementRuleType, ThemeMode};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -298,6 +298,48 @@ impl SettingsController {
             .update(|cfg| cfg.onboarding_complete = false)
             .map_err(|e| format!("failed to reset onboarding status: {e}"))
     }
+
+    pub fn get_replacement_rules(&self) -> Vec<ReplacementRule> {
+        self.config.get().replacement_rules
+    }
+
+    pub fn add_replacement_rule(&self, rule: ReplacementRule) -> Result<(), String> {
+        validate_rule(&rule)?;
+        self.config
+            .update(|cfg| cfg.replacement_rules.push(rule))
+            .map_err(|e| format!("failed to save replacement rule: {e}"))
+    }
+
+    pub fn update_replacement_rule(&self, index: usize, rule: ReplacementRule) -> Result<(), String> {
+        validate_rule(&rule)?;
+        let len = self.config.get().replacement_rules.len();
+        if index >= len {
+            return Err(format!("replacement rule index {index} out of range (len={len})"));
+        }
+        self.config
+            .update(|cfg| cfg.replacement_rules[index] = rule)
+            .map_err(|e| format!("failed to update replacement rule: {e}"))
+    }
+
+    pub fn delete_replacement_rule(&self, index: usize) -> Result<(), String> {
+        let len = self.config.get().replacement_rules.len();
+        if index >= len {
+            return Err(format!("replacement rule index {index} out of range (len={len})"));
+        }
+        self.config
+            .update(|cfg| { cfg.replacement_rules.remove(index); })
+            .map_err(|e| format!("failed to delete replacement rule: {e}"))
+    }
+}
+
+fn validate_rule(rule: &ReplacementRule) -> Result<(), String> {
+    if rule.trigger.trim().is_empty() {
+        return Err("replacement rule trigger cannot be empty".to_string());
+    }
+    if matches!(rule.rule_type, ReplacementRuleType::Wrap) && rule.prefix.is_empty() && rule.suffix.is_empty() {
+        return Err("wrap rule must have a non-empty prefix or suffix".to_string());
+    }
+    Ok(())
 }
 
 #[cfg(test)]

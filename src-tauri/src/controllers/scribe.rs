@@ -467,17 +467,21 @@ impl ScribeController {
             }
         });
 
+        let vad_path = self.model.vad_model_path();
+        let vad = self.model.model_available(&vad_path).then_some(vad_path.as_path());
         let segments = if let Some(speaker_pcm) = &prepared.speaker_pcm_16k {
             let tx1 = progress_tx.clone();
             let mic_segs = self.model.transcribe_pcm_with_progress(
                 model_path,
                 &prepared.pcm_16k,
+                vad,
                 move |p| { tx1.send(ProgressMessage::Progress(p * 0.5)).ok(); },
             )?;
             let tx2 = progress_tx.clone();
             let speaker_segs = self.model.transcribe_pcm_with_progress(
                 model_path,
                 speaker_pcm,
+                vad,
                 move |p| { tx2.send(ProgressMessage::Progress(0.5 + p * 0.5)).ok(); },
             )?;
             Ok(self.model.merge_dual_source(&mic_segs, &speaker_segs))
@@ -486,6 +490,7 @@ impl ScribeController {
             self.model.transcribe_pcm_with_progress(
                 model_path,
                 &prepared.pcm_16k,
+                vad,
                 move |p| { tx.send(ProgressMessage::Progress(p)).ok(); },
             )
         };
@@ -527,6 +532,7 @@ impl ScribeController {
             title,
             &model_name,
             config.include_timestamps,
+            &config.replacement_rules,
             &transcript_path,
         )?;
 

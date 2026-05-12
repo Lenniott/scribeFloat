@@ -5,7 +5,7 @@
 	import Toast from '@lib/components/Toast.svelte';
 	import type { ToastState } from '@lib/components/Toast.svelte';
 	import IconButton from '@lib/components/IconButton.svelte';
-	import { Download, RefreshCw, Trash2 } from 'lucide-svelte';
+	import { CheckCircle2, Download, RefreshCw, Trash2 } from 'lucide-svelte';
 
 	let {
 		ready = $bindable(false),
@@ -41,15 +41,27 @@
 	/** `null` means "follow Scribe default"; non-null means an explicit override. */
 	let dictateModelId = $state<string | null>(null);
 
+	let vadDownloaded = $state(false);
+	let vadDownloading = $state(false);
+
 	$effect(() => {
 		if (!readyHydrated) return;
 		ready = hasReadyModel;
+	});
+
+	$effect(() => {
+		const progress = modelStore.progressByModel['vad'] ?? 0;
+		if (progress >= 1 && vadDownloading) {
+			vadDownloading = false;
+			vadDownloaded = true;
+		}
 	});
 
 	onMount(async () => {
 		unlisteners = await modelStore.subscribe();
 		await modelStore.refresh();
 		dictateModelId = await invoke<string | null>('settings_get_dictate_model_id').catch(() => null);
+		vadDownloaded = await invoke<boolean>('model_vad_status').catch(() => false);
 		readyHydrated = true;
 	});
 
@@ -123,6 +135,17 @@
 			clearToast();
 			toastTimeout = null;
 		}, 2000);
+	}
+
+	async function downloadVad() {
+		clearToast();
+		vadDownloading = true;
+		try {
+			await invoke('model_vad_download');
+		} catch (e) {
+			modelStore.error = String(e);
+			vadDownloading = false;
+		}
 	}
 
 	function progressPct(modelId: string): number {
@@ -202,6 +225,48 @@
 		</div>
 	</div>
 
+	<!-- Voice Activity Detection -->
+	<div class="shrink-0 border-b border-card bg-panel px-4 py-3">
+		<h3 class="sf-label-sm text-fg-dim">Voice activity detection</h3>
+		<div class="mt-2 flex items-center justify-between gap-4">
+			<div class="min-w-0">
+				<p class="sf-body-md text-fg">Silero VAD · 2 MB</p>
+				<p class="sf-body-sm text-fg-dim">Skips silence mid-recording. Reduces hallucinations.</p>
+			</div>
+			<div class="shrink-0">
+				{#if vadDownloaded}
+					<div class="flex items-center gap-1.5 text-success">
+						<CheckCircle2 class="h-4 w-4" />
+						<span class="sf-label-sm">Installed</span>
+					</div>
+				{:else}
+					{@const vadPct = Math.round((modelStore.progressByModel['vad'] ?? 0) * 100)}
+					{#if vadDownloading && vadPct > 0 && vadPct < 100}
+						<div class="flex items-center gap-2">
+							<div class="h-0.5 w-20 overflow-hidden rounded-sm bg-fill">
+								<div
+									class="h-full rounded-sm bg-active transition-[width]"
+									style={`width:${vadPct}%`}
+								></div>
+							</div>
+							<p class="font-mono text-label-md font-normal leading-snug text-active">{vadPct}%</p>
+						</div>
+					{:else if vadDownloading}
+						<p class="sf-body-sm text-fg-dim">Starting…</p>
+					{:else}
+						<IconButton
+							icon={Download}
+							variant="normal"
+							size="small"
+							aria-label="Install Silero VAD model"
+							onclick={() => void downloadVad()}
+						/>
+					{/if}
+				{/if}
+			</div>
+		</div>
+	</div>
+
 	<!-- Library -->
 	<div class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
 		<div class="flex items-center justify-between gap-2">
@@ -217,7 +282,19 @@
 			/>
 		</div>
 
-		<div class="mt-2 divide-y divide-fill overflow-hidden rounded-md border border-fill bg-panel">
+		<!-- Column headers -->
+		<div class="mt-2 flex items-center gap-3 px-3 pb-1">
+			<div class="min-w-0 flex-1">
+				<span class="sf-label-sm text-fg-dim">Model</span>
+			</div>
+			<div class="flex shrink-0 items-center gap-4 pr-8">
+				<span class="sf-label-sm w-14 text-right text-fg-dim">Size</span>
+				<span class="sf-label-sm w-12 text-right text-fg-dim">WER</span>
+				<span class="sf-label-sm w-12 text-right text-fg-dim">RTFx</span>
+			</div>
+		</div>
+
+		<div class="divide-y divide-fill overflow-hidden rounded-md border border-fill bg-panel">
 			{#each modelStore.models as model (model.id)}
 				<div class="flex items-center justify-between gap-3 px-3 py-2.5">
 					<div class="min-w-0 flex-1 items-center">
@@ -265,27 +342,34 @@
 						</div>
 					</div>
 
-					<div class="flex shrink-0 items-start justify-end pt-0.5">
-						{#if model.downloaded && !rowDownloading(model.id)}
-							<IconButton
-								icon={Trash2}
-								variant="destructive"
-								size="small"
-								aria-label={`Remove ${model.label}`}
-								onclick={() => void removeModel(model.id)}
-							/>
-						{:else}
-							<IconButton
-								icon={Download}
-								variant="normal"
-								size="small"
-								disabled={!!modelStore.downloadingByModel[model.id]}
-								aria-label={rowDownloading(model.id)
-									? `Installing ${model.label}`
-									: `Install ${model.label}`}
-								onclick={() => void downloadModel(model.id)}
-							/>
-						{/if}
+					<div class="flex shrink-0 items-center gap-4">
+						<span class="sf-label-sm w-14 text-right font-mono text-fg-dim">{model.size_mb} MB</span>
+						<span class="sf-label-sm w-12 text-right font-mono text-fg-dim">{model.wer.toFixed(1)}%</span>
+						<span class="sf-label-sm w-12 text-right font-mono text-fg-dim">
+							{model.rtfx != null ? `${model.rtfx}×` : '—'}
+						</span>
+						<div class="flex items-start justify-end pt-0.5">
+							{#if model.downloaded && !rowDownloading(model.id)}
+								<IconButton
+									icon={Trash2}
+									variant="destructive"
+									size="small"
+									aria-label={`Remove ${model.label}`}
+									onclick={() => void removeModel(model.id)}
+								/>
+							{:else}
+								<IconButton
+									icon={Download}
+									variant="normal"
+									size="small"
+									disabled={!!modelStore.downloadingByModel[model.id]}
+									aria-label={rowDownloading(model.id)
+										? `Installing ${model.label}`
+										: `Install ${model.label}`}
+									onclick={() => void downloadModel(model.id)}
+								/>
+							{/if}
+						</div>
 					</div>
 				</div>
 			{/each}

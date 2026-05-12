@@ -499,7 +499,7 @@ impl DictateController {
 
         let mut paste_failed = false;
         if config.dictate_auto_paste {
-            match self.paste_on_main_thread(config.dictate_auto_enter) {
+            match self.paste_on_main_thread(config.dictate_auto_enter, text.clone()) {
                 Ok((paste_res, enter_res)) => {
                     if let Err(e) = paste_res {
                         eprintln!("[dictate] paste simulation failed: {e}");
@@ -611,6 +611,7 @@ impl DictateController {
     fn paste_on_main_thread(
         &self,
         auto_enter: bool,
+        expected_text: String,
     ) -> Result<(Result<(), String>, Result<(), String>), String> {
         let (tx, rx) =
             std::sync::mpsc::channel::<(Result<(), String>, Result<(), String>)>();
@@ -624,7 +625,17 @@ impl DictateController {
                 }
                 // Give the OS a moment to restore focus to the previously active app.
                 std::thread::sleep(std::time::Duration::from_millis(150));
-                let paste_res = output.paste_text();
+                // Guard against clipboard hijacking: verify our text is still there
+                // before firing the keypress.
+                let clipboard_ok = app.clipboard().read_text()
+                    .map(|current| current == expected_text)
+                    .unwrap_or(false);
+                let paste_res = if clipboard_ok {
+                    output.paste_text()
+                } else {
+                    eprintln!("[dictate] clipboard was modified before paste — aborting");
+                    Err("Clipboard was modified by another process before paste".to_string())
+                };
                 let enter_res = if paste_res.is_ok() && auto_enter {
                     output.send_enter()
                 } else {

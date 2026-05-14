@@ -116,7 +116,7 @@ mod tests {
         assert_eq!(cfg.save_folder, "/tmp/old-liscribe");
         assert!(cfg.include_timestamps, "should default to true");
         assert!(!cfg.onboarding_complete, "should default to false");
-        assert_eq!(cfg.open_scribe_hotkey, "CmdOrCtrl+Shift+S");
+        assert_eq!(cfg.open_scribe_hotkey, "CmdOrCtrl+Shift+L");
         assert_eq!(cfg.input_label, "Mic");
         assert_eq!(cfg.output_label, "Speaker");
         assert_eq!(cfg.theme_mode, crate::types::ThemeMode::System);

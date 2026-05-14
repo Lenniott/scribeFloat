@@ -310,10 +310,17 @@
     modelUnlisteners = await modelStore.subscribe();
     await modelStore.refresh();
 
-    // Populate mic list
-    const devices = await invoke<string[]>("scribe_list_input_devices").catch(
-      () => [],
-    );
+    // Only enumerate input devices if mic permission is already granted.
+    // On macOS 14+ calling input_devices() triggers the permission dialog when
+    // status is NotDetermined — avoid that on prewarm / before the user asks.
+    const permsOnMount = await invoke<PermissionStatus[]>(
+      "settings_permissions_status",
+    ).catch(() => [] as PermissionStatus[]);
+    const micGrantedOnMount =
+      permsOnMount.find((p) => p.kind === "microphone")?.granted ?? false;
+    const devices = micGrantedOnMount
+      ? await invoke<string[]>("scribe_list_input_devices").catch(() => [])
+      : [];
     micOptions = [
       { value: "", label: "System Default" },
       ...devices.map((d) => ({ value: d, label: d })),

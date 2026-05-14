@@ -1,5 +1,5 @@
 [package]
-name = "scribefloat"
+name = "ScribeFloat"
 version = "0.1.6"
 description = "A Tauri App"
 authors = ["you"]

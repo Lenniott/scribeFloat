@@ -188,6 +188,12 @@ mod macos {
     }
 
     pub fn speaker_capture_ready() -> bool {
+        // On macOS 14+ enumerating input devices triggers the mic permission dialog when
+        // status is NotDetermined. Skip the enumeration entirely if mic isn't granted yet —
+        // speaker capture can't work without mic permission anyway.
+        if !microphone_granted() {
+            return false;
+        }
         let host = cpal::default_host();
         let Ok(devices) = host.input_devices() else {
             return false;

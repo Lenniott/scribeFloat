@@ -425,12 +425,12 @@ mod tests {
         let config = ConfigService::load(config_path.clone()).unwrap();
         let ctrl = make_controller(config, None);
 
-        ctrl.set_hotkeys("CmdOrCtrl+Shift+S".to_string(), "Ctrl+D".to_string())
+        ctrl.set_hotkeys("CmdOrCtrl+Shift+L".to_string(), "Ctrl+D".to_string())
             .unwrap();
 
         let reloaded = ConfigService::load(config_path).unwrap();
         let cfg = reloaded.get();
-        assert_eq!(cfg.open_scribe_hotkey, "CmdOrCtrl+Shift+S");
+        assert_eq!(cfg.open_scribe_hotkey, "CmdOrCtrl+Shift+L");
         assert_eq!(cfg.dictate_hotkey, "Ctrl+D");
     }
 

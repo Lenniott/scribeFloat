@@ -239,7 +239,7 @@ fn default_save_folder() -> String {
 }
 
 fn default_open_scribe_hotkey() -> String {
-    "CmdOrCtrl+Shift+S".to_string()
+    "CmdOrCtrl+Shift+L".to_string()
 }
 
 fn default_dictate_hotkey() -> String {

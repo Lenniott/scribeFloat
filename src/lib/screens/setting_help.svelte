@@ -82,7 +82,7 @@
 			Scribe records your microphone and transcribes the audio into a timestamped Markdown file saved in your save folder.
 		</p>
 		<ul class="space-y-1 text-base text-fg list-disc pl-5">
-			<li>Open Scribe from the menu bar icon or press the <strong>Open Scribe hotkey</strong> (shown in General settings — <code class="font-mono text-base bg-fill px-1 rounded">CmdOrCtrl+Shift+S</code> by default).</li>
+			<li>Open Scribe from the menu bar icon or press the <strong>Open Scribe hotkey</strong> (shown in General settings — <code class="font-mono text-base bg-fill px-1 rounded">CmdOrCtrl+Shift+L</code> by default).</li>
 			<li>Press <strong>Record</strong> to start. Add timestamped notes while recording if you like.</li>
 			<li>Press <strong>Stop & Save</strong> — ScribeFloat transcribes the audio and saves a <code class="font-mono text-base bg-fill px-1 rounded">.md</code> file. The recording is deleted once the transcript is confirmed saved.</li>
 			<li>Enable <strong>Speaker capture</strong> to also record system audio (e.g. for calls and meetings). Mic lines are prefixed <code class="font-mono text-base bg-fill px-1 rounded">in:</code> and speaker lines <code class="font-mono text-base bg-fill px-1 rounded">out:</code> in the transcript.</li>

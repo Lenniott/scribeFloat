@@ -3,6 +3,33 @@
 version = 4
 
 [[package]]
+name = "ScribeFloat"
+version = "0.1.6"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "cpal",
+ "enigo",
+ "hound",
+ "rdev",
+ "regex",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "symphonia",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-dialog",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-opener",
+ "tempfile",
+ "tokio",
+ "uuid",
+ "whisper-rs",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3704,33 +3731,6 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
-
-[[package]]
-name = "scribefloat"
-version = "0.1.6"
-dependencies = [
- "anyhow",
- "chrono",
- "cpal",
- "enigo",
- "hound",
- "rdev",
- "regex",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "symphonia",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-dialog",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-opener",
- "tempfile",
- "tokio",
- "uuid",
- "whisper-rs",
-]
 
 [[package]]
 name = "selectors"

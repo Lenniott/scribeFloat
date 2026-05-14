@@ -374,7 +374,7 @@ graph TB
 ```
 
 **State transitions:**
-- `IDLE → RECORDING`: panel opens (hotkey `CmdOrCtrl+Shift+S` or tray click)
+- `IDLE → RECORDING`: panel opens (hotkey `CmdOrCtrl+Shift+L` or tray click)
 - `RECORDING → TRANSCRIBING`: Stop & Save pressed
 - `RECORDING → IDLE`: Cancel pressed — audio discarded
 - `TRANSCRIBING → DONE`: transcript written to save folder

@@ -6,9 +6,14 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use whisper_rs::{
     FullParams, SamplingStrategy, SegmentCallbackData, WhisperContext, WhisperContextParameters,
+    WhisperVadParams,
 };
 
-pub const SMALL_MODEL_FILENAME: &str = "ggml-small.bin";
+pub const SMALL_MODEL_FILENAME: &str = "ggml-small.en-q5_1.bin";
+
+pub const VAD_MODEL_FILENAME: &str = "ggml-silero-v6.2.0.bin";
+const VAD_MODEL_URL: &str =
+    "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin";
 
 #[derive(Clone, Copy)]
 pub struct ModelCatalogItem {
@@ -16,32 +21,58 @@ pub struct ModelCatalogItem {
     pub label: &'static str,
     pub file_name: &'static str,
     pub url: &'static str,
+    pub size_mb: u32,
+    /// LibriSpeech clean WER % from Open ASR Leaderboard (lower is better).
+    pub wer: f32,
+    /// Real-time factor from Open ASR Leaderboard on GPU (higher is faster). None = not benchmarked.
+    pub rtfx: Option<u32>,
 }
 
-const MODEL_CATALOG: [ModelCatalogItem; 4] = [
+const MODEL_CATALOG: [ModelCatalogItem; 5] = [
     ModelCatalogItem {
-        id: "tiny",
+        id: "tiny-en-q5",
         label: "Tiny",
-        file_name: "ggml-tiny.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
+        file_name: "ggml-tiny.en-q5_1.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en-q5_1.bin",
+        size_mb: 31,
+        wer: 5.66,
+        rtfx: Some(348),
     },
     ModelCatalogItem {
-        id: "base",
+        id: "base-en-q5",
         label: "Base",
-        file_name: "ggml-base.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+        file_name: "ggml-base.en-q5_1.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin",
+        size_mb: 57,
+        wer: 4.25,
+        rtfx: Some(321),
     },
     ModelCatalogItem {
-        id: "small",
+        id: "small-en-q5",
         label: "Small",
         file_name: SMALL_MODEL_FILENAME,
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin",
+        size_mb: 181,
+        wer: 3.05,
+        rtfx: Some(269),
     },
     ModelCatalogItem {
-        id: "medium",
+        id: "medium-en-q5",
         label: "Medium",
-        file_name: "ggml-medium.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
+        file_name: "ggml-medium.en-q5_0.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en-q5_0.bin",
+        size_mb: 514,
+        wer: 3.02,
+        rtfx: None,
+    },
+    ModelCatalogItem {
+        id: "large-v3-turbo-q5",
+        label: "Large Turbo",
+        file_name: "ggml-large-v3-turbo-q5_0.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+        size_mb: 547,
+        wer: 2.10,
+        rtfx: Some(200),
     },
 ];
 
@@ -79,6 +110,112 @@ impl ModelService {
         self.model_path_for_id(model_id)
             .map(|p| self.model_available(&p))
             .unwrap_or(false)
+    }
+
+    pub fn vad_model_path(&self) -> PathBuf {
+        self.models_dir.join(VAD_MODEL_FILENAME)
+    }
+
+    pub fn vad_model_available(&self) -> bool {
+        self.model_available(&self.vad_model_path())
+    }
+
+    pub async fn download_vad_model(&self, app: &AppHandle) -> Result<()> {
+        let dest = self.vad_model_path();
+        let tmp = dest.with_extension("tmp");
+
+        std::fs::create_dir_all(&self.models_dir).context("create models dir")?;
+
+        let client = reqwest::Client::builder()
+            .user_agent("scribefloat/0.1")
+            .connect_timeout(Duration::from_secs(15))
+            .build()
+            .context("failed to build download client")?;
+
+        let mut response = None;
+        let mut last_err = None;
+        for attempt in 1..=3 {
+            match client.get(VAD_MODEL_URL).send().await {
+                Ok(r) if r.status().is_success() => {
+                    response = Some(r);
+                    break;
+                }
+                Ok(r) if r.status().is_server_error() && attempt < 3 => {
+                    last_err = Some(anyhow!("server error {} on attempt {attempt}", r.status()));
+                    tokio::time::sleep(Duration::from_millis(600 * attempt as u64)).await;
+                }
+                Ok(r) => {
+                    last_err = Some(anyhow!("vad download failed with HTTP {}", r.status()));
+                    break;
+                }
+                Err(e) if attempt < 3 => {
+                    last_err = Some(anyhow!("download request failed on attempt {attempt}: {e}"));
+                    tokio::time::sleep(Duration::from_millis(600 * attempt as u64)).await;
+                }
+                Err(e) => {
+                    last_err = Some(anyhow!("download request failed: {e}"));
+                    break;
+                }
+            }
+        }
+        let mut response = response.ok_or_else(|| {
+            anyhow!(
+                "failed to download VAD model after retries: {}",
+                last_err
+                    .map(|e| e.to_string())
+                    .unwrap_or_else(|| "unknown error".to_string())
+            )
+        })?;
+
+        let total = response.content_length();
+        let mut downloaded = 0u64;
+
+        let mut file = tokio::fs::File::create(&tmp)
+            .await
+            .context("failed to create temp file")?;
+
+        while let Some(chunk) = response.chunk().await.context("stream read error")? {
+            tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await?;
+            downloaded += chunk.len() as u64;
+            app.emit(
+                "model://download-progress",
+                ModelDownloadEvent {
+                    model_id: "vad".to_string(),
+                    progress: total.map(|t| downloaded as f32 / t as f32).unwrap_or(0.0),
+                    bytes_downloaded: downloaded,
+                    total_bytes: total,
+                },
+            )
+            .ok();
+        }
+
+        if let Err(e) = tokio::io::AsyncWriteExt::flush(&mut file).await {
+            drop(file);
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err(anyhow::Error::from(e));
+        }
+        drop(file);
+
+        if let Err(e) = tokio::fs::rename(&tmp, &dest)
+            .await
+            .context("failed to move VAD model into place")
+        {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err(e);
+        }
+
+        app.emit(
+            "model://download-progress",
+            ModelDownloadEvent {
+                model_id: "vad".to_string(),
+                progress: 1.0,
+                bytes_downloaded: downloaded,
+                total_bytes: total,
+            },
+        )
+        .ok();
+
+        Ok(())
     }
 
     /// Removes the downloaded file for `model_id`. Only paths under [`Self::models_dir`]
@@ -206,10 +343,13 @@ impl ModelService {
 
     /// Transcribe mono f32 PCM at 16 kHz and report Whisper's own progress.
     /// Must be called from spawn_blocking.
+    /// Pass `vad_model_path` to enable Silero VAD — silence mid-recording is skipped,
+    /// preventing hallucinations during pauses.
     pub fn transcribe_pcm_with_progress<F>(
         &self,
         model_path: &Path,
         pcm: &[f32],
+        vad_model_path: Option<&Path>,
         mut on_progress: F,
     ) -> Result<Vec<Segment>>
     where
@@ -232,6 +372,11 @@ impl ModelService {
         params.set_print_realtime(false);
         params.set_print_special(false);
         params.set_single_segment(false);
+        if let Some(vad_path) = vad_model_path.and_then(|p| p.to_str()) {
+            params.set_vad_model_path(Some(vad_path));
+            params.enable_vad(true);
+            params.set_vad_params(WhisperVadParams::default());
+        }
         let total_ms = ((pcm.len() as f32 / 16_000.0) * 1_000.0).max(1.0);
         params.set_segment_callback_safe_lossy(move |segment: SegmentCallbackData| {
             on_progress(progress_from_segment_end(segment.end_timestamp, total_ms));
@@ -241,26 +386,14 @@ impl ModelService {
             .full(params, pcm)
             .map_err(|e| anyhow!("whisper inference failed: {e:?}"))?;
 
-        let n = state
-            .full_n_segments()
-            .map_err(|e| anyhow!("full_n_segments: {e:?}"))?;
-
-        let mut segments = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            let text = state
-                .full_get_segment_text(i)
-                .map_err(|e| anyhow!("segment text {i}: {e:?}"))?;
-            let t0 = state
-                .full_get_segment_t0(i)
-                .map_err(|e| anyhow!("segment t0 {i}: {e:?}"))?;
-            let t1 = state
-                .full_get_segment_t1(i)
-                .map_err(|e| anyhow!("segment t1 {i}: {e:?}"))?;
+        let mut segments = Vec::new();
+        for seg in state.as_iter() {
+            let text = seg.to_string();
             let text = text.trim().to_string();
             if !text.is_empty() {
                 segments.push(Segment {
-                    start_ms: t0 * 10,
-                    end_ms: t1 * 10,
+                    start_ms: seg.start_timestamp() * 10,
+                    end_ms: seg.end_timestamp() * 10,
                     text,
                 });
             }

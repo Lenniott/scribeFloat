@@ -88,7 +88,7 @@ Once complete the app unlocks fully and the wizard can be replayed from **Settin
 | Action | Default |
 |--------|---------|
 | Open Scribe | `Cmd/Ctrl + Shift + S` |
-| Start / stop Dictate | Double-tap `Ctrl` (or hold `Ctrl` and release) |
+| Start / stop Dictate | Tap **Ctrl**, release; tap **Ctrl** again and hold ~0.5s to talk (release to finish), or tap–release twice quickly then **Ctrl** once to stop (toggle mode) |
 
 Hotkeys are fully configurable in **Settings → Hotkeys**.
 

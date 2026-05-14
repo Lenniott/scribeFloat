@@ -45,6 +45,9 @@ impl ModelController {
                     file_name: item.file_name.to_string(),
                     downloaded: self.model.model_downloaded(item.id),
                     selected,
+                    size_mb: item.size_mb,
+                    wer: item.wer,
+                    rtfx: item.rtfx,
                 }
             })
             .collect()
@@ -78,6 +81,20 @@ impl ModelController {
                 cfg.scribe_model_path = Some(chosen_path);
             })
             .map_err(|e| e.to_string())
+    }
+
+    pub fn vad_model_status(&self) -> bool {
+        self.model.vad_model_available()
+    }
+
+    pub fn download_vad_model(self: Arc<Self>, app: AppHandle) -> Result<(), String> {
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = self.model.download_vad_model(&app).await {
+                eprintln!("VAD model download failed: {e}");
+                app.emit("model://download-error", e.to_string()).ok();
+            }
+        });
+        Ok(())
     }
 
     /// Deletes the downloaded file for `model_id` and clears config if it pointed at that file.

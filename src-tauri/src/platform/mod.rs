@@ -1,3 +1,4 @@
+pub mod dictate_focus;
 pub mod key_listener;
 pub mod paste_impl;
 pub mod permissions_impl;

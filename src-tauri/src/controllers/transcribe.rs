@@ -99,10 +99,11 @@ impl TranscribeController {
             None,
         );
 
+        let replacement_rules = cfg.replacement_rules.clone();
         tauri::async_runtime::spawn(async move {
             let ctrl = Arc::clone(&this);
             let result = tokio::task::spawn_blocking(move || {
-                ctrl.run_batch(inputs, &model_path, &model_name, &output_folder, include_timestamps, &mut queue)
+                ctrl.run_batch(inputs, &model_path, &model_name, &output_folder, include_timestamps, &replacement_rules, &mut queue)
             })
             .await;
 
@@ -148,6 +149,7 @@ impl TranscribeController {
             .open_file_for_user(canonical.to_string_lossy().as_ref(), open_with.as_deref())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn run_batch(
         &self,
         inputs: Vec<TranscribeInputItem>,
@@ -155,6 +157,7 @@ impl TranscribeController {
         model_name: &str,
         output_folder: &Path,
         include_timestamps: bool,
+        replacement_rules: &[crate::types::ReplacementRule],
         queue: &mut [TranscribeQueueItem],
     ) -> Result<Vec<TranscribeQueueItem>, String> {
         for (index, input) in inputs.iter().enumerate() {
@@ -189,10 +192,12 @@ impl TranscribeController {
                 }
             };
 
+            let vad_path = self.model.vad_model_path();
+            let vad = self.model.model_available(&vad_path).then_some(vad_path.as_path());
             let segments = if let Some(speaker_pcm) = decoded.speaker_pcm_16k.as_ref() {
                 let mic_segments = self
                     .model
-                    .transcribe_pcm_with_progress(model_path, &decoded.mic_pcm_16k, {
+                    .transcribe_pcm_with_progress(model_path, &decoded.mic_pcm_16k, vad, {
                         let app = self.app.clone();
                         let item_id = queue[index].id.clone();
                         move |p| {
@@ -225,7 +230,7 @@ impl TranscribeController {
 
                 let speaker_segments = self
                     .model
-                    .transcribe_pcm_with_progress(model_path, speaker_pcm, {
+                    .transcribe_pcm_with_progress(model_path, speaker_pcm, vad, {
                         let app = self.app.clone();
                         let item_id = queue[index].id.clone();
                         move |p| {
@@ -261,6 +266,7 @@ impl TranscribeController {
                 match self.model.transcribe_pcm_with_progress(
                     model_path,
                     &decoded.mic_pcm_16k,
+                    vad,
                     {
                         let app = self.app.clone();
                         let item_id = queue[index].id.clone();
@@ -309,6 +315,7 @@ impl TranscribeController {
                 &input.display_name,
                 model_name,
                 include_timestamps,
+                replacement_rules,
                 &transcript_dest,
             ) {
                 Ok(path) => {

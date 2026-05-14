@@ -1,6 +1,10 @@
-use crate::types::{DictateHistoryEntry, Note, Segment};
+use crate::types::{
+    DictateHistoryEntry, Note, ReplacementRule, ReplacementRuleType, ReplacementScope, Segment,
+    WordTransform,
+};
 use anyhow::{Context, Result};
 use hound::{SampleFormat, WavSpec, WavWriter};
+use regex::Regex;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -70,7 +74,21 @@ impl OutputService {
         Ok(())
     }
 
+    /// Join segments, clean Whisper artifacts, apply replacement rules, and return the final
+    /// text ready for pasting. Scope applied: Dictate.
+    pub fn format_dictate_text(&self, segments: &[Segment], rules: &[ReplacementRule]) -> String {
+        let joined = segments
+            .iter()
+            .map(|s| cleanup_text(s.text.trim()))
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let deduped = dedup_repeated_block(&dedup_consecutive_phrases(&joined));
+        apply_replacements(&deduped, rules, &ReplacementScope::Dictate)
+    }
+
     /// Render segments as markdown and write. Verifies file is non-empty before returning Ok.
+    #[allow(clippy::too_many_arguments)]
     pub fn write_transcript(
         &self,
         segments: &[Segment],
@@ -78,19 +96,26 @@ impl OutputService {
         title: &str,
         model_name: &str,
         include_timestamps: bool,
+        rules: &[ReplacementRule],
         dest: &Path,
     ) -> Result<PathBuf> {
-        let transcript_body = segments
+        let raw_body = segments
             .iter()
             .map(|seg| {
+                let clean = cleanup_text(seg.text.trim());
                 if include_timestamps {
-                    format!("[{}] {}", format_ms(seg.start_ms), seg.text)
+                    format!("[{}] {}", format_ms(seg.start_ms), clean)
                 } else {
-                    seg.text.clone()
+                    clean
                 }
             })
             .collect::<Vec<_>>()
             .join("\n\n");
+
+        let transcript_body = {
+            let deduped = dedup_repeated_block(&dedup_consecutive_phrases(&raw_body));
+            apply_replacements(&deduped, rules, &ReplacementScope::Transcripts)
+        };
 
         let duration_seconds = segments
             .last()
@@ -242,6 +267,186 @@ impl OutputService {
     }
 }
 
+// ── Text cleanup ──────────────────────────────────────────────────────────────
+
+/// Strip Whisper artifact annotations and normalize whitespace from a single segment.
+/// Always-on — these are never valid speech output.
+fn cleanup_text(text: &str) -> String {
+    // Remove all-caps bracket annotations Whisper emits: [BLANK_AUDIO], [Music], [Applause], etc.
+    // Pattern: literal [ followed by uppercase letter/underscore, then uppercase/space/underscore, then ]
+    // Strip Whisper bracket annotations: first char uppercase, rest letters/space/underscore.
+    // Matches [BLANK_AUDIO], [Music], [Sounds of the toilet] but not [ ] or [note].
+    let annotation_re = Regex::new(r"\[[A-Z][A-Za-z_ ]*\]").expect("static regex");
+    let cleaned = annotation_re.replace_all(text, "");
+    // Whisper sometimes fuses its native "#word" output with a following command word
+    // (e.g. "hashtag cake new line" → "#cakenewline"). Split so replacement rules fire.
+    let fusion_re = Regex::new(r"(?i)(#\w+?)(newline)").expect("static regex");
+    let cleaned = fusion_re.replace_all(&cleaned, "$1 $2");
+    // Normalize internal whitespace
+    let words: Vec<&str> = cleaned.split_whitespace().collect();
+    words.join(" ")
+}
+
+/// Remove consecutively repeated phrases of 1–5 words (case-insensitive).
+/// Handles Whisper repetition artifacts at segment boundaries:
+///   "hello world. world. Next"  → "hello world. Next"
+///   "eat some food eat some food" → "eat some food"
+fn dedup_consecutive_phrases(text: &str) -> String {
+    let tokens: Vec<&str> = text.split_whitespace().collect();
+    if tokens.len() < 2 {
+        return text.to_string();
+    }
+    let mut result: Vec<&str> = Vec::with_capacity(tokens.len());
+    result.push(tokens[0]);
+    let mut i = 1;
+    while i < tokens.len() {
+        let mut skipped = false;
+        // Longest match first so "eat some food" beats "eat" when both repeat
+        for phrase_len in (1..=5).rev() {
+            if i + phrase_len > tokens.len() || result.len() < phrase_len {
+                continue;
+            }
+            let prev = &result[result.len() - phrase_len..];
+            let curr = &tokens[i..i + phrase_len];
+            let matches = prev.iter().zip(curr.iter()).all(|(p, c)| {
+                let p = p.trim_end_matches(|ch: char| !ch.is_alphanumeric());
+                let c = c.trim_end_matches(|ch: char| !ch.is_alphanumeric());
+                p.eq_ignore_ascii_case(c)
+            });
+            if matches {
+                i += phrase_len;
+                skipped = true;
+                break;
+            }
+        }
+        if !skipped {
+            result.push(tokens[i]);
+            i += 1;
+        }
+    }
+    result.join(" ")
+}
+
+/// If the transcript appears twice (Whisper hallucination on long audio), keep the first copy.
+/// Uses the opening fingerprint (~20% of text, ≤100 chars) to detect the repeat start.
+fn dedup_repeated_block(text: &str) -> String {
+    let min_len = 60;
+    if text.len() < min_len * 2 {
+        return text.to_string();
+    }
+    let fp_len = (text.len() / 5).clamp(20, 100);
+    let fingerprint = text[..fp_len].to_lowercase();
+    // Search for the repeat only in the second half
+    let search_from = text.len() / 2;
+    if let Some(pos) = text[search_from..].to_lowercase().find(&fingerprint) {
+        return text[..search_from + pos].trim_end().to_string();
+    }
+    text.to_string()
+}
+
+// ── Replacement engine ────────────────────────────────────────────────────────
+
+/// Apply user-defined replacement rules to text. Rules are applied in order.
+/// Only rules whose scope is Both or matches the given scope are applied.
+fn apply_replacements(text: &str, rules: &[ReplacementRule], scope: &ReplacementScope) -> String {
+    let mut result = text.to_string();
+    for rule in rules {
+        if rule.trigger.trim().is_empty() {
+            continue;
+        }
+        let rule_scope = &rule.scope;
+        if rule_scope != &ReplacementScope::Both && rule_scope != scope {
+            continue;
+        }
+        let triggers = std::iter::once(rule.trigger.as_str())
+            .chain(rule.aliases.iter().map(String::as_str))
+            .filter(|t| !t.trim().is_empty());
+        for trigger in triggers {
+            result = match rule.rule_type {
+                ReplacementRuleType::Simple => {
+                    let replacement = rule.output.as_str();
+                    if trigger.contains(' ') {
+                        replace_phrase(&result, trigger, replacement)
+                    } else {
+                        replace_whole_word(&result, trigger, replacement)
+                    }
+                }
+                ReplacementRuleType::Newline => replace_newline(&result, trigger),
+                ReplacementRuleType::Wrap => {
+                    wrap_next_word(&result, trigger, &rule.prefix, &rule.suffix, &rule.transform)
+                }
+            };
+        }
+    }
+    result
+}
+
+fn replace_whole_word(text: &str, trigger: &str, replacement: &str) -> String {
+    let pattern = format!(r"(?i)\b{}\b", regex::escape(trigger));
+    match Regex::new(&pattern) {
+        Ok(re) => re.replace_all(text, replacement).into_owned(),
+        Err(_) => text.to_string(),
+    }
+}
+
+fn replace_phrase(text: &str, trigger: &str, replacement: &str) -> String {
+    let pattern = format!(r"(?i){}", regex::escape(trigger));
+    match Regex::new(&pattern) {
+        Ok(re) => re.replace_all(text, replacement).into_owned(),
+        Err(_) => text.to_string(),
+    }
+}
+
+fn replace_newline(text: &str, trigger: &str) -> String {
+    let escaped = regex::escape(trigger);
+    // Optional leading space absorbs the word-gap so no trailing whitespace is left
+    // on the preceding line. Optional trailing punctuation is moved before the newline
+    // so Whisper-added sentence endings (e.g. "new line?") don't land on the new line.
+    let pattern = if trigger.contains(' ') {
+        format!(r"(?i)[ ]?{}([.,!?;:]+)?[ ]*", escaped)
+    } else {
+        format!(r"(?i)[ ]?\b{}\b([.,!?;:]+)?[ ]*", escaped)
+    };
+    match Regex::new(&pattern) {
+        Ok(re) => re.replace_all(text, |caps: &regex::Captures| {
+            let punct = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            format!("{}\n", punct)
+        }).into_owned(),
+        Err(_) => text.to_string(),
+    }
+}
+
+fn wrap_next_word(text: &str, trigger: &str, prefix: &str, suffix: &str, transform: &WordTransform) -> String {
+    // Match: whole-word trigger + whitespace + next non-whitespace word
+    let pattern = format!(r"(?i)\b{}\s+(\S+)", regex::escape(trigger));
+    match Regex::new(&pattern) {
+        Ok(re) => re.replace_all(text, |caps: &regex::Captures| {
+            // Strip leading non-alphanumeric chars Whisper may have already inserted
+            // (e.g. "hashtag #word" → Whisper pre-pended "#", avoid "##word")
+            let raw = caps[1].trim_start_matches(|c: char| !c.is_alphanumeric());
+            let word = apply_word_transform(if raw.is_empty() { &caps[1] } else { raw }, transform);
+            format!("{}{}{}", prefix, word, suffix)
+        }).into_owned(),
+        Err(_) => text.to_string(),
+    }
+}
+
+fn apply_word_transform(word: &str, transform: &WordTransform) -> String {
+    match transform {
+        WordTransform::Lower => word.to_lowercase(),
+        WordTransform::Upper => word.to_uppercase(),
+        WordTransform::Sentence => {
+            let lower = word.to_lowercase();
+            let mut chars = lower.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        }
+        WordTransform::None => word.to_string(),
+    }
+}
+
 fn format_ms(ms: i64) -> String {
     let total = ms / 1000;
     format!(
@@ -255,7 +460,211 @@ fn format_ms(ms: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::Note;
+    use crate::types::{Note, ReplacementRule, ReplacementRuleType, ReplacementScope, WordTransform};
+
+    fn simple_rule(trigger: &str, output: &str, scope: ReplacementScope) -> ReplacementRule {
+        ReplacementRule {
+            trigger: trigger.to_string(),
+            aliases: vec![],
+            rule_type: ReplacementRuleType::Simple,
+            output: output.to_string(),
+            scope,
+            prefix: String::new(),
+            suffix: String::new(),
+            transform: WordTransform::None,
+        }
+    }
+
+    fn wrap_rule(trigger: &str, prefix: &str, suffix: &str, transform: WordTransform) -> ReplacementRule {
+        ReplacementRule {
+            trigger: trigger.to_string(),
+            aliases: vec![],
+            rule_type: ReplacementRuleType::Wrap,
+            output: String::new(),
+            scope: ReplacementScope::Both,
+            prefix: prefix.to_string(),
+            suffix: suffix.to_string(),
+            transform,
+        }
+    }
+
+    fn newline_rule(trigger: &str) -> ReplacementRule {
+        ReplacementRule {
+            trigger: trigger.to_string(),
+            aliases: vec![],
+            rule_type: ReplacementRuleType::Newline,
+            output: String::new(),
+            scope: ReplacementScope::Both,
+            prefix: String::new(),
+            suffix: String::new(),
+            transform: WordTransform::None,
+        }
+    }
+
+    // ── cleanup_text ────────────────────────────────────────────────────────
+
+    #[test]
+    fn cleanup_splits_hashtag_newline_fusion() {
+        // Whisper fuses "#cake" + "newline" into one token — must be split so rules fire
+        assert_eq!(cleanup_text("#cakenewline"), "#cake newline");
+    }
+
+
+    #[test]
+    fn cleanup_strips_silence_annotation() {
+        assert_eq!(cleanup_text("[SILENCE] hello"), "hello");
+    }
+
+    #[test]
+    fn cleanup_strips_blank_audio_annotation() {
+        assert_eq!(cleanup_text("[BLANK_AUDIO]"), "");
+    }
+
+    #[test]
+    fn cleanup_strips_general_bracket_annotation() {
+        assert_eq!(cleanup_text("[MUSIC] welcome back [APPLAUSE]"), "welcome back");
+    }
+
+    #[test]
+    fn cleanup_preserves_lowercase_brackets() {
+        // User-facing [note] or [1] should not be stripped — only ALL-CAPS Whisper annotations
+        assert_eq!(cleanup_text("see [note] below"), "see [note] below");
+    }
+
+    #[test]
+    fn cleanup_normalizes_whitespace() {
+        assert_eq!(cleanup_text("  hello   world  "), "hello world");
+    }
+
+    // ── dedup_consecutive_phrases ─────────────────────────────────────────────
+
+    #[test]
+    fn dedup_removes_consecutive_duplicate_words() {
+        assert_eq!(dedup_consecutive_phrases("hello world world next"), "hello world next");
+    }
+
+    #[test]
+    fn dedup_case_insensitive() {
+        assert_eq!(dedup_consecutive_phrases("Hello hello world"), "Hello world");
+    }
+
+    #[test]
+    fn dedup_does_not_remove_non_consecutive_duplicates() {
+        assert_eq!(dedup_consecutive_phrases("hello world hello"), "hello world hello");
+    }
+
+    #[test]
+    fn dedup_handles_punctuation_at_word_boundary() {
+        // "world." and "world" are considered duplicates (strip trailing punct for compare)
+        assert_eq!(dedup_consecutive_phrases("hello world. world next"), "hello world. next");
+    }
+
+    // ── apply_replacements ──────────────────────────────────────────────────
+
+    #[test]
+    fn replacements_simple_whole_word() {
+        let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
+        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Both), "11 - may");
+    }
+
+    #[test]
+    fn replacements_case_insensitive() {
+        let rules = vec![simple_rule("hashtag", "#", ReplacementScope::Both)];
+        assert_eq!(apply_replacements("HASHTAG project", &rules, &ReplacementScope::Both), "# project");
+    }
+
+    #[test]
+    fn replacements_whole_word_not_substring() {
+        let rules = vec![simple_rule("hash", "#", ReplacementScope::Both)];
+        assert_eq!(apply_replacements("hashtag project", &rules, &ReplacementScope::Both), "hashtag project");
+    }
+
+    #[test]
+    fn replacements_phrase_trigger() {
+        let rules = vec![simple_rule("to do", "[ ]", ReplacementScope::Both)];
+        assert_eq!(apply_replacements("add to do item", &rules, &ReplacementScope::Both), "add [ ] item");
+    }
+
+    #[test]
+    fn replacements_newline_type() {
+        let rules = vec![newline_rule("new line")];
+        assert_eq!(apply_replacements("hello new line world", &rules, &ReplacementScope::Both), "hello\nworld");
+    }
+
+    #[test]
+    fn replace_newline_moves_trailing_question_mark() {
+        let rules = vec![newline_rule("new line")];
+        assert_eq!(
+            apply_replacements("looking for new line?", &rules, &ReplacementScope::Both),
+            "looking for?\n"
+        );
+    }
+
+    #[test]
+    fn replace_newline_alias_single_word() {
+        let rules = vec![ReplacementRule {
+            trigger: "new line".to_string(),
+            aliases: vec!["newline".to_string()],
+            rule_type: ReplacementRuleType::Newline,
+            output: String::new(),
+            scope: ReplacementScope::Both,
+            prefix: String::new(),
+            suffix: String::new(),
+            transform: WordTransform::None,
+        }];
+        assert_eq!(
+            apply_replacements("go to bed newline", &rules, &ReplacementScope::Both),
+            "go to bed\n"
+        );
+    }
+
+    #[test]
+    fn replacements_wrap_with_lower_transform() {
+        let rules = vec![wrap_rule("hashtag", "#", "", WordTransform::Lower)];
+        assert_eq!(apply_replacements("hashtag Monday", &rules, &ReplacementScope::Both), "#monday");
+    }
+
+    #[test]
+    fn replacements_wrap_leaves_rest_unchanged() {
+        let rules = vec![wrap_rule("bold", "**", "**", WordTransform::None)];
+        assert_eq!(apply_replacements("bold hello world", &rules, &ReplacementScope::Both), "**hello** world");
+    }
+
+    #[test]
+    fn replacements_scope_transcripts_skips_dictate_rule() {
+        let rules = vec![simple_rule("dash", "-", ReplacementScope::Dictate)];
+        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Transcripts), "11 dash may");
+    }
+
+    #[test]
+    fn replacements_scope_dictate_skips_transcripts_rule() {
+        let rules = vec![simple_rule("dash", "-", ReplacementScope::Transcripts)];
+        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Dictate), "11 dash may");
+    }
+
+    #[test]
+    fn replacements_both_scope_applies_to_transcripts() {
+        let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
+        assert_eq!(apply_replacements("a dash b", &rules, &ReplacementScope::Transcripts), "a - b");
+    }
+
+    #[test]
+    fn replacements_multiple_rules_in_order() {
+        let rules = vec![
+            simple_rule("hashtag", "#", ReplacementScope::Both),
+            simple_rule("todo", "[ ]", ReplacementScope::Both),
+        ];
+        assert_eq!(
+            apply_replacements("hashtag project todo item", &rules, &ReplacementScope::Both),
+            "# project [ ] item"
+        );
+    }
+
+    #[test]
+    fn replacements_empty_trigger_skipped() {
+        let rules = vec![simple_rule("", "oops", ReplacementScope::Both)];
+        assert_eq!(apply_replacements("hello", &rules, &ReplacementScope::Both), "hello");
+    }
 
 
     fn temp_file(name: &str) -> PathBuf {
@@ -275,7 +684,7 @@ mod tests {
             text: "hello world".to_string(),
         }];
 
-        svc.write_transcript(&segments, &[], "Test", "tiny", true, &file)
+        svc.write_transcript(&segments, &[], "Test", "tiny", true, &[], &file)
             .expect("write transcript");
 
         let content = std::fs::read_to_string(&file).expect("read transcript");
@@ -292,7 +701,7 @@ mod tests {
             text: "hello world".to_string(),
         }];
 
-        svc.write_transcript(&segments, &[], "Test", "tiny", false, &file)
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
             .expect("write transcript");
 
         let content = std::fs::read_to_string(&file).expect("read transcript");

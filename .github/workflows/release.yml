@@ -60,7 +60,7 @@ jobs:
           TAURI_BUILD_TARGET: ${{ matrix.target }}
         run: |
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            npm run tauri -- build --target "$TAURI_BUILD_TARGET" -- --bundles nsis
+            npm run tauri -- build --target "$TAURI_BUILD_TARGET" --bundles nsis
           else
             npm run tauri -- build --target "$TAURI_BUILD_TARGET"
           fi

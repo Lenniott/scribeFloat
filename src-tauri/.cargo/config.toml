@@ -1,0 +1,5 @@
+# ggml (via whisper-rs-sys) uses std::filesystem; libc++ requires deployment target ≥ 10.15.
+# whisper-rs-sys forwards CMAKE_* env vars into its CMake config (see its build.rs).
+[env]
+MACOSX_DEPLOYMENT_TARGET = "13.0"
+CMAKE_OSX_DEPLOYMENT_TARGET = "13.0"

@@ -92,7 +92,7 @@ jobs:
 
             **macOS (.dmg):** Open the DMG, drag scribefloat to Applications. Because the app is not yet notarized, macOS will block it on first launch. To open it, run this once in Terminal:
 
-                xattr -cr /Applications/scribefloat.app
+                xattr -cr /Applications/ScribeFloat.app
 
             Then double-click normally. The right-click → Open bypass no longer works on macOS 15 Sequoia.
 

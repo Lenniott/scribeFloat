@@ -168,7 +168,7 @@ context/                   Architecture and design documentation
    ```
 3. GitHub Actions picks up the tag and builds macOS (universal `.dmg`) and Windows (`.msi`) automatically. The release is published to GitHub Releases once both builds complete (~15–20 min).
 
-The release body includes instructions for macOS users to remove the quarantine flag with `xattr -cr /Applications/scribefloat.app` before first launch (the app is not notarized). The right-click → Open bypass no longer works on macOS 15 Sequoia.
+The release body includes instructions for macOS users to remove the quarantine flag with `xattr -cr /Applications/ScribeFloat.app` before first launch (the app is not notarized). The right-click → Open bypass no longer works on macOS 15 Sequoia.
 
 ---
 

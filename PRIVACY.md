@@ -16,7 +16,7 @@ This document is written for **security officers, IT auditors, and compliance te
 | Does the app collect telemetry or analytics? | **No** |
 | Does the app phone home for updates? | **No — but "Check for updates" in Settings → Help makes a single opt-in request to `api.github.com` if the user clicks the button** |
 | Does the app require an always-on internet connection? | **No** |
-| Is an internet connection ever required? | **Yes — once to download an AI model. Optionally when the user manually clicks "Check for updates".** |
+| Is an internet connection ever required? | **Yes — once to download a Whisper transcription model, and optionally once to download the Silero VAD model (~2 MB). Both are user-initiated. Optionally when the user manually clicks "Check for updates".** |
 | Where is all user data stored? | **Exclusively on the user's local device** |
 | What AI model runs the transcription? | **OpenAI Whisper (ggml format), running locally** |
 | Does the AI model phone home? | **No — inference is fully offline** |
@@ -33,17 +33,25 @@ The application makes at most two types of outbound network requests.
 
 **Request 1 — Model download**
 
-An **HTTP GET to `huggingface.co`**, initiated only when the user explicitly clicks "Download model" in Settings.
+**HTTP GETs to `huggingface.co`**, each initiated only when the user explicitly clicks a download button in Settings → Models.
+
+There are two distinct model types:
+
+| Model | Source | Size | Purpose |
+|-------|--------|------|---------|
+| Whisper transcription model | `huggingface.co/ggml-org/` | 75 MB – 1.5 GB depending on variant | Speech-to-text inference (Scribe, Dictate, Transcribe) |
+| Silero VAD model | `huggingface.co/ggml-org/whisper-vad` | ~2 MB | Voice activity detection — skips silence during transcription |
+
+Both downloads share the same attributes:
 
 | Attribute | Detail |
 |-----------|--------|
 | Destination | `https://huggingface.co` |
-| What is downloaded | A Whisper model weights file (`ggml-*.bin`) — 75 MB to 1.5 GB depending on model chosen |
-| When it occurs | Only on user action. Never automatically on launch. |
+| When it occurs | Only on explicit user action. Never automatically on launch. |
 | Account required | No |
-| What is sent to Hugging Face | An HTTP GET request. No user data, audio, or identifiers are sent in the request body. Standard HTTP headers (User-Agent, Accept) only. |
+| What is sent to Hugging Face | An HTTP GET request. No user data, audio, or identifiers are sent in the request body. Standard HTTP headers only. |
 | Protocol | HTTPS with certificate verification via `rustls-tls` |
-| After download | The model file is stored locally. No further contact with Hugging Face occurs. |
+| After download | Model files are stored locally in the app-data `models/` directory. No further contact with Hugging Face occurs. |
 
 **Request 2 — Update check (opt-in, user-initiated only)**
 
@@ -180,12 +188,14 @@ OS app-data directories:
 - `open_scribe_hotkey`, `dictate_hotkey` — hotkey strings (stored in config; not currently editable via the Settings UI)
 - `selected_model_id`, `dictate_model_id`, `scribe_model_path` — local model file paths
 - `include_timestamps` — whether transcripts include timestamps
+- `keep_wav` — whether WAV recordings are retained after transcription (default: deleted)
 - `scribe_capture_speaker` — whether speaker capture is enabled
 - `preferred_input_device`, `preferred_speaker_device` — audio device names
 - `input_label`, `output_label` — display labels for the two Scribe audio sources
 - `theme_mode` — UI theme preference
 - `open_with_app_path` — application used to open completed transcripts (macOS: app name; Windows: full exe path)
 - `dictate_auto_paste`, `dictate_auto_enter` — Dictate behaviour flags
+- `replacement_rules` — user-defined spoken-phrase-to-text substitution rules (e.g. "new line" → newline character); stored as a JSON array; no audio or transcript content
 - `onboarding_complete` — first-run flag
 
 ### 4.3 Transcript file format
@@ -232,7 +242,9 @@ No analytics SDKs, advertising SDKs, or crash reporting libraries are included.
 
 ## 6. AI model provenance
 
-Models are OpenAI Whisper weights converted to ggml format, distributed via Hugging Face. They are:
+### Whisper transcription models
+
+OpenAI Whisper weights converted to ggml format, distributed via Hugging Face (`huggingface.co/ggml-org/`). They are:
 
 - Publicly available and widely audited
 - Static inference artifacts — they do not update themselves or make network calls
@@ -240,6 +252,16 @@ Models are OpenAI Whisper weights converted to ggml format, distributed via Hugg
 - Run inside the app process via [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (via the whisper-rs wrapper)
 
 The model files do not contain user data. They are model weights produced by training on a public speech dataset.
+
+### Silero VAD model
+
+The optional Voice Activity Detection model (`ggml-silero-v6.2.0.bin`) is distributed via `huggingface.co/ggml-org/whisper-vad`. It is:
+
+- A ggml-format version of [Silero VAD](https://github.com/snakers4/silero-vad), an open-source voice activity detector
+- Used by whisper.cpp to skip silence between speech segments, improving transcription speed and accuracy
+- ~2 MB; downloaded only if the user clicks "Install" in Settings → Models
+- Loaded and run entirely in-process alongside the Whisper model; makes no network calls
+- Optional — if not downloaded, transcription runs without VAD (silence is not filtered)
 
 ---
 

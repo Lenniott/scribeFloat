@@ -455,7 +455,7 @@ graph TB
 **Component notes:**
 - **Key Listener**: macOS uses `CGEventTap` reading raw keycodes — does not call `TSMGetInputSourceProperty`, safe on macOS 13+. Windows uses a system keyboard hook. `rdev::listen` must NOT be used on macOS (crashes on 13+ due to `TSMGetInputSourceProperty` assertion on non-main thread)
 - **Floating HUD**: appears near cursor. Never calls `set_focus()` — the app may be in `.accessory` activation policy and `set_focus()` would kill the process in that state
-- **Paste Handler**: macOS = Accessibility API (`enigo` Cmd+V simulation). Windows = `SendInput`. Fallback = clipboard write + system notification. HUD is hidden before paste, with ~150 ms sleep to let the OS restore focus to the target app
+- **Paste Handler**: macOS = Accessibility API (`enigo` Cmd+V simulation). Windows = `SendInput`. Fallback = clipboard write + system notification. HUD is hidden before paste, with ~150 ms sleep to let the OS restore focus to the target app. Clipboard contents are verified unchanged immediately before the keypress fires — if another process modified the clipboard during the sleep window, paste is aborted and `paste_failed` is set
 - **Audio buffer**: memory only. `OutputService` is never called during a Dictate session. There is no WAV file, no temp file, no disk path of any kind
 
 ---

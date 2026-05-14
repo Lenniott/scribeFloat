@@ -496,6 +496,7 @@ pub fn run() {
             commands::model::model_remove,
             commands::model::model_vad_status,
             commands::model::model_vad_download,
+            commands::model::model_vad_remove,
             commands::settings::settings_get_output_path,
             commands::settings::settings_set_output_path,
             commands::settings::settings_get_hotkeys,

@@ -35,7 +35,15 @@
 		permissionsReady =
 			statuses.find((s) => s.kind === 'microphone')?.granted ?? false;
 		permissionsKnown = true;
-		modelReady = list.some((m) => m.downloaded && m.selected);
+
+		const downloaded = list.filter((m) => m.downloaded);
+		const hasSelected = list.some((m) => m.downloaded && m.selected);
+		if (downloaded.length > 0 && !hasSelected) {
+			await invoke('model_select', { modelId: downloaded[0].id }).catch(() => {});
+			modelReady = true;
+		} else {
+			modelReady = hasSelected;
+		}
 		modelKnown = true;
 	});
 

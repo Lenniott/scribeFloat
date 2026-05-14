@@ -12,6 +12,10 @@ export type ModelListItem = {
 	file_name: string;
 	downloaded: boolean;
 	selected: boolean;
+	size_mb: number;
+	wer: number;
+	/** Real-time factor (higher = faster); null when not benchmarked. */
+	rtfx: number | null;
 };
 
 export type ModelProgressPayload = {

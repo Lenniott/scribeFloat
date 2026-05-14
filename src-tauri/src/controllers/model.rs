@@ -87,6 +87,10 @@ impl ModelController {
         self.model.vad_model_available()
     }
 
+    pub fn remove_vad_model(&self) -> Result<(), String> {
+        self.model.delete_vad_model()
+    }
+
     pub fn download_vad_model(self: Arc<Self>, app: AppHandle) -> Result<(), String> {
         tauri::async_runtime::spawn(async move {
             if let Err(e) = self.model.download_vad_model(&app).await {

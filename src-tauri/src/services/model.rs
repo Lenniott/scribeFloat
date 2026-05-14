@@ -220,6 +220,19 @@ impl ModelService {
 
     /// Removes the downloaded file for `model_id`. Only paths under [`Self::models_dir`]
     /// for known catalog entries are touched.
+    pub fn delete_vad_model(&self) -> Result<(), String> {
+        let path = self.vad_model_path();
+        if !self.vad_model_available() {
+            return Err("VAD model is not downloaded".into());
+        }
+        std::fs::remove_file(&path).map_err(|e| format!("failed to remove VAD model: {e}"))?;
+        let tmp = path.with_extension("tmp");
+        if tmp.is_file() {
+            let _ = std::fs::remove_file(tmp);
+        }
+        Ok(())
+    }
+
     pub fn delete_downloaded_model(&self, model_id: &str) -> Result<(), String> {
         let path = self
             .model_path_for_id(model_id)

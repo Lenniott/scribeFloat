@@ -44,3 +44,8 @@ pub fn model_vad_download(
 ) -> Result<(), String> {
     Arc::clone(&ctrl).download_vad_model(app)
 }
+
+#[tauri::command]
+pub fn model_vad_remove(ctrl: State<'_, Arc<ModelController>>) -> Result<(), String> {
+    ctrl.remove_vad_model()
+}

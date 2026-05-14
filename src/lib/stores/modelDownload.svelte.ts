@@ -44,7 +44,7 @@ export function createModelDownloadStore() {
 		if (!autoSelectInFlight) {
 			const downloaded = list.filter((m) => m.downloaded);
 			const hasSelected = list.some((m) => m.downloaded && m.selected);
-			if (downloaded.length === 1 && !hasSelected) {
+			if (downloaded.length > 0 && !hasSelected) {
 				autoSelectInFlight = true;
 				await invoke('model_select', { modelId: downloaded[0].id }).catch(() => {});
 				autoSelectInFlight = false;

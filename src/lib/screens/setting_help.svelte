@@ -98,7 +98,7 @@
 			Dictate is a floating hotkey-driven voice input. Audio is processed entirely in memory — nothing is written to disk.
 		</p>
 		<ul>
-			<li><strong>Double-tap Ctrl</strong> to toggle recording on/off (useful for longer dictations).</li>
+			<li>Tap left <strong>Ctrl</strong>, release — tap left <strong>Ctrl</strong> again: hold half a second to start push-to-talk and release when done, or tap and release quickly to stay in toggle mode and press <strong>Ctrl</strong> again after a brief pause to stop.</li>
 			<li>If Accessibility permission is granted, the text is pasted automatically via <code class="font-mono text-label-sm bg-fill px-1 rounded">Cmd/Ctrl+V</code>. Otherwise it goes to the clipboard.</li>
 			<li>Enable <strong>Press Enter after dictate</strong> in General settings to send an Enter keystroke after the paste — handy for messaging apps.</li>
 			<li>Each successful dictation is appended to <code class="font-mono text-label-sm bg-fill px-1 rounded">dictate.jsonl</code> in your save folder.</li>

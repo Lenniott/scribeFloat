@@ -439,7 +439,7 @@ graph TB
     svc_config["ConfigService"]
     clipboard["Clipboard and Input"]
 
-    key_listener -->|"start / stop events (double-tap or hold/release)"| controller
+    key_listener -->|"start / stop (armed second tap: hold≥threshold vs quick release toggle)"| controller
     controller --> state
     state -->|"on RECORDING: open mic stream"| svc_audio
     state -->|"on RECORDING: show HUD"| hud

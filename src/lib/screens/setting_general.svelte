@@ -111,7 +111,7 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	<div class="flex flex-col gap-1">
 		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">Dictate hotkey</span>
 		<p class="text-label-sm text-fg/50">
-			<strong>Double-tap Ctrl</strong> to toggle recording on/off. The dictate hotkey is fixed and cannot be changed.
+			Tap left <strong>Ctrl</strong>, release, then tap <strong>Ctrl</strong> again — hold ~½s for push-to-talk (release stops), or a quick tap–release toggles mic on/off; press <strong>Ctrl</strong> again to stop. Dictate listens to left Ctrl only here; the dictate hotkey is fixed and cannot be changed.
 		</p>
 	</div>
 	<LabeledTextField label="Input label" bind:value={inputLabel} />

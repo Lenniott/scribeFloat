@@ -81,44 +81,45 @@ User records mic + system audio (remote call, meeting, etc).
 
 ## 3. Dictate
 
-Hotkey-driven. Always listening in background. No panel open beforehand.
+Key listener (always on): **Left Control** only (`CGEventTap` on macOS, low-level hook on Windows). Two sequences after an initial tap + release:
 
-### 3a. Double-tap mode
+### 3a. Hold-to-talk (push-to-talk)
 
-1. Hotkey Service detects first tap of configured key
-2. Hotkey Service detects second tap within threshold window
-3. Audio Service: Mic Capture opens mic input stream — audio buffered in memory only
-4. Floating panel appears near cursor — does not steal focus
-5. Panel shows waveform and elapsed timer
-6. User speaks
-7. Hotkey Service detects second double-tap (or user taps once to stop)
-8. Audio Service: Mic Capture stops, returns raw PCM buffer from memory
-9. Floating panel enters **Transcribing** state
-10. Model Service: loads dictate model
-11. Model Service: transcribes buffer → returns text
-12. Output Service: applies word replacement rules (dictate scope)
-13. Check: is there a focused text input?
+1. User taps Left Control, releases (short tap; long first press is ignored as a modifier chord)
+2. User taps Left Control again within ~400 ms
+3. Listener keeps second press in an **armed** state; mic stays closed until Left Control held ≥ ~500 ms (timer thread)
+4. Once threshold crosses: Audio Service opens mic → floating panel opens near cursor → **RECORDING**
+5. User speaks while Left Control stays down (releasing before RECORDING commits cancels the warm‑up HUD open)
+6. User releases Left Control → mic stops → buffered PCM returned; continue with **Shared: after mic closes**
+
+### 3b. Toggle mode
+
+1. Steps 1–2 same as Hold-to-talk
+2. Second Left Control tap is **released** before the ~500 ms hold threshold
+3. On second release → mic opens (same RECORDING HUD)
+4. User speaks hands-free after release
+5. Third Left Control tap (after cooldown) stops capture
+6. Then **Shared: after mic closes**
+
+### Shared: after mic closes (either mode)
+
+1. Audio Service: Mic Capture stops, returns raw PCM buffer from memory
+2. Floating panel enters **Transcribing** state
+3. Model Service: loads dictate model
+4. Model Service: transcribes buffer → returns text
+5. Output Service: applies word replacement rules (dictate scope)
+6. Check: is there a focused text input?
     - **Yes** → paste text at cursor via OS input injection
     - **No** → copy text to clipboard + show system notification
-14. Check: auto-enter setting on?
+7. Check: auto-enter setting on?
     - **Yes** → send Enter keystroke after paste
     - **No** → paste only
-15. Output Service: appends to dictate log — `{ date, time, text }` → `dictate.jsonl` in transcripts folder
+8. Output Service: appends to dictate history (`dictate_history.json`)
     - Empty transcript → skip log entry
-16. Floating panel dismissed
-
-### 3b. Hold mode
-
-1. Hotkey Service detects key down
-2. Audio Service: Mic Capture opens mic input stream — audio buffered in memory only
-3. Floating panel appears near cursor
-4. User holds key and speaks
-5. Hotkey Service detects key up
-6. Continue from step 8 above
+9. Floating panel dismissed (auto)
 
 ---
 
-## 4. Transcribe
 
 User brings an existing audio file. No recording step.
 

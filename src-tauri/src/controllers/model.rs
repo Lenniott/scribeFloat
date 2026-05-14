@@ -154,7 +154,7 @@ mod tests {
         let ctrl = ModelController::new(model, config);
 
         let err = ctrl
-            .select_model("tiny".to_string())
+            .select_model("tiny-en-q5".to_string())
             .expect_err("should reject missing model");
         assert!(err.contains("not downloaded"));
     }
@@ -163,18 +163,18 @@ mod tests {
     fn select_model_persists_selected_id_and_path() {
         let models_dir = temp_dir("liscribe-model-controller-models");
         let config_path = temp_dir("liscribe-model-controller-config").join("config.json");
-        let tiny_path = models_dir.join("ggml-tiny.bin");
+        let tiny_path = models_dir.join("ggml-tiny.en-q5_1.bin");
         std::fs::write(&tiny_path, [1, 2, 3]).expect("write model file");
 
         let model = ModelService::new(models_dir.clone());
         let config = ConfigService::load(config_path).expect("load config");
         let ctrl = ModelController::new(Arc::clone(&model), Arc::clone(&config));
 
-        ctrl.select_model("tiny".to_string())
+        ctrl.select_model("tiny-en-q5".to_string())
             .expect("select downloaded model");
 
         let cfg = config.get();
-        assert_eq!(cfg.selected_model_id.as_deref(), Some("tiny"));
+        assert_eq!(cfg.selected_model_id.as_deref(), Some("tiny-en-q5"));
         assert_eq!(
             cfg.scribe_model_path.as_deref(),
             Some(tiny_path.to_string_lossy().as_ref())
@@ -190,7 +190,7 @@ mod tests {
         let ctrl = ModelController::new(model, config);
 
         let err = ctrl
-            .remove_model("tiny".to_string())
+            .remove_model("tiny-en-q5".to_string())
             .expect_err("should reject missing file");
         assert!(err.contains("not downloaded"));
     }
@@ -199,15 +199,15 @@ mod tests {
     fn remove_deletes_and_clears_when_selected() {
         let models_dir = temp_dir("liscribe-model-remove-models");
         let config_path = temp_dir("liscribe-model-remove-config").join("config.json");
-        let tiny_path = models_dir.join("ggml-tiny.bin");
+        let tiny_path = models_dir.join("ggml-tiny.en-q5_1.bin");
         std::fs::write(&tiny_path, [7, 7, 7]).expect("write model file");
 
         let model = ModelService::new(models_dir.clone());
         let config = ConfigService::load(config_path).expect("load config");
         let ctrl = ModelController::new(Arc::clone(&model), Arc::clone(&config));
 
-        ctrl.select_model("tiny".to_string()).expect("select");
-        ctrl.remove_model("tiny".to_string()).expect("remove");
+        ctrl.select_model("tiny-en-q5".to_string()).expect("select");
+        ctrl.remove_model("tiny-en-q5".to_string()).expect("remove");
 
         assert!(!tiny_path.exists(), "binary should be deleted");
         let cfg = config.get();

@@ -471,7 +471,7 @@ mod tests {
         let dir = temp_models_dir();
         let service = ModelService::new(dir.clone());
         assert_eq!(
-            service.model_path_for_id("small"),
+            service.model_path_for_id("small-en-q5"),
             Some(dir.join(SMALL_MODEL_FILENAME))
         );
         assert!(service.model_path_for_id("unknown").is_none());
@@ -494,11 +494,11 @@ mod tests {
     fn model_downloaded_reflects_disk_state_for_catalog_item() {
         let dir = temp_models_dir();
         let service = ModelService::new(dir.clone());
-        let tiny_path = dir.join("ggml-tiny.bin");
+        let tiny_path = dir.join("ggml-tiny.en-q5_1.bin");
 
-        assert!(!service.model_downloaded("tiny"));
+        assert!(!service.model_downloaded("tiny-en-q5"));
         std::fs::write(&tiny_path, [1]).expect("write tiny model");
-        assert!(service.model_downloaded("tiny"));
+        assert!(service.model_downloaded("tiny-en-q5"));
     }
 
     #[test]

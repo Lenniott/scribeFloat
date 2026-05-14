@@ -715,7 +715,7 @@ mod tests {
         let model = ModelService::new(models_dir.clone());
         let config = Config {
             scribe_model_path: Some("/tmp/custom-model.bin".to_string()),
-            selected_model_id: Some("tiny".to_string()),
+            selected_model_id: Some("tiny-en-q5".to_string()),
             ..Config::default()
         };
 
@@ -729,12 +729,12 @@ mod tests {
             std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
         let model = ModelService::new(models_dir.clone());
         let config = Config {
-            selected_model_id: Some("tiny".to_string()),
+            selected_model_id: Some("tiny-en-q5".to_string()),
             ..Config::default()
         };
 
         let chosen = resolve_model_path(&config, model.as_ref());
-        assert_eq!(chosen, models_dir.join("ggml-tiny.bin"));
+        assert_eq!(chosen, models_dir.join("ggml-tiny.en-q5_1.bin"));
     }
 
     #[test]

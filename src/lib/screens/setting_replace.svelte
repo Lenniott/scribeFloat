@@ -193,6 +193,7 @@
 					label="Replace with"
 					bind:value={form.output}
 					placeholder="e.g. ]"
+					multiline={true}
 				/>
 			{:else if form.type === "wrap"}
 				<div class="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">

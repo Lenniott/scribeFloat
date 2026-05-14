@@ -19,7 +19,7 @@ jobs:
             artifact_path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            artifact_path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
 
     runs-on: ${{ matrix.os }}
 
@@ -50,9 +50,15 @@ jobs:
       - run: npm ci
 
       - name: Build
+        shell: bash
         env:
-          BUILD_TARGET: ${{ matrix.target }}
-        run: npm run tauri -- build --target "$BUILD_TARGET"
+          TAURI_BUILD_TARGET: ${{ matrix.target }}
+        run: |
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            npm run tauri -- build --target "$TAURI_BUILD_TARGET" -- --bundles nsis
+          else
+            npm run tauri -- build --target "$TAURI_BUILD_TARGET"
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -81,4 +87,4 @@ jobs:
 
             **macOS (.dmg):** After opening the DMG, right-click the app → **Open** to bypass the Gatekeeper warning on first launch (the app is not yet notarized).
 
-            **Windows (.msi):** Run the installer. If Windows SmartScreen warns you, click **More info → Run anyway**.
+            **Windows (NSIS .exe):** Run the installer. If Windows SmartScreen warns you, click **More info → Run anyway**.

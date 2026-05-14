@@ -5,12 +5,14 @@
 		id,
 		placeholder = "",
 		disabled = false,
+		multiline = false,
 	}: {
 		label: string;
 		value?: string;
 		id?: string;
 		placeholder?: string;
 		disabled?: boolean;
+		multiline?: boolean;
 	} = $props();
 
 	const fieldId = $derived(id ?? `field-${label.toLowerCase().replace(/\s+/g, "-")}`);
@@ -20,12 +22,22 @@
 	<label class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase" for={fieldId}
 		>{label}</label
 	>
-	<input
-		id={fieldId}
-		type="text"
-		bind:value
-		{placeholder}
-		{disabled}
-		class="rounded-md h-10 flex items-center border border-rim bg-panel p-2 text-body-md text-fg placeholder:text-fg-dim disabled:opacity-40"
-	/>
+	{#if multiline}
+		<textarea
+			id={fieldId}
+			bind:value
+			{placeholder}
+			{disabled}
+			class="rounded-md min-h-[80px] resize-y border border-rim bg-panel p-2 text-body-md text-fg placeholder:text-fg-dim disabled:opacity-40"
+		></textarea>
+	{:else}
+		<input
+			id={fieldId}
+			type="text"
+			bind:value
+			{placeholder}
+			{disabled}
+			class="rounded-md h-10 flex items-center border border-rim bg-panel p-2 text-body-md text-fg placeholder:text-fg-dim disabled:opacity-40"
+		/>
+	{/if}
 </div>

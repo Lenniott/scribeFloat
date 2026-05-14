@@ -524,6 +524,8 @@ pub fn run() {
             commands::settings::settings_set_dictate_auto_paste,
             commands::settings::settings_get_dictate_auto_enter,
             commands::settings::settings_set_dictate_auto_enter,
+            commands::settings::settings_get_keep_wav,
+            commands::settings::settings_set_keep_wav,
             commands::settings::settings_get_dictate_model_id,
             commands::settings::settings_set_dictate_model_id,
             commands::settings::settings_get_replacement_rules,

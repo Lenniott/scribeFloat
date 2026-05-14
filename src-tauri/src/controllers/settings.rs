@@ -269,6 +269,16 @@ impl SettingsController {
             .map_err(|e| format!("failed to persist dictate_auto_enter: {e}"))
     }
 
+    pub fn get_keep_wav(&self) -> bool {
+        self.config.get().keep_wav
+    }
+
+    pub fn set_keep_wav(&self, enabled: bool) -> Result<(), String> {
+        self.config
+            .update(|cfg| cfg.keep_wav = enabled)
+            .map_err(|e| format!("failed to persist keep_wav: {e}"))
+    }
+
     pub fn get_dictate_model_id(&self) -> Option<String> {
         self.config.get().dictate_model_id
     }

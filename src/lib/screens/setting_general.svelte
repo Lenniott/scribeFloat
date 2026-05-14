@@ -18,6 +18,7 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	let outputDevices = $state<string[]>([]);
 	let scribeCaptureSpeaker = $state(false);
 	let dictateAutoEnter = $state(false);
+	let keepWav = $state(false);
 	let themeMode = $state<ThemeMode>("system");
 	let openWithApp = $state("");
 	let message = $state("");
@@ -57,6 +58,7 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 			() => false,
 		);
 		dictateAutoEnter = await invoke<boolean>("settings_get_dictate_auto_enter").catch(() => false);
+		keepWav = await invoke<boolean>("settings_get_keep_wav").catch(() => false);
 	}
 
 	async function saveAll() {
@@ -75,6 +77,7 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 			});
 			await invoke("settings_set_scribe_capture_speaker", { enabled: scribeCaptureSpeaker });
 		await invoke("settings_set_dictate_auto_enter", { enabled: dictateAutoEnter });
+			await invoke("settings_set_keep_wav", { enabled: keepWav });
 			await invoke("settings_set_theme_mode", { themeMode });
 			await invoke("settings_set_open_with_app_path", { path: openWithApp.trim() || null });
 			message = "Saved";
@@ -127,6 +130,12 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 			Press Enter after dictate
 		</span>
 		<ToggleSwitch checked={dictateAutoEnter} aria-label="Press Enter after dictation paste" onchange={(next) => (dictateAutoEnter = next)} />
+	</div>
+	<div class="flex flex-col items-start justify-center gap-1 h-10">
+		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
+			Keep audio after transcription
+		</span>
+		<ToggleSwitch checked={keepWav} aria-label="Keep WAV file after transcription" onchange={(next) => (keepWav = next)} />
 	</div>
 	<LabeledTextField
 		label="Speaker capture device name"

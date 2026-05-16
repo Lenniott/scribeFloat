@@ -132,3 +132,16 @@ pub fn output_device_exists(device_name: &str) -> bool {
 pub fn output_device_exists(_device_name: &str) -> bool {
     false
 }
+
+/// Returns the default modifier key used to activate push-to-talk dictation.
+/// Windows uses Alt to avoid conflicting with common Ctrl shortcuts.
+/// macOS uses Ctrl, which is rarely bound by apps and works well as a hold key.
+#[cfg(target_os = "windows")]
+pub fn default_dictate_activation_key() -> &'static str {
+    "Alt"
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn default_dictate_activation_key() -> &'static str {
+    "Ctrl"
+}

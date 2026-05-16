@@ -78,10 +78,6 @@ impl AudioService {
         crate::platform::set_default_output_device(device).map_err(|e| anyhow!("{e}"))
     }
 
-    pub fn output_device_exists(&self, name: &str) -> bool {
-        crate::platform::output_device_exists(name)
-    }
-
     /// Open a loopback capture stream for system audio.
     /// On Windows, opens the selected (or default) output device with WASAPI loopback.
     /// On macOS, opens the named loopback input device (e.g. BlackHole 2ch).

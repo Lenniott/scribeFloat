@@ -104,35 +104,6 @@ pub fn set_default_output_device(_device_name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Returns true if the named output device exists on the system.
-/// Uses `system_profiler` on macOS; returns false on other platforms.
-#[cfg(target_os = "macos")]
-pub fn output_device_exists(device_name: &str) -> bool {
-    let Ok(output) = std::process::Command::new("system_profiler")
-        .args(["SPAudioDataType", "-json"])
-        .output()
-    else {
-        return false;
-    };
-    let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
-        return false;
-    };
-    // Walk SPAudioDataType[*].devices[*]._name for an exact match
-    json["SPAudioDataType"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|section| section["devices"].as_array())
-        .flatten()
-        .filter_map(|device| device["_name"].as_str())
-        .any(|name| name == device_name)
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn output_device_exists(_device_name: &str) -> bool {
-    false
-}
-
 /// Returns the default modifier key used to activate push-to-talk dictation.
 /// Windows uses Alt to avoid conflicting with common Ctrl shortcuts.
 /// macOS uses Ctrl, which is rarely bound by apps and works well as a hold key.

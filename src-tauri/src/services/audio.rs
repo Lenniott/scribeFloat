@@ -82,6 +82,70 @@ impl AudioService {
         crate::platform::output_device_exists(name)
     }
 
+    /// Open a loopback capture stream for system audio.
+    /// On Windows, opens the selected (or default) output device with WASAPI loopback.
+    /// On macOS, opens the named loopback input device (e.g. BlackHole 2ch).
+    pub fn start_loopback(
+        &self,
+        preferred_name: Option<&str>,
+        on_level: Option<std::sync::Arc<dyn Fn(f32) + Send + Sync>>,
+    ) -> Result<MicSession> {
+        let (device, supported) = crate::platform::loopback_device_and_config(preferred_name)
+            .map_err(|e| anyhow!("{e}"))?;
+        let sample_rate = supported.sample_rate().0;
+        let channels = supported.channels() as usize;
+        let config = supported.config();
+
+        let (sender, receiver) = mpsc::channel::<Vec<f32>>();
+        let err_fn = |e: cpal::StreamError| eprintln!("loopback stream error: {e}");
+
+        let stream = match supported.sample_format() {
+            cpal::SampleFormat::F32 => {
+                let tx = sender.clone();
+                let level_cb = on_level.clone();
+                device.build_input_stream(
+                    &config,
+                    move |data: &[f32], _| {
+                        let mono = mix_to_mono(data, channels);
+                        if let Some(cb) = &level_cb {
+                            cb(level_from_mono(&mono));
+                        }
+                        tx.send(mono).ok();
+                    },
+                    err_fn,
+                    None,
+                )?
+            }
+            cpal::SampleFormat::I16 => {
+                let tx = sender.clone();
+                let level_cb = on_level.clone();
+                device.build_input_stream(
+                    &config,
+                    move |data: &[i16], _| {
+                        let f32s: Vec<f32> =
+                            data.iter().map(|&s| s as f32 / 32768.0).collect();
+                        let mono = mix_to_mono(&f32s, channels);
+                        if let Some(cb) = &level_cb {
+                            cb(level_from_mono(&mono));
+                        }
+                        tx.send(mono).ok();
+                    },
+                    err_fn,
+                    None,
+                )?
+            }
+            fmt => return Err(anyhow!("unsupported sample format for loopback: {fmt:?}")),
+        };
+
+        stream.play()?;
+
+        Ok(MicSession {
+            _stream: stream,
+            receiver,
+            sample_rate,
+        })
+    }
+
     /// Open a mic input stream. Uses preferred_name if provided and available,
     /// otherwise falls back to the system default input device.
     pub fn start_mic(

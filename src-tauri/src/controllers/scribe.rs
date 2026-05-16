@@ -122,36 +122,67 @@ impl ScribeController {
             }
             let input_devices = self.audio.list_input_devices();
             let speaker_name = preferred_speaker.clone().unwrap_or_default();
-            let input_match = input_devices.iter().any(|name| name == &speaker_name);
-            let mut speaker_capture_name = preferred_speaker.clone();
+            let input_match = !speaker_name.is_empty()
+                && input_devices.iter().any(|name| name == &speaker_name);
             let has_preferred_output = self.audio.output_device_exists(&speaker_name);
             let has_blackhole_input =
                 input_devices.iter().any(|name| name.eq_ignore_ascii_case("BlackHole 2ch"));
-            if !input_match && has_preferred_output && has_blackhole_input {
-                speaker_capture_name = Some("BlackHole 2ch".to_string());
-            }
-            let app = self.app.clone();
-            match self.audio.start_mic(
-                speaker_capture_name.as_deref(),
-                false,
-                Some(Arc::new(move |level| {
-                    app.emit("scribe://speaker-level", level).ok();
-                })),
-            ) {
-                Ok(stream) => Some(stream),
-                Err(err) => {
-                    // Keep recording reliable: if speaker stream cannot attach,
-                    // continue with mic-only instead of failing the whole start.
+
+            // Resolve which named input device to open for speaker capture.
+            // Never pass None to start_mic here — None opens the default input
+            // device (the mic), which would silently duplicate the mic stream.
+            let speaker_capture_name: Option<String> = if input_match {
+                // Preferred device is itself a capturable input (e.g. BlackHole selected directly).
+                preferred_speaker.clone()
+            } else if has_blackhole_input {
+                // Use BlackHole as a loopback input regardless of which output is selected,
+                // or when no specific device is configured.
+                Some("BlackHole 2ch".to_string())
+            } else if has_preferred_output {
+                // Output device exists but no loopback available — pass the name so
+                // start_mic fails explicitly rather than silently capturing the mic.
+                preferred_speaker.clone()
+            } else {
+                // Nothing usable: no device configured and no loopback input found.
+                None
+            };
+
+            match speaker_capture_name {
+                None => {
                     self.app
                         .emit(
                             "scribe://speaker-capture-unavailable",
                             json!({
-                                "reason": err.to_string(),
+                                "reason": "No loopback input device found for speaker capture.",
                                 "requestedSpeakerDevice": preferred_speaker
                             }),
                         )
                         .ok();
                     None
+                }
+                Some(ref name) => {
+                    let app = self.app.clone();
+                    match self.audio.start_mic(
+                        Some(name.as_str()),
+                        false,
+                        Some(Arc::new(move |level| {
+                            app.emit("scribe://speaker-level", level).ok();
+                        })),
+                    ) {
+                        Ok(stream) => Some(stream),
+                        Err(err) => {
+                            self.app
+                                .emit(
+                                    "scribe://speaker-capture-unavailable",
+                                    json!({
+                                        "reason": err.to_string(),
+                                        "requestedSpeakerDevice": preferred_speaker
+                                    }),
+                                )
+                                .ok();
+                            None
+                        }
+                    }
                 }
             }
         } else {

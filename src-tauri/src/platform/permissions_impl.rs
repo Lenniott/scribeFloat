@@ -105,11 +105,21 @@ pub fn permission_settings_url(_kind: &str) -> Option<&'static str> {
 
 /// Actively request the permission — triggers the OS dialog where available,
 /// or opens the relevant System Settings pane as a fallback.
+///
+/// For microphone on macOS this MUST be called from a non-main thread (spawn_blocking).
 pub fn request_permission(kind: &str) -> Result<()> {
     #[cfg(target_os = "macos")]
-    if kind == "input_monitoring" {
-        macos::request_listen_event_access();
-        return Ok(());
+    {
+        if kind == "input_monitoring" {
+            macos::request_listen_event_access();
+            return Ok(());
+        }
+        if kind == "microphone" && macos::microphone_not_determined() {
+            // Status is NotDetermined — show the native TCC dialog directly.
+            // If Denied, fall through to open System Settings below.
+            macos::request_microphone_access();
+            return Ok(());
+        }
     }
     open_permission_settings(kind)?;
     Ok(())
@@ -139,7 +149,7 @@ pub fn open_permission_settings(kind: &str) -> Result<bool> {
 #[cfg(target_os = "macos")]
 mod macos {
     use cpal::traits::{DeviceTrait, HostTrait};
-    use std::ffi::{c_char, c_void};
+    use std::ffi::{c_char, c_int, c_long, c_void};
 
     #[link(name = "ApplicationServices", kind = "framework")]
     unsafe extern "C" {
@@ -168,6 +178,64 @@ mod macos {
             op: *mut c_void,
             arg: *mut c_void,
         ) -> isize;
+        // Used by request_microphone_access: class method with id + block arguments.
+        #[link_name = "objc_msgSend"]
+        fn objc_msg_send_request_access(
+            receiver: *mut c_void,
+            sel: *mut c_void,
+            media_type: *mut c_void,
+            block: *mut MicAccessBlock,
+        );
+    }
+
+    // GCD semaphore — lets a spawn_blocking thread wait for the async TCC callback
+    // that fires on the main dispatch queue without blocking the main thread.
+    extern "C" {
+        fn dispatch_semaphore_create(value: c_long) -> *mut c_void;
+        fn dispatch_semaphore_wait(sema: *mut c_void, timeout: u64) -> c_long;
+        fn dispatch_semaphore_signal(sema: *mut c_void) -> c_long;
+    }
+
+    // ISA pointer for stack-allocated Objective-C blocks.
+    extern "C" {
+        static _NSConcreteStackBlock: c_void;
+    }
+
+    // Minimal Objective-C block literal matching the published ABI.
+    // Captures only raw pointers (no ObjC objects), so no copy/dispose helpers needed.
+    #[repr(C)]
+    struct BlockDescriptor {
+        reserved: usize,
+        size: usize,
+    }
+
+    static MIC_BLOCK_DESC: BlockDescriptor = BlockDescriptor {
+        reserved: 0,
+        size: std::mem::size_of::<MicAccessBlock>(),
+    };
+
+    #[repr(C)]
+    pub(super) struct MicAccessBlock {
+        isa: *const c_void,
+        flags: c_int,
+        _reserved: c_int,
+        invoke: unsafe extern "C" fn(*mut MicAccessBlock, bool),
+        descriptor: *const BlockDescriptor,
+        // Captured:
+        sema: *mut c_void,
+        result: *mut bool,
+    }
+
+    // SAFETY: the block is only used while the calling stack frame is live (we
+    // block on the semaphore until the callback fires).
+    unsafe impl Send for MicAccessBlock {}
+    unsafe impl Sync for MicAccessBlock {}
+
+    unsafe extern "C" fn mic_access_invoke(block: *mut MicAccessBlock, granted: bool) {
+        unsafe {
+            *(*block).result = granted;
+            dispatch_semaphore_signal((*block).sema);
+        }
     }
 
     pub fn accessibility_granted() -> bool {
@@ -185,6 +253,59 @@ mod macos {
     pub fn microphone_granted() -> bool {
         // AVAuthorizationStatusAuthorized = 3
         microphone_auth_status() == 3
+    }
+
+    pub fn microphone_not_determined() -> bool {
+        // AVAuthorizationStatusNotDetermined = 0
+        microphone_auth_status() == 0
+    }
+
+    /// Request microphone access via the native TCC dialog.
+    ///
+    /// MUST be called from a non-main thread — the TCC completion block fires on
+    /// the main dispatch queue, and we block on a semaphore here waiting for it.
+    /// Calling from the main thread deadlocks. Use spawn_blocking.
+    pub fn request_microphone_access() -> bool {
+        // Only request when status is NotDetermined; Denied needs System Settings.
+        if !microphone_not_determined() {
+            return microphone_granted();
+        }
+        unsafe {
+            let sema = dispatch_semaphore_create(0);
+            if sema.is_null() {
+                return false;
+            }
+            let mut result = false;
+            let mut block = MicAccessBlock {
+                isa: &_NSConcreteStackBlock as *const c_void,
+                flags: 0,
+                _reserved: 0,
+                invoke: mic_access_invoke,
+                descriptor: &MIC_BLOCK_DESC,
+                sema,
+                result: &mut result,
+            };
+
+            let av_cls = objc_getClass(c"AVCaptureDevice".as_ptr());
+            let ns_cls = objc_getClass(c"NSString".as_ptr());
+            let req_sel =
+                sel_registerName(c"requestAccessForMediaType:completionHandler:".as_ptr());
+            let str_sel = sel_registerName(c"stringWithUTF8String:".as_ptr());
+
+            if !av_cls.is_null()
+                && !ns_cls.is_null()
+                && !req_sel.is_null()
+                && !str_sel.is_null()
+            {
+                let media_type = objc_msg_send_id_cstr(ns_cls, str_sel, c"soun".as_ptr());
+                if !media_type.is_null() {
+                    objc_msg_send_request_access(av_cls, req_sel, media_type, &mut block);
+                    // Block until the completion handler signals us.
+                    dispatch_semaphore_wait(sema, u64::MAX);
+                }
+            }
+            result
+        }
     }
 
     pub fn speaker_capture_ready() -> bool {

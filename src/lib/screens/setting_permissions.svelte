@@ -31,18 +31,12 @@
 
   async function grantPermission(kind: string) {
     requestingKind = kind;
-    if (kind === "microphone") {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-        stream.getTracks().forEach((t) => t.stop());
-      } catch {
-        // Denied or unavailable — status refresh below reflects reality.
-      }
-    } else {
-      await invoke("settings_permissions_open", { kind }).catch(() => {});
-    }
+    // Use the native Tauri command for all permissions, including microphone.
+    // getUserMedia was replaced because it triggers two dialogs (WKWebView
+    // browser-level + macOS TCC) and the WKWebView grant doesn't persist across
+    // restarts. The native path calls AVCaptureDevice.requestAccessForMediaType:
+    // directly, which writes to the system TCC database and is permanent.
+    await invoke("settings_permissions_request", { kind }).catch(() => {});
     await refresh();
     requestingKind = null;
   }

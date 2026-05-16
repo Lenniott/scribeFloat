@@ -145,11 +145,14 @@ pub fn settings_permissions_open(
 }
 
 #[tauri::command]
-pub fn settings_permissions_request(
+pub async fn settings_permissions_request(
     ctrl: State<'_, Arc<SettingsController>>,
     kind: String,
 ) -> Result<(), String> {
-    ctrl.request_permission(&kind)
+    let ctrl = Arc::clone(&ctrl);
+    tokio::task::spawn_blocking(move || ctrl.request_permission(&kind))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

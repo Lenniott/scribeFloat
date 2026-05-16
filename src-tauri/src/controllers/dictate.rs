@@ -742,6 +742,7 @@ impl DictateController {
     /// before the HUD was shown, then simulates Cmd/Ctrl+V. Called from spawn_blocking.
     ///
     /// Returns `(paste_result, enter_result)`; `enter_result` is `Ok(())` when Enter was skipped.
+    #[allow(clippy::type_complexity)]
     fn paste_on_main_thread(
         &self,
         auto_enter: bool,

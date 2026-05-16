@@ -14,6 +14,7 @@ pub struct TauriHotkeyRegistrar {
 }
 
 impl TauriHotkeyRegistrar {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(app: AppHandle) -> Arc<dyn HotkeyRegistrar> {
         Arc::new(Self {
             app,

@@ -39,11 +39,8 @@ impl MicSession {
         // the callback closure (and the cloned Sender inside it) may not drop immediately
         // after we drop the Stream. Using recv_timeout avoids an indefinite hang on short
         // recordings where the audio thread hasn't flushed yet when the stream is dropped.
-        loop {
-            match receiver.recv_timeout(std::time::Duration::from_millis(200)) {
-                Ok(chunk) => all.extend(chunk),
-                Err(_) => break, // disconnected or timeout — no more chunks coming
-            }
+        while let Ok(chunk) = receiver.recv_timeout(std::time::Duration::from_millis(200)) {
+            all.extend(chunk); // disconnected or 200ms timeout ends the loop
         }
         (all, sample_rate)
     }
@@ -157,9 +154,8 @@ impl AudioService {
                 let selected = host
                     .input_devices()?
                     .find(|d| d.name().map(|n| n == name).unwrap_or(false))
-                    .map(|d| {
+                    .inspect(|_| {
                         found_exact = true;
-                        d
                     })
                     .or_else(|| {
                         if allow_fallback_to_default {

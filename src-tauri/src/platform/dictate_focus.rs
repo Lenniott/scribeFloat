@@ -42,10 +42,8 @@ mod macos {
     pub fn capture_frontmost_pid_excluding_self() -> Option<i32> {
         let my_pid = std::process::id() as i32;
         unsafe {
-            let ws_class =
-                objc_getClass(b"NSWorkspace\0".as_ptr() as *const c_char);
-            let ra_check =
-                objc_getClass(b"NSRunningApplication\0".as_ptr() as *const c_char);
+            let ws_class = objc_getClass(c"NSWorkspace".as_ptr());
+            let ra_check = objc_getClass(c"NSRunningApplication".as_ptr());
             if ws_class.is_null() || ra_check.is_null() {
                 return None;
             }
@@ -80,8 +78,7 @@ mod macos {
             return Err("invalid pid".to_string());
         }
         unsafe {
-            let ra_class =
-                objc_getClass(b"NSRunningApplication\0".as_ptr() as *const c_char);
+            let ra_class = objc_getClass(c"NSRunningApplication".as_ptr());
             if ra_class.is_null() {
                 return Err("NSRunningApplication unavailable".to_string());
             }

@@ -120,20 +120,9 @@ impl ScribeController {
                     eprintln!("failed to switch output route to `{target_output}`: {err}");
                 }
             }
-            let input_devices = self.audio.list_input_devices();
-            let speaker_name = preferred_speaker.clone().unwrap_or_default();
-            let input_match = input_devices.iter().any(|name| name == &speaker_name);
-            let mut speaker_capture_name = preferred_speaker.clone();
-            let has_preferred_output = self.audio.output_device_exists(&speaker_name);
-            let has_blackhole_input =
-                input_devices.iter().any(|name| name.eq_ignore_ascii_case("BlackHole 2ch"));
-            if !input_match && has_preferred_output && has_blackhole_input {
-                speaker_capture_name = Some("BlackHole 2ch".to_string());
-            }
             let app = self.app.clone();
-            match self.audio.start_mic(
-                speaker_capture_name.as_deref(),
-                false,
+            match self.audio.start_loopback(
+                preferred_speaker.as_deref(),
                 Some(Arc::new(move |level| {
                     app.emit("scribe://speaker-level", level).ok();
                 })),

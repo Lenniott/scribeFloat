@@ -188,14 +188,15 @@ mod macos {
     }
 
     pub fn speaker_capture_ready() -> bool {
-        // On macOS 14+ enumerating input devices triggers the mic permission dialog when
-        // status is NotDetermined. Skip the enumeration entirely if mic isn't granted yet —
-        // speaker capture can't work without mic permission anyway.
         if !microphone_granted() {
             return false;
         }
+        // Use devices() not input_devices(): input_devices() lazily filters via
+        // supports_input() which calls audio_unit_from_device() per device, creating
+        // an AudioUnit and blocking on CoreAudio IPC (mach_msg2_trap). We only need
+        // device names; devices() reads those without probing device capabilities.
         let host = cpal::default_host();
-        let Ok(devices) = host.input_devices() else {
+        let Ok(devices) = host.devices() else {
             return false;
         };
         devices
@@ -205,24 +206,20 @@ mod macos {
 
     fn microphone_auth_status() -> isize {
         unsafe {
-            let ns_string_cls = objc_getClass(b"NSString\0".as_ptr() as *const c_char);
-            let av_capture_cls = objc_getClass(b"AVCaptureDevice\0".as_ptr() as *const c_char);
+            let ns_string_cls = objc_getClass(c"NSString".as_ptr());
+            let av_capture_cls = objc_getClass(c"AVCaptureDevice".as_ptr());
             if ns_string_cls.is_null() || av_capture_cls.is_null() {
                 return 0;
             }
 
-            let string_sel = sel_registerName(b"stringWithUTF8String:\0".as_ptr() as *const c_char);
-            let status_sel =
-                sel_registerName(b"authorizationStatusForMediaType:\0".as_ptr() as *const c_char);
+            let string_sel = sel_registerName(c"stringWithUTF8String:".as_ptr());
+            let status_sel = sel_registerName(c"authorizationStatusForMediaType:".as_ptr());
             if string_sel.is_null() || status_sel.is_null() {
                 return 0;
             }
 
-            let media_type = objc_msg_send_id_cstr(
-                ns_string_cls,
-                string_sel,
-                b"soun\0".as_ptr() as *const c_char,
-            );
+            let media_type =
+                objc_msg_send_id_cstr(ns_string_cls, string_sel, c"soun".as_ptr());
             if media_type.is_null() {
                 return 0;
             }

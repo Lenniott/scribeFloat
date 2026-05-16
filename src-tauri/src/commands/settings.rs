@@ -127,10 +127,13 @@ pub fn settings_set_theme_mode(
 }
 
 #[tauri::command]
-pub fn settings_permissions_status(
+pub async fn settings_permissions_status(
     ctrl: State<'_, Arc<SettingsController>>,
 ) -> Result<Vec<PermissionStatus>, String> {
-    Ok(ctrl.permission_statuses())
+    let ctrl = Arc::clone(&ctrl);
+    tokio::task::spawn_blocking(move || ctrl.permission_statuses())
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

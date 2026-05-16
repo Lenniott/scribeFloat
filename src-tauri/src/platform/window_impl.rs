@@ -95,20 +95,18 @@ mod macos {
         };
 
         unsafe {
-            let app_cls = objc_getClass(b"NSApplication\0".as_ptr() as *const c_char);
-            let image_cls = objc_getClass(b"NSImage\0".as_ptr() as *const c_char);
-            let string_cls = objc_getClass(b"NSString\0".as_ptr() as *const c_char);
+            let app_cls = objc_getClass(c"NSApplication".as_ptr());
+            let image_cls = objc_getClass(c"NSImage".as_ptr());
+            let string_cls = objc_getClass(c"NSString".as_ptr());
             if app_cls.is_null() || image_cls.is_null() || string_cls.is_null() {
                 return;
             }
 
-            let shared_sel = sel_registerName(b"sharedApplication\0".as_ptr() as *const c_char);
-            let alloc_sel = sel_registerName(b"alloc\0".as_ptr() as *const c_char);
-            let init_file_sel =
-                sel_registerName(b"initWithContentsOfFile:\0".as_ptr() as *const c_char);
-            let string_sel = sel_registerName(b"stringWithUTF8String:\0".as_ptr() as *const c_char);
-            let set_icon_sel =
-                sel_registerName(b"setApplicationIconImage:\0".as_ptr() as *const c_char);
+            let shared_sel = sel_registerName(c"sharedApplication".as_ptr());
+            let alloc_sel = sel_registerName(c"alloc".as_ptr());
+            let init_file_sel = sel_registerName(c"initWithContentsOfFile:".as_ptr());
+            let string_sel = sel_registerName(c"stringWithUTF8String:".as_ptr());
+            let set_icon_sel = sel_registerName(c"setApplicationIconImage:".as_ptr());
             if shared_sel.is_null()
                 || alloc_sel.is_null()
                 || init_file_sel.is_null()

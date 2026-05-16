@@ -243,7 +243,7 @@ fn default_open_scribe_hotkey() -> String {
 }
 
 fn default_dictate_hotkey() -> String {
-    "Ctrl".to_string()
+    crate::platform::default_dictate_activation_key().to_string()
 }
 
 fn default_input_label() -> String {

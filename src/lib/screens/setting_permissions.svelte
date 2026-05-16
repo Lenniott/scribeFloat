@@ -52,7 +52,7 @@
 
   onMount(async () => {
     await refresh();
-    pollId = setInterval(refresh, 3000);
+    pollId = setInterval(refresh, 10000);
     unlistenFocus = await getCurrentWindow().onFocusChanged(
       ({ payload: focused }) => {
         if (focused) refresh();

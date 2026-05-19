@@ -166,13 +166,13 @@ context/                   Architecture and design documentation
    git tag v0.2.0
    git push origin main --tags
    ```
-3. GitHub Actions picks up the tag and builds macOS (universal `.dmg`) and Windows (`.msi`) automatically. The release is published to GitHub Releases once both builds complete (~15–20 min).
-
-The release body includes instructions for macOS users to remove the quarantine flag with `xattr -cr /Applications/ScribeFloat.app` before first launch (the app is not notarized). The right-click → Open bypass no longer works on macOS 15 Sequoia.
+3. GitHub Actions picks up the tag and builds macOS (universal `.dmg`) and Windows (`.msi`) automatically. The release is published to GitHub Releases once both builds complete (~15–20 min). macOS builds are code-signed and notarized in CI.
 
 ---
 
 ## Contributing
+
+**Windows contributors are especially welcome.** Most day-to-day development happens on macOS, so we rely on Windows users to test releases, report bugs, and fix Windows-specific issues (permissions, audio devices, paste, installers, and anything under `src-tauri/src/platform/`). You do not need to own the whole app — reproducible bug reports, small fixes, and “this broke on my machine” PRs are all valuable.
 
 1. Read `context/architecture.md` before touching any Rust code
 2. Run `cargo clippy -- -D warnings` and `cargo test -p scribefloat` before committing

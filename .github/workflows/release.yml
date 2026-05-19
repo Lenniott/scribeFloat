@@ -58,6 +58,12 @@ jobs:
         shell: bash
         env:
           TAURI_BUILD_TARGET: ${{ matrix.target }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             npm run tauri -- build --target "$TAURI_BUILD_TARGET" --bundles nsis
@@ -90,10 +96,6 @@ jobs:
           body: |
             ## Installation
 
-            **macOS (.dmg):** Open the DMG, drag scribefloat to Applications. Because the app is not yet notarized, macOS will block it on first launch. To open it, run this once in Terminal:
-
-                xattr -cr /Applications/ScribeFloat.app
-
-            Then double-click normally. The right-click → Open bypass no longer works on macOS 15 Sequoia.
+            **macOS (.dmg):** Open the DMG and drag ScribeFloat to Applications. Double-click to launch.
 
             **Windows (NSIS .exe):** Run the installer. If Windows SmartScreen warns you, click **More info → Run anyway**.

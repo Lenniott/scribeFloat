@@ -1,6 +1,8 @@
 # ScribeFloat
 
-**Local-first AI transcription for macOS and Windows. No cloud. No accounts. No telemetry.**
+**Local-first AI transcription. No cloud. No accounts. No telemetry.**
+
+Primary platform: **macOS**. A **Windows** build is shipped, but it is not routinely tested on real hardware — see [Platform support](#platform-support) below.
 
 ScribeFloat runs OpenAI's [Whisper](https://github.com/openai/whisper) model entirely on your machine. Audio is never sent to any server. Transcripts live on your local file system.
 
@@ -23,9 +25,11 @@ ScribeFloat runs OpenAI's [Whisper](https://github.com/openai/whisper) model ent
 
 | Platform | Status |
 |----------|--------|
-| macOS 13+ | Supported |
-| Windows 10+ | Supported |
-| Linux | Not supported |
+| macOS 13+ | **Supported** — primary development target; releases are built, signed, notarized, and tested on real hardware |
+| Windows 10+ | **Theoretically supported, untested** — the codebase has Windows implementations and CI publishes `.msi` installers, but day-to-day development and manual QA happen on macOS only |
+| Linux | **Not supported** |
+
+**Windows in practice:** Treat Windows as best-effort until more users validate it. If something breaks on your machine, please open an issue or PR — Windows contributors are especially welcome ([Contributing](#contributing)).
 
 ---
 
@@ -166,7 +170,7 @@ context/                   Architecture and design documentation
    git tag v0.2.0
    git push origin main --tags
    ```
-3. GitHub Actions picks up the tag and builds macOS (universal `.dmg`) and Windows (`.msi`) automatically. The release is published to GitHub Releases once both builds complete (~15–20 min). macOS builds are code-signed and notarized in CI.
+3. GitHub Actions picks up the tag and builds macOS (universal `.dmg`) and Windows (`.msi`) automatically. The release is published to GitHub Releases once both builds complete (~15–20 min). macOS builds are code-signed and notarized in CI. Windows installers are built in CI but are **not** manually smoke-tested before publish.
 
 ---
 

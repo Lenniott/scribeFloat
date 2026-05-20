@@ -1,6 +1,6 @@
 # ScribeFloat
 
-**Local-first AI transcription for macOS and Windows. No cloud. No accounts. No telemetry.**
+**Local-first AI transcription for macOS and Windows(supported but not fully tested). No cloud. No accounts. No telemetry.**
 
 ScribeFloat runs OpenAI's [Whisper](https://github.com/openai/whisper) model entirely on your machine. Audio is never sent to any server. Transcripts live on your local file system.
 

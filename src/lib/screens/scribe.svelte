@@ -116,6 +116,9 @@
         stopTimer();
         micLevelRaw = 0;
         speakerLevelRaw = 0;
+        void invoke<boolean>("settings_get_scribe_capture_speaker")
+          .then((v) => { captureSpeaker = v; })
+          .catch(() => { captureSpeaker = false; });
         break;
       case "RECORDING":
         phase = "recording";
@@ -126,12 +129,18 @@
         stopTimer();
         micLevelRaw = 0;
         speakerLevelRaw = 0;
+        void invoke<boolean>("settings_get_scribe_capture_speaker")
+          .then((v) => { captureSpeaker = v; })
+          .catch(() => { captureSpeaker = false; });
         break;
       case "DONE":
         phase = "idle";
         stopTimer();
         micLevelRaw = 0;
         speakerLevelRaw = 0;
+        void invoke<boolean>("settings_get_scribe_capture_speaker")
+          .then((v) => { captureSpeaker = v; })
+          .catch(() => { captureSpeaker = false; });
         break;
       case "NO_MODEL":
         phase = "no_model";
@@ -154,6 +163,13 @@
     if (startInProgress || phase === "recording") return;
     startInProgress = true;
     try {
+      // Re-read the persistent default each time a new recording starts so that
+      // changes made in the Settings window (or from a previous session toggle)
+      // are reflected without needing to reload the prewarmed window.
+      captureSpeaker = await invoke<boolean>(
+        "settings_get_scribe_capture_speaker",
+      ).catch(() => captureSpeaker);
+
       const perms = await invoke<PermissionStatus[]>(
         "settings_permissions_status",
       ).catch(() => []);
@@ -491,15 +507,25 @@
                     Capture speaker
                   </span>
                   <ToggleSwitch
-                    checked={captureSpeaker}
+                    bind:checked={captureSpeaker}
                     aria-label="Toggle speaker capture"
                     onchange={async (next) => {
-                      captureSpeaker = next;
-                      await invoke("settings_set_scribe_capture_speaker", {
-                        enabled: next,
-                      }).catch(() => {
-                        captureSpeaker = !next;
-                      });
+                      if (phase === "recording") {
+                        // Session-only: does not change the persistent default.
+                        // The toggle resets to the saved default when the session ends.
+                        try {
+                          await invoke("scribe_toggle_speaker_capture", { enabled: next });
+                        } catch (_) {
+                          captureSpeaker = !next;
+                        }
+                      } else {
+                        // Idle: update the persistent default for future sessions.
+                        await invoke("settings_set_scribe_capture_speaker", {
+                          enabled: next,
+                        }).catch(() => {
+                          captureSpeaker = !next;
+                        });
+                      }
                     }}
                   />
                 </div>

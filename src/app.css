@@ -43,7 +43,7 @@
   --color-on-success:         var(--sf-on-success);
   --color-focus:              var(--sf-focus);
   /* ── Type scale (size + paired line-height) ────────────────────────────── */
-  --text-display-lg:              3.5rem;
+  --text-display-lg:              2.5rem;
   --text-display-lg--line-height:  1.1;
 
   --text-headline-sm:              1.5rem;

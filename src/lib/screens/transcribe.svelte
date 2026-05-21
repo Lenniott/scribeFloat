@@ -438,7 +438,11 @@
           >
             Processing {progress}%
           </p>
-          <StackProgressBar {progress} {sequence} />
+          <StackProgressBar
+            {progress}
+            {sequence}
+            indeterminate={stage === "LOADING_MODEL"}
+          />
         </div>
       </div>
     {/if}

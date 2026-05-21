@@ -104,6 +104,19 @@ pub fn scribe_list_output_devices(
 }
 
 #[tauri::command]
+pub async fn scribe_toggle_speaker_capture(
+    ctrl: State<'_, Arc<ScribeController>>,
+    enabled: bool,
+) -> Result<(), String> {
+    let ctrl = Arc::clone(&ctrl);
+    tokio::task::spawn_blocking(move || {
+        ctrl.toggle_speaker_capture(enabled).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub fn scribe_read_transcript(
     ctrl: State<'_, Arc<ScribeController>>,
     path: String,

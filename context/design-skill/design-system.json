@@ -481,6 +481,54 @@
         "container": "bg-panel rounded-md shadow-ambient px-3 py-2 flex items-center gap-3"
       }
     },
+
+    "prototypes": {
+      "description": "Exploratory UI — not shipped. Visual specs and playground mocks for review before implementation.",
+      "scribeRecordingBar": {
+        "status": "prototype",
+        "intent": "Make Scribe recording impossible to forget when the main window is buried. Visually distinct from Dictate; full-width top band with recording accent — not a second corner pill.",
+        "platformNote": "macOS does not allow apps to recolor the real menu bar. This is a full-width always-on-top window pinned to y=0 — the supported equivalent.",
+        "versusDictate": {
+          "dictate": "240×48 rounded pill, top-right, bg-panel, neutral — quick dictation HUD (reuse shipped markup exactly in mocks)",
+          "scribe": "Full primary-monitor width × 36px, y=0, bg-panel + destructive border accent — session recording chrome"
+        },
+        "window": {
+          "label": "scribe-recording-hud (internal)",
+          "flags": "decorations(false), always_on_top(true), skip_taskbar(true), never set_focus",
+          "geometry": "width = primary monitor width; height = 36px; position (0, 0)",
+          "activationPolicy": "Exclude from Dock sync like dictate window"
+        },
+        "container": "w-full h-9 min-h-9 bg-panel border-b-2 border-destructive flex items-center gap-3 px-2 shrink-0 text-fg",
+        "containerAlt": "Optional subtle tint: bg-[color-mix(in_srgb,var(--color-destructive)_10%,var(--color-panel))] — same contrast, less loud than solid destructive fill",
+        "layout": {
+          "leftClickTarget": "button: SCRIBE label + RecordingStatusDot + single RecordingTimer — dot is the recording indicator; no separate Recording label; hover:bg-fill; opens/focuses Scribe window",
+          "center": "AudioWaveFormVisualizer size=small",
+          "right": "Stop and Save + IconButton discard — always present, including when Dictate HUD is also visible"
+        },
+        "tokens": {
+          "background": "bg-panel (or 8–12% destructive mix into panel)",
+          "accent": "border-b-2 border-destructive — not full bg-destructive",
+          "foreground": "text-fg / text-fg-dim on panel surface",
+          "recordingDot": "bg-destructive (unchanged)",
+          "contrastNote": "Body text on panel meets fg on panel; destructive reserved for border + dot + discard"
+        },
+        "behavior": {
+          "show": "ScribeState::Recording",
+          "hide": "idle, transcribing, done, error, cancel",
+          "stop": "invoke scribe_stop_and_save + open_scribe_window for processing UI",
+          "discard": "scribe_cancel with same confirm rules as main window",
+          "clickLeftCluster": "open_scribe_window — focus main Scribe panel"
+        },
+        "copy": {
+          "label": "SCRIBE",
+          "cta": "Stop and Save"
+        },
+        "openQuestions": [
+          "Border only vs border + 10% destructive panel tint",
+          "Bar height 32px vs 40px on small screens"
+        ]
+      }
+    },
   
     "copy": {
       "rules": [

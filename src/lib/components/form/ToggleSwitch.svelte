@@ -32,7 +32,7 @@
 	}}
 >
 	<span
-		class="absolute left-1 h-4 w-4 rounded-full transition-transform {checked
+		class="absolute left-1 h-3.5 w-3.5 rounded-full transition-transform {checked
 			? 'translate-x-4 bg-on-brand'
 			: 'translate-x-0 bg-fg'}"
 	></span>

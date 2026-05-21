@@ -150,17 +150,23 @@ pub fn loopback_device_and_config(
     preferred_name: Option<&str>,
 ) -> Result<(cpal::Device, cpal::SupportedStreamConfig), String> {
     use cpal::traits::{DeviceTrait, HostTrait};
-    let name = preferred_name
-        .filter(|n| !n.trim().is_empty())
-        .ok_or_else(|| {
-            "no loopback input device configured — select a virtual audio device (e.g. BlackHole 2ch) as the speaker source".to_string()
-        })?;
     let host = cpal::default_host();
-    let device = host
-        .input_devices()
-        .map_err(|e| e.to_string())?
-        .find(|d| d.name().map(|n| n == name).unwrap_or(false))
-        .ok_or_else(|| format!("loopback input device `{name}` not found"))?;
+    let mut inputs = host.input_devices().map_err(|e| e.to_string())?;
+    let device = match preferred_name.filter(|n| !n.trim().is_empty()) {
+        Some(name) => inputs
+            .find(|d| d.name().map(|n| n == name).unwrap_or(false))
+            .ok_or_else(|| format!("loopback input device `{name}` not found"))?,
+        None => inputs
+            .find(|d| {
+                d.name()
+                    .map(|n| n.to_ascii_lowercase().contains("blackhole"))
+                    .unwrap_or(false)
+            })
+            .ok_or_else(|| {
+                "no BlackHole input device found — install BlackHole 2ch for speaker capture"
+                    .to_string()
+            })?,
+    };
     let config = device.default_input_config().map_err(|e| e.to_string())?;
     Ok((device, config))
 }

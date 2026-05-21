@@ -47,6 +47,7 @@
     progress = 0,
     sequence = [],
     variant = "large",
+    indeterminate = false,
     blockCount,
     barWidth,
     blockGap = "0.125rem",
@@ -55,6 +56,7 @@
     progress?: number;
     sequence?: StackProgressStep[];
     variant?: Variant;
+    indeterminate?: boolean;
     blockCount?: number;
     barWidth?: string;
     blockWidth?: string;
@@ -85,24 +87,25 @@
 <div
   class={`flex items-center ${variantConfig.rootGap} ${className} w-full`.trim()}
   role="status"
-  aria-label={`Processing ${Math.round(safeProgress)}% complete`}
+  aria-label={indeterminate ? "Loading…" : `Processing ${Math.round(safeProgress)}% complete`}
 >
   <div
-    class={`flex relative ${variantConfig.barHeight} rounded-xs bg-card ${variantConfig.padding}`}
+    class={`flex relative overflow-hidden ${variantConfig.barHeight} rounded-xs bg-card ${variantConfig.padding}`}
     style={`width: ${resolvedBarWidth}; gap: ${blockGap};`}
   >
     {#each blocks as block (block)}
       <span
         class={`h-full shrink-0 transition-colors duration-200 ${
-          block < activeBlockCount
-            ? "bg-focus"
-            : "bg-rim"
+          indeterminate ? "bg-rim" : block < activeBlockCount ? "bg-focus" : "bg-rim"
         }`}
         style={`width: ${variantConfig.blockWidth};`}
         aria-hidden="true"
       ></span>
     {/each}
-    {#if variantConfig.showPercent}
+    {#if indeterminate}
+      <span class="bar-scan pointer-events-none absolute inset-0" aria-hidden="true"></span>
+    {/if}
+    {#if variantConfig.showPercent && !indeterminate}
       <p
         class="absolute -bottom-6 left-0 font-mono text-label-sm tracking-stamped text-fg/55"
       >
@@ -139,3 +142,21 @@
   </p>
 {/if}
 </div>
+
+<style>
+  .bar-scan {
+    background: linear-gradient(
+      to right,
+      transparent 0%,
+      color-mix(in srgb, var(--color-focus) 55%, transparent) 50%,
+      transparent 100%
+    );
+    width: 40%;
+    animation: bar-scan 1.4s ease-in-out infinite;
+  }
+
+  @keyframes bar-scan {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+  }
+</style>

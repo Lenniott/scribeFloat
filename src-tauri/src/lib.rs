@@ -489,6 +489,7 @@ pub fn run() {
             commands::scribe::scribe_list_input_devices,
             commands::scribe::scribe_list_output_devices,
             commands::scribe::scribe_read_transcript,
+            commands::scribe::scribe_toggle_speaker_capture,
             commands::model::model_setup_status,
             commands::model::model_list,
             commands::model::model_download,

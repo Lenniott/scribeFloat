@@ -118,6 +118,18 @@
     { id: "recording", label: "Recording" },
   ];
 
+  /** Static demo elapsed time for recording-bar prototype (14:07) */
+  const prototypeElapsedSeconds = 847;
+  const prototypeMicLevel = 0.52;
+  const prototypeSpeakerLevel = 0.28;
+
+  /** Matches shipped dictate.svelte recording HUD — reuse in all prototype mocks */
+  const dictateHudClass =
+    "flex w-60 items-center justify-between gap-2 rounded-md bg-panel py-2 pl-3 pr-2 shadow-ambient";
+
+  const scribeBarProtoClass =
+    "scribe-recording-bar-proto flex h-9 w-full items-center gap-3 border-b-2 border-destructive px-2 text-fg";
+
   const themeOptions = [
     { value: "system", label: "System" },
     { value: "dark", label: "Dark" },
@@ -473,6 +485,176 @@
     </div>
   </section>
 
+  <section class="mb-16" aria-labelledby="sec-prototypes">
+    <h2
+      id="sec-prototypes"
+      class="mb-2 text-headline-lg font-light tracking-heading text-fg"
+    >
+      Prototypes
+    </h2>
+    <p class="mb-2 max-w-3xl text-body-md text-fg/65 leading-relaxed">
+      Exploratory surfaces — not implemented in the app. Query spec:
+      <code class="text-brand">ds get prototypes.scribeRecordingBar</code>
+    </p>
+    <p class="mb-8 max-w-3xl text-body-md text-fg/55 leading-relaxed">
+      Problem: Scribe recording is easy to forget when the main window sits behind
+      other apps. The system orange mic dot is generic (any app). macOS does not let
+      third-party apps recolor the real menu bar — the prototype uses a
+      <span class="font-medium text-fg/75">full-width top band</span> with a
+      <span class="font-medium text-fg/75">destructive border accent</span> (not a solid red fill).
+    </p>
+
+    <div class="flex flex-col gap-10">
+      <!-- Simulated display top -->
+      <div>
+        <p class="mb-3 font-mono text-label-sm tracking-stamped text-fg/45 uppercase">
+          Scribe recording bar (proposal v2) — border accent, one timer
+        </p>
+        <div
+          class="overflow-hidden rounded-md border border-rim bg-canvas shadow-ambient"
+          role="img"
+          aria-label="Prototype: full-width recording bar with destructive bottom border"
+        >
+          <div class={scribeBarProtoClass}>
+            <button
+              type="button"
+              class="flex shrink-0 cursor-pointer items-center gap-2 rounded-sm px-2 py-1 transition-colors hover:bg-fill focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+              aria-label="Open Scribe window (prototype)"
+            >
+              <span class="font-mono text-label-sm tracking-stamped uppercase">Scribe</span>
+              <RecordingStatusDot status="recording" />
+              <RecordingTimer elapsedSeconds={prototypeElapsedSeconds} />
+            </button>
+            <div class="min-w-0 flex-1 max-w-56">
+              <AudioWaveFormVisualizer
+                micLevel={prototypeMicLevel}
+                speakerLevel={prototypeSpeakerLevel}
+                speakerEnabled={true}
+                size="small"
+              />
+            </div>
+            <div class="flex shrink-0 items-center gap-2">
+              <Button variant="primary" size="small">Stop and Save</Button>
+              <IconButton
+                variant="destructive"
+                size="small"
+                icon={Trash2}
+                aria-label="Discard recording (prototype)"
+              />
+            </div>
+          </div>
+          <div class="h-20 border-t border-rim/60 bg-canvas px-4 pt-3" aria-hidden="true">
+            <p class="text-label-sm text-fg-muted">
+              Your apps sit below — this band is our always-on-top window at the top of
+              the screen, not the macOS menu bar.
+            </p>
+          </div>
+        </div>
+        <ul class="mt-4 max-w-3xl list-disc space-y-1 pl-5 text-label-md text-fg/60">
+          <li>
+            <code class="text-brand">border-b-2 border-destructive</code> on
+            <code class="text-brand">bg-panel</code> — not solid
+            <code class="text-brand">bg-destructive</code>
+          </li>
+          <li>Red dot + timer = recording state; no separate “Recording” label</li>
+          <li>Stop and Save + discard always on the bar, even if Dictate is active</li>
+          <li>Left cluster is clickable — opens/focuses Scribe (hover <code>bg-fill</code>)</li>
+          <li>Always-on-top while <code>RECORDING</code>; never steals focus</li>
+        </ul>
+      </div>
+
+      <!-- Dictate reference -->
+      <div>
+        <p class="mb-3 font-mono text-label-sm tracking-stamped text-fg/45 uppercase">
+          Dictate HUD (shipped) — corner pill for comparison
+        </p>
+        <div
+          class="relative h-32 overflow-hidden rounded-md border border-rim bg-canvas"
+          role="img"
+          aria-label="Reference: Dictate recording pill top-right"
+        >
+          <div class={`absolute right-3 top-3 ${dictateHudClass}`}>
+            <div class="flex items-center gap-4">
+              <div class="flex items-center gap-2">
+                <RecordingStatusDot status="recording" pulseWhileRecording={false} />
+                <RecordingTimer elapsedSeconds={prototypeElapsedSeconds} />
+              </div>
+              <AudioWaveFormVisualizer
+                micLevel={prototypeMicLevel}
+                speakerLevel={0}
+                speakerEnabled={false}
+                size="small"
+              />
+            </div>
+            <IconButton variant="normal" size="small" icon={Close} aria-label="Close" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Side by side -->
+      <div>
+        <p class="mb-3 font-mono text-label-sm tracking-stamped text-fg/45 uppercase">
+          Both at once (different jobs, different chrome)
+        </p>
+        <p class="mb-3 max-w-3xl text-label-md text-fg/55">
+          Scribe keeps full actions while Dictate runs — two independent sessions. Dictate
+          pill matches shipped markup (top-right).
+        </p>
+        <div
+          class="overflow-hidden rounded-md border border-rim bg-canvas"
+          role="img"
+          aria-label="Prototype: Dictate pill and Scribe bar shown together"
+        >
+          <div class={scribeBarProtoClass}>
+            <button
+              type="button"
+              class="flex shrink-0 cursor-pointer items-center gap-2 rounded-sm px-2 py-1 transition-colors hover:bg-fill"
+              aria-label="Open Scribe window (prototype)"
+            >
+              <span class="font-mono text-label-sm tracking-stamped uppercase">Scribe</span>
+              <RecordingStatusDot status="recording" />
+              <RecordingTimer elapsedSeconds={prototypeElapsedSeconds} />
+            </button>
+            <div class="min-w-0 flex-1 max-w-56">
+              <AudioWaveFormVisualizer
+                micLevel={prototypeMicLevel}
+                speakerLevel={prototypeSpeakerLevel}
+                speakerEnabled={true}
+                size="small"
+              />
+            </div>
+            <div class="flex shrink-0 items-center gap-2">
+              <Button variant="primary" size="small">Stop and Save</Button>
+              <IconButton
+                variant="destructive"
+                size="small"
+                icon={Trash2}
+                aria-label="Discard recording (prototype)"
+              />
+            </div>
+          </div>
+          <div class="relative h-24">
+            <div class={`absolute right-3 top-3 ${dictateHudClass}`}>
+              <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                  <RecordingStatusDot status="recording" pulseWhileRecording={false} />
+                  <RecordingTimer elapsedSeconds={42} />
+                </div>
+                <AudioWaveFormVisualizer
+                  micLevel={prototypeMicLevel}
+                  speakerLevel={0}
+                  speakerEnabled={false}
+                  size="small"
+                />
+              </div>
+              <IconButton variant="normal" size="small" icon={Close} aria-label="Close" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="mb-16" aria-labelledby="sec-audio">
     <h2
       id="sec-audio"
@@ -502,7 +684,7 @@
         </div>
         <div class="flex flex-col items-center gap-2">
           <p class="text-label-sm text-fg/45">DicateRecordScreen</p>
-          <div class="flex gap-2 justify-between items-center w-60 py-2 pl-3 pr-2 bg-panel">
+          <div class={dictateHudClass}>
             <div class="flex gap-4">
               <div
                 class="flex items-center gap-2"
@@ -611,3 +793,10 @@
     </div>
   </section>
 </main>
+
+<style>
+  /* Subtle recording tint — keeps fg-on-panel contrast, softer than solid destructive */
+  .scribe-recording-bar-proto {
+    background: color-mix(in srgb, var(--color-destructive) 10%, var(--color-panel));
+  }
+</style>

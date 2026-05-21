@@ -195,7 +195,11 @@
 
     <div class="flex min-h-0 flex-1 flex-col justify-center gap-8 px-5 py-6">
       {#if phase === "transcribing"}
-        <StackProgressBar {progress} {sequence} />
+        <StackProgressBar
+          {progress}
+          {sequence}
+          indeterminate={processingStage === "LOADING_MODEL"}
+        />
       {:else}
         <div class="flex flex-col gap-4">
           {#if phase === "done"}

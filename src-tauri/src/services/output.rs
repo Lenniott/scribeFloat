@@ -99,23 +99,67 @@ impl OutputService {
         rules: &[ReplacementRule],
         dest: &Path,
     ) -> Result<PathBuf> {
-        let raw_body = segments
-            .iter()
-            .map(|seg| {
-                let clean = cleanup_text(seg.text.trim());
-                if include_timestamps {
-                    format!("[{}] {}", format_ms(seg.start_ms), clean)
-                } else {
-                    clean
+        // Merge consecutive same-source segments separated by less than 8 seconds into
+        // a single paragraph. Never merge across speaker sources (in: vs out:).
+        const MERGE_GAP_MS: i64 = 8_000;
+        struct Group {
+            start_ms: i64,
+            end_ms: i64,
+            parts: Vec<String>,
+            source: &'static str, // "in", "out", or "" for single-source
+        }
+        let mut groups: Vec<Group> = Vec::new();
+        for seg in segments {
+            let clean = cleanup_text(seg.text.trim());
+            if clean.is_empty() {
+                continue;
+            }
+            let deduped = dedup_repeated_block(&dedup_consecutive_phrases(&clean));
+            let seg_source = speaker_source_prefix(&deduped);
+            let last = groups.last_mut().filter(|g| {
+                seg.start_ms - g.end_ms < MERGE_GAP_MS && g.source == seg_source
+            });
+            match last {
+                Some(g) => {
+                    g.end_ms = seg.end_ms;
+                    g.parts.push(deduped);
                 }
-            })
-            .collect::<Vec<_>>()
-            .join("\n\n");
-
-        let transcript_body = {
-            let deduped = dedup_repeated_block(&dedup_consecutive_phrases(&raw_body));
-            apply_replacements(&deduped, rules, &ReplacementScope::Transcripts)
+                None => groups.push(Group {
+                    start_ms: seg.start_ms,
+                    end_ms: seg.end_ms,
+                    parts: vec![deduped],
+                    source: seg_source,
+                }),
+            }
+        }
+        // Dual-source: speaker changes use a single newline (compact dialogue).
+        // Same-source breaks (long silence) and all single-source use a blank line.
+        let raw_body = {
+            let mut out = String::new();
+            for (i, g) in groups.iter().enumerate() {
+                if i > 0 {
+                    let prev = &groups[i - 1];
+                    let sep = if prev.source != g.source
+                        && !prev.source.is_empty()
+                        && !g.source.is_empty()
+                    {
+                        "\n"
+                    } else {
+                        "\n\n"
+                    };
+                    out.push_str(sep);
+                }
+                let text = g.parts.join(" ");
+                if include_timestamps {
+                    out.push_str(&format!("[{}] {}", format_ms(g.start_ms), text));
+                } else {
+                    out.push_str(&text);
+                }
+            }
+            out
         };
+
+        let transcript_body = apply_replacements(&raw_body, rules, &ReplacementScope::Transcripts);
 
         let duration_seconds = segments
             .last()
@@ -447,6 +491,14 @@ fn apply_word_transform(word: &str, transform: &WordTransform) -> String {
     }
 }
 
+/// Returns "in", "out", or "" depending on the speaker label at the start of a segment.
+/// Used by write_transcript to prevent merging across speaker sources.
+fn speaker_source_prefix(text: &str) -> &'static str {
+    if text.starts_with("in: ") { "in" }
+    else if text.starts_with("out: ") { "out" }
+    else { "" }
+}
+
 fn format_ms(ms: i64) -> String {
     let total = ms / 1000;
     format!(
@@ -707,6 +759,85 @@ mod tests {
         let content = std::fs::read_to_string(&file).expect("read transcript");
         assert!(content.contains("hello world"));
         assert!(!content.contains("[00:00:12]"));
+    }
+
+    #[test]
+    fn dual_source_segments_are_never_merged_across_speaker_boundary() {
+        // "in: yeah" ends at 1000 ms; "out: Hello." starts at 1200 ms — gap is only 200 ms,
+        // but they must NOT merge because the source labels differ.
+        let svc = OutputService;
+        let file = temp_file("dual-source-newlines.md");
+        let segments = vec![
+            Segment { start_ms: 0, end_ms: 1_000, text: "in: yeah".to_string() },
+            Segment { start_ms: 1_200, end_ms: 3_000, text: "out: Hello there.".to_string() },
+            Segment { start_ms: 3_100, end_ms: 4_000, text: "out: How are you?".to_string() },
+        ];
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
+            .expect("write");
+        let content = std::fs::read_to_string(&file).expect("read");
+        // Speaker change uses a single newline (compact dialogue), not a blank line
+        assert!(
+            content.contains("in: yeah\nout: Hello there."),
+            "in: and out: should be separated by a single newline, got:\n{content}"
+        );
+        // Two consecutive "out:" segments within gap should still merge
+        assert!(
+            content.contains("out: Hello there. out: How are you?"),
+            "consecutive out: segments within gap should merge, got:\n{content}"
+        );
+    }
+
+    #[test]
+    fn dual_source_speaker_change_uses_single_newline() {
+        let svc = OutputService;
+        let file = temp_file("dual-source-compact.md");
+        let segments = vec![
+            Segment { start_ms: 0, end_ms: 1_000, text: "in: yeah".to_string() },
+            Segment { start_ms: 2_000, end_ms: 4_000, text: "out: Thanks for sharing.".to_string() },
+            Segment { start_ms: 5_000, end_ms: 6_000, text: "in: Absolutely.".to_string() },
+        ];
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
+            .expect("write");
+        let content = std::fs::read_to_string(&file).expect("read");
+        // Each speaker change: single \n, not \n\n
+        assert!(content.contains("in: yeah\nout:"), "in→out should be \\n, got:\n{content}");
+        assert!(content.contains("out: Thanks for sharing.\nin:"), "out→in should be \\n, got:\n{content}");
+        assert!(!content.contains("in: yeah\n\nout:"), "should not have \\n\\n on speaker change");
+    }
+
+    #[test]
+    fn single_source_always_uses_double_newline() {
+        let svc = OutputService;
+        let file = temp_file("single-source-separator.md");
+        // Two segments with a gap > 8 s so they stay separate paragraphs
+        let segments = vec![
+            Segment { start_ms: 0, end_ms: 2_000, text: "First thought.".to_string() },
+            Segment { start_ms: 12_000, end_ms: 14_000, text: "Second thought.".to_string() },
+        ];
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
+            .expect("write");
+        let content = std::fs::read_to_string(&file).expect("read");
+        assert!(
+            content.contains("First thought.\n\nSecond thought."),
+            "single-source paragraphs should use \\n\\n, got:\n{content}"
+        );
+    }
+
+    #[test]
+    fn single_source_segments_still_merge_within_gap() {
+        let svc = OutputService;
+        let file = temp_file("single-source-merge.md");
+        let segments = vec![
+            Segment { start_ms: 0, end_ms: 500, text: "Hello".to_string() },
+            Segment { start_ms: 700, end_ms: 1_200, text: "world.".to_string() },
+        ];
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
+            .expect("write");
+        let content = std::fs::read_to_string(&file).expect("read");
+        assert!(
+            content.contains("Hello world."),
+            "same-source segments within gap should merge, got:\n{content}"
+        );
     }
 
     #[test]

@@ -39,42 +39,47 @@ User records mic only. No system audio capture.
 
 ## 2. Scribe — Dual Source
 
-User records mic + system audio (remote call, meeting, etc).
+User records mic + system audio (remote call, meeting, etc). Speaker capture can be toggled on/off at any point during the recording — the mic never stops.
 
 1. User triggers Scribe via tray or hotkey
-2. Scribe panel opens
+2. Scribe panel opens; `captureSpeaker` initialised from the persistent settings default (off by default on fresh install)
 3. Audio Service: Device Manager checks preferred mic → fallback if unavailable
-4. Audio Service: checks system audio device available (BlackHole on macOS / WASAPI on Windows)
-    - **Not available** → show setup guidance, speaker capture toggle disabled
-    - **Available** → continue
-5. User enables speaker capture toggle
-6. Audio Service: Mic Capture opens mic input stream
-7. Audio Service: System Audio Capture opens system audio stream, records speaker offset timestamp
-8. Audio Service: Sleep Prevention acquired
-9. Scribe panel enters **Recording** state — dual waveform active (mic + speaker channels)
-10. User optionally types timestamped notes
-11. User presses **Stop & Save**
-12. Audio Service: both streams stopped, raw PCM buffers returned
-13. Audio Service: Sleep Prevention released
-14. Output Service: writes `mic.wav` and `speaker.wav` from buffers to session folder
-15. Output Service: writes `session.json` — `{ speaker_offset_seconds, sample_rate }`
+4. Audio Service: Mic Capture opens mic input stream; Sleep Prevention acquired
+5. Scribe panel enters **Recording** state — mic waveform active, timer running
+6. User enables speaker capture toggle (can happen at any time during recording)
+    - Platform Adapter: `loopback_device_and_config` finds the configured loopback device; if none configured, auto-detects any input device with "blackhole" in its name
+    - Audio Service: output device switched to the preferred speaker route (e.g. "Liscribe" Multi-Output Device); previous output device saved for restore
+    - Audio Service: System Audio Capture (loopback) stream opened; speaker waveform becomes active
+    - ScribeController records `SpeakerSegment { start_ms, raw_pcm, native_rate }` for this capture window
+7. User may toggle speaker capture off during the recording
+    - Audio Service: loopback stream stopped; segment saved to `SpeakerAccumulator`
+    - Audio Service: output device restored immediately to previous value
+    - User may re-enable again — each new segment is appended to the accumulator
+8. **Toggle is session-only**: the in-recording toggle does NOT update the persistent settings default. Only the Settings page toggle changes the default for future sessions
+9. User optionally types timestamped notes
+10. User presses **Stop & Save**
+11. Audio Service: mic stream stopped, raw PCM returned; any still-active loopback stream stopped and final segment saved
+12. Audio Service: output device restored; Sleep Prevention released
+13. `ScribeController.prepare_audio`: assembles all `SpeakerSegment` entries into one silence-padded 16 kHz PCM buffer (`assemble_speaker_pcm`) — gaps between ON windows are silence
+14. **RMS silence gate**: if the assembled speaker PCM has RMS < −60 dBFS, speaker transcription is skipped entirely; session treated as single-source
+15. Output Service: writes `mic.wav` (and `speaker.wav` if capture was active) to session folder
 16. Check: is a model downloaded and selected?
     - **No model** → skip to step 24
     - **Model available** → continue
-17. Scribe panel enters **Transcribing** state
+17. Scribe panel enters **Transcribing** state — indeterminate progress bar shown during model load
 18. Model Service: loads selected model(s)
 19. Model Service: transcribes `mic.wav` → mic segments (progress 0–50%)
-20. Model Service: transcribes `speaker.wav` → speaker segments (progress 50–100%)
-21. Output Service: merges mic and speaker segments chronologically by timestamp
-22. Output Service: suppresses near-duplicate lines from mic bleed
-23. Output Service: applies `in:` / `out:` labels
+20. Model Service: transcribes `speaker.wav` → raw speaker segments (progress 50–100%)
+21. `filter_hallucination_phrases`: strips segments matching known Whisper hallucination phrases ("Thank you.", "Thanks for watching.", etc.) from speaker segments
+22. Model Service: merges mic and speaker segments chronologically; suppresses near-duplicate lines within 1.5 s (mic bleed); applies `in:`/`out:` labels
+23. Output Service: groups segments — same-source segments within 8 s merged into one paragraph; speaker-change boundaries use `\n`; same-source paragraph breaks use `\n\n`
 24. Output Service: builds dual-source markdown transcript
 25. Output Service: applies word replacement rules
 26. Output Service: writes `<timestamp>_<model>.md` to save folder
 27. Check: WAV retention setting
-    - **Keep** → `mic.wav`, `speaker.wav`, `session.json` all kept
-    - **Delete** → Output Service deletes all three only after transcript confirmed written and non-empty
-28. Scribe panel enters **Done** state — file path(s) shown
+    - **Keep** → `mic.wav`, `speaker.wav` kept
+    - **Delete** → Output Service deletes both only after transcript confirmed written and non-empty
+28. Scribe panel enters **Done** state — file path(s) shown; `captureSpeaker` reset to the persistent settings default
 29. **No model path**: all session files kept regardless of retention setting. Panel shows "Open in Transcribe →" with session path pre-filled
 
 ---
@@ -149,7 +154,7 @@ User brings an existing audio file. No recording step.
 | Workflow | WAV written? | Who writes | Who deletes | When deleted |
 |---|---|---|---|---|
 | Scribe single | Yes — `mic.wav` | Output Service | Output Service | After transcript confirmed, if keep=off |
-| Scribe dual | Yes — `mic.wav` + `speaker.wav` + `session.json` | Output Service | Output Service | After transcript confirmed, if keep=off |
+| Scribe dual | Yes — `mic.wav` + `speaker.wav` (speaker.wav written even if RMS gate skips transcription) | Output Service | Output Service | After transcript confirmed, if keep=off |
 | Scribe no model | Yes — WAV only output | Output Service | Never | Always kept |
 | Dictate | No — memory only | — | — | — |
 | Transcribe | No — user owns source file | — | — | — |

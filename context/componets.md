@@ -5,7 +5,7 @@
 | `CircularAudioVisualizer` | A parent visual component for circular live audio display.   | Composes one or more circular layers, usually mic in the centre and optional speaker as an outer overlay ring.   |
 | `MicWaveRing` | A circular waveform ring for microphone input.   | Reads mic level/amplitude data and renders animated radial motion as the core waveform layer.   |
 | `SpeakerWaveRing` | A circular waveform ring for speaker/system input.   | Renders a second waveform overlay; if speaker input is disabled, this component is not mounted or is hidden.   |
-| `StackProgressBar` | A reusable horizontal progress indicator.   | Fills waveform-style stacked bars from left to right and shows processing steps across the row.   |
+| `StackProgressBar` | A reusable horizontal progress indicator.   | Fills waveform-style stacked bars from left to right and shows processing steps across the row. Supports an `indeterminate` prop: when true, a scanning shimmer animation replaces the fill (used during model load when no meaningful progress is available).   |
 | `AudioLayerLegend` | A small key showing which colour maps to mic and speaker.   | Displays colour swatches and labels; can optionally show disabled state for speaker when not active.   |
 | `RecordingStatusDot` | Small status indicator for recording state.   | Changes appearance for idle, recording, paused, or error states.   |
 | `RecordingTimer` | Elapsed-time display component.   | Shows formatted session time such as `00:00` and updates from external recording state.   |

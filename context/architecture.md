@@ -193,7 +193,7 @@ graph TB
 - **Device Manager**: lists inputs, detects preferred mic by name, falls back to system default
 - **Mic Capture**: opens mic stream via cpal, buffers raw PCM chunks in a channel
 - **System Audio Capture**: macOS = BlackHole virtual device via Core Audio; Windows = WASAPI loopback
-- **MicSession**: coordinates both streams, tracks speaker offset, returns dual PCM buffers. Uses `recv_timeout` (200 ms) in drain loop — never `recv()` — to handle cpal's async stream teardown on macOS
+- **MicSession**: coordinates the mic stream; drains with `recv_timeout` (200 ms) — never `recv()` — to handle cpal's async stream teardown on macOS. Speaker capture is tracked separately via `SpeakerAccumulator` in `ScribeController`: holds `Vec<SpeakerSegment>` (start_ms, raw_pcm, native_rate) representing each ON/OFF loopback window, assembled into a single silence-padded 16 kHz PCM buffer at session end via `assemble_speaker_pcm`
 - **Sleep Prevention**: acquired when stream opens, released on close. Prevents the OS from suspending mid-recording
 - **Resampler**: `resample_linear` converts captured audio to 16 kHz mono f32, the input format Whisper requires
 - **Platform Adapter**: the only place `#[cfg(target_os)]` lives for audio. Everything above is platform-agnostic
@@ -245,7 +245,7 @@ graph TB
 - **Downloader**: fetches `ggml-*.bin` from Hugging Face over HTTPS, streams progress via `AppHandle::emit`. _See fix-later A1 — emit should be moved to `ModelController`._
 - **Model Loader**: loads ggml weights into a `WhisperContext` via whisper-rs, caches one context per model ID for the app session
 - **Transcriber**: runs Whisper inference inside `tokio::task::spawn_blocking`. Calls `on_tick` per segment to report progress. Use `eprintln!` / `std::time::Instant` for timing — tracing spans do not propagate into blocking threads
-- **Dual Source Merger**: aligns mic and speaker segments by timestamp using `speaker_offset_seconds`, suppresses near-duplicate lines (mic bleed), applies `in:`/`out:` labels
+- **Dual Source Merger**: sorts mic and speaker segments chronologically by timestamp; suppresses near-duplicate lines within 1.5 s (mic bleed); applies `in:`/`out:` labels. Before merging, speaker segments are filtered by `filter_hallucination_phrases` — segments matching known Whisper hallucination phrases ("Thank you.", "Thanks for watching.", etc.) are stripped. Upstream, `ScribeController` also applies an RMS silence gate: if the assembled speaker PCM has RMS < −60 dBFS (1e-3), the speaker channel is skipped entirely and the session is treated as single-source
 
 **Loading strategy:**
 - Default model for Dictate → loaded at app startup
@@ -326,8 +326,8 @@ graph TB
 ```
 
 **Component notes:**
-- **WAV Writer**: writes `mic.wav` and optionally `speaker.wav` from raw PCM buffers; writes `session.json` for dual-source sessions (`{ speaker_offset_seconds, sample_rate }`)
-- **Transcript Formatter**: builds Markdown from Whisper segments. Single source = timestamped lines. Dual source = `in:`/`out:` labelled lines merged chronologically by `speaker_offset_seconds`
+- **WAV Writer**: writes `mic.wav` and optionally `speaker.wav` from raw PCM buffers
+- **Transcript Formatter**: builds Markdown from Whisper segments. Segments are grouped: consecutive same-source segments within an 8-second gap are merged into one paragraph. Dual-source speaker-change boundaries (`in:` → `out:` or vice versa) are separated by a single newline (`\n`); same-source paragraph breaks (long silence) and all single-source breaks use a blank line (`\n\n`). Optional timestamps prepended per group
 - **Word Replacement**: applies user-defined find/replace rules. Scope per rule: transcripts, dictate, or both
 - **File Writer**: writes Markdown to the save folder. Verifies file is written and non-empty before reporting success. Uses atomic write (temp + rename) for config; direct write for transcripts
 - **WAV Cleanup**: deletes `mic.wav`, `speaker.wav`, `session.json` only after transcript is confirmed written and non-empty. Skipped if `keep_wav = true`. Skipped if no model was available at record time (preserving audio for later Transcribe use)
@@ -515,7 +515,7 @@ Components requiring a Platform Adapter:
 
 | Component | macOS | Windows |
 |-----------|-------|---------|
-| System audio capture | BlackHole via Core Audio | WASAPI loopback |
+| System audio capture | BlackHole via Core Audio — auto-detected by name if no device explicitly configured | WASAPI loopback |
 | Dictate paste | `enigo` via Accessibility API | `SendInput` |
 | Permissions check | `AVCaptureDevice`, `AXIsProcessTrusted`, tcc.db | Registry (HKCU\...\Microphone) |
 | Key listener | `CGEventTap` | win32 keyboard hook |

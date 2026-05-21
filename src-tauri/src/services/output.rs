@@ -122,7 +122,12 @@ impl OutputService {
             match last {
                 Some(g) => {
                     g.end_ms = seg.end_ms;
-                    g.parts.push(deduped);
+                    let body = deduped
+                        .strip_prefix("in: ")
+                        .or_else(|| deduped.strip_prefix("out: "))
+                        .map(|s| s.to_string())
+                        .unwrap_or(deduped);
+                    g.parts.push(body);
                 }
                 None => groups.push(Group {
                     start_ms: seg.start_ms,
@@ -132,22 +137,11 @@ impl OutputService {
                 }),
             }
         }
-        // Dual-source: speaker changes use a single newline (compact dialogue).
-        // Same-source breaks (long silence) and all single-source use a blank line.
         let raw_body = {
             let mut out = String::new();
             for (i, g) in groups.iter().enumerate() {
                 if i > 0 {
-                    let prev = &groups[i - 1];
-                    let sep = if prev.source != g.source
-                        && !prev.source.is_empty()
-                        && !g.source.is_empty()
-                    {
-                        "\n"
-                    } else {
-                        "\n\n"
-                    };
-                    out.push_str(sep);
+                    out.push_str("\n\n");
                 }
                 let text = g.parts.join(" ");
                 if include_timestamps {
@@ -775,20 +769,20 @@ mod tests {
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
             .expect("write");
         let content = std::fs::read_to_string(&file).expect("read");
-        // Speaker change uses a single newline (compact dialogue), not a blank line
+        // Speaker change uses a blank line
         assert!(
-            content.contains("in: yeah\nout: Hello there."),
-            "in: and out: should be separated by a single newline, got:\n{content}"
+            content.contains("in: yeah\n\nout: Hello there."),
+            "in: and out: should be separated by a blank line, got:\n{content}"
         );
-        // Two consecutive "out:" segments within gap should still merge
+        // Two consecutive "out:" segments within gap should merge without repeating the label
         assert!(
-            content.contains("out: Hello there. out: How are you?"),
-            "consecutive out: segments within gap should merge, got:\n{content}"
+            content.contains("out: Hello there. How are you?"),
+            "consecutive out: segments within gap should merge without repeating label, got:\n{content}"
         );
     }
 
     #[test]
-    fn dual_source_speaker_change_uses_single_newline() {
+    fn dual_source_speaker_change_uses_blank_line() {
         let svc = OutputService;
         let file = temp_file("dual-source-compact.md");
         let segments = vec![
@@ -799,10 +793,9 @@ mod tests {
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
             .expect("write");
         let content = std::fs::read_to_string(&file).expect("read");
-        // Each speaker change: single \n, not \n\n
-        assert!(content.contains("in: yeah\nout:"), "in→out should be \\n, got:\n{content}");
-        assert!(content.contains("out: Thanks for sharing.\nin:"), "out→in should be \\n, got:\n{content}");
-        assert!(!content.contains("in: yeah\n\nout:"), "should not have \\n\\n on speaker change");
+        // Each speaker change: blank line \n\n
+        assert!(content.contains("in: yeah\n\nout:"), "in→out should be \\n\\n, got:\n{content}");
+        assert!(content.contains("out: Thanks for sharing.\n\nin:"), "out→in should be \\n\\n, got:\n{content}");
     }
 
     #[test]

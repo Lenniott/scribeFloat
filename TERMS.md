@@ -1,8 +1,8 @@
 # Terms of Use — ScribeFloat
 
-**Version 1.0 | Last updated: 2026-05-23**
+**Version 1.1 | Last updated: 2026-05-23**
 
-ScribeFloat is **free, open source, and offered as-is**. You can use it for personal or commercial work without paying anything. These terms exist to keep the project honest: use it, share it, modify it — just don't strip the credit, claim it as your own work, or resell it as a closed product without attribution. The software is released under the [MIT License](LICENSE); the terms below restate and clarify it for end users.
+ScribeFloat is **free, open source, and offered as-is**. You can use it for personal or commercial work without paying anything. These terms exist to keep the project honest: use it, share it, modify it — just don't strip the credit, claim it as your own work, or ship a closed-source product built on it. The software is released under the [GNU General Public License v3.0](LICENSE) (GPL-3.0-only); the terms below restate and clarify it for end users.
 
 By downloading, installing, or running ScribeFloat you accept these terms. If you don't, don't use the app.
 
@@ -10,13 +10,13 @@ By downloading, installing, or running ScribeFloat you accept these terms. If yo
 
 ## 1. What you can do
 
-ScribeFloat is open source software released under the MIT License. That license already grants you broad rights — this section summarises them in plain English so you don't have to read the legal text first.
+ScribeFloat is open source software released under GPL-3.0. That license already grants you broad rights — this section summarises them in plain English so you don't have to read the legal text first.
 
 - Use ScribeFloat for any purpose — personal, commercial, internal business, research, education.
 - Run it on as many machines as you want, for as many users as you want. There is no licence count.
 - Read, modify, and rebuild the source code.
-- Distribute copies of the original or your modified version.
-- Bundle ScribeFloat (or parts of it) inside your own product, paid or free.
+- Distribute copies of the original or your modified version, **provided you do so under GPL-3.0 and make the corresponding source code available** to anyone you give a binary to.
+- Charge for distribution, support, hosting, or services around ScribeFloat. GPL does not forbid commercial use — it only forbids closing the source.
 
 No account, no licence key, no activation server. Nothing phones home. The download you receive is the entire product.
 
@@ -24,21 +24,23 @@ No account, no licence key, no activation server. Nothing phones home. The downl
 
 ## 2. What you can't do
 
-The MIT License has one substantive requirement: the copyright notice and licence text must be included in any copy or substantial portion of the software. In practical terms that means:
+GPL-3.0 has stronger requirements than a permissive licence like MIT. In practical terms:
 
-- Don't strip the copyright notice from the source code, the `LICENSE` file, or any binary distribution that bundles ScribeFloat code.
-- Don't claim that you wrote ScribeFloat, or that ScribeFloat is your original work. Forks and derivatives are welcome — but credit the upstream project and keep the licence intact.
-- Don't resell ScribeFloat as a closed-source product without attribution. You can charge for distribution, support, or value-added features — but the underlying ScribeFloat code remains MIT-licensed and credited.
-- Don't use the ScribeFloat name, logo, or branding to imply endorsement of a fork or derivative that isn't actually maintained by the ScribeFloat project.
-- Don't use ScribeFloat to break the law, including recording laws (see section 4).
+- **Don't strip the copyright notice** from the source code, the `LICENSE` file, or any binary distribution that bundles ScribeFloat code.
+- **Don't claim that you wrote ScribeFloat**, or that ScribeFloat is your original work. Forks and derivatives are welcome — but credit the upstream project and keep the licence intact.
+- **Don't re-license ScribeFloat** (or any derivative work, or any non-trivial portion of its code) under a more permissive licence such as MIT, BSD, Apache-2.0, or a proprietary licence. Code released under GPL-3.0 stays GPL-3.0.
+- **Don't ship a closed-source product built on ScribeFloat.** If you distribute a fork, modification, or any software that combines ScribeFloat code into a single program, that whole work must be GPL-3.0 and the source must be made available to your users.
+- **Don't distribute binaries without an accompanying offer of source** — either ship the source alongside, or include a written, machine-readable offer to provide it for at least three years (see GPL-3.0 section 6).
+- **Don't use the ScribeFloat name, logo, or branding** to imply endorsement of a fork or derivative that isn't actually maintained by the ScribeFloat project.
+- **Don't use ScribeFloat to break the law**, including recording laws (see section 4).
 
-> **Short version:** fork it, ship it, build on it — just don't pretend you wrote it, and don't remove the credit.
+> **Short version:** fork it, ship it, build on it — keep it open, credit the source, and pass those same freedoms on to whoever uses your version.
 
 ---
 
 ## 3. No warranty, no liability
 
-ScribeFloat is provided "as is", without warranty of any kind, express or implied. This includes — but is not limited to — warranties of merchantability, fitness for a particular purpose, and non-infringement.
+ScribeFloat is provided "as is", without warranty of any kind, express or implied. This includes — but is not limited to — warranties of merchantability, fitness for a particular purpose, and non-infringement. (Sections 15 and 16 of the GPL-3.0 set out the full legal text.)
 
 The author and contributors are **not liable** for any claim, damages, or other liability arising from your use of the software. That covers, for example:
 
@@ -77,12 +79,12 @@ ScribeFloat does not display a notification to the people you are recording. The
 
 ## 5. Third-party components
 
-ScribeFloat bundles or downloads open-source components owned by third parties. Their licences apply to those components.
+ScribeFloat bundles or downloads open-source components owned by third parties. Each is under a permissive open-source licence (MIT, BSD, or Apache-2.0) that is compatible with GPL-3.0. When combined into the ScribeFloat binary, the resulting work is distributed under GPL-3.0; the original components remain available under their own licences to anyone who wants to use them separately.
 
 - OpenAI Whisper (MIT) — the speech-recognition model.
 - Silero VAD (MIT) — optional voice activity detection model.
 - ggml / whisper.cpp (MIT) — local inference engine.
-- Tauri, Svelte, and other Rust / JavaScript dependencies — each under their own open-source licence.
+- Tauri, Svelte, and other Rust / JavaScript dependencies — each under their own permissive open-source licence.
 
 Model files are downloaded directly from Hugging Face on user request. Those downloads are subject to Hugging Face's terms and the model authors' licences.
 
@@ -96,7 +98,7 @@ ScribeFloat does not collect telemetry, analytics, or any user data. Audio and t
 
 ## 7. Changes to these terms
 
-These terms may be updated as the project evolves. The current version, including the version number and "last updated" date, is always visible at the top of this document. Material changes will be reflected in the commit history on the project repository.
+These terms may be updated as the project evolves. The current version, including the version number and "last updated" date, is always visible at the top of this document. Material changes will be reflected in the commit history on the project repository. The underlying licence (GPL-3.0) can only be changed with the agreement of contributors who hold copyright in the relevant code.
 
 ---
 

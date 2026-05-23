@@ -16,7 +16,7 @@
 		"devupdate": "npm update && cargo update --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
 		"tauri": "tauri"
 	},
-	"license": "MIT",
+	"license": "GPL-3.0-only",
 	"dependencies": {
 		"@tailwindcss/vite": "^4.2.2",
 		"@tauri-apps/api": "^2",

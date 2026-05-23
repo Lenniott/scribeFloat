@@ -187,4 +187,4 @@ context/                   Architecture and design documentation
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). Plain-English terms of use (including recording-law responsibilities) live in [TERMS.md](TERMS.md).

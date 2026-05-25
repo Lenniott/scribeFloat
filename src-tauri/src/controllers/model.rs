@@ -1,9 +1,37 @@
 use crate::services::config::ConfigService;
-use crate::services::model::ModelService;
+use crate::services::model::{ModelService, DEFAULT_MODEL_ID};
 use crate::types::ModelListItem;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
+
+/// First-run decision for the default-model installer.
+#[derive(Debug, PartialEq, Eq)]
+pub enum InstallPlan {
+    /// A model is already downloaded and selected — nothing to do.
+    Noop,
+    /// Some model is downloaded but none is selected — select the first one.
+    SelectExisting(String),
+    /// Nothing is downloaded — install [`DEFAULT_MODEL_ID`].
+    DownloadDefault,
+}
+
+/// Pure decision function: given the current config and the list of downloaded model ids,
+/// returns what the installer should do. Extracted from [`ModelController::ensure_default_model`]
+/// so it can be unit-tested without spawning Tauri tasks or hitting the network.
+fn plan_default_install(selected_id: Option<&str>, downloaded_ids: &[String]) -> InstallPlan {
+    if downloaded_ids.is_empty() {
+        return InstallPlan::DownloadDefault;
+    }
+    let selected_present = selected_id
+        .map(|id| downloaded_ids.iter().any(|d| d == id))
+        .unwrap_or(false);
+    if selected_present {
+        InstallPlan::Noop
+    } else {
+        InstallPlan::SelectExisting(downloaded_ids[0].clone())
+    }
+}
 
 pub struct ModelController {
     model: Arc<ModelService>,
@@ -89,6 +117,61 @@ impl ModelController {
 
     pub fn remove_vad_model(&self) -> Result<(), String> {
         self.model.delete_vad_model()
+    }
+
+    /// Fire-and-forget: on first run, make sure a usable transcription model exists.
+    /// Selects the first downloaded model if none is selected, or downloads
+    /// [`DEFAULT_MODEL_ID`] if nothing is on disk. Failures surface through the
+    /// existing `model://download-error` event.
+    pub fn ensure_default_model(self: Arc<Self>, app: AppHandle) {
+        let cfg = self.config.get();
+        let downloaded: Vec<String> = self
+            .model
+            .model_catalog()
+            .iter()
+            .filter(|item| self.model.model_downloaded(item.id))
+            .map(|item| item.id.to_string())
+            .collect();
+
+        match plan_default_install(cfg.selected_model_id.as_deref(), &downloaded) {
+            InstallPlan::Noop => {}
+            InstallPlan::SelectExisting(id) => {
+                if let Err(err) = self.select_model(id) {
+                    eprintln!("ensure_default_model: select failed: {err}");
+                }
+            }
+            InstallPlan::DownloadDefault => {
+                let me = Arc::clone(&self);
+                let app_clone = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    match me.model.download_model(DEFAULT_MODEL_ID, &app_clone).await {
+                        Ok(()) => {
+                            if let Err(err) = me.select_model(DEFAULT_MODEL_ID.to_string()) {
+                                eprintln!("ensure_default_model: post-download select failed: {err}");
+                            }
+                        }
+                        Err(err) => {
+                            eprintln!("ensure_default_model: download failed: {err}");
+                            app_clone
+                                .emit("model://download-error", err.to_string())
+                                .ok();
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    /// Returns the model path to warm-load at startup, or `None` if there is nothing
+    /// usable yet (no selection, or the selected file is missing).
+    pub fn resolve_preload_path(&self) -> Option<PathBuf> {
+        let id = self.config.get().selected_model_id?;
+        let path = self.model.model_path_for_id(&id)?;
+        if self.model.model_available(&path) {
+            Some(path)
+        } else {
+            None
+        }
     }
 
     pub fn download_vad_model(self: Arc<Self>, app: AppHandle) -> Result<(), String> {
@@ -197,6 +280,70 @@ mod tests {
             .remove_model("tiny-en-q5".to_string())
             .expect_err("should reject missing file");
         assert!(err.contains("not downloaded"));
+    }
+
+    #[test]
+    fn plan_noop_when_selected_and_downloaded() {
+        let plan = plan_default_install(Some("tiny-en-q5"), &["tiny-en-q5".to_string()]);
+        assert_eq!(plan, InstallPlan::Noop);
+    }
+
+    #[test]
+    fn plan_selects_first_when_downloaded_but_none_selected() {
+        let plan = plan_default_install(None, &["base-en-q5".to_string()]);
+        assert_eq!(plan, InstallPlan::SelectExisting("base-en-q5".to_string()));
+    }
+
+    #[test]
+    fn plan_downloads_default_when_nothing_present() {
+        let plan = plan_default_install(None, &[]);
+        assert_eq!(plan, InstallPlan::DownloadDefault);
+    }
+
+    #[test]
+    fn plan_downloads_default_when_selected_but_file_missing() {
+        let plan = plan_default_install(Some("tiny-en-q5"), &[]);
+        assert_eq!(plan, InstallPlan::DownloadDefault);
+    }
+
+    #[test]
+    fn resolve_preload_path_none_when_no_model_selected() {
+        let models_dir = temp_dir("liscribe-preload-models");
+        let config_path = temp_dir("liscribe-preload-config").join("config.json");
+        let model = ModelService::new(models_dir);
+        let config = ConfigService::load(config_path).expect("load config");
+        let ctrl = ModelController::new(model, config);
+        assert!(ctrl.resolve_preload_path().is_none());
+    }
+
+    #[test]
+    fn resolve_preload_path_none_when_selected_file_missing() {
+        let models_dir = temp_dir("liscribe-preload-models");
+        let config_path = temp_dir("liscribe-preload-config").join("config.json");
+        let model = ModelService::new(models_dir);
+        let config = ConfigService::load(config_path).expect("load config");
+        let ctrl = ModelController::new(Arc::clone(&model), Arc::clone(&config));
+        config
+            .update(|cfg| {
+                cfg.selected_model_id = Some("tiny-en-q5".to_string());
+            })
+            .expect("write selected id");
+        assert!(ctrl.resolve_preload_path().is_none());
+    }
+
+    #[test]
+    fn resolve_preload_path_returns_path_when_downloaded_and_selected() {
+        let models_dir = temp_dir("liscribe-preload-models");
+        let config_path = temp_dir("liscribe-preload-config").join("config.json");
+        let tiny_path = models_dir.join("ggml-tiny.en-q5_1.bin");
+        std::fs::write(&tiny_path, [9, 9, 9]).expect("write fixture");
+
+        let model = ModelService::new(models_dir.clone());
+        let config = ConfigService::load(config_path).expect("load config");
+        let ctrl = ModelController::new(Arc::clone(&model), Arc::clone(&config));
+
+        ctrl.select_model("tiny-en-q5".to_string()).expect("select");
+        assert_eq!(ctrl.resolve_preload_path(), Some(tiny_path));
     }
 
     #[test]

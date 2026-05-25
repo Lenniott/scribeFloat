@@ -415,9 +415,9 @@ pub fn run() {
 
             let update = services::update::UpdateService::new();
 
-            app.manage(model); // shared model service
+            app.manage(Arc::clone(&model)); // shared model service
             app.manage(config); // shared config service
-            app.manage(model_ctrl); // model command orchestration
+            app.manage(Arc::clone(&model_ctrl)); // model command orchestration
             app.manage(settings_ctrl); // settings orchestration
             app.manage(ctrl); // for scribe commands
             app.manage(Arc::clone(&dictate_ctrl)); // for dictate commands
@@ -426,11 +426,21 @@ pub fn run() {
 
             dictate_ctrl.start_key_listener();
 
+            if let Some(preload_path) = model_ctrl.resolve_preload_path() {
+                let model_for_preload = Arc::clone(&model);
+                tauri::async_runtime::spawn_blocking(move || {
+                    if let Err(err) = model_for_preload.preload(&preload_path) {
+                        eprintln!("model preload skipped: {err}");
+                    }
+                });
+            }
+
             if is_first_run {
                 open_settings_window(app.handle())?;
                 app.state::<Arc<controllers::settings::SettingsController>>()
                     .complete_onboarding()
                     .ok();
+                Arc::clone(&model_ctrl).ensure_default_model(app.handle().clone());
             }
             prewarm_scribe_window(app.handle());
             prewarm_transcribe_window(app.handle());

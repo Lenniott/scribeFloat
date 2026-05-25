@@ -17,7 +17,7 @@ const standaloneTranscribe = viewParam === "transcribe";
 
 	let appScreen = $state<AppScreen>("recording");
 	let processingTitle = $state("Recording");
-	/** One-shot: set true only when opening Scribe from the app (see CLAUDE.md “Scribe recording auto-start”). */
+	/** Kept inert per CLAUDE.md "Scribe recording auto-start" — opening Scribe lands at idle. */
 	let autoStartRecording = $state(false);
 
 	function beginProcessing(title: string) {
@@ -26,7 +26,6 @@ const standaloneTranscribe = viewParam === "transcribe";
 	}
 
 	function returnToRecording() {
-		autoStartRecording = true;
 		appScreen = "recording";
 	}
 
@@ -38,7 +37,6 @@ const standaloneTranscribe = viewParam === "transcribe";
 	onMount(() => {
 		if (standaloneSettings) return;
 		void listen('scribe://open-requested', () => {
-			autoStartRecording = true;
 			appScreen = "recording";
 		});
 	});

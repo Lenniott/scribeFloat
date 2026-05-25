@@ -1,7 +1,7 @@
 use crate::types::{ModelDownloadEvent, Segment};
 use anyhow::{anyhow, Context, Result};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use whisper_rs::{
@@ -10,6 +10,7 @@ use whisper_rs::{
 };
 
 pub const SMALL_MODEL_FILENAME: &str = "ggml-small.en-q5_1.bin";
+pub const DEFAULT_MODEL_ID: &str = "tiny-en-q5";
 
 pub const VAD_MODEL_FILENAME: &str = "ggml-silero-v6.2.0.bin";
 const VAD_MODEL_URL: &str =
@@ -78,11 +79,15 @@ const MODEL_CATALOG: [ModelCatalogItem; 5] = [
 
 pub struct ModelService {
     models_dir: PathBuf,
+    cached_context: Mutex<Option<(PathBuf, Arc<WhisperContext>)>>,
 }
 
 impl ModelService {
     pub fn new(models_dir: PathBuf) -> Arc<Self> {
-        Arc::new(Self { models_dir })
+        Arc::new(Self {
+            models_dir,
+            cached_context: Mutex::new(None),
+        })
     }
 
     /// Path where the default small model lives on disk.
@@ -368,12 +373,7 @@ impl ModelService {
     where
         F: FnMut(f32) + 'static,
     {
-        let path_str = model_path
-            .to_str()
-            .ok_or_else(|| anyhow!("model path is not valid UTF-8"))?;
-
-        let ctx = WhisperContext::new_with_params(path_str, WhisperContextParameters::default())
-            .map_err(|e| anyhow!("failed to load model at {path_str}: {e:?}"))?;
+        let ctx = self.get_or_load_context(model_path)?;
 
         let mut state = ctx
             .create_state()
@@ -413,6 +413,32 @@ impl ModelService {
         }
 
         Ok(segments)
+    }
+
+    /// Best-effort warm load of `model_path` into the in-process cache.
+    /// Safe to call from `spawn_blocking`; cheap if the model is already cached.
+    pub fn preload(&self, model_path: &Path) -> Result<()> {
+        self.get_or_load_context(model_path).map(|_| ())
+    }
+
+    /// Returns the cached `WhisperContext` for `model_path`, loading and caching it
+    /// on a miss. The cache holds a single slot — switching paths evicts the prior entry.
+    fn get_or_load_context(&self, model_path: &Path) -> Result<Arc<WhisperContext>> {
+        if let Some(ctx) = cache_lookup(&self.cached_context, model_path) {
+            return Ok(ctx);
+        }
+        let path_str = model_path
+            .to_str()
+            .ok_or_else(|| anyhow!("model path is not valid UTF-8"))?;
+        let ctx = WhisperContext::new_with_params(path_str, WhisperContextParameters::default())
+            .map_err(|e| anyhow!("failed to load model at {path_str}: {e:?}"))?;
+        let ctx = Arc::new(ctx);
+        cache_store(
+            &self.cached_context,
+            model_path.to_path_buf(),
+            Arc::clone(&ctx),
+        );
+        Ok(ctx)
     }
 
     /// Merge dual-source segments chronologically and label channel origin.
@@ -468,6 +494,20 @@ fn progress_from_segment_end(end_timestamp: i64, total_ms: f32) -> f32 {
     ((end_timestamp as f32 * 10.0) / total_ms).clamp(0.0, 1.0)
 }
 
+fn cache_lookup<T: Clone>(slot: &Mutex<Option<(PathBuf, T)>>, path: &Path) -> Option<T> {
+    let guard = slot.lock().ok()?;
+    guard
+        .as_ref()
+        .filter(|(p, _)| p.as_path() == path)
+        .map(|(_, v)| v.clone())
+}
+
+fn cache_store<T>(slot: &Mutex<Option<(PathBuf, T)>>, path: PathBuf, value: T) {
+    if let Ok(mut guard) = slot.lock() {
+        *guard = Some((path, value));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -521,6 +561,44 @@ mod tests {
         assert_eq!(progress_from_segment_end(50, 1_000.0), 0.5);
         assert_eq!(progress_from_segment_end(100, 1_000.0), 1.0);
         assert_eq!(progress_from_segment_end(150, 1_000.0), 1.0);
+    }
+
+    #[test]
+    fn cache_lookup_returns_none_when_empty() {
+        let slot: Mutex<Option<(PathBuf, Arc<u32>)>> = Mutex::new(None);
+        assert!(cache_lookup(&slot, Path::new("/a")).is_none());
+    }
+
+    #[test]
+    fn cache_lookup_returns_value_on_path_match() {
+        let value = Arc::new(42u32);
+        let slot: Mutex<Option<(PathBuf, Arc<u32>)>> =
+            Mutex::new(Some((PathBuf::from("/a"), Arc::clone(&value))));
+        let got = cache_lookup(&slot, Path::new("/a")).expect("hit");
+        assert!(Arc::ptr_eq(&got, &value));
+    }
+
+    #[test]
+    fn cache_lookup_returns_none_on_path_miss() {
+        let value = Arc::new(42u32);
+        let slot: Mutex<Option<(PathBuf, Arc<u32>)>> =
+            Mutex::new(Some((PathBuf::from("/a"), value)));
+        assert!(cache_lookup(&slot, Path::new("/b")).is_none());
+    }
+
+    #[test]
+    fn cache_store_replaces_on_different_path() {
+        let v1 = Arc::new(1u32);
+        let v2 = Arc::new(2u32);
+        let slot: Mutex<Option<(PathBuf, Arc<u32>)>> =
+            Mutex::new(Some((PathBuf::from("/a"), Arc::clone(&v1))));
+        cache_store(&slot, PathBuf::from("/b"), Arc::clone(&v2));
+        let got_b = cache_lookup(&slot, Path::new("/b")).expect("b after store");
+        assert!(Arc::ptr_eq(&got_b, &v2));
+        assert!(
+            cache_lookup(&slot, Path::new("/a")).is_none(),
+            "previous entry evicted"
+        );
     }
 
     #[test]

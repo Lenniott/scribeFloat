@@ -13,6 +13,96 @@ use tauri::{
     WindowEvent,
 };
 
+/// One-shot startup log. Captures the CPU, core counts, RAM, arch, and app version so
+/// user-reported performance issues can be correlated with their hardware without us
+/// having to play 20 questions. Stays in stderr — no telemetry leaves the device.
+fn log_system_info() {
+    let arch = std::env::consts::ARCH;
+    let os = std::env::consts::OS;
+    let version = env!("CARGO_PKG_VERSION");
+    let physical = num_cpus::get_physical();
+    let logical = num_cpus::get();
+    let cpu_brand = cpu_brand_string().unwrap_or_else(|| "unknown".to_string());
+    let ram_gb = total_ram_bytes()
+        .map(|b| format!("{:.1} GB", b as f64 / 1_073_741_824.0))
+        .unwrap_or_else(|| "?".to_string());
+
+    eprintln!(
+        "[startup] scribefloat v{version} os={os} arch={arch} cpu=\"{cpu_brand}\" cores={physical}p/{logical}l ram={ram_gb}"
+    );
+}
+
+#[cfg(target_os = "macos")]
+fn cpu_brand_string() -> Option<String> {
+    sysctl_string(c"machdep.cpu.brand_string")
+}
+
+#[cfg(target_os = "macos")]
+fn total_ram_bytes() -> Option<u64> {
+    sysctl_u64(c"hw.memsize")
+}
+
+#[cfg(target_os = "macos")]
+fn sysctl_string(name: &std::ffi::CStr) -> Option<String> {
+    let mut len: libc::size_t = 0;
+    // First call: ask for the length.
+    // SAFETY: passing null buffer to sysctlbyname is the documented way to query length.
+    let rc = unsafe { libc::sysctlbyname(name.as_ptr(), std::ptr::null_mut(), &mut len, std::ptr::null_mut(), 0) };
+    if rc != 0 || len == 0 {
+        return None;
+    }
+    let mut buf = vec![0u8; len];
+    // SAFETY: buf has `len` bytes; sysctlbyname fills it and updates `len`.
+    let rc = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            buf.as_mut_ptr() as *mut libc::c_void,
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if rc != 0 {
+        return None;
+    }
+    // sysctl strings include a trailing NUL.
+    if let Some(&0) = buf.last() {
+        buf.pop();
+    }
+    String::from_utf8(buf).ok()
+}
+
+#[cfg(target_os = "macos")]
+fn sysctl_u64(name: &std::ffi::CStr) -> Option<u64> {
+    let mut value: u64 = 0;
+    let mut len: libc::size_t = std::mem::size_of::<u64>();
+    // SAFETY: `value` is properly sized for an integer sysctl read.
+    let rc = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            &mut value as *mut u64 as *mut libc::c_void,
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if rc == 0 {
+        Some(value)
+    } else {
+        None
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn cpu_brand_string() -> Option<String> {
+    None
+}
+
+#[cfg(not(target_os = "macos"))]
+fn total_ram_bytes() -> Option<u64> {
+    None
+}
+
 pub(crate) const SCRIBE_WINDOW_LABEL: &str = "scribe";
 const TRANSCRIBE_WINDOW_LABEL: &str = "transcribe";
 const SETTINGS_WINDOW_LABEL: &str = "settings";
@@ -328,6 +418,8 @@ fn open_or_focus_window(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    log_system_info();
+
     let audio = services::audio::AudioService::new();
     let output = services::output::OutputService::new();
     let permissions = services::permissions::PermissionsService::new();

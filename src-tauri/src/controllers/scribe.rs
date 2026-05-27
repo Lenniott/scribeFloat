@@ -44,6 +44,11 @@ struct ActiveSession {
 /// BlackHole outputs exact zeros when nothing is playing; this margin covers near-silence noise.
 const SPEAKER_SILENCE_THRESHOLD: f32 = 1e-3;
 
+/// Model IDs eligible for record-start preload. Limited to the small models (≤ ~80 MB
+/// resident) so we don't spike memory on a system where the user just wants to hit record.
+/// Larger models load on first transcribe and stay cached for the rest of the session.
+const PRELOAD_ELIGIBLE_MODEL_IDS: &[&str] = &["tiny-en-q5", "base-en-q5"];
+
 /// Intermediate state produced by prepare_audio and consumed by run_transcription / write_outputs.
 struct PreparedAudio {
     session_dir: PathBuf,
@@ -181,7 +186,31 @@ impl ScribeController {
         });
         inner.notes.clear();
         self.emit_state(&inner);
+        drop(inner);
+        self.spawn_record_start_preload(&cfg);
         Ok(())
+    }
+
+    /// Eagerly load the small models into the shared context cache while recording is in
+    /// progress, so transcription on stop starts instantly. No-op for larger models — those
+    /// load on demand to avoid pinning hundreds of MB of RAM speculatively.
+    fn spawn_record_start_preload(&self, cfg: &Config) {
+        let path = match preload_path_for_config(cfg, &self.model) {
+            Some(p) => p,
+            None => return,
+        };
+        if !self.model.model_available(&path) {
+            return;
+        }
+        let model = Arc::clone(&self.model);
+        tauri::async_runtime::spawn(async move {
+            let _ = tokio::task::spawn_blocking(move || {
+                if let Err(e) = model.get_or_load_context(&path) {
+                    eprintln!("[scribe] record-start preload failed: {e}");
+                }
+            })
+            .await;
+        });
     }
 
     /// Transition RECORDING → IDLE. Discards the audio buffer and removes the
@@ -845,6 +874,20 @@ fn resolve_model_path(config: &Config, model: &ModelService) -> PathBuf {
     }
 }
 
+/// Returns the on-disk path for the configured Scribe model **only when it is in the
+/// preload allowlist**. `scribe_model_path` (a user-supplied custom file) is intentionally
+/// excluded — we can't know its size and don't want to pin arbitrary files in RAM.
+fn preload_path_for_config(config: &Config, model: &ModelService) -> Option<PathBuf> {
+    if config.scribe_model_path.is_some() {
+        return None;
+    }
+    let model_id = config.selected_model_id.as_deref()?;
+    if !PRELOAD_ELIGIBLE_MODEL_IDS.contains(&model_id) {
+        return None;
+    }
+    model.model_path_for_id(model_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -908,6 +951,52 @@ mod tests {
                 ScribeController::ensure_start_allowed(&state).is_ok(),
                 "start should be allowed from {state:?}"
             );
+        }
+    }
+
+    #[test]
+    fn preload_path_returns_none_for_custom_scribe_model_path() {
+        let models_dir =
+            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
+        let model = ModelService::new(models_dir);
+        let config = Config {
+            scribe_model_path: Some("/tmp/custom.bin".to_string()),
+            selected_model_id: Some("tiny-en-q5".to_string()),
+            ..Config::default()
+        };
+        assert!(preload_path_for_config(&config, model.as_ref()).is_none());
+    }
+
+    #[test]
+    fn preload_path_returns_none_for_larger_models() {
+        let models_dir =
+            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
+        let model = ModelService::new(models_dir);
+        for id in ["small-en-q5", "medium-en-q5", "large-v3-turbo-q5"] {
+            let config = Config {
+                selected_model_id: Some(id.to_string()),
+                ..Config::default()
+            };
+            assert!(
+                preload_path_for_config(&config, model.as_ref()).is_none(),
+                "{id} should not be eligible for preload"
+            );
+        }
+    }
+
+    #[test]
+    fn preload_path_returns_some_for_tiny_and_base() {
+        let models_dir =
+            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
+        let model = ModelService::new(models_dir.clone());
+        for id in ["tiny-en-q5", "base-en-q5"] {
+            let config = Config {
+                selected_model_id: Some(id.to_string()),
+                ..Config::default()
+            };
+            let p = preload_path_for_config(&config, model.as_ref())
+                .unwrap_or_else(|| panic!("{id} should be eligible"));
+            assert!(p.starts_with(&models_dir), "preload path under models dir");
         }
     }
 

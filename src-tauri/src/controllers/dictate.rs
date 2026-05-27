@@ -45,6 +45,10 @@ const TOGGLE_STOP_COOLDOWN_MS: u128 = 1000;
 /// How long (ms) the Done panel stays visible before auto-dismissing.
 const DONE_DISMISS_MS: u64 = 2500;
 
+/// Model IDs eligible for record-start preload. Mirrors `controllers::scribe` — see there
+/// for the size rationale.
+const PRELOAD_ELIGIBLE_MODEL_IDS: &[&str] = &["tiny-en-q5", "base-en-q5"];
+
 // ── Key tracker state machine ────────────────────────────────────────────────
 
 #[derive(Debug)]
@@ -444,7 +448,31 @@ impl DictateController {
         inner.state = DictateState::Recording;
         inner.session = Some(DictateMicSession { mic });
         self.emit_state_event(&inner);
+        drop(inner);
+        self.spawn_record_start_preload();
         Ok(())
+    }
+
+    /// Eagerly load the small models into the shared context cache while recording is in
+    /// progress. Mirrors `ScribeController::spawn_record_start_preload`.
+    fn spawn_record_start_preload(&self) {
+        let cfg = self.config.get();
+        let path = match preload_path_for_dictate(&cfg, &self.model) {
+            Some(p) => p,
+            None => return,
+        };
+        if !self.model.model_available(&path) {
+            return;
+        }
+        let model = Arc::clone(&self.model);
+        tauri::async_runtime::spawn(async move {
+            let _ = tokio::task::spawn_blocking(move || {
+                if let Err(e) = model.get_or_load_context(&path) {
+                    eprintln!("[dictate] record-start preload failed: {e}");
+                }
+            })
+            .await;
+        });
     }
 
     /// Cancel from Recording or Done state → Idle. Discards audio. Hides window.
@@ -818,6 +846,20 @@ fn resolve_dictate_model_path(config: &Config, model: &ModelService) -> PathBuf 
     }
 }
 
+/// Returns the on-disk path for the configured Dictate model **only when it is in the
+/// preload allowlist**. Dictate has its own `dictate_model_id` that overrides the global
+/// `selected_model_id`; both are checked.
+fn preload_path_for_dictate(config: &Config, model: &ModelService) -> Option<PathBuf> {
+    let model_id = config
+        .dictate_model_id
+        .as_deref()
+        .or(config.selected_model_id.as_deref())?;
+    if !PRELOAD_ELIGIBLE_MODEL_IDS.contains(&model_id) {
+        return None;
+    }
+    model.model_path_for_id(model_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -827,6 +869,55 @@ mod tests {
     // Using addition rather than real sleeps keeps the tests instant and deterministic.
     fn ms_ago(ms: u64) -> Instant {
         Instant::now() - Duration::from_millis(ms)
+    }
+
+    // ── Preload eligibility ──────────────────────────────────────────────────
+
+    fn fake_model_service() -> Arc<ModelService> {
+        ModelService::new(
+            std::env::temp_dir().join(format!("liscribe-dictate-test-{}", uuid::Uuid::new_v4())),
+        )
+    }
+
+    #[test]
+    fn dictate_preload_path_prefers_dictate_model_id_over_global() {
+        let model = fake_model_service();
+        let config = Config {
+            dictate_model_id: Some("tiny-en-q5".to_string()),
+            selected_model_id: Some("small-en-q5".to_string()),
+            ..Config::default()
+        };
+        let path = preload_path_for_dictate(&config, model.as_ref()).expect("eligible");
+        assert!(path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap()
+            .contains("tiny"));
+    }
+
+    #[test]
+    fn dictate_preload_path_falls_back_to_selected_when_no_dictate_override() {
+        let model = fake_model_service();
+        let config = Config {
+            selected_model_id: Some("base-en-q5".to_string()),
+            ..Config::default()
+        };
+        assert!(preload_path_for_dictate(&config, model.as_ref()).is_some());
+    }
+
+    #[test]
+    fn dictate_preload_path_returns_none_for_larger_models() {
+        let model = fake_model_service();
+        for id in ["small-en-q5", "medium-en-q5", "large-v3-turbo-q5"] {
+            let config = Config {
+                dictate_model_id: Some(id.to_string()),
+                ..Config::default()
+            };
+            assert!(
+                preload_path_for_dictate(&config, model.as_ref()).is_none(),
+                "{id} should not be eligible"
+            );
+        }
     }
 
     // ── First press behaviour ────────────────────────────────────────────────

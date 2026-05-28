@@ -117,13 +117,3 @@ pub fn capture_frontmost_pid_excluding_self() -> Option<i32> {
 pub fn activate_pid_for_paste(pid: i32) -> Result<(), String> {
     macos::activate_pid(pid)
 }
-
-#[cfg(not(target_os = "macos"))]
-pub fn capture_frontmost_pid_excluding_self() -> Option<i32> {
-    None
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn activate_pid_for_paste(_pid: i32) -> Result<(), String> {
-    Ok(())
-}

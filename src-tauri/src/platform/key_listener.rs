@@ -153,9 +153,6 @@ mod macos {
 mod windows {
     use super::{KeyEvent, KeyEventKind};
 
-    // Virtual key codes
-    const VK_LCONTROL: u16 = 0xA2;
-
     pub fn start<F: Fn(KeyEvent) + Send + 'static>(callback: F) {
         // On Windows we still use rdev since the TSM issue is macOS-only.
         std::thread::spawn(move || {

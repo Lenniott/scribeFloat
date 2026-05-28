@@ -256,6 +256,7 @@ impl DictateController {
     fn capture_paste_target_then_open_overlay(this: Arc<Self>) -> Arc<Mutex<Result<(), String>>> {
         let open_result = Arc::new(Mutex::new(Ok(())));
         let open_clone = Arc::clone(&open_result);
+        #[cfg(target_os = "macos")]
         let store = Arc::clone(&this.restore_paste_target_pid);
         let app_open = this.app.clone();
         let app_thread = this.app.clone();
@@ -851,6 +852,7 @@ impl DictateController {
         auto_enter: bool,
         expected_text: String,
     ) -> Result<(Result<(), String>, Result<(), String>), String> {
+        #[cfg(target_os = "macos")]
         let restore_pid = self
             .restore_paste_target_pid
             .lock()

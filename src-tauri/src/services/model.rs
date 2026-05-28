@@ -420,13 +420,13 @@ impl ModelService {
         guard.get(model_path).map(Arc::clone)
     }
 
-    fn load_lock_for(&self, path_key: &PathBuf) -> Arc<Mutex<()>> {
+    fn load_lock_for(&self, path_key: &Path) -> Arc<Mutex<()>> {
         let mut locks = self
             .loading_locks
             .lock()
             .unwrap_or_else(|p| p.into_inner());
         locks
-            .entry(path_key.clone())
+            .entry(path_key.to_path_buf())
             .or_insert_with(|| Arc::new(Mutex::new(())))
             .clone()
     }

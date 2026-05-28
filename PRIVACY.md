@@ -171,7 +171,7 @@ Revoking a permission does not delete any existing data. The affected feature de
 |------|----------|--------|
 | App configuration | OS app-data dir (`config.json`) | JSON |
 | Whisper model files | OS app-data dir (`models/`) | Binary (ggml) |
-| Transcripts | User save folder (default: `~/Documents/ScribeFloat/`) | Markdown (`.md`) |
+| Transcripts | User save folder (default: `~/Documents/transcripts_scribefloat/`) | Markdown (`.md`) |
 | Audio recordings | User save folder, inside per-session subfolders | WAV |
 | Dictate history log | User save folder (`dictate.jsonl`) | JSONL |
 | Dictate audio buffer | RAM only | In-process memory |
@@ -326,7 +326,7 @@ To completely remove all application data from a device:
    - **macOS**: `rm -rf ~/Library/Application\ Support/com.benjamin.scribefloat-v8/`
    - **Windows**: `rmdir /s "%APPDATA%\com.benjamin.scribefloat-v8"`
 4. Delete the transcript save folder (default):
-   - **macOS**: `rm -rf ~/Documents/ScribeFloat/`
+   - **macOS**: `rm -rf ~/Documents/transcripts_scribefloat/`
    - **Windows**: `rmdir /s "%USERPROFILE%\Documents\ScribeFloat"`
 
 After these steps, no application data remains on the device.

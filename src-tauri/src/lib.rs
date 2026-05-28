@@ -531,6 +531,34 @@ pub fn run() {
             // call it. Sync once after prewarm so a tray-only start hides the Dock (plist LSUIElement
             // is not sufficient on its own).
             platform::window_impl::sync_activation_policy(app.handle());
+
+            let save_folder = app.state::<Arc<services::config::ConfigService>>().get().save_folder;
+            match output.scan_incomplete_scribe_sessions(&save_folder) {
+                Ok(sessions) => {
+                    for info in sessions {
+                        eprintln!(
+                            "[recovery] incomplete scribe session at {} (state: {})",
+                            info.session_dir, info.state
+                        );
+                        let _ = app.emit("scribe://recovery-found", info);
+                    }
+                }
+                Err(e) => eprintln!("[recovery] scribe session scan failed: {e}"),
+            }
+            if let Ok(temp_dir) = app.path().app_local_data_dir().map(|d| d.join("dictate_temp")) {
+                match output.scan_and_salvage_dictate_temp_wavs(&temp_dir, &save_folder) {
+                    Ok(salvaged) => {
+                        for path in salvaged {
+                            eprintln!(
+                                "[recovery] salvaged dictate wav to {}",
+                                path.display()
+                            );
+                        }
+                    }
+                    Err(e) => eprintln!("[recovery] dictate temp scan failed: {e}"),
+                }
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -636,8 +664,18 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app_handle, event| {
+        .run(|app_handle, event| {
             if let RunEvent::ExitRequested { code, api, .. } = event {
+                if let Some(ctrl) =
+                    app_handle.try_state::<Arc<controllers::scribe::ScribeController>>()
+                {
+                    ctrl.finalize_capture_on_shutdown();
+                }
+                if let Some(ctrl) =
+                    app_handle.try_state::<Arc<controllers::dictate::DictateController>>()
+                {
+                    ctrl.finalize_capture_on_shutdown();
+                }
                 // Tray-backed app: default event loop exits when the last window is torn down.
                 // Programmatic `app.exit(n)` uses `Some(n)` and must not be prevented.
                 if code.is_none() {

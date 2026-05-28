@@ -105,7 +105,7 @@ Config is stored as JSON in the OS app-data directory:
 - **macOS**: `~/Library/Application Support/com.benjamin.scribefloat-v8/config.json`
 - **Windows**: `%APPDATA%\com.benjamin.scribefloat-v8\config.json`
 
-Transcripts and audio files are saved to `~/Documents/ScribeFloat/` by default. This can be changed in **Settings → General**.
+Transcripts and audio files are saved to `~/Documents/transcripts_scribefloat/` by default. This can be changed in **Settings → General**.
 
 ---
 

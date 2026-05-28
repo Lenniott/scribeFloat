@@ -1,13 +1,13 @@
 use anyhow::{anyhow, Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use hound::{SampleFormat, WavSpec, WavWriter};
-use std::io::BufWriter;
+use std::fs::{File, OpenOptions};
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Target sample rate required by Whisper for transcription.
 pub const WHISPER_SAMPLE_RATE: u32 = 16_000;
@@ -25,6 +25,9 @@ const WRITER_POLL_MS: u64 = 100;
 /// down its audio unit asynchronously, so the callback (and its `Sender` clone) may live
 /// briefly after `drop(stream)`. 200 ms covers that tail without risk of hanging.
 const WRITER_DRAIN_TIMEOUT_MS: u64 = 200;
+/// How often the writer thread flushes PCM to disk and patches the WAV RIFF header so a
+/// crash mid-recording leaves a playable file.
+const WAV_CHECKPOINT_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Handle for an active capture session that streams mono f32 PCM to a 16 kHz WAV file on
 /// disk. The cpal audio callback only mixes-to-mono and pushes into a channel; a separate
@@ -38,18 +41,12 @@ pub struct MicSession {
     /// Set by `stop_and_finalize` to make the writer exit its poll loop.
     stop_signal: Arc<AtomicBool>,
     wav_path: PathBuf,
-    sample_rate: u32,
 }
 
 // cpal::Stream is Send on all supported platforms (macOS + Windows).
 unsafe impl Send for MicSession {}
 
 impl MicSession {
-    /// Native input sample rate before resampling — exposed so callers can log device info.
-    pub fn native_sample_rate(&self) -> u32 {
-        self.sample_rate
-    }
-
     /// Path of the WAV file being written. Callers cache this before `stop_and_finalize`
     /// when they need to clean up a partial file on a finalize error (the consuming method
     /// drops `self`, so the path would otherwise be unreachable).
@@ -212,11 +209,17 @@ fn start_capture(
     if let Some(parent) = wav_path.parent() {
         std::fs::create_dir_all(parent).context("create capture parent dir")?;
     }
-    let writer = WavWriter::create(&wav_path, wav_spec_int16()).context("create WAV writer")?;
+    let streaming = match StreamingWavWriter::create(wav_path.clone()) {
+        Ok(w) => w,
+        Err(e) => {
+            let _ = std::fs::remove_file(&wav_path);
+            return Err(e);
+        }
+    };
 
     let (sender, receiver) = mpsc::channel::<Vec<f32>>();
     let stop_signal = Arc::new(AtomicBool::new(false));
-    let writer_handle = spawn_writer_thread(writer, receiver, sample_rate, Arc::clone(&stop_signal));
+    let writer_handle = spawn_writer_thread(streaming, receiver, sample_rate, Arc::clone(&stop_signal));
 
     let stream_result = build_input_stream(
         &device,
@@ -253,7 +256,6 @@ fn start_capture(
         writer_handle: Some(writer_handle),
         stop_signal,
         wav_path,
-        sample_rate,
     })
 }
 
@@ -306,12 +308,55 @@ fn build_input_stream(
     Ok(stream)
 }
 
-fn wav_spec_int16() -> WavSpec {
-    WavSpec {
-        channels: 1,
-        sample_rate: WHISPER_SAMPLE_RATE,
-        bits_per_sample: 16,
-        sample_format: SampleFormat::Int,
+/// Append-only 16-bit PCM WAV writer with periodic header checkpointing.
+struct StreamingWavWriter {
+    file: BufWriter<File>,
+    path: PathBuf,
+    sample_count: u64,
+    last_checkpoint: Instant,
+}
+
+impl StreamingWavWriter {
+    fn create(path: PathBuf) -> Result<Self> {
+        crate::services::output::write_streaming_wav_placeholder(&path, WHISPER_SAMPLE_RATE, 1, 16)?;
+        let file = OpenOptions::new().append(true).open(&path).context("open wav for append")?;
+        Ok(Self {
+            file: BufWriter::new(file),
+            path,
+            sample_count: 0,
+            last_checkpoint: Instant::now(),
+        })
+    }
+
+    fn write_i16_samples(&mut self, samples: &[i16]) -> Result<()> {
+        for sample in samples {
+            self.file
+                .write_all(&sample.to_le_bytes())
+                .context("write wav sample bytes")?;
+        }
+        self.sample_count += samples.len() as u64;
+        if self.last_checkpoint.elapsed() >= WAV_CHECKPOINT_INTERVAL {
+            self.checkpoint()?;
+        }
+        Ok(())
+    }
+
+    fn checkpoint(&mut self) -> Result<()> {
+        self.file.flush().context("flush wav buffer")?;
+        self.file.get_ref().sync_all().context("sync wav file")?;
+        crate::services::output::sync_wav_header(
+            &self.path,
+            WHISPER_SAMPLE_RATE,
+            1,
+            16,
+            self.sample_count,
+        )?;
+        self.last_checkpoint = Instant::now();
+        Ok(())
+    }
+
+    fn finalize(mut self) -> Result<()> {
+        self.checkpoint()
     }
 }
 
@@ -320,7 +365,7 @@ fn wav_spec_int16() -> WavSpec {
 /// — whichever comes first. After a stop, drains residual chunks for up to
 /// `WRITER_DRAIN_TIMEOUT_MS` so the tail of audio buffered by cpal is not lost.
 fn spawn_writer_thread(
-    mut writer: WavWriter<BufWriter<std::fs::File>>,
+    mut streaming: StreamingWavWriter,
     receiver: mpsc::Receiver<Vec<f32>>,
     native_rate: u32,
     stop_signal: Arc<AtomicBool>,
@@ -329,28 +374,28 @@ fn spawn_writer_thread(
         let poll = Duration::from_millis(WRITER_POLL_MS);
         loop {
             if stop_signal.load(Ordering::SeqCst) {
-                drain_remaining_chunks(&receiver, &mut writer, native_rate)?;
+                drain_remaining_chunks(&receiver, &mut streaming, native_rate)?;
                 break;
             }
             match receiver.recv_timeout(poll) {
-                Ok(chunk) => write_resampled_chunk(&chunk, native_rate, &mut writer)?,
+                Ok(chunk) => write_resampled_chunk(&chunk, native_rate, &mut streaming)?,
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
             }
         }
-        writer.finalize().context("finalize WAV")?;
+        streaming.finalize().context("finalize WAV")?;
         Ok(())
     })
 }
 
 fn drain_remaining_chunks(
     receiver: &mpsc::Receiver<Vec<f32>>,
-    writer: &mut WavWriter<BufWriter<std::fs::File>>,
+    streaming: &mut StreamingWavWriter,
     native_rate: u32,
 ) -> Result<()> {
     let drain_timeout = Duration::from_millis(WRITER_DRAIN_TIMEOUT_MS);
     while let Ok(chunk) = receiver.recv_timeout(drain_timeout) {
-        write_resampled_chunk(&chunk, native_rate, writer)?;
+        write_resampled_chunk(&chunk, native_rate, streaming)?;
     }
     Ok(())
 }
@@ -358,14 +403,14 @@ fn drain_remaining_chunks(
 fn write_resampled_chunk(
     chunk: &[f32],
     native_rate: u32,
-    writer: &mut WavWriter<BufWriter<std::fs::File>>,
+    streaming: &mut StreamingWavWriter,
 ) -> Result<()> {
     let resampled = resample_linear(chunk, native_rate, WHISPER_SAMPLE_RATE);
-    for s in resampled {
-        let sample = (s * 32767.0).clamp(-32768.0, 32767.0) as i16;
-        writer.write_sample(sample).context("write WAV sample")?;
-    }
-    Ok(())
+    let samples: Vec<i16> = resampled
+        .iter()
+        .map(|&s| (s * 32767.0).clamp(-32768.0, 32767.0) as i16)
+        .collect();
+    streaming.write_i16_samples(&samples)
 }
 
 /// Read a 16 kHz mono i16 WAV file (the format `MicSession` writes) into f32 PCM in
@@ -442,6 +487,16 @@ pub(crate) fn resample_linear(input: &[f32], from_rate: u32, to_rate: u32) -> Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hound::{SampleFormat, WavSpec, WavWriter};
+
+    fn wav_spec_int16() -> WavSpec {
+        WavSpec {
+            channels: 1,
+            sample_rate: WHISPER_SAMPLE_RATE,
+            bits_per_sample: 16,
+            sample_format: SampleFormat::Int,
+        }
+    }
 
     #[test]
     fn mix_to_mono_keeps_single_channel_samples() {

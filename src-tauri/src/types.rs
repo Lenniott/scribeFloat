@@ -234,8 +234,8 @@ fn default_true() -> bool {
 
 fn default_save_folder() -> String {
     std::env::var("HOME")
-        .map(|h| format!("{}/Documents/Liscribe", h))
-        .unwrap_or_else(|_| "/tmp/liscribe".to_string())
+        .map(|h| format!("{}/Documents/transcripts_scribefloat", h))
+        .unwrap_or_else(|_| "/tmp/transcripts_scribefloat".to_string())
 }
 
 fn default_open_scribe_hotkey() -> String {
@@ -428,6 +428,38 @@ pub enum DictateProcessingStage {
     TranscribingAudio,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionManifestState {
+    Recording,
+    Transcribing,
+    Complete,
+    Error,
+    Interrupted,
+}
+
+/// Tracks Scribe session lifecycle on disk so incomplete recordings are discoverable after a crash.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionManifest {
+    pub format_version: u8,
+    pub state: SessionManifestState,
+    pub started_at: String,
+    pub mic_wav: String,
+    #[serde(default)]
+    pub speaker_wavs: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transcript_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RecoverySessionInfo {
+    pub session_dir: String,
+    pub mic_wav: String,
+    pub state: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DictateStateEvent {
     pub state: DictateState,
@@ -448,6 +480,9 @@ pub struct DictateStateEvent {
     pub history_write_failed: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Error state only: path to salvaged WAV moved into the user's save folder.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub salvaged_wav_path: Option<String>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -464,6 +499,7 @@ impl DictateStateEvent {
             paste_failed: false,
             history_write_failed: false,
             error: None,
+            salvaged_wav_path: None,
         }
     }
 }

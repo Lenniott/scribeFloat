@@ -7,7 +7,7 @@ use crate::services::{
 use crate::services::audio::read_wav_mono_f32;
 use crate::types::{Config, DictateProcessingStage, DictateState, DictateStateEvent};
 use anyhow::{anyhow, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -477,6 +477,24 @@ impl DictateController {
         });
     }
 
+    /// Best-effort finalize of an in-progress capture when the app is quitting.
+    /// Leaves a checkpointed temp WAV for startup recovery to salvage.
+    pub fn finalize_capture_on_shutdown(&self) {
+        let session = {
+            let mut inner = self.lock();
+            if inner.state != DictateState::Recording {
+                return;
+            }
+            inner.state = DictateState::Idle;
+            inner.session.take()
+        };
+        if let Some(session) = session {
+            let _ = session.mic.stop_and_finalize();
+        }
+        self.clear_restore_paste_target_pid();
+        let _ = self.app.emit(DICTATE_AUDIO_LEVEL_EVENT, 0.0_f32);
+    }
+
     /// Cancel from Recording or Done state → Idle. Discards audio. Hides window.
     pub fn cancel(&self) -> Result<()> {
         self.clear_restore_paste_target_pid();
@@ -567,13 +585,13 @@ impl DictateController {
                     this.auto_dismiss();
                 }
                 Ok(Err(e)) => {
-                    this.set_error_state(e.to_string());
+                    this.set_error_state(e.to_string(), None);
                     tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
                     this.auto_dismiss();
                 }
                 Err(e) => {
                     eprintln!("[dictate] transcription panicked: {e}");
-                    this.set_error_state("Transcription crashed unexpectedly.".to_string());
+                    this.set_error_state("Transcription crashed unexpectedly.".to_string(), None);
                     tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
                     this.auto_dismiss();
                 }
@@ -592,25 +610,34 @@ impl DictateController {
     ) -> Result<bool> {
         let config = self.config.get();
 
-        // Finalize the disk-buffered WAV (already at 16 kHz, no in-RAM PCM during capture).
-        // Capture the path first so we can clean up even if finalize itself errors. The
-        // RAII guard handles every subsequent return path.
         let wav_path = session.mic.wav_path().to_path_buf();
-        let _cleanup = DictateTempWavCleanup(wav_path.clone());
         session.mic.stop_and_finalize()?;
-        let pcm_16k = read_wav_mono_f32(&wav_path)?;
+        let pcm_16k = match read_wav_mono_f32(&wav_path) {
+            Ok(pcm) => pcm,
+            Err(e) => {
+                let salvaged = self.salvage_dictate_wav(&wav_path);
+                self.set_error_state(
+                    format!("Could not read recording — {e}"),
+                    salvaged,
+                );
+                return Ok(false);
+            }
+        };
 
         const MIN_PCM_SAMPLES_16K: usize = WHISPER_SAMPLE_RATE as usize / 10; // 100 ms
         if pcm_16k.len() < MIN_PCM_SAMPLES_16K {
-            self.set_error_state("Recording too short — try again.".to_string());
+            self.delete_dictate_wav(&wav_path);
+            self.set_error_state("Recording too short — try again.".to_string(), None);
             return Ok(false);
         }
 
         let model_path = resolve_dictate_model_path(&config, &self.model);
 
         if !self.model.model_available(&model_path) {
+            let salvaged = self.salvage_dictate_wav(&wav_path);
             self.set_error_state(
                 "No Whisper model available. Download one in Settings → Models.".to_string(),
+                salvaged,
             );
             return Ok(false);
         }
@@ -618,7 +645,7 @@ impl DictateController {
         let vad_path = self.model.vad_model_path();
         let vad = self.model.model_available(&vad_path).then_some(vad_path.as_path());
         let app_clone = self.app.clone();
-        let segments = self.model.transcribe_pcm_with_progress(
+        let segments = match self.model.transcribe_pcm_with_progress(
             &model_path,
             &pcm_16k,
             vad,
@@ -634,14 +661,23 @@ impl DictateController {
                     )
                     .ok();
             },
-        )?;
+        ) {
+            Ok(segments) => segments,
+            Err(e) => {
+                let salvaged = self.salvage_dictate_wav(&wav_path);
+                self.set_error_state(e.to_string(), salvaged);
+                return Ok(false);
+            }
+        };
 
         if abort_flag.load(Ordering::SeqCst) {
+            self.delete_dictate_wav(&wav_path);
             self.transition_to_idle();
             return Ok(false);
         }
 
         if segments.is_empty() {
+            self.delete_dictate_wav(&wav_path);
             self.transition_to_idle();
             return Ok(false);
         }
@@ -667,7 +703,11 @@ impl DictateController {
 
         if let Err(e) = self.app.clipboard().write_text(text.clone()) {
             eprintln!("[dictate] failed to write clipboard: {e}");
-            self.set_error_state(format!("Could not write to clipboard — {e}. Transcription: {text}"));
+            self.delete_dictate_wav(&wav_path);
+            self.set_error_state(
+                format!("Could not write to clipboard — {e}. Transcription: {text}"),
+                None,
+            );
             return Ok(true);
         }
 
@@ -691,6 +731,8 @@ impl DictateController {
         } else {
             self.clear_restore_paste_target_pid();
         }
+
+        self.delete_dictate_wav(&wav_path);
 
         {
             let mut inner = self.lock();
@@ -731,7 +773,7 @@ impl DictateController {
         self.hide_window();
     }
 
-    fn set_error_state(&self, msg: String) {
+    fn set_error_state(&self, msg: String, salvaged_wav_path: Option<PathBuf>) {
         self.clear_restore_paste_target_pid();
         let mut inner = self.lock();
         inner.state = DictateState::Error;
@@ -741,6 +783,8 @@ impl DictateController {
                 DICTATE_STATE_EVENT,
                 DictateStateEvent {
                     error: Some(msg),
+                    salvaged_wav_path: salvaged_wav_path
+                        .map(|p| p.to_string_lossy().into_owned()),
                     ..DictateStateEvent::new(DictateState::Error)
                 },
             )
@@ -748,6 +792,24 @@ impl DictateController {
         drop(inner);
         let _ = self.app.emit(DICTATE_AUDIO_LEVEL_EVENT, 0.0_f32);
         // Window stays visible; caller schedules auto_dismiss after a delay.
+    }
+
+    fn delete_dictate_wav(&self, path: &Path) {
+        let _ = std::fs::remove_file(path);
+    }
+
+    fn salvage_dictate_wav(&self, path: &Path) -> Option<PathBuf> {
+        match self
+            .output
+            .salvage_dictate_wav(&self.config.get().save_folder, path)
+        {
+            Ok(dest) => Some(dest),
+            Err(e) => {
+                eprintln!("[dictate] failed to salvage wav: {e}");
+                self.delete_dictate_wav(path);
+                None
+            }
+        }
     }
 
     /// Dismiss the panel if it is in Done or Error state. No-op from any other state.
@@ -850,17 +912,6 @@ impl DictateController {
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|p| p.into_inner())
-    }
-}
-
-/// RAII guard: deletes the dictate temp WAV when this scope ends, regardless of whether
-/// `do_transcription` returned, errored, or panicked. Avoids leaking a temp file when an
-/// early-return path between WAV read and final dismiss bails out.
-struct DictateTempWavCleanup(PathBuf);
-
-impl Drop for DictateTempWavCleanup {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
     }
 }
 

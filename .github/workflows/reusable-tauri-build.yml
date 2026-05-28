@@ -24,6 +24,10 @@ on:
         required: false
         type: boolean
         default: false
+      timeout_minutes:
+        required: false
+        type: number
+        default: 360
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -31,6 +35,7 @@ env:
 jobs:
   build:
     runs-on: ${{ inputs.os }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
 
     steps:
       - uses: actions/checkout@v5

@@ -167,7 +167,7 @@ Releases are driven by **git tags** matching `v*.*.*` (for example `v0.2.12`). P
 | `build-macos-intel` | `macos-13` | Intel Mac `.dmg` |
 | `build-windows` | `windows-latest` | Windows NSIS `.exe` |
 
-Platform builds run in parallel and **do not block each other**. The `release` job publishes a GitHub Release with whatever installers succeeded. If one platform fails or is stuck in queue, the others can still ship.
+Platform builds run in parallel. **`release` does not wait for Intel macOS** — it publishes as soon as Apple Silicon and Windows finish. The `attach-macos-intel` job adds the Intel `.dmg` later if that build succeeds (Intel often queues for a long time on `macos-13`).
 
 ### Prerequisites (one-time)
 
@@ -214,9 +214,9 @@ Pushing the **tag** triggers CI. Pushing `main` alone does not.
 ### Step 3 — Watch the workflow
 
 1. Open **GitHub → Actions → Release**.
-2. You should see four jobs: three builds + `release`.
-3. Builds typically take **10–25 minutes** each (macOS Intel often waits longest for a runner).
-4. When at least one build succeeds, `release` creates/updates the GitHub Release and attaches available installers.
+2. You should see five jobs: three builds, `release`, and optionally `attach-macos-intel`.
+3. Apple Silicon and Windows builds typically take **10–25 minutes** each. Intel macOS may wait in queue on `macos-13` — that does **not** delay the GitHub Release.
+4. When Apple Silicon or Windows succeeds, `release` creates the GitHub Release. Intel attaches automatically via `attach-macos-intel` when its build completes.
 
 Check status from the terminal:
 
@@ -245,7 +245,9 @@ You do **not** need a new version tag to retry a single platform.
    - **Re-run the `release` job** from the same workflow run (⋯ → Re-run job) to attach the new artifact, or
    - Manually upload the installer to the existing GitHub Release.
 
-If the `release` job never ran because all three builds failed, fix the builds first — `release` only runs when at least one succeeds.
+If the `release` job was skipped on an older workflow run (before this split), open that run and **Re-run job → release** manually — it only needs the arm and Windows artifacts from that run.
+
+If the `release` job never ran because both Apple Silicon and Windows failed, fix those builds first.
 
 ### Rebuilding the same tag (hotfix to CI or release config)
 

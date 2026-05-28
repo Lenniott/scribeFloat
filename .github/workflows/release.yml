@@ -32,6 +32,7 @@ jobs:
       artifact_path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
       artifact_name: macos-intel-dmg
       extra_cmake_args: '-DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON'
+      timeout_minutes: 120
 
   build-windows:
     uses: ./.github/workflows/reusable-tauri-build.yml
@@ -43,13 +44,11 @@ jobs:
       artifact_name: windows-nsis
       bundle_nsis: true
 
+  # Publish as soon as Apple Silicon + Windows finish — do NOT wait for Intel macOS.
+  # Intel often queues for hours on macos-13; it attaches later via attach-macos-intel.
   release:
-    needs: [build-macos-arm, build-macos-intel, build-windows]
-    if: >-
-      always() && !cancelled() &&
-      (needs.build-macos-arm.result == 'success' ||
-       needs.build-macos-intel.result == 'success' ||
-       needs.build-windows.result == 'success')
+    needs: [build-macos-arm, build-windows]
+    if: ${{ always() && !cancelled() && (needs.build-macos-arm.result == 'success' || needs.build-windows.result == 'success') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -59,13 +58,6 @@ jobs:
         with:
           name: macos-arm-dmg
           path: artifacts/macos-arm
-
-      - name: Download macOS Intel artifact
-        if: needs.build-macos-intel.result == 'success'
-        uses: actions/download-artifact@v5
-        with:
-          name: macos-intel-dmg
-          path: artifacts/macos-intel
 
       - name: Download Windows artifact
         if: needs.build-windows.result == 'success'
@@ -81,15 +73,13 @@ jobs:
             echo "## Installation"
             echo
             if [[ "${{ needs.build-macos-arm.result }}" == "success" ]]; then
-              echo "**macOS — Apple Silicon (M1/M2/M3/M4):** download the \`.dmg\` from **macos-arm-dmg** below, open it, and drag ScribeFloat to Applications. Inference runs on the GPU via Metal."
+              echo "**macOS — Apple Silicon (M1/M2/M3/M4):** download the \`.dmg\` below (macos-arm-dmg), open it, and drag ScribeFloat to Applications. Inference runs on the GPU via Metal."
               echo
             fi
-            if [[ "${{ needs.build-macos-intel.result }}" == "success" ]]; then
-              echo "**macOS — Intel:** download the \`.dmg\` from **macos-intel-dmg** below. Built natively on Intel CI with AVX2 + FMA + F16C and the Accelerate BLAS path enabled."
-              echo
-            fi
+            echo "**macOS — Intel:** the Intel \`.dmg\` is built separately on \`macos-13\` runners. If it is not attached yet, check the workflow run — it will be added automatically when that job succeeds."
+            echo
             if [[ "${{ needs.build-windows.result }}" == "success" ]]; then
-              echo "**Windows (NSIS .exe):** Run the installer from **windows-nsis** below. If Windows SmartScreen warns you, click **More info → Run anyway**."
+              echo "**Windows (NSIS .exe):** Run the installer below (windows-nsis). If Windows SmartScreen warns you, click **More info → Run anyway**."
               echo
             fi
             echo "## Build status (${TAG})"
@@ -97,14 +87,8 @@ jobs:
             echo "| Platform | Status |"
             echo "|----------|--------|"
             echo "| macOS Apple Silicon | ${{ needs.build-macos-arm.result }} |"
-            echo "| macOS Intel | ${{ needs.build-macos-intel.result }} |"
+            echo "| macOS Intel | pending (see attach-macos-intel job) |"
             echo "| Windows | ${{ needs.build-windows.result }} |"
-            echo
-            if [[ "${{ needs.build-macos-arm.result }}" != "success" || \
-                  "${{ needs.build-macos-intel.result }}" != "success" || \
-                  "${{ needs.build-windows.result }}" != "success" ]]; then
-              echo "Some platform builds did not succeed. Re-run failed jobs from the [Actions workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) (⋯ → Re-run failed jobs), then edit this release or re-run the **release** job to attach missing installers."
-            fi
           } > release-notes.md
 
       - name: Create GitHub Release
@@ -113,3 +97,25 @@ jobs:
           files: artifacts/**/*
           body_path: release-notes.md
           generate_release_notes: false
+
+  # When Intel macOS finishes (even long after release), append its DMG to the same tag.
+  attach-macos-intel:
+    needs: [build-macos-intel, release]
+    if: ${{ always() && needs.release.result == 'success' && needs.build-macos-intel.result == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download macOS Intel artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: macos-intel-dmg
+          path: artifacts/macos-intel
+
+      - name: Attach Intel DMG to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: artifacts/macos-intel/*
+          append_body: true
+          body: |
+            **macOS — Intel:** Intel \`.dmg\` attached (native AVX2 + FMA + F16C build).

@@ -27,7 +27,9 @@ jobs:
     uses: ./.github/workflows/reusable-tauri-build.yml
     secrets: inherit
     with:
-      os: macos-13
+      # macos-13 retired Dec 2025 — use Intel x86_64 runner per GitHub changelog.
+      # https://github.blog/changelog/2025-09-19-github-actions-macos-13-runner-image-is-closing-down/
+      os: macos-15-intel
       target: x86_64-apple-darwin
       artifact_path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
       artifact_name: macos-intel-dmg
@@ -45,7 +47,7 @@ jobs:
       bundle_nsis: true
 
   # Publish as soon as Apple Silicon + Windows finish — do NOT wait for Intel macOS.
-  # Intel often queues for hours on macos-13; it attaches later via attach-macos-intel.
+  # Intel often queues separately; it attaches later via attach-macos-intel.
   release:
     needs: [build-macos-arm, build-windows]
     if: ${{ always() && !cancelled() && (needs.build-macos-arm.result == 'success' || needs.build-windows.result == 'success') }}
@@ -76,7 +78,7 @@ jobs:
               echo "**macOS — Apple Silicon (M1/M2/M3/M4):** download the \`.dmg\` below (macos-arm-dmg), open it, and drag ScribeFloat to Applications. Inference runs on the GPU via Metal."
               echo
             fi
-            echo "**macOS — Intel:** the Intel \`.dmg\` is built separately on \`macos-13\` runners. If it is not attached yet, check the workflow run — it will be added automatically when that job succeeds."
+            echo "**macOS — Intel:** the Intel \`.dmg\` is built separately on \`macos-15-intel\` runners. If it is not attached yet, check the workflow run — it will be added automatically when that job succeeds."
             echo
             if [[ "${{ needs.build-windows.result }}" == "success" ]]; then
               echo "**Windows (NSIS .exe):** Run the installer below (windows-nsis). If Windows SmartScreen warns you, click **More info → Run anyway**."

@@ -164,10 +164,10 @@ Releases are driven by **git tags** matching `v*.*.*` (for example `v0.2.12`). P
 | Job | Runner | Artifact |
 |-----|--------|----------|
 | `build-macos-arm` | `macos-14` | Apple Silicon `.dmg` |
-| `build-macos-intel` | `macos-13` | Intel Mac `.dmg` |
+| `build-macos-intel` | `macos-15-intel` | Intel Mac `.dmg` |
 | `build-windows` | `windows-latest` | Windows NSIS `.exe` |
 
-Platform builds run in parallel. **`release` does not wait for Intel macOS** — it publishes as soon as Apple Silicon and Windows finish. The `attach-macos-intel` job adds the Intel `.dmg` later if that build succeeds (Intel often queues for a long time on `macos-13`).
+Platform builds run in parallel. **`release` does not wait for Intel macOS** — it publishes as soon as Apple Silicon and Windows finish. The `attach-macos-intel` job adds the Intel `.dmg` later if that build succeeds.
 
 ### Prerequisites (one-time)
 
@@ -215,7 +215,7 @@ Pushing the **tag** triggers CI. Pushing `main` alone does not.
 
 1. Open **GitHub → Actions → Release**.
 2. You should see five jobs: three builds, `release`, and optionally `attach-macos-intel`.
-3. Apple Silicon and Windows builds typically take **10–25 minutes** each. Intel macOS may wait in queue on `macos-13` — that does **not** delay the GitHub Release.
+3. Apple Silicon and Windows builds typically take **10–25 minutes** each. Intel macOS runs on `macos-15-intel` and does **not** delay the GitHub Release.
 4. When Apple Silicon or Windows succeeds, `release` creates the GitHub Release. Intel attaches automatically via `attach-macos-intel` when its build completes.
 
 Check status from the terminal:

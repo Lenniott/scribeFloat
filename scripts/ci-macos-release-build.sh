@@ -4,7 +4,7 @@
 #
 # CI builds two native slices (not universal):
 #   TAURI_BUILD_TARGET=aarch64-apple-darwin  (default — Apple Silicon / macos-14 runner)
-#   TAURI_BUILD_TARGET=x86_64-apple-darwin     (Intel — macos-13 runner + AVX2 CMAKE_ARGS)
+#   TAURI_BUILD_TARGET=x86_64-apple-darwin     (Intel — macos-15-intel runner + AVX2 CMAKE_ARGS)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

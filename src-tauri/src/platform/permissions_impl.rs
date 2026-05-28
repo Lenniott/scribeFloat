@@ -396,7 +396,7 @@ mod macos {
 
 #[cfg(target_os = "windows")]
 mod windows {
-    use cpal::traits::{DeviceTrait, HostTrait};
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     use std::os::windows::process::CommandExt;
     use std::process::Command;
 

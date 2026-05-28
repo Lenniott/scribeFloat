@@ -155,8 +155,8 @@ mod windows {
         std::thread::spawn(move || {
             if let Err(e) = rdev::listen(move |event| {
                 let kind = match event.event_type {
-                    rdev::EventType::KeyPress(rdev::Key::AltLeft) => KeyEventKind::Down,
-                    rdev::EventType::KeyRelease(rdev::Key::AltLeft) => KeyEventKind::Up,
+                    rdev::EventType::KeyPress(rdev::Key::Alt) => KeyEventKind::Down,
+                    rdev::EventType::KeyRelease(rdev::Key::Alt) => KeyEventKind::Up,
                     _ => return,
                 };
                 callback(KeyEvent { kind });

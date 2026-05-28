@@ -1,15 +1,28 @@
 use crate::types::{ModelDownloadEvent, Segment};
 use anyhow::{anyhow, Context, Result};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use whisper_rs::{
     FullParams, SamplingStrategy, SegmentCallbackData, WhisperContext, WhisperContextParameters,
     WhisperVadParams,
 };
 
+/// Cap inference threads at the number of physical cores. Hyperthreading does not help
+/// matmul-heavy workloads and creates lock contention. The 8-thread upper bound matches
+/// ggml's own scaling curve — adding threads beyond that on speech-length audio is a wash.
+const MAX_INFERENCE_THREADS: usize = 8;
+
 pub const SMALL_MODEL_FILENAME: &str = "ggml-small.en-q5_1.bin";
+
+/// Model catalog ids eligible for record-start preload (small models only).
+pub const PRELOAD_ELIGIBLE_MODEL_IDS: &[&str] = &["tiny-en-q5", "base-en-q5"];
+
+pub fn model_id_preload_eligible(model_id: &str) -> bool {
+    PRELOAD_ELIGIBLE_MODEL_IDS.contains(&model_id)
+}
 
 pub const VAD_MODEL_FILENAME: &str = "ggml-silero-v6.2.0.bin";
 const VAD_MODEL_URL: &str =
@@ -78,11 +91,24 @@ const MODEL_CATALOG: [ModelCatalogItem; 5] = [
 
 pub struct ModelService {
     models_dir: PathBuf,
+    /// Loaded Whisper contexts keyed by canonical model path. A `WhisperContext` owns the
+    /// model weights (~30 MB tiny → ~550 MB large turbo) and is safe to share across calls —
+    /// only the per-inference `WhisperState` is created fresh on each transcribe. Caching
+    /// here eliminates the cold-load tax (~300 ms tiny → ~2 s large) that the previous
+    /// implementation paid on every `transcribe_pcm_with_progress` call.
+    loaded_contexts: Mutex<HashMap<PathBuf, Arc<WhisperContext>>>,
+    /// Per-path mutexes so concurrent callers (e.g. record-start preload + stop transcribe)
+    /// serialize on the same file instead of each paying a full WhisperContext load.
+    loading_locks: Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>,
 }
 
 impl ModelService {
     pub fn new(models_dir: PathBuf) -> Arc<Self> {
-        Arc::new(Self { models_dir })
+        Arc::new(Self {
+            models_dir,
+            loaded_contexts: Mutex::new(HashMap::new()),
+            loading_locks: Mutex::new(HashMap::new()),
+        })
     }
 
     /// Path where the default small model lives on disk.
@@ -354,6 +380,70 @@ impl ModelService {
         MODEL_CATALOG.iter().find(|m| m.id == model_id).copied()
     }
 
+    /// Load a Whisper context for `model_path`, or return the cached one. Loads block on
+    /// disk I/O and model parsing, so callers should invoke this from `spawn_blocking` (or
+    /// off the async runtime). Subsequent calls for the same path are O(hash lookup).
+    pub fn get_or_load_context(&self, model_path: &Path) -> Result<Arc<WhisperContext>> {
+        if let Some(ctx) = self.cached_context(model_path) {
+            return Ok(ctx);
+        }
+
+        let path_key = model_path.to_path_buf();
+        let load_lock = self.load_lock_for(&path_key);
+        let _in_flight = load_lock
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+
+        if let Some(ctx) = self.cached_context(model_path) {
+            return Ok(ctx);
+        }
+
+        let path_str = model_path
+            .to_str()
+            .ok_or_else(|| anyhow!("model path is not valid UTF-8"))?;
+        let load_started = Instant::now();
+        let ctx = WhisperContext::new_with_params(path_str, WhisperContextParameters::default())
+            .map_err(|e| anyhow!("failed to load model at {path_str}: {e:?}"))?;
+        let ctx = Arc::new(ctx);
+        eprintln!(
+            "[model] loaded {} in {} ms",
+            model_path
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path_str.to_string()),
+            load_started.elapsed().as_millis()
+        );
+
+        let mut guard = self.lock_contexts();
+        Ok(Arc::clone(
+            guard
+                .entry(path_key)
+                .or_insert_with(|| Arc::clone(&ctx)),
+        ))
+    }
+
+    fn cached_context(&self, model_path: &Path) -> Option<Arc<WhisperContext>> {
+        let guard = self.lock_contexts();
+        guard.get(model_path).map(Arc::clone)
+    }
+
+    fn load_lock_for(&self, path_key: &Path) -> Arc<Mutex<()>> {
+        let mut locks = self
+            .loading_locks
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        locks
+            .entry(path_key.to_path_buf())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    }
+
+    fn lock_contexts(&self) -> std::sync::MutexGuard<'_, HashMap<PathBuf, Arc<WhisperContext>>> {
+        self.loaded_contexts
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+    }
+
     /// Transcribe mono f32 PCM at 16 kHz and report Whisper's own progress.
     /// Must be called from spawn_blocking.
     /// Pass `vad_model_path` to enable Silero VAD — silence mid-recording is skipped,
@@ -368,18 +458,15 @@ impl ModelService {
     where
         F: FnMut(f32) + 'static,
     {
-        let path_str = model_path
-            .to_str()
-            .ok_or_else(|| anyhow!("model path is not valid UTF-8"))?;
-
-        let ctx = WhisperContext::new_with_params(path_str, WhisperContextParameters::default())
-            .map_err(|e| anyhow!("failed to load model at {path_str}: {e:?}"))?;
-
+        let total_ms = ((pcm.len() as f32 / 16_000.0) * 1_000.0).max(1.0);
+        let ctx = self.get_or_load_context(model_path)?;
         let mut state = ctx
             .create_state()
             .map_err(|e| anyhow!("failed to create whisper state: {e:?}"))?;
 
+        let n_threads = inference_thread_count();
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        params.set_n_threads(n_threads as i32);
         params.set_language(Some("en"));
         params.set_print_progress(false);
         params.set_print_realtime(false);
@@ -390,14 +477,32 @@ impl ModelService {
             params.enable_vad(true);
             params.set_vad_params(WhisperVadParams::default());
         }
-        let total_ms = ((pcm.len() as f32 / 16_000.0) * 1_000.0).max(1.0);
         params.set_segment_callback_safe_lossy(move |segment: SegmentCallbackData| {
             on_progress(progress_from_segment_end(segment.end_timestamp, total_ms));
         });
 
+        let infer_started = Instant::now();
         state
             .full(params, pcm)
             .map_err(|e| anyhow!("whisper inference failed: {e:?}"))?;
+        let elapsed = infer_started.elapsed();
+        let audio_secs = total_ms / 1000.0;
+        let rtf = if elapsed.as_secs_f32() > 0.0 {
+            audio_secs / elapsed.as_secs_f32()
+        } else {
+            f32::INFINITY
+        };
+        eprintln!(
+            "[transcribe] model={} audio={:.2}s wall={:.2}s rtf={:.2}x threads={}",
+            model_path
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "?".to_string()),
+            audio_secs,
+            elapsed.as_secs_f32(),
+            rtf,
+            n_threads,
+        );
 
         let mut segments = Vec::new();
         for seg in state.as_iter() {
@@ -468,6 +573,10 @@ fn progress_from_segment_end(end_timestamp: i64, total_ms: f32) -> f32 {
     ((end_timestamp as f32 * 10.0) / total_ms).clamp(0.0, 1.0)
 }
 
+fn inference_thread_count() -> usize {
+    num_cpus::get_physical().clamp(1, MAX_INFERENCE_THREADS)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -521,6 +630,23 @@ mod tests {
         assert_eq!(progress_from_segment_end(50, 1_000.0), 0.5);
         assert_eq!(progress_from_segment_end(100, 1_000.0), 1.0);
         assert_eq!(progress_from_segment_end(150, 1_000.0), 1.0);
+    }
+
+    #[test]
+    fn model_id_preload_eligible_only_tiny_and_base() {
+        assert!(model_id_preload_eligible("tiny-en-q5"));
+        assert!(model_id_preload_eligible("base-en-q5"));
+        assert!(!model_id_preload_eligible("small-en-q5"));
+    }
+
+    #[test]
+    fn inference_thread_count_is_clamped() {
+        let n = inference_thread_count();
+        assert!(n >= 1, "thread count must be at least 1");
+        assert!(
+            n <= MAX_INFERENCE_THREADS,
+            "thread count {n} exceeded MAX_INFERENCE_THREADS={MAX_INFERENCE_THREADS}"
+        );
     }
 
     #[test]

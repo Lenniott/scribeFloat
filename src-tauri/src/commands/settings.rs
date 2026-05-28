@@ -74,6 +74,18 @@ pub fn settings_list_output_devices(
 }
 
 #[tauri::command]
+pub fn settings_speaker_capture_requires_device_name() -> bool {
+    SettingsController::speaker_capture_requires_device_name()
+}
+
+#[tauri::command]
+pub fn settings_blackhole_detected(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> bool {
+    ctrl.blackhole_device_detected()
+}
+
+#[tauri::command]
 pub fn settings_get_scribe_capture_speaker(
     ctrl: State<'_, Arc<SettingsController>>,
 ) -> Result<bool, String> {

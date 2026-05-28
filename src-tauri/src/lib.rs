@@ -13,6 +13,96 @@ use tauri::{
     WindowEvent,
 };
 
+/// One-shot startup log. Captures the CPU, core counts, RAM, arch, and app version so
+/// user-reported performance issues can be correlated with their hardware without us
+/// having to play 20 questions. Stays in stderr — no telemetry leaves the device.
+fn log_system_info() {
+    let arch = std::env::consts::ARCH;
+    let os = std::env::consts::OS;
+    let version = env!("CARGO_PKG_VERSION");
+    let physical = num_cpus::get_physical();
+    let logical = num_cpus::get();
+    let cpu_brand = cpu_brand_string().unwrap_or_else(|| "unknown".to_string());
+    let ram_gb = total_ram_bytes()
+        .map(|b| format!("{:.1} GB", b as f64 / 1_073_741_824.0))
+        .unwrap_or_else(|| "?".to_string());
+
+    eprintln!(
+        "[startup] scribefloat v{version} os={os} arch={arch} cpu=\"{cpu_brand}\" cores={physical}p/{logical}l ram={ram_gb}"
+    );
+}
+
+#[cfg(target_os = "macos")]
+fn cpu_brand_string() -> Option<String> {
+    sysctl_string(c"machdep.cpu.brand_string")
+}
+
+#[cfg(target_os = "macos")]
+fn total_ram_bytes() -> Option<u64> {
+    sysctl_u64(c"hw.memsize")
+}
+
+#[cfg(target_os = "macos")]
+fn sysctl_string(name: &std::ffi::CStr) -> Option<String> {
+    let mut len: libc::size_t = 0;
+    // First call: ask for the length.
+    // SAFETY: passing null buffer to sysctlbyname is the documented way to query length.
+    let rc = unsafe { libc::sysctlbyname(name.as_ptr(), std::ptr::null_mut(), &mut len, std::ptr::null_mut(), 0) };
+    if rc != 0 || len == 0 {
+        return None;
+    }
+    let mut buf = vec![0u8; len];
+    // SAFETY: buf has `len` bytes; sysctlbyname fills it and updates `len`.
+    let rc = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            buf.as_mut_ptr() as *mut libc::c_void,
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if rc != 0 {
+        return None;
+    }
+    // sysctl strings include a trailing NUL.
+    if let Some(&0) = buf.last() {
+        buf.pop();
+    }
+    String::from_utf8(buf).ok()
+}
+
+#[cfg(target_os = "macos")]
+fn sysctl_u64(name: &std::ffi::CStr) -> Option<u64> {
+    let mut value: u64 = 0;
+    let mut len: libc::size_t = std::mem::size_of::<u64>();
+    // SAFETY: `value` is properly sized for an integer sysctl read.
+    let rc = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            &mut value as *mut u64 as *mut libc::c_void,
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if rc == 0 {
+        Some(value)
+    } else {
+        None
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn cpu_brand_string() -> Option<String> {
+    None
+}
+
+#[cfg(not(target_os = "macos"))]
+fn total_ram_bytes() -> Option<u64> {
+    None
+}
+
 pub(crate) const SCRIBE_WINDOW_LABEL: &str = "scribe";
 const TRANSCRIBE_WINDOW_LABEL: &str = "transcribe";
 const SETTINGS_WINDOW_LABEL: &str = "settings";
@@ -328,6 +418,8 @@ fn open_or_focus_window(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    log_system_info();
+
     let audio = services::audio::AudioService::new();
     let output = services::output::OutputService::new();
     let permissions = services::permissions::PermissionsService::new();
@@ -439,6 +531,33 @@ pub fn run() {
             // call it. Sync once after prewarm so a tray-only start hides the Dock (plist LSUIElement
             // is not sufficient on its own).
             platform::window_impl::sync_activation_policy(app.handle());
+
+            let save_folder = app.state::<Arc<services::config::ConfigService>>().get().save_folder;
+            match output.scan_incomplete_scribe_sessions(&save_folder) {
+                Ok(sessions) => {
+                    for info in &sessions {
+                        eprintln!(
+                            "[recovery] incomplete scribe session at {} (state: {})",
+                            info.session_dir, info.state
+                        );
+                    }
+                }
+                Err(e) => eprintln!("[recovery] scribe session scan failed: {e}"),
+            }
+            if let Ok(temp_dir) = app.path().app_local_data_dir().map(|d| d.join("dictate_temp")) {
+                match output.scan_and_salvage_dictate_temp_wavs(&temp_dir, &save_folder) {
+                    Ok(salvaged) => {
+                        for path in salvaged {
+                            eprintln!(
+                                "[recovery] salvaged dictate wav to {}",
+                                path.display()
+                            );
+                        }
+                    }
+                    Err(e) => eprintln!("[recovery] dictate temp scan failed: {e}"),
+                }
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -489,6 +608,7 @@ pub fn run() {
             commands::scribe::scribe_list_input_devices,
             commands::scribe::scribe_list_output_devices,
             commands::scribe::scribe_read_transcript,
+            commands::scribe::scribe_list_recovery_sessions,
             commands::scribe::scribe_toggle_speaker_capture,
             commands::model::model_setup_status,
             commands::model::model_list,
@@ -507,6 +627,8 @@ pub fn run() {
             commands::settings::settings_get_preferred_audio_devices,
             commands::settings::settings_set_preferred_audio_devices,
             commands::settings::settings_list_output_devices,
+            commands::settings::settings_speaker_capture_requires_device_name,
+            commands::settings::settings_blackhole_detected,
             commands::settings::settings_get_scribe_capture_speaker,
             commands::settings::settings_set_scribe_capture_speaker,
             commands::settings::settings_get_open_with_app_path,
@@ -544,8 +666,18 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app_handle, event| {
+        .run(|app_handle, event| {
             if let RunEvent::ExitRequested { code, api, .. } = event {
+                if let Some(ctrl) =
+                    app_handle.try_state::<Arc<controllers::scribe::ScribeController>>()
+                {
+                    ctrl.finalize_capture_on_shutdown();
+                }
+                if let Some(ctrl) =
+                    app_handle.try_state::<Arc<controllers::dictate::DictateController>>()
+                {
+                    ctrl.finalize_capture_on_shutdown();
+                }
                 // Tray-backed app: default event loop exits when the last window is torn down.
                 // Programmatic `app.exit(n)` uses `Some(n)` and must not be prevented.
                 if code.is_none() {

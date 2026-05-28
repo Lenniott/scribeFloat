@@ -102,7 +102,7 @@ mod tests {
         assert!(cfg.include_timestamps);
         assert!(!cfg.onboarding_complete);
         assert!(!cfg.keep_wav);
-        assert!(cfg.save_folder.contains("Liscribe") || cfg.save_folder.contains("liscribe"));
+        assert!(cfg.save_folder.contains("transcripts_scribefloat"));
     }
 
     #[test]

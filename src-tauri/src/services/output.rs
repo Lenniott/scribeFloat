@@ -1,15 +1,39 @@
 use crate::types::{
-    DictateHistoryEntry, Note, ReplacementRule, ReplacementRuleType, ReplacementScope, Segment,
-    WordTransform,
+    DictateHistoryEntry, Note, RecoverySessionInfo, ReplacementRule, ReplacementRuleType,
+    ReplacementScope, Segment, SessionManifest, SessionManifestState, WordTransform,
 };
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use hound::{SampleFormat, WavSpec, WavWriter};
 use regex::Regex;
 use serde::Serialize;
+use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub struct OutputService;
+
+fn transcript_filename_base(model_path: &Path, title: &str) -> String {
+    let slug: String = title
+        .chars()
+        .map(|c| match c {
+            ' ' => '_',
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '-',
+            c => c,
+        })
+        .collect();
+    let slug = if slug.is_empty() {
+        chrono::Local::now()
+            .format("%Y-%m-%d_%H-%M-%S")
+            .to_string()
+    } else {
+        slug
+    };
+    let stem = model_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "model".to_string());
+    format!("{slug}_{stem}")
+}
 
 #[derive(Debug, Serialize)]
 struct SessionNotesPayload<'a> {
@@ -32,29 +56,22 @@ impl OutputService {
         Ok(dir)
     }
 
-    /// Build the transcript file path using the recording title as the filename base.
-    /// Spaces become underscores; chars forbidden on Windows/macOS become dashes.
-    pub fn transcript_path(&self, session_dir: &Path, model_path: &Path, title: &str) -> PathBuf {
-        let slug: String = title
-            .chars()
-            .map(|c| match c {
-                ' ' => '_',
-                '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '-',
-                c => c,
-            })
-            .collect();
-        let slug = if slug.is_empty() {
-            chrono::Local::now()
-                .format("%Y-%m-%d_%H-%M-%S")
-                .to_string()
-        } else {
-            slug
-        };
-        let stem = model_path
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "model".to_string());
-        session_dir.join(format!("{}_{}.md", slug, stem))
+    /// Build a transcript path in the save folder root: `{save_folder}/{title}_{model}.md`.
+    /// When that file already exists, appends `_1`, `_2`, … before `.md`. Spaces in the title
+    /// become underscores; forbidden path chars become dashes.
+    pub fn transcript_path(&self, save_folder: &Path, model_path: &Path, title: &str) -> PathBuf {
+        let base = transcript_filename_base(model_path, title);
+        let candidate = save_folder.join(format!("{base}.md"));
+        if !candidate.exists() {
+            return candidate;
+        }
+        for n in 1.. {
+            let numbered = save_folder.join(format!("{base}_{n}.md"));
+            if !numbered.exists() {
+                return numbered;
+            }
+        }
+        unreachable!("transcript_path suffix loop is bounded by filesystem")
     }
 
     /// Write mono f32 PCM as a 16-bit WAV file.
@@ -248,9 +265,12 @@ impl OutputService {
     }
 
     /// Prepend a new entry to `{save_folder}/dictate_history.json`.
-    /// Creates the file if it does not exist. The list is newest-first.
+    /// Creates the save folder and file if they do not exist. The list is newest-first.
     pub fn write_dictate_history_entry(&self, save_folder: &str, text: &str) -> Result<()> {
         let path = PathBuf::from(save_folder).join("dictate_history.json");
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).context("create save folder for dictate history")?;
+        }
         let mut entries: Vec<DictateHistoryEntry> = if path.exists() {
             let raw = std::fs::read_to_string(&path).context("read dictate_history.json")?;
             serde_json::from_str(&raw).unwrap_or_default()
@@ -290,19 +310,223 @@ impl OutputService {
         crate::platform::paste_impl::send_enter()
     }
 
-    /// Remove the session directory if it contains no files (i.e. recording was cancelled
-    /// before any WAV was written). Silent no-op if the directory is non-empty or gone.
-    pub fn delete_session_dir_if_empty(&self, dir: &Path) {
+    /// Best-effort delete of all files in a Scribe staging dir, then the directory itself.
+    pub fn remove_session_dir(&self, dir: &Path) {
         if !dir.exists() {
             return;
         }
-        let is_empty = std::fs::read_dir(dir)
-            .map(|mut d| d.next().is_none())
-            .unwrap_or(false);
-        if is_empty {
-            let _ = std::fs::remove_dir(dir);
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                if entry.path().is_file() {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
         }
+        let _ = std::fs::remove_dir(dir);
     }
+
+    /// After a successful Scribe transcription: drop `session.json` (and `notes.json`).
+    /// When `keep_wav` is false, delete staging WAVs and remove the session directory
+    /// (the transcript `.md` lives at the save-folder root, not inside this folder).
+    pub fn finalize_scribe_session(
+        &self,
+        session_dir: &Path,
+        keep_wav: bool,
+    ) -> Result<()> {
+        if !session_dir.is_dir() {
+            return Ok(());
+        }
+        let _ = std::fs::remove_file(session_dir.join("session.json"));
+        let _ = std::fs::remove_file(session_dir.join("notes.json"));
+        if keep_wav {
+            return Ok(());
+        }
+        if let Ok(entries) = std::fs::read_dir(session_dir) {
+            for entry in entries.flatten() {
+                if entry.path().is_file() {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+        std::fs::remove_dir(session_dir).context("remove scribe session dir")?;
+        Ok(())
+    }
+
+    /// Write or replace `{session_dir}/session.json` for Scribe lifecycle tracking.
+    pub fn write_session_manifest(&self, session_dir: &Path, manifest: &SessionManifest) -> Result<()> {
+        let dest = session_dir.join("session.json");
+        let json = serde_json::to_string_pretty(manifest).context("serialize session.json")?;
+        std::fs::write(&dest, json).context("write session.json")?;
+        Ok(())
+    }
+
+    /// Move a failed dictate capture into `{save_folder}/dictate_failures/{timestamp}.wav`.
+    pub fn salvage_dictate_wav(&self, save_folder: &str, source_wav: &Path) -> Result<PathBuf> {
+        let dest_dir = PathBuf::from(save_folder).join("dictate_failures");
+        std::fs::create_dir_all(&dest_dir).context("create dictate_failures dir")?;
+        let ts = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
+        let dest = dest_dir.join(format!("{ts}.wav"));
+        std::fs::rename(source_wav, &dest)
+            .or_else(|_| -> Result<()> {
+                std::fs::copy(source_wav, &dest).context("copy dictate failure wav")?;
+                std::fs::remove_file(source_wav).context("remove dictate temp wav")?;
+                Ok(())
+            })
+            .context("salvage dictate wav")?;
+        Ok(dest)
+    }
+
+    /// Scan `save_folder` for Scribe sessions that did not reach `complete` and repair WAV headers.
+    pub fn scan_incomplete_scribe_sessions(&self, save_folder: &str) -> Result<Vec<RecoverySessionInfo>> {
+        let root = PathBuf::from(save_folder);
+        if !root.is_dir() {
+            return Ok(Vec::new());
+        }
+        let mut found = Vec::new();
+        for entry in std::fs::read_dir(&root).context("read save folder")? {
+            let entry = entry.context("read save folder entry")?;
+            if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            let session_dir = entry.path();
+            let manifest_path = session_dir.join("session.json");
+            let mic_path = session_dir.join("mic.wav");
+            if !manifest_path.is_file() {
+                // keep_wav archives: mic.wav without session.json — not incomplete.
+                continue;
+            }
+            if !mic_path.is_file() {
+                continue;
+            }
+            let raw = std::fs::read_to_string(&manifest_path).context("read session.json")?;
+            let manifest: SessionManifest =
+                serde_json::from_str(&raw).unwrap_or(SessionManifest {
+                    format_version: 1,
+                    state: SessionManifestState::Recording,
+                    started_at: String::new(),
+                    mic_wav: "mic.wav".to_string(),
+                    speaker_wavs: vec![],
+                    transcript_path: None,
+                    title: None,
+                });
+            if matches!(manifest.state, SessionManifestState::Complete) {
+                continue;
+            }
+            let state_label = format!("{:?}", manifest.state).to_lowercase();
+            if crate::services::audio::read_wav_mono_f32(&mic_path).is_err() {
+                let _ = repair_wav_header_from_file_size(&mic_path);
+            }
+            found.push(RecoverySessionInfo {
+                session_dir: session_dir.to_string_lossy().into_owned(),
+                mic_wav: mic_path.to_string_lossy().into_owned(),
+                state: state_label,
+            });
+        }
+        Ok(found)
+    }
+
+    /// Salvage orphaned dictate temp WAVs after a crash (checkpointed headers).
+    pub fn scan_and_salvage_dictate_temp_wavs(
+        &self,
+        temp_dir: &Path,
+        save_folder: &str,
+    ) -> Result<Vec<PathBuf>> {
+        if !temp_dir.is_dir() {
+            return Ok(Vec::new());
+        }
+        let mut salvaged = Vec::new();
+        for entry in std::fs::read_dir(temp_dir).context("read dictate temp dir")? {
+            let entry = entry.context("read dictate temp entry")?;
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("wav") {
+                continue;
+            }
+            if crate::services::audio::read_wav_mono_f32(&path).is_err() {
+                let _ = repair_wav_header_from_file_size(&path);
+            }
+            if crate::services::audio::read_wav_mono_f32(&path).is_ok() {
+                match self.salvage_dictate_wav(save_folder, &path) {
+                    Ok(dest) => salvaged.push(dest),
+                    Err(e) => eprintln!("[dictate] failed to salvage temp wav {}: {e}", path.display()),
+                }
+            } else {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+        Ok(salvaged)
+    }
+}
+
+/// Write a placeholder 16-bit PCM WAV header for streaming capture.
+pub fn write_streaming_wav_placeholder(
+    path: &Path,
+    sample_rate: u32,
+    channels: u16,
+    bits_per_sample: u16,
+) -> Result<()> {
+    sync_wav_header(path, sample_rate, channels, bits_per_sample, 0)?;
+    Ok(())
+}
+
+/// Patch RIFF/data chunk sizes for a 16-bit PCM WAV without finalizing the writer.
+pub fn sync_wav_header(
+    path: &Path,
+    sample_rate: u32,
+    channels: u16,
+    bits_per_sample: u16,
+    sample_count: u64,
+) -> Result<()> {
+    let block_align = channels as u32 * (bits_per_sample as u32 / 8);
+    let byte_rate = sample_rate * block_align;
+    let data_size = sample_count * block_align as u64;
+    let riff_size = 36 + data_size;
+
+    if sample_count == 0 {
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .context("open wav for header init")?;
+        let mut file = std::io::BufWriter::new(file);
+        file.write_all(b"RIFF")?;
+        file.write_all(&(36u32).to_le_bytes())?;
+        file.write_all(b"WAVEfmt ")?;
+        file.write_all(&16u32.to_le_bytes())?;
+        file.write_all(&1u16.to_le_bytes())?; // PCM
+        file.write_all(&channels.to_le_bytes())?;
+        file.write_all(&sample_rate.to_le_bytes())?;
+        file.write_all(&byte_rate.to_le_bytes())?;
+        file.write_all(&(block_align as u16).to_le_bytes())?;
+        file.write_all(&bits_per_sample.to_le_bytes())?;
+        file.write_all(b"data")?;
+        file.write_all(&0u32.to_le_bytes())?;
+        file.flush()?;
+        file.into_inner()?.sync_all()?;
+    } else {
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+            .context("open wav for header patch")?;
+        file.seek(SeekFrom::Start(4))?;
+        file.write_all(&(riff_size as u32).to_le_bytes())?;
+        file.seek(SeekFrom::Start(40))?;
+        file.write_all(&(data_size as u32).to_le_bytes())?;
+        file.sync_all()?;
+    }
+    Ok(())
+}
+
+/// Infer sample count from on-disk byte length and rewrite the WAV header.
+pub fn repair_wav_header_from_file_size(path: &Path) -> Result<u64> {
+    let len = std::fs::metadata(path).context("stat wav")?.len();
+    if len <= 44 {
+        return Err(anyhow!("wav file too small to repair"));
+    }
+    let sample_count = (len - 44) / 2;
+    sync_wav_header(path, crate::services::audio::WHISPER_SAMPLE_RATE, 1, 16, sample_count)?;
+    Ok(sample_count)
 }
 
 // ── Text cleanup ──────────────────────────────────────────────────────────────
@@ -902,6 +1126,39 @@ mod tests {
         assert!(name.starts_with("foo-bar-baz_"));
     }
 
+    #[test]
+    fn transcript_path_uses_save_folder_root_without_suffix_when_free() {
+        let svc = OutputService;
+        let dir = temp_save_folder();
+        let model = std::path::Path::new("/models/ggml-small.en-q5_1.bin");
+        let path = svc.transcript_path(Path::new(&dir), model, "Standup");
+        assert_eq!(path.parent().unwrap(), Path::new(&dir));
+        assert_eq!(path.file_name().unwrap().to_string_lossy(), "Standup_ggml-small.en-q5_1.md");
+    }
+
+    #[test]
+    fn transcript_path_appends_numeric_suffix_on_collision() {
+        let svc = OutputService;
+        let dir = temp_save_folder();
+        let folder = Path::new(&dir);
+        let model = std::path::Path::new("/models/ggml-small.en-q5_1.bin");
+        let first = svc.transcript_path(folder, model, "Standup");
+        std::fs::write(&first, "# first").expect("seed first transcript");
+
+        let second = svc.transcript_path(folder, model, "Standup");
+        assert_eq!(
+            second.file_name().unwrap().to_string_lossy(),
+            "Standup_ggml-small.en-q5_1_1.md"
+        );
+
+        std::fs::write(&second, "# second").expect("seed second transcript");
+        let third = svc.transcript_path(folder, model, "Standup");
+        assert_eq!(
+            third.file_name().unwrap().to_string_lossy(),
+            "Standup_ggml-small.en-q5_1_2.md"
+        );
+    }
+
     // ── write_dictate_history_entry / read_dictate_history ───────────────────
 
     fn temp_save_folder() -> String {
@@ -917,6 +1174,27 @@ mod tests {
         let folder = temp_save_folder();
         let entries = svc.read_dictate_history(&folder).expect("read");
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn write_dictate_history_creates_missing_save_folder() {
+        let svc = OutputService;
+        let folder = std::env::temp_dir()
+            .join(format!(
+                "liscribe-dictate-mkdir-tests-{}",
+                uuid::Uuid::new_v4()
+            ))
+            .join("nested")
+            .join("save");
+        let folder = folder.to_string_lossy().to_string();
+        assert!(!PathBuf::from(&folder).exists());
+
+        svc.write_dictate_history_entry(&folder, "hello")
+            .expect("write creates parent dirs");
+
+        let entries = svc.read_dictate_history(&folder).expect("read");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].text, "hello");
     }
 
     #[test]
@@ -955,5 +1233,181 @@ mod tests {
         let entries = svc.read_dictate_history(&folder).expect("read");
         assert!(!entries[0].id.is_empty());
         assert!(!entries[0].timestamp.is_empty());
+    }
+
+    // ── sync_wav_header / session manifest / salvage ─────────────────────────
+
+    #[test]
+    fn streaming_wav_placeholder_is_valid_wav() {
+        let dir = std::env::temp_dir().join(format!("wav-ph-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("placeholder.wav");
+        write_streaming_wav_placeholder(&path, 16_000, 1, 16).unwrap();
+        let reader = hound::WavReader::open(&path).expect("open placeholder");
+        assert_eq!(reader.spec().bits_per_sample, 16);
+    }
+
+    #[test]
+    fn sync_wav_header_makes_checkpointed_wav_readable() {
+        use std::io::Write;
+
+        let dir = std::env::temp_dir().join(format!("wav-sync-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("partial.wav");
+        write_streaming_wav_placeholder(&path, 16_000, 1, 16).unwrap();
+        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        f.write_all(&vec![0u8; 3200]).unwrap();
+        sync_wav_header(&path, 16_000, 1, 16, 1600).unwrap();
+        let pcm = crate::services::audio::read_wav_mono_f32(&path).expect("read checkpointed wav");
+        assert_eq!(pcm.len(), 1600);
+    }
+
+    #[test]
+    fn repair_wav_header_from_file_size_roundtrip() {
+        use std::io::Write;
+
+        let dir = std::env::temp_dir().join(format!("wav-repair-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("truncated.wav");
+        write_streaming_wav_placeholder(&path, 16_000, 1, 16).unwrap();
+        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        f.write_all(&vec![0u8; 6400]).unwrap();
+        repair_wav_header_from_file_size(&path).expect("repair");
+        let pcm = crate::services::audio::read_wav_mono_f32(&path).expect("read repaired wav");
+        assert_eq!(pcm.len(), 3200);
+    }
+
+    #[test]
+    fn write_session_manifest_roundtrip() {
+        use crate::types::{SessionManifest, SessionManifestState};
+
+        let svc = OutputService;
+        let dir = std::env::temp_dir().join(format!("session-manifest-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let manifest = SessionManifest {
+            format_version: 1,
+            state: SessionManifestState::Recording,
+            started_at: "2026-05-28T12:00:00Z".to_string(),
+            mic_wav: "mic.wav".to_string(),
+            speaker_wavs: vec!["speaker_seg_0.wav".to_string()],
+            transcript_path: None,
+            title: None,
+        };
+        svc.write_session_manifest(&dir, &manifest).expect("write");
+        let raw = std::fs::read_to_string(dir.join("session.json")).expect("read");
+        let parsed: SessionManifest = serde_json::from_str(&raw).expect("parse");
+        assert_eq!(parsed.state, SessionManifestState::Recording);
+        assert_eq!(parsed.speaker_wavs, vec!["speaker_seg_0.wav".to_string()]);
+    }
+
+    #[test]
+    fn salvage_dictate_wav_moves_to_failures_dir() {
+        let svc = OutputService;
+        let save_folder = temp_save_folder();
+        let temp_wav = PathBuf::from(&save_folder).join("temp_capture.wav");
+        svc.write_wav(&[0.0; 1600], 16_000, &temp_wav).expect("write temp wav");
+        assert!(temp_wav.is_file());
+
+        let dest = svc
+            .salvage_dictate_wav(&save_folder, &temp_wav)
+            .expect("salvage");
+        assert!(dest.is_file());
+        assert!(dest.to_string_lossy().contains("dictate_failures"));
+        assert!(!temp_wav.exists());
+    }
+
+    #[test]
+    fn scan_incomplete_scribe_sessions_finds_non_complete_manifest() {
+        use crate::types::{SessionManifest, SessionManifestState};
+
+        let svc = OutputService;
+        let save_folder = temp_save_folder();
+        let session_dir = PathBuf::from(&save_folder).join("2026-05-28_12-00-00");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        svc.write_wav(&[0.0; 800], 16_000, &session_dir.join("mic.wav"))
+            .expect("write mic");
+        svc.write_session_manifest(
+            &session_dir,
+            &SessionManifest {
+                format_version: 1,
+                state: SessionManifestState::Recording,
+                started_at: "2026-05-28T12:00:00Z".to_string(),
+                mic_wav: "mic.wav".to_string(),
+                speaker_wavs: vec![],
+                transcript_path: None,
+                title: None,
+            },
+        )
+        .expect("write manifest");
+
+        let found = svc
+            .scan_incomplete_scribe_sessions(&save_folder)
+            .expect("scan");
+        assert_eq!(found.len(), 1);
+        assert!(found[0].session_dir.ends_with("2026-05-28_12-00-00"));
+    }
+
+    #[test]
+    fn remove_session_dir_deletes_all_staging_files() {
+        let svc = OutputService;
+        let dir = std::env::temp_dir().join(format!("remove-session-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("session.json"), b"{}").unwrap();
+        svc.write_wav(&[0.0; 400], 16_000, &dir.join("mic.wav")).expect("write mic");
+
+        svc.remove_session_dir(&dir);
+        assert!(!dir.exists());
+    }
+
+    #[test]
+    fn finalize_scribe_session_removes_dir_when_keep_wav_off() {
+        let svc = OutputService;
+        let save_folder = temp_save_folder();
+        let session_dir = PathBuf::from(&save_folder).join("2026-05-28_13-00-00");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(session_dir.join("session.json"), b"{}").unwrap();
+        svc.write_wav(&[0.0; 400], 16_000, &session_dir.join("mic.wav"))
+            .expect("write mic");
+        let transcript = PathBuf::from(&save_folder).join("note_tiny.md");
+        std::fs::write(&transcript, b"# test").unwrap();
+
+        svc.finalize_scribe_session(&session_dir, false).expect("finalize");
+
+        assert!(transcript.is_file());
+        assert!(!session_dir.exists());
+    }
+
+    #[test]
+    fn finalize_scribe_session_keeps_wavs_when_keep_wav_on() {
+        let svc = OutputService;
+        let save_folder = temp_save_folder();
+        let session_dir = PathBuf::from(&save_folder).join("2026-05-28_14-00-00");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(session_dir.join("session.json"), b"{}").unwrap();
+        std::fs::write(session_dir.join("notes.json"), b"{}").unwrap();
+        svc.write_wav(&[0.0; 400], 16_000, &session_dir.join("mic.wav"))
+            .expect("write mic");
+
+        svc.finalize_scribe_session(&session_dir, true).expect("finalize");
+
+        assert!(session_dir.is_dir());
+        assert!(session_dir.join("mic.wav").is_file());
+        assert!(!session_dir.join("session.json").exists());
+        assert!(!session_dir.join("notes.json").exists());
+    }
+
+    #[test]
+    fn recovery_scan_skips_wav_only_dirs_without_manifest() {
+        let svc = OutputService;
+        let save_folder = temp_save_folder();
+        let session_dir = PathBuf::from(&save_folder).join("2026-05-28_15-00-00");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        svc.write_wav(&[0.0; 400], 16_000, &session_dir.join("mic.wav"))
+            .expect("write mic");
+
+        let found = svc
+            .scan_incomplete_scribe_sessions(&save_folder)
+            .expect("scan");
+        assert!(found.is_empty());
     }
 }

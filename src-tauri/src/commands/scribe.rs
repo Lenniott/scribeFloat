@@ -123,3 +123,11 @@ pub fn scribe_read_transcript(
 ) -> Result<String, String> {
     ctrl.read_transcript_at(&path)
 }
+
+#[tauri::command]
+pub fn scribe_list_recovery_sessions(
+    ctrl: State<'_, Arc<ScribeController>>,
+) -> Result<Vec<crate::types::RecoverySessionInfo>, String> {
+    ctrl.list_recovery_sessions()
+        .map_err(|e| e.to_string())
+}

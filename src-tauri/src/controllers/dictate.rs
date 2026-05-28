@@ -1,13 +1,13 @@
 use crate::services::{
     audio::{AudioService, MicSession, WHISPER_SAMPLE_RATE},
     config::ConfigService,
-    model::ModelService,
+    model::{model_id_preload_eligible, ModelService},
     output::OutputService,
 };
-use crate::services::audio::resample_linear;
+use crate::services::audio::read_wav_mono_f32;
 use crate::types::{Config, DictateProcessingStage, DictateState, DictateStateEvent};
 use anyhow::{anyhow, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -416,11 +416,13 @@ impl DictateController {
             }
         }
 
+        let wav_path = dictate_temp_wav_path(&self.app)?;
         let app = self.app.clone();
         let last_level_emit = Arc::new(Mutex::new(None::<Instant>));
         let mic = self.audio.start_mic(
             None,
             true,
+            wav_path,
             Some(Arc::new(move |level| {
                 let mut gate = last_level_emit.lock().unwrap_or_else(|p| p.into_inner());
                 let now = Instant::now();
@@ -444,7 +446,49 @@ impl DictateController {
         inner.state = DictateState::Recording;
         inner.session = Some(DictateMicSession { mic });
         self.emit_state_event(&inner);
+        drop(inner);
+        self.spawn_record_start_preload();
         Ok(())
+    }
+
+    /// Eagerly load the small models into the shared context cache while recording is in
+    /// progress. Mirrors `ScribeController::spawn_record_start_preload`.
+    fn spawn_record_start_preload(&self) {
+        let cfg = self.config.get();
+        let path = match preload_path_for_dictate(&cfg, &self.model) {
+            Some(p) => p,
+            None => return,
+        };
+        if !self.model.model_available(&path) {
+            return;
+        }
+        let model = Arc::clone(&self.model);
+        tauri::async_runtime::spawn(async move {
+            let _ = tokio::task::spawn_blocking(move || {
+                if let Err(e) = model.get_or_load_context(&path) {
+                    eprintln!("[dictate] record-start preload failed: {e}");
+                }
+            })
+            .await;
+        });
+    }
+
+    /// Best-effort finalize of an in-progress capture when the app is quitting.
+    /// Leaves a checkpointed temp WAV for startup recovery to salvage.
+    pub fn finalize_capture_on_shutdown(&self) {
+        let session = {
+            let mut inner = self.lock();
+            if inner.state != DictateState::Recording {
+                return;
+            }
+            inner.state = DictateState::Idle;
+            inner.session.take()
+        };
+        if let Some(session) = session {
+            let _ = session.mic.stop_and_finalize();
+        }
+        self.clear_restore_paste_target_pid();
+        let _ = self.app.emit(DICTATE_AUDIO_LEVEL_EVENT, 0.0_f32);
     }
 
     /// Cancel from Recording or Done state → Idle. Discards audio. Hides window.
@@ -464,7 +508,17 @@ impl DictateController {
             self.emit_state_event(&inner);
             s
         };
-        drop(session);
+        if let Some(session) = session {
+            // Finalize the WAV writer so the file's RIFF header is well-formed, then
+            // delete it — cancel discards audio. Without this the temp file would leak
+            // every time the user cancels mid-dictate.
+            match session.mic.stop_and_finalize() {
+                Ok(path) => {
+                    let _ = std::fs::remove_file(&path);
+                }
+                Err(e) => eprintln!("[dictate] cancel finalize: {e}"),
+            }
+        }
         let _ = self.app.emit(DICTATE_AUDIO_LEVEL_EVENT, 0.0_f32);
         self.hide_window();
         Ok(())
@@ -527,13 +581,13 @@ impl DictateController {
                     this.auto_dismiss();
                 }
                 Ok(Err(e)) => {
-                    this.set_error_state(e.to_string());
+                    this.set_error_state(e.to_string(), None);
                     tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
                     this.auto_dismiss();
                 }
                 Err(e) => {
                     eprintln!("[dictate] transcription panicked: {e}");
-                    this.set_error_state("Transcription crashed unexpectedly.".to_string());
+                    this.set_error_state("Transcription crashed unexpectedly.".to_string(), None);
                     tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
                     this.auto_dismiss();
                 }
@@ -552,20 +606,34 @@ impl DictateController {
     ) -> Result<bool> {
         let config = self.config.get();
 
-        let (raw_pcm, native_rate) = session.mic.stop_and_take();
-        let pcm_16k = resample_linear(&raw_pcm, native_rate, WHISPER_SAMPLE_RATE);
+        let wav_path = session.mic.wav_path().to_path_buf();
+        session.mic.stop_and_finalize()?;
+        let pcm_16k = match read_wav_mono_f32(&wav_path) {
+            Ok(pcm) => pcm,
+            Err(e) => {
+                let salvaged = self.salvage_dictate_wav(&wav_path);
+                self.set_error_state(
+                    format!("Could not read recording — {e}"),
+                    salvaged,
+                );
+                return Ok(false);
+            }
+        };
 
         const MIN_PCM_SAMPLES_16K: usize = WHISPER_SAMPLE_RATE as usize / 10; // 100 ms
         if pcm_16k.len() < MIN_PCM_SAMPLES_16K {
-            self.set_error_state("Recording too short — try again.".to_string());
+            self.delete_dictate_wav(&wav_path);
+            self.set_error_state("Recording too short — try again.".to_string(), None);
             return Ok(false);
         }
 
         let model_path = resolve_dictate_model_path(&config, &self.model);
 
         if !self.model.model_available(&model_path) {
+            let salvaged = self.salvage_dictate_wav(&wav_path);
             self.set_error_state(
                 "No Whisper model available. Download one in Settings → Models.".to_string(),
+                salvaged,
             );
             return Ok(false);
         }
@@ -573,7 +641,7 @@ impl DictateController {
         let vad_path = self.model.vad_model_path();
         let vad = self.model.model_available(&vad_path).then_some(vad_path.as_path());
         let app_clone = self.app.clone();
-        let segments = self.model.transcribe_pcm_with_progress(
+        let segments = match self.model.transcribe_pcm_with_progress(
             &model_path,
             &pcm_16k,
             vad,
@@ -589,14 +657,23 @@ impl DictateController {
                     )
                     .ok();
             },
-        )?;
+        ) {
+            Ok(segments) => segments,
+            Err(e) => {
+                let salvaged = self.salvage_dictate_wav(&wav_path);
+                self.set_error_state(e.to_string(), salvaged);
+                return Ok(false);
+            }
+        };
 
         if abort_flag.load(Ordering::SeqCst) {
+            self.delete_dictate_wav(&wav_path);
             self.transition_to_idle();
             return Ok(false);
         }
 
         if segments.is_empty() {
+            self.delete_dictate_wav(&wav_path);
             self.transition_to_idle();
             return Ok(false);
         }
@@ -622,7 +699,11 @@ impl DictateController {
 
         if let Err(e) = self.app.clipboard().write_text(text.clone()) {
             eprintln!("[dictate] failed to write clipboard: {e}");
-            self.set_error_state(format!("Could not write to clipboard — {e}. Transcription: {text}"));
+            self.delete_dictate_wav(&wav_path);
+            self.set_error_state(
+                format!("Could not write to clipboard — {e}. Transcription: {text}"),
+                None,
+            );
             return Ok(true);
         }
 
@@ -646,6 +727,8 @@ impl DictateController {
         } else {
             self.clear_restore_paste_target_pid();
         }
+
+        self.delete_dictate_wav(&wav_path);
 
         {
             let mut inner = self.lock();
@@ -686,7 +769,7 @@ impl DictateController {
         self.hide_window();
     }
 
-    fn set_error_state(&self, msg: String) {
+    fn set_error_state(&self, msg: String, salvaged_wav_path: Option<PathBuf>) {
         self.clear_restore_paste_target_pid();
         let mut inner = self.lock();
         inner.state = DictateState::Error;
@@ -696,6 +779,8 @@ impl DictateController {
                 DICTATE_STATE_EVENT,
                 DictateStateEvent {
                     error: Some(msg),
+                    salvaged_wav_path: salvaged_wav_path
+                        .map(|p| p.to_string_lossy().into_owned()),
                     ..DictateStateEvent::new(DictateState::Error)
                 },
             )
@@ -703,6 +788,24 @@ impl DictateController {
         drop(inner);
         let _ = self.app.emit(DICTATE_AUDIO_LEVEL_EVENT, 0.0_f32);
         // Window stays visible; caller schedules auto_dismiss after a delay.
+    }
+
+    fn delete_dictate_wav(&self, path: &Path) {
+        let _ = std::fs::remove_file(path);
+    }
+
+    fn salvage_dictate_wav(&self, path: &Path) -> Option<PathBuf> {
+        match self
+            .output
+            .salvage_dictate_wav(&self.config.get().save_folder, path)
+        {
+            Ok(dest) => Some(dest),
+            Err(e) => {
+                eprintln!("[dictate] failed to salvage wav: {e}");
+                self.delete_dictate_wav(path);
+                None
+            }
+        }
     }
 
     /// Dismiss the panel if it is in Done or Error state. No-op from any other state.
@@ -808,6 +911,19 @@ impl DictateController {
     }
 }
 
+/// Location of the dictate capture's temp WAV. Lives under the app's local data dir so
+/// it's covered by the same sandbox/permissions as `config.json`. A UUID-based name
+/// avoids any chance of collision with a stale file from a previous crashed run.
+fn dictate_temp_wav_path(app: &AppHandle) -> Result<PathBuf> {
+    let dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| anyhow!("failed to resolve app local data dir: {e}"))?
+        .join("dictate_temp");
+    std::fs::create_dir_all(&dir).map_err(|e| anyhow!("create dictate temp dir: {e}"))?;
+    Ok(dir.join(format!("{}.wav", uuid::Uuid::new_v4())))
+}
+
 fn resolve_dictate_model_path(config: &Config, model: &ModelService) -> PathBuf {
     if let Some(id) = &config.dictate_model_id {
         model.model_path_for_id(id).unwrap_or_else(|| model.default_model_path())
@@ -816,6 +932,20 @@ fn resolve_dictate_model_path(config: &Config, model: &ModelService) -> PathBuf 
     } else {
         model.default_model_path()
     }
+}
+
+/// Returns the on-disk path for the configured Dictate model **only when it is in the
+/// preload allowlist**. Dictate has its own `dictate_model_id` that overrides the global
+/// `selected_model_id`; both are checked.
+fn preload_path_for_dictate(config: &Config, model: &ModelService) -> Option<PathBuf> {
+    let model_id = config
+        .dictate_model_id
+        .as_deref()
+        .or(config.selected_model_id.as_deref())?;
+    if !model_id_preload_eligible(model_id) {
+        return None;
+    }
+    model.model_path_for_id(model_id)
 }
 
 #[cfg(test)]
@@ -827,6 +957,55 @@ mod tests {
     // Using addition rather than real sleeps keeps the tests instant and deterministic.
     fn ms_ago(ms: u64) -> Instant {
         Instant::now() - Duration::from_millis(ms)
+    }
+
+    // ── Preload eligibility ──────────────────────────────────────────────────
+
+    fn fake_model_service() -> Arc<ModelService> {
+        ModelService::new(
+            std::env::temp_dir().join(format!("liscribe-dictate-test-{}", uuid::Uuid::new_v4())),
+        )
+    }
+
+    #[test]
+    fn dictate_preload_path_prefers_dictate_model_id_over_global() {
+        let model = fake_model_service();
+        let config = Config {
+            dictate_model_id: Some("tiny-en-q5".to_string()),
+            selected_model_id: Some("small-en-q5".to_string()),
+            ..Config::default()
+        };
+        let path = preload_path_for_dictate(&config, model.as_ref()).expect("eligible");
+        assert!(path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap()
+            .contains("tiny"));
+    }
+
+    #[test]
+    fn dictate_preload_path_falls_back_to_selected_when_no_dictate_override() {
+        let model = fake_model_service();
+        let config = Config {
+            selected_model_id: Some("base-en-q5".to_string()),
+            ..Config::default()
+        };
+        assert!(preload_path_for_dictate(&config, model.as_ref()).is_some());
+    }
+
+    #[test]
+    fn dictate_preload_path_returns_none_for_larger_models() {
+        let model = fake_model_service();
+        for id in ["small-en-q5", "medium-en-q5", "large-v3-turbo-q5"] {
+            let config = Config {
+                dictate_model_id: Some(id.to_string()),
+                ..Config::default()
+            };
+            assert!(
+                preload_path_for_dictate(&config, model.as_ref()).is_none(),
+                "{id} should not be eligible"
+            );
+        }
     }
 
     // ── First press behaviour ────────────────────────────────────────────────

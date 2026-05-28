@@ -19,9 +19,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Native Apple Silicon. Cargo enables whisper-rs's `metal` feature on this target
+          # so the GPU does the inference. CMAKE_ARGS from .cargo/config.toml adds Accelerate.
           - os: macos-14
-            target: universal-apple-darwin
-            artifact_path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            target: aarch64-apple-darwin
+            artifact_path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          # Native Intel macOS. Builds with explicit AVX2/FMA/F16C — every 2013+ Intel Mac
+          # has these; no Intel Mac ever shipped AVX-512, so we don't enable it. Cross-
+          # compiling this from macos-14 (previous setup) couldn't probe AVX2 via CPUID
+          # and ended up with baseline SSE only — the source of the slow-transcription
+          # report from Intel-Mac users.
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact_path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+            extra_cmake_args: "-DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON"
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
@@ -38,14 +49,12 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          # Cache key includes the target so the Intel + AS slices don't trample each
+          # other's prebuilt artifacts when running in parallel.
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - uses: dtolnay/rust-toolchain@stable
-
-      - name: Add macOS targets
-        if: matrix.os == 'macos-14'
-        run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
 
       - uses: actions/setup-node@v5
         with:
@@ -61,12 +70,20 @@ jobs:
         shell: bash
         env:
           TAURI_BUILD_TARGET: ${{ matrix.target }}
+          # Compose CMAKE_ARGS per matrix entry. The base flags (Accelerate + BLAS) are
+          # also in .cargo/config.toml, but inherited env wins over Cargo [env], so we
+          # re-state them here whenever extra_cmake_args is non-empty to avoid silently
+          # dropping the BLAS path.
+          EXTRA_CMAKE_ARGS: ${{ matrix.extra_cmake_args }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          if [[ -n "${EXTRA_CMAKE_ARGS}" ]]; then
+            export CMAKE_ARGS="-DGGML_ACCELERATE=ON -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=Apple ${EXTRA_CMAKE_ARGS}"
+          fi
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             npm run tauri -- build --target "$TAURI_BUILD_TARGET" --bundles nsis
           else
@@ -76,7 +93,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:
-          name: ${{ matrix.os }}-artifact
+          name: ${{ matrix.os }}-${{ matrix.target }}-artifact
           path: ${{ matrix.artifact_path }}
           if-no-files-found: error
 
@@ -98,6 +115,8 @@ jobs:
           body: |
             ## Installation
 
-            **macOS (.dmg):** Open the DMG and drag ScribeFloat to Applications. Double-click to launch.
+            **macOS — Apple Silicon (M1/M2/M3/M4):** download the DMG from the `macos-14-aarch64-apple-darwin-artifact` build, open it, and drag ScribeFloat to Applications. Inference runs on the GPU via Metal.
+
+            **macOS — Intel:** download the DMG from the `macos-13-x86_64-apple-darwin-artifact` build. Built natively on Intel CI with AVX2 + FMA + F16C and the Accelerate BLAS path enabled, so transcription is materially faster than the previous cross-compiled slice.
 
             **Windows (NSIS .exe):** Run the installer. If Windows SmartScreen warns you, click **More info → Run anyway**.

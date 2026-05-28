@@ -104,7 +104,7 @@ To verify no unexpected outbound connections:
 - Required for **Scribe** (recording sessions) and **Dictate** (voice-to-text)
 - The OS presents a permission prompt on first use; the app does not bypass or pre-grant this
 - Audio is captured in raw PCM format via [cpal](https://github.com/RustAudio/cpal), a cross-platform audio library
-- Captured audio is held in-process memory and written to disk only by `OutputService`
+- Captured audio is streamed to 16 kHz WAV files on disk during recording via `AudioService` (a dedicated writer thread checkpoints headers every 30 s so a crash mid-session leaves a playable file). Transcripts, session manifests, and post-transcription cleanup are written by `OutputService`.
 
 ### 2.2 System audio (speaker capture)
 
@@ -113,13 +113,11 @@ To verify no unexpected outbound connections:
 - **Windows**: captured via WASAPI loopback (built into Windows; no additional software required)
 - No additional OS permission is needed beyond what BlackHole or WASAPI provides
 
-### 2.3 Dictate audio — memory only, never on disk
+### 2.3 Dictate audio — short-lived temp file
 
-This is the most security-relevant audio-handling characteristic of the Dictate feature:
+Dictate no longer holds the full recording in RAM for the duration of a session. While the hotkey is active, audio is streamed to a UUID-named temp WAV under the app local data directory (`dictate_temp/`). On successful transcription the temp file is deleted. If transcription fails, the WAV may be moved into `{save_folder}/dictate_failures/` for manual recovery — that salvage step is handled by `OutputService`.
 
-> **Dictate audio is never written to disk under any circumstance.**
-
-The audio buffer is allocated in process memory when the hotkey is pressed and released immediately after Whisper inference completes. There is no temporary file, no swap-to-disk path, and no audio log. This is enforced by code architecture: `OutputService` (the only component permitted to write files) is never called during a Dictate session. The Dictate controller passes its PCM buffer directly to `ModelService` for inference, then discards it.
+Dictate does **not** append audio to `dictate.jsonl` or keep a standing audio archive. The temp file exists only for the active dictation (plus the optional failure salvage copy).
 
 ### 2.4 Scribe and Transcribe audio lifecycle
 
@@ -127,11 +125,11 @@ For Scribe recordings and the Transcribe file-import feature:
 
 | Stage | Scribe (user records) | Transcribe (user drops file) |
 |-------|-----------------------|------------------------------|
-| Audio written to disk | Yes — `mic.wav` (and `speaker.wav` if dual-source) | No — user's source file is read but not copied |
-| Written by | `OutputService` only | N/A |
-| Deleted after transcription | Yes — automatically, once the transcript is confirmed written and non-empty | N/A — user owns source file |
-| Deleted by | `OutputService` only, after verifying transcript exists and is non-empty | N/A |
-| Location while on disk | User-configured save folder | N/A |
+| Audio written to disk | Yes — `mic.wav` (and `speaker.wav` if dual-source) streamed during capture | No — user's source file is read but not copied |
+| Written by | `AudioService` during capture; `OutputService` for merged speaker WAV, transcripts, manifests, cleanup | N/A |
+| Deleted after transcription | Yes — session staging folder removed when **Keep audio after transcription** is off and the transcript is non-empty; WAVs kept in `{save_folder}/{timestamp}/` when that setting is on | N/A — user owns source file |
+| Transcript location | Save folder root (`{title}_{model}.md`, with `_1`, `_2`, … suffixes on collision) | User-chosen output folder |
+| Location while on disk | Staging WAVs in `{save_folder}/{timestamp}/`; transcripts at save folder root | N/A |
 
 ---
 
@@ -171,10 +169,11 @@ Revoking a permission does not delete any existing data. The affected feature de
 |------|----------|--------|
 | App configuration | OS app-data dir (`config.json`) | JSON |
 | Whisper model files | OS app-data dir (`models/`) | Binary (ggml) |
-| Transcripts | User save folder (default: `~/Documents/ScribeFloat/`) | Markdown (`.md`) |
-| Audio recordings | User save folder, inside per-session subfolders | WAV |
+| Transcripts | User save folder root (default: `~/Documents/transcripts_scribefloat/`) | Markdown (`.md`) |
+| Audio recordings | User save folder, inside per-session subfolders (when retained) | WAV |
 | Dictate history log | User save folder (`dictate.jsonl`) | JSONL |
-| Dictate audio buffer | RAM only | In-process memory |
+| Dictate temp capture | App local data dir (`dictate_temp/`, deleted on success) | WAV |
+| Dictate failure salvage | User save folder (`dictate_failures/`, only on transcription error) | WAV |
 
 OS app-data directories:
 - **macOS**: `~/Library/Application Support/com.benjamin.scribefloat-v8/`
@@ -326,8 +325,8 @@ To completely remove all application data from a device:
    - **macOS**: `rm -rf ~/Library/Application\ Support/com.benjamin.scribefloat-v8/`
    - **Windows**: `rmdir /s "%APPDATA%\com.benjamin.scribefloat-v8"`
 4. Delete the transcript save folder (default):
-   - **macOS**: `rm -rf ~/Documents/ScribeFloat/`
-   - **Windows**: `rmdir /s "%USERPROFILE%\Documents\ScribeFloat"`
+   - **macOS**: `rm -rf ~/Documents/transcripts_scribefloat/`
+   - **Windows**: `rmdir /s "%USERPROFILE%\Documents\transcripts_scribefloat"`
 
 After these steps, no application data remains on the device.
 

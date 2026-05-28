@@ -4,7 +4,7 @@ use crate::services::{
     model::ModelService,
     output::OutputService,
 };
-use crate::services::audio::resample_linear;
+use crate::services::audio::read_wav_mono_f32;
 use crate::types::{Config, DictateProcessingStage, DictateState, DictateStateEvent};
 use anyhow::{anyhow, Result};
 use std::path::PathBuf;
@@ -420,11 +420,13 @@ impl DictateController {
             }
         }
 
+        let wav_path = dictate_temp_wav_path(&self.app)?;
         let app = self.app.clone();
         let last_level_emit = Arc::new(Mutex::new(None::<Instant>));
         let mic = self.audio.start_mic(
             None,
             true,
+            wav_path,
             Some(Arc::new(move |level| {
                 let mut gate = last_level_emit.lock().unwrap_or_else(|p| p.into_inner());
                 let now = Instant::now();
@@ -492,7 +494,17 @@ impl DictateController {
             self.emit_state_event(&inner);
             s
         };
-        drop(session);
+        if let Some(session) = session {
+            // Finalize the WAV writer so the file's RIFF header is well-formed, then
+            // delete it — cancel discards audio. Without this the temp file would leak
+            // every time the user cancels mid-dictate.
+            match session.mic.stop_and_finalize() {
+                Ok(path) => {
+                    let _ = std::fs::remove_file(&path);
+                }
+                Err(e) => eprintln!("[dictate] cancel finalize: {e}"),
+            }
+        }
         let _ = self.app.emit(DICTATE_AUDIO_LEVEL_EVENT, 0.0_f32);
         self.hide_window();
         Ok(())
@@ -580,8 +592,13 @@ impl DictateController {
     ) -> Result<bool> {
         let config = self.config.get();
 
-        let (raw_pcm, native_rate) = session.mic.stop_and_take();
-        let pcm_16k = resample_linear(&raw_pcm, native_rate, WHISPER_SAMPLE_RATE);
+        // Finalize the disk-buffered WAV (already at 16 kHz, no in-RAM PCM during capture).
+        // Capture the path first so we can clean up even if finalize itself errors. The
+        // RAII guard handles every subsequent return path.
+        let wav_path = session.mic.wav_path().to_path_buf();
+        let _cleanup = DictateTempWavCleanup(wav_path.clone());
+        session.mic.stop_and_finalize()?;
+        let pcm_16k = read_wav_mono_f32(&wav_path)?;
 
         const MIN_PCM_SAMPLES_16K: usize = WHISPER_SAMPLE_RATE as usize / 10; // 100 ms
         if pcm_16k.len() < MIN_PCM_SAMPLES_16K {
@@ -834,6 +851,30 @@ impl DictateController {
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|p| p.into_inner())
     }
+}
+
+/// RAII guard: deletes the dictate temp WAV when this scope ends, regardless of whether
+/// `do_transcription` returned, errored, or panicked. Avoids leaking a temp file when an
+/// early-return path between WAV read and final dismiss bails out.
+struct DictateTempWavCleanup(PathBuf);
+
+impl Drop for DictateTempWavCleanup {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// Location of the dictate capture's temp WAV. Lives under the app's local data dir so
+/// it's covered by the same sandbox/permissions as `config.json`. A UUID-based name
+/// avoids any chance of collision with a stale file from a previous crashed run.
+fn dictate_temp_wav_path(app: &AppHandle) -> Result<PathBuf> {
+    let dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| anyhow!("failed to resolve app local data dir: {e}"))?
+        .join("dictate_temp");
+    std::fs::create_dir_all(&dir).map_err(|e| anyhow!("create dictate temp dir: {e}"))?;
+    Ok(dir.join(format!("{}.wav", uuid::Uuid::new_v4())))
 }
 
 fn resolve_dictate_model_path(config: &Config, model: &ModelService) -> PathBuf {

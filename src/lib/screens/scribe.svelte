@@ -25,11 +25,9 @@
 
   type Props = {
     processingStart?: (title: string) => void;
-    /** One-shot: parent sets true when user opens Scribe; cleared after a successful `scribe_start`. */
-    autoStart?: boolean;
   };
 
-  let { processingStart, autoStart = $bindable(false) }: Props = $props();
+  let { processingStart }: Props = $props();
 
   // ── State machine ─────────────────────────────────────────────────────────
   type Phase = "idle" | "recording" | "no_model" | "error";
@@ -115,6 +113,13 @@
     recoverySessions = await invoke<RecoverySessionInfo[]>(
       "scribe_list_recovery_sessions",
     ).catch(() => []);
+  }
+
+  /** Re-scan disk when Scribe is shown — prewarm runs `loadRecoverySessions` once at startup and would otherwise stay stale. */
+  async function refreshRecoverySessionsIfVisible() {
+    const visible = await getCurrentWindow().isVisible().catch(() => false);
+    if (!visible) return;
+    await loadRecoverySessions();
   }
 
   // ── Backend events ────────────────────────────────────────────────────────
@@ -224,7 +229,6 @@
         captureSpeaker: speakerCaptureAvailable && captureSpeaker,
       });
       phase = "recording";
-      autoStart = false;
       startTimer();
     } catch (e) {
       phase = "error";
@@ -238,35 +242,9 @@
     await invoke("settings_show_window").catch(() => {});
   }
 
-  async function maybeAutoStartRecording() {
-    if (!autoStart || discardConfirmOpen || discardInProgress) {
-      return;
-    }
-    const visible = await getCurrentWindow().isVisible().catch(() => true);
-    if (!visible) return;
-    if (phase === "idle") {
-      await startRecording();
-    }
-  }
-
-  /** Arm auto-start when parent sets `autoStart` (tray / hotkey open); do not rely on default-true at webview load. */
-  $effect(() => {
-    if (!browser) return;
-    if (
-      !autoStart ||
-      phase !== "idle" ||
-      discardConfirmOpen ||
-      discardInProgress
-    ) {
-      return;
-    }
-    void maybeAutoStartRecording();
-  });
-
   /** Backend hides the Scribe webview (does not destroy it) so the tray app keeps running. */
   async function destroyScribeWindow() {
     if (!browser) return;
-    autoStart = false;
     await invoke("scribe_cancel").catch(() => {});
     await invoke("scribe_abort_transcription").catch(() => {});
     await invoke("scribe_destroy_window").catch(() => {});
@@ -302,12 +280,9 @@
 
   async function discardRecording() {
     discardInProgress = true;
-    autoStart = false;
     try {
       await cancel();
       discardConfirmOpen = false;
-      // Keep discardInProgress until the window is hidden; closing the modal + focus can fire
-      // maybeAutoStartRecording() — isVisible/autoStart guards plus Rust cancel-in-hide cover that.
       await destroyScribeWindow();
     } catch (e) {
       phase = "error";
@@ -422,10 +397,9 @@
     unlisteners = [ul1, ul2, ulSpeaker, ulSpeakerUnavailable, ul3, ulSpeakerSaved];
     unlistenFocus = await getCurrentWindow().onFocusChanged(
       ({ payload: focused }) => {
-        if (focused) {
-          void reloadSpeakerCaptureSettings();
-          void maybeAutoStartRecording();
-        }
+        if (!focused) return;
+        void reloadSpeakerCaptureSettings();
+        void refreshRecoverySessionsIfVisible();
       },
     );
   });
@@ -477,12 +451,15 @@
           Open <strong>Transcribe</strong> from the menu bar and drop the session folder
           (contains <code class="font-mono bg-fill px-1 rounded">mic.wav</code>) to recover it.
         </p>
+        {#if saveFolder}
+          <p class="mt-1 truncate text-fg/60" title={saveFolder}>
+            Scanned folder: {saveFolder}
+          </p>
+        {/if}
         <button
           type="button"
           class="mt-1 underline cursor-pointer text-fg/80"
-          onclick={() => {
-            recoverySessions = [];
-          }}
+          onclick={() => void loadRecoverySessions()}
         >
           Dismiss
         </button>
@@ -631,17 +608,9 @@
           {/if}
           <div class="flex items-center gap-3">
             {#if phase === "idle"}
-              {#if autoStart}
-                <span
-                  class="font-mono text-label-sm text-fg/50 uppercase tracking-stamped"
-                >
-                  Starting…
-                </span>
-              {:else}
-                <Button variant="primary" onclick={startRecording}
-                  >Start Recording</Button
-                >
-              {/if}
+              <Button variant="primary" onclick={startRecording}
+                >Start Recording</Button
+              >
             {:else if phase === "recording"}
               <div class="flex items-center gap-2 w-full">
                 <Button variant="primary" onclick={stopAndSave}

@@ -78,16 +78,15 @@ panel (HTML/JS)
 
 ---
 
-## Scribe UI — recording auto-start (do not regress)
+## Scribe UI — manual recording start (do not regress)
 
-The Scribe webview is **prewarmed at startup** (`prewarm_scribe_window` in `src-tauri/src/lib.rs`). If the frontend defaults **`autoStart` / `autoStartRecording` to `true`**, the mic starts as soon as that hidden window loads — **not** when the user opens Scribe.
+The Scribe webview is **prewarmed at startup** (`prewarm_scribe_window` in `src-tauri/src/lib.rs`). Opening Scribe (tray, hotkey, or menu) must **not** call `scribe_start` — the user starts capture with **Start Recording** in `scribe.svelte`.
 
 **Rules for agents:**
 
-- **Never** default global Scribe auto-record to `true` in `src/routes/+page.svelte` to “fix” timing races.
-- Recording should start only when the user **opens Scribe** (tray / hotkey → `open_scribe_window` emits `scribe://open-requested`; `+page.svelte` sets `autoStartRecording = true`) or taps **Start recording** / **Record again**.
-- Use **`bind:autoStart`** on `ScribeScreen` and **`$bindable(false)`** in `scribe.svelte`; clear **`autoStart`** after a successful **`scribe_start`** so returning to **idle** does not immediately reopen the mic.
-- Reopen/discard edge cases: rely on **`$effect`** + **`$bindable`** (and focus **`maybeAutoStartRecording`**), not **`autoStart = true` by default**.
+- **Never** auto-invoke `scribe_start` when the Scribe window is shown, focused, or prewarmed.
+- **Never** reintroduce `autoStart` / `autoStartRecording` / `scribe://open-requested` arming for recording.
+- **Record again** (processing screen) returns to the idle Scribe UI; the user taps **Start Recording** again (error-state **Try again** in `scribe.svelte` may call `startRecording` directly).
 
 ---
 

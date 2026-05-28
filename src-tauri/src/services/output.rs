@@ -248,9 +248,12 @@ impl OutputService {
     }
 
     /// Prepend a new entry to `{save_folder}/dictate_history.json`.
-    /// Creates the file if it does not exist. The list is newest-first.
+    /// Creates the save folder and file if they do not exist. The list is newest-first.
     pub fn write_dictate_history_entry(&self, save_folder: &str, text: &str) -> Result<()> {
         let path = PathBuf::from(save_folder).join("dictate_history.json");
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).context("create save folder for dictate history")?;
+        }
         let mut entries: Vec<DictateHistoryEntry> = if path.exists() {
             let raw = std::fs::read_to_string(&path).context("read dictate_history.json")?;
             serde_json::from_str(&raw).unwrap_or_default()
@@ -917,6 +920,27 @@ mod tests {
         let folder = temp_save_folder();
         let entries = svc.read_dictate_history(&folder).expect("read");
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn write_dictate_history_creates_missing_save_folder() {
+        let svc = OutputService;
+        let folder = std::env::temp_dir()
+            .join(format!(
+                "liscribe-dictate-mkdir-tests-{}",
+                uuid::Uuid::new_v4()
+            ))
+            .join("nested")
+            .join("save");
+        let folder = folder.to_string_lossy().to_string();
+        assert!(!PathBuf::from(&folder).exists());
+
+        svc.write_dictate_history_entry(&folder, "hello")
+            .expect("write creates parent dirs");
+
+        let entries = svc.read_dictate_history(&folder).expect("read");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].text, "hello");
     }
 
     #[test]

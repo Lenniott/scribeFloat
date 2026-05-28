@@ -90,6 +90,9 @@ pub struct ModelService {
     /// here eliminates the cold-load tax (~300 ms tiny → ~2 s large) that the previous
     /// implementation paid on every `transcribe_pcm_with_progress` call.
     loaded_contexts: Mutex<HashMap<PathBuf, Arc<WhisperContext>>>,
+    /// Per-path mutexes so concurrent callers (e.g. record-start preload + stop transcribe)
+    /// serialize on the same file instead of each paying a full WhisperContext load.
+    loading_locks: Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>,
 }
 
 impl ModelService {
@@ -97,6 +100,7 @@ impl ModelService {
         Arc::new(Self {
             models_dir,
             loaded_contexts: Mutex::new(HashMap::new()),
+            loading_locks: Mutex::new(HashMap::new()),
         })
     }
 
@@ -373,12 +377,18 @@ impl ModelService {
     /// disk I/O and model parsing, so callers should invoke this from `spawn_blocking` (or
     /// off the async runtime). Subsequent calls for the same path are O(hash lookup).
     pub fn get_or_load_context(&self, model_path: &Path) -> Result<Arc<WhisperContext>> {
-        // Fast path: cache hit without holding the lock during the load.
-        {
-            let guard = self.lock_contexts();
-            if let Some(ctx) = guard.get(model_path) {
-                return Ok(Arc::clone(ctx));
-            }
+        if let Some(ctx) = self.cached_context(model_path) {
+            return Ok(ctx);
+        }
+
+        let path_key = model_path.to_path_buf();
+        let load_lock = self.load_lock_for(&path_key);
+        let _in_flight = load_lock
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+
+        if let Some(ctx) = self.cached_context(model_path) {
+            return Ok(ctx);
         }
 
         let path_str = model_path
@@ -390,17 +400,35 @@ impl ModelService {
         let ctx = Arc::new(ctx);
         eprintln!(
             "[model] loaded {} in {} ms",
-            model_path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| path_str.to_string()),
+            model_path
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path_str.to_string()),
             load_started.elapsed().as_millis()
         );
 
         let mut guard = self.lock_contexts();
-        // Another thread may have raced us; honor the first winner so we only keep one copy.
         Ok(Arc::clone(
             guard
-                .entry(model_path.to_path_buf())
+                .entry(path_key)
                 .or_insert_with(|| Arc::clone(&ctx)),
         ))
+    }
+
+    fn cached_context(&self, model_path: &Path) -> Option<Arc<WhisperContext>> {
+        let guard = self.lock_contexts();
+        guard.get(model_path).map(Arc::clone)
+    }
+
+    fn load_lock_for(&self, path_key: &PathBuf) -> Arc<Mutex<()>> {
+        let mut locks = self
+            .loading_locks
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        locks
+            .entry(path_key.clone())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
     }
 
     fn lock_contexts(&self) -> std::sync::MutexGuard<'_, HashMap<PathBuf, Arc<WhisperContext>>> {

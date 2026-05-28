@@ -1,0 +1,86 @@
+# Called by release.yml — one platform/target per invocation.
+name: Reusable Tauri build
+
+on:
+  workflow_call:
+    secrets: inherit
+    inputs:
+      os:
+        required: true
+        type: string
+      target:
+        required: true
+        type: string
+      artifact_path:
+        required: true
+        type: string
+      artifact_name:
+        required: true
+        type: string
+      extra_cmake_args:
+        required: false
+        type: string
+        default: ''
+      bundle_nsis:
+        required: false
+        type: boolean
+        default: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    runs-on: ${{ inputs.os }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Cache Rust
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-${{ inputs.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ inputs.target }}-cargo-
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # macOS: Tauri imports APPLE_CERTIFICATE (.p12) and signs with that cert's identity.
+      # Do not set APPLE_SIGNING_IDENTITY unless it is a substring of the p12 identity
+      # (tauri-bundler: certificate_identity.contains(identity)).
+      - name: Build
+        shell: bash
+        env:
+          TAURI_BUILD_TARGET: ${{ inputs.target }}
+          EXTRA_CMAKE_ARGS: ${{ inputs.extra_cmake_args }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [[ -n "${EXTRA_CMAKE_ARGS}" ]]; then
+            export CMAKE_ARGS="-DGGML_ACCELERATE=ON -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=Apple ${EXTRA_CMAKE_ARGS}"
+          fi
+          if [[ "${{ inputs.bundle_nsis }}" == "true" ]]; then
+            npm run tauri -- build --target "$TAURI_BUILD_TARGET" --bundles nsis
+          else
+            npm run tauri -- build --target "$TAURI_BUILD_TARGET"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.artifact_path }}
+          if-no-files-found: error

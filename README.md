@@ -26,7 +26,7 @@ ScribeFloat runs OpenAI's [Whisper](https://github.com/openai/whisper) model ent
 | Platform | Status |
 |----------|--------|
 | macOS 13+ | **Supported** — primary development target; releases are built, signed, notarized, and tested on real hardware |
-| Windows 10+ | **Theoretically supported, untested** — the codebase has Windows implementations and CI publishes `.msi` installers, but day-to-day development and manual QA happen on macOS only |
+| Windows 10+ | **Theoretically supported, untested** — the codebase has Windows implementations and CI publishes NSIS `.exe` installers, but day-to-day development and manual QA happen on macOS only |
 | Linux | **Not supported** |
 
 **Windows in practice:** Treat Windows as best-effort until more users validate it. If something breaks on your machine, please open an issue or PR — Windows contributors are especially welcome ([Contributing](#contributing)).
@@ -159,18 +159,121 @@ context/                   Architecture and design documentation
 
 ## Releasing a new version
 
-1. Bump the version in all three config files:
-   ```bash
-   npm run bump -- 0.2.0
-   ```
-2. Commit and tag:
-   ```bash
-   git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
-   git commit -m "chore: bump version to 0.2.0"
-   git tag v0.2.0
-   git push origin main --tags
-   ```
-3. GitHub Actions picks up the tag and builds macOS (universal `.dmg`) and Windows (`.msi`) automatically. The release is published to GitHub Releases once both builds complete (~15–20 min). macOS builds are code-signed and notarized in CI. Windows installers are built in CI but are **not** manually smoke-tested before publish.
+Releases are driven by **git tags** matching `v*.*.*` (for example `v0.2.12`). Pushing a tag starts the [Release workflow](.github/workflows/release.yml), which builds **three independent jobs**:
+
+| Job | Runner | Artifact |
+|-----|--------|----------|
+| `build-macos-arm` | `macos-14` | Apple Silicon `.dmg` |
+| `build-macos-intel` | `macos-13` | Intel Mac `.dmg` |
+| `build-windows` | `windows-latest` | Windows NSIS `.exe` |
+
+Platform builds run in parallel and **do not block each other**. The `release` job publishes a GitHub Release with whatever installers succeeded. If one platform fails or is stuck in queue, the others can still ship.
+
+### Prerequisites (one-time)
+
+1. **Repository secrets** (Settings → Secrets and variables → Actions) for macOS signing and notarization:
+   - `APPLE_CERTIFICATE` — base64-encoded `.p12` signing certificate
+   - `APPLE_CERTIFICATE_PASSWORD`
+   - `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` — notarization credentials
+
+2. **`gh` CLI** (optional but handy): [cli.github.com](https://cli.github.com)
+
+### Step 1 — Bump the version
+
+From `main`, with a clean working tree:
+
+```bash
+npm run bump -- 0.2.12
+```
+
+This updates `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`, then creates commit `chore: bump version to 0.2.12` and tag `v0.2.12`.
+
+To bump and push in one step:
+
+```bash
+npm run bump -- 0.2.12 --push
+```
+
+To only edit the version files (no commit/tag):
+
+```bash
+npm run bump -- 0.2.12 --no-git
+```
+
+### Step 2 — Push to GitHub
+
+If you did not use `--push`:
+
+```bash
+git push origin main
+git push origin v0.2.12
+```
+
+Pushing the **tag** triggers CI. Pushing `main` alone does not.
+
+### Step 3 — Watch the workflow
+
+1. Open **GitHub → Actions → Release**.
+2. You should see four jobs: three builds + `release`.
+3. Builds typically take **10–25 minutes** each (macOS Intel often waits longest for a runner).
+4. When at least one build succeeds, `release` creates/updates the GitHub Release and attaches available installers.
+
+Check status from the terminal:
+
+```bash
+gh run list --workflow=release.yml --limit 5
+gh run watch   # follow the latest run
+```
+
+### Step 4 — Verify the release
+
+1. Open **GitHub → Releases** and confirm tag `v0.2.12`.
+2. Download the artifact for your platform:
+   - **Apple Silicon Mac** → `.dmg` from the arm build
+   - **Intel Mac** → `.dmg` from the intel build (not the arm build)
+   - **Windows** → `_x64-setup.exe` installer
+
+The release notes include a build-status table showing which platforms succeeded.
+
+### Fixing a failed or missing platform build
+
+You do **not** need a new version tag to retry a single platform.
+
+1. Open the failed workflow run on Actions.
+2. Click **Re-run failed jobs** (or re-run one job via ⋯ on that job).
+3. After the build succeeds, either:
+   - **Re-run the `release` job** from the same workflow run (⋯ → Re-run job) to attach the new artifact, or
+   - Manually upload the installer to the existing GitHub Release.
+
+If the `release` job never ran because all three builds failed, fix the builds first — `release` only runs when at least one succeeds.
+
+### Rebuilding the same tag (hotfix to CI or release config)
+
+If you must ship a fix under the **same version** (for example a workflow-only change):
+
+```bash
+# After committing the fix on main:
+git tag -d v0.2.12
+git tag v0.2.12
+git push origin :refs/tags/v0.2.12    # delete remote tag
+git push origin main
+git push origin v0.2.12               # re-triggers Release workflow
+```
+
+If a GitHub Release already exists for that tag, delete it first (Releases → ⋯ → Delete) or the upload step may conflict.
+
+### Local release build (optional)
+
+To build installers on your machine instead of CI:
+
+```bash
+npm ci
+cargo tauri build                              # native macOS
+cargo tauri build --target x86_64-apple-darwin # Intel slice from Apple Silicon host
+cargo tauri build --target x86_64-pc-windows-msvc --bundles nsis  # Windows cross-build
+```
+
+macOS builds require Xcode command line tools; signed/notarized builds need local signing certificates equivalent to the CI secrets.
 
 ---
 

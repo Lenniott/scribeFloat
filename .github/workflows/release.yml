@@ -8,115 +8,108 @@ on:
 permissions:
   contents: write
 
-# Run @actions/* on Node 24 until the runner default flips (Node 20 runner removal).
-# https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Native Apple Silicon. Cargo enables whisper-rs's `metal` feature on this target
-          # so the GPU does the inference. CMAKE_ARGS from .cargo/config.toml adds Accelerate.
-          - os: macos-14
-            target: aarch64-apple-darwin
-            artifact_path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-          # Native Intel macOS. Builds with explicit AVX2/FMA/F16C — every 2013+ Intel Mac
-          # has these; no Intel Mac ever shipped AVX-512, so we don't enable it. Cross-
-          # compiling this from macos-14 (previous setup) couldn't probe AVX2 via CPUID
-          # and ended up with baseline SSE only — the source of the slow-transcription
-          # report from Intel-Mac users.
-          - os: macos-13
-            target: x86_64-apple-darwin
-            artifact_path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
-            extra_cmake_args: "-DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON"
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact_path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+  # Each platform builds independently. One failure does not cancel the others.
+  build-macos-arm:
+    uses: ./.github/workflows/reusable-tauri-build.yml
+    secrets: inherit
+    with:
+      os: macos-14
+      target: aarch64-apple-darwin
+      artifact_path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+      artifact_name: macos-arm-dmg
+      # Native Apple Silicon. whisper-rs `metal` + Accelerate from .cargo/config.toml.
 
-    runs-on: ${{ matrix.os }}
+  build-macos-intel:
+    uses: ./.github/workflows/reusable-tauri-build.yml
+    secrets: inherit
+    with:
+      os: macos-13
+      target: x86_64-apple-darwin
+      artifact_path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+      artifact_name: macos-intel-dmg
+      extra_cmake_args: '-DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON'
 
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Cache Rust
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          # Cache key includes the target so the Intel + AS slices don't trample each
-          # other's prebuilt artifacts when running in parallel.
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-          cache: npm
-
-      - run: npm ci
-
-      # macOS: Tauri imports APPLE_CERTIFICATE (.p12) and signs with that cert's identity.
-      # Do not set APPLE_SIGNING_IDENTITY unless it is a substring of the p12 identity
-      # (tauri-bundler: certificate_identity.contains(identity)).
-      - name: Build
-        shell: bash
-        env:
-          TAURI_BUILD_TARGET: ${{ matrix.target }}
-          # Compose CMAKE_ARGS per matrix entry. The base flags (Accelerate + BLAS) are
-          # also in .cargo/config.toml, but inherited env wins over Cargo [env], so we
-          # re-state them here whenever extra_cmake_args is non-empty to avoid silently
-          # dropping the BLAS path.
-          EXTRA_CMAKE_ARGS: ${{ matrix.extra_cmake_args }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          if [[ -n "${EXTRA_CMAKE_ARGS}" ]]; then
-            export CMAKE_ARGS="-DGGML_ACCELERATE=ON -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=Apple ${EXTRA_CMAKE_ARGS}"
-          fi
-          if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            npm run tauri -- build --target "$TAURI_BUILD_TARGET" --bundles nsis
-          else
-            npm run tauri -- build --target "$TAURI_BUILD_TARGET"
-          fi
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v5
-        with:
-          name: ${{ matrix.os }}-${{ matrix.target }}-artifact
-          path: ${{ matrix.artifact_path }}
-          if-no-files-found: error
+  build-windows:
+    uses: ./.github/workflows/reusable-tauri-build.yml
+    secrets: inherit
+    with:
+      os: windows-latest
+      target: x86_64-pc-windows-msvc
+      artifact_path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+      artifact_name: windows-nsis
+      bundle_nsis: true
 
   release:
-    needs: build
+    needs: [build-macos-arm, build-macos-intel, build-windows]
+    if: >-
+      always() && !cancelled() &&
+      (needs.build-macos-arm.result == 'success' ||
+       needs.build-macos-intel.result == 'success' ||
+       needs.build-windows.result == 'success')
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/download-artifact@v5
+      - name: Download macOS Apple Silicon artifact
+        if: needs.build-macos-arm.result == 'success'
+        uses: actions/download-artifact@v5
         with:
-          path: artifacts
-          merge-multiple: true
+          name: macos-arm-dmg
+          path: artifacts/macos-arm
+
+      - name: Download macOS Intel artifact
+        if: needs.build-macos-intel.result == 'success'
+        uses: actions/download-artifact@v5
+        with:
+          name: macos-intel-dmg
+          path: artifacts/macos-intel
+
+      - name: Download Windows artifact
+        if: needs.build-windows.result == 'success'
+        uses: actions/download-artifact@v5
+        with:
+          name: windows-nsis
+          path: artifacts/windows
+
+      - name: Write release notes
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          {
+            echo "## Installation"
+            echo
+            if [[ "${{ needs.build-macos-arm.result }}" == "success" ]]; then
+              echo "**macOS — Apple Silicon (M1/M2/M3/M4):** download the \`.dmg\` from **macos-arm-dmg** below, open it, and drag ScribeFloat to Applications. Inference runs on the GPU via Metal."
+              echo
+            fi
+            if [[ "${{ needs.build-macos-intel.result }}" == "success" ]]; then
+              echo "**macOS — Intel:** download the \`.dmg\` from **macos-intel-dmg** below. Built natively on Intel CI with AVX2 + FMA + F16C and the Accelerate BLAS path enabled."
+              echo
+            fi
+            if [[ "${{ needs.build-windows.result }}" == "success" ]]; then
+              echo "**Windows (NSIS .exe):** Run the installer from **windows-nsis** below. If Windows SmartScreen warns you, click **More info → Run anyway**."
+              echo
+            fi
+            echo "## Build status (${TAG})"
+            echo
+            echo "| Platform | Status |"
+            echo "|----------|--------|"
+            echo "| macOS Apple Silicon | ${{ needs.build-macos-arm.result }} |"
+            echo "| macOS Intel | ${{ needs.build-macos-intel.result }} |"
+            echo "| Windows | ${{ needs.build-windows.result }} |"
+            echo
+            if [[ "${{ needs.build-macos-arm.result }}" != "success" || \
+                  "${{ needs.build-macos-intel.result }}" != "success" || \
+                  "${{ needs.build-windows.result }}" != "success" ]]; then
+              echo "Some platform builds did not succeed. Re-run failed jobs from the [Actions workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) (⋯ → Re-run failed jobs), then edit this release or re-run the **release** job to attach missing installers."
+            fi
+          } > release-notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*
-          generate_release_notes: true
-          body: |
-            ## Installation
-
-            **macOS — Apple Silicon (M1/M2/M3/M4):** download the DMG from the `macos-14-aarch64-apple-darwin-artifact` build, open it, and drag ScribeFloat to Applications. Inference runs on the GPU via Metal.
-
-            **macOS — Intel:** download the DMG from the `macos-13-x86_64-apple-darwin-artifact` build. Built natively on Intel CI with AVX2 + FMA + F16C and the Accelerate BLAS path enabled, so transcription is materially faster than the previous cross-compiled slice.
-
-            **Windows (NSIS .exe):** Run the installer. If Windows SmartScreen warns you, click **More info → Run anyway**.
+          body_path: release-notes.md
+          generate_release_notes: false

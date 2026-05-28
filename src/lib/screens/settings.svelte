@@ -26,11 +26,46 @@
 	let modelKnown = $state(false);
 	let permissionsReady = $state(false);
 	let modelReady = $state(false);
+	let speakerCaptureKnown = $state(false);
+	let speakerCaptureRequiresDeviceName = $state(false);
+	let blackholeDetected = $state(false);
+	let savedSpeakerDeviceName = $state('');
+
+	const showSpeakerNameWarning = $derived(
+		speakerCaptureRequiresDeviceName &&
+			blackholeDetected &&
+			savedSpeakerDeviceName.trim().length === 0,
+	);
+
+	const showSettingsBanner = $derived(
+		(permissionsKnown && !permissionsReady) ||
+			(modelKnown && !modelReady) ||
+			(speakerCaptureKnown && showSpeakerNameWarning),
+	);
+
+	async function loadSpeakerCaptureBannerState() {
+		speakerCaptureRequiresDeviceName = await invoke<boolean>(
+			'settings_speaker_capture_requires_device_name',
+		).catch(() => false);
+		blackholeDetected = await invoke<boolean>('settings_blackhole_detected').catch(
+			() => false,
+		);
+		const [, preferredSpeaker] = await invoke<[string | null, string | null]>(
+			'settings_get_preferred_audio_devices',
+		).catch((): [null, null] => [null, null]);
+		savedSpeakerDeviceName = preferredSpeaker ?? '';
+		speakerCaptureKnown = true;
+	}
+
+	function onSpeakerConfigSaved(name: string) {
+		savedSpeakerDeviceName = name;
+	}
 
 	onMount(async () => {
 		const [statuses, list] = await Promise.all([
 			invoke<PermissionStatus[]>('settings_permissions_status').catch(() => []),
 			invoke<ModelListItem[]>('model_list').catch(() => []),
+			loadSpeakerCaptureBannerState(),
 		]);
 		permissionsReady =
 			statuses.find((s) => s.kind === 'microphone')?.granted ?? false;
@@ -63,7 +98,7 @@
 			<IconButton aria-label="close settings" variant="normal" icon={X} onclick={() => onClose?.()} />
 		</header>
 
-		{#if (permissionsKnown && !permissionsReady) || (modelKnown && !modelReady)}
+		{#if showSettingsBanner}
 			<div class="flex flex-col gap-1 border-b border-warning bg-warning/15 px-4 py-2">
 				{#if permissionsKnown && !permissionsReady}
 					<p class="text-label-sm text-fg">
@@ -75,6 +110,13 @@
 					<p class="text-label-sm text-fg">
 						No transcription model installed —
 						<button class="underline cursor-pointer" onclick={() => (activeTab = 'models')}>go to Models</button>.
+					</p>
+				{/if}
+				{#if speakerCaptureKnown && showSpeakerNameWarning}
+					<p class="text-label-sm text-fg">
+						BlackHole is installed, but no speaker capture device name is set — enter your
+						<strong>Multi-Output Device</strong> name from Audio MIDI Setup in
+						<button class="underline cursor-pointer" onclick={() => (activeTab = 'general')}>General</button>.
 					</p>
 				{/if}
 			</div>
@@ -95,7 +137,12 @@
 				class={`min-h-0 flex-1 bg-card ${activeTab === 'models' ? 'flex flex-col overflow-hidden p-0' : 'overflow-y-auto p-4'}`}
 			>
 				{#if activeTab === 'general'}
-					<SettingGeneral />
+					<SettingGeneral
+						{savedSpeakerDeviceName}
+						{blackholeDetected}
+						{speakerCaptureRequiresDeviceName}
+						onSpeakerConfigSaved={onSpeakerConfigSaved}
+					/>
 				{:else if activeTab === 'permissions'}
 					<SettingPermissions bind:ready={permissionsReady} />
 				{:else if activeTab === 'replacements'}

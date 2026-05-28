@@ -91,6 +91,17 @@
   const speakerLevel = $derived(phase === "recording" ? speakerLevelRaw : 0);
   let captureSpeaker = $state(false);
   let speakerWarning = $state("");
+  let speakerCaptureRequiresDeviceName = $state(false);
+  let blackholeDetected = $state(false);
+  /** Persisted device name only — updated on load and after Settings save, not while typing. */
+  let savedSpeakerDeviceName = $state("");
+  const speakerCaptureAvailable = $derived(
+    !speakerCaptureRequiresDeviceName ||
+      (blackholeDetected && savedSpeakerDeviceName.trim().length > 0),
+  );
+  const speakerEnabledForWaveform = $derived(
+    speakerCaptureAvailable && captureSpeaker,
+  );
   let saveFolder = $state("");
   let micOptions = $state([{ value: "", label: "System Default" }]);
 
@@ -116,9 +127,7 @@
         stopTimer();
         micLevelRaw = 0;
         speakerLevelRaw = 0;
-        void invoke<boolean>("settings_get_scribe_capture_speaker")
-          .then((v) => { captureSpeaker = v; })
-          .catch(() => { captureSpeaker = false; });
+        void reloadSpeakerCaptureSettings();
         break;
       case "RECORDING":
         phase = "recording";
@@ -129,18 +138,14 @@
         stopTimer();
         micLevelRaw = 0;
         speakerLevelRaw = 0;
-        void invoke<boolean>("settings_get_scribe_capture_speaker")
-          .then((v) => { captureSpeaker = v; })
-          .catch(() => { captureSpeaker = false; });
+        void reloadSpeakerCaptureSettings();
         break;
       case "DONE":
         phase = "idle";
         stopTimer();
         micLevelRaw = 0;
         speakerLevelRaw = 0;
-        void invoke<boolean>("settings_get_scribe_capture_speaker")
-          .then((v) => { captureSpeaker = v; })
-          .catch(() => { captureSpeaker = false; });
+        void reloadSpeakerCaptureSettings();
         break;
       case "NO_MODEL":
         phase = "no_model";
@@ -158,17 +163,37 @@
     }
   }
 
+  async function reloadSpeakerCaptureSettings() {
+    const [preferredInputDevice, preferredSpeakerDevice] = await invoke<
+      [string | null, string | null]
+    >("settings_get_preferred_audio_devices").catch(() => [null, null]);
+    selectedMic = preferredInputDevice ?? selectedMic;
+    savedSpeakerDeviceName = preferredSpeakerDevice ?? "";
+    selectedSpeakerSource = savedSpeakerDeviceName;
+    speakerCaptureRequiresDeviceName = await invoke<boolean>(
+      "settings_speaker_capture_requires_device_name",
+    ).catch(() => false);
+    blackholeDetected = await invoke<boolean>("settings_blackhole_detected").catch(
+      () => false,
+    );
+    const available =
+      !speakerCaptureRequiresDeviceName ||
+      (blackholeDetected && savedSpeakerDeviceName.trim().length > 0);
+    if (!available) {
+      captureSpeaker = false;
+    } else {
+      captureSpeaker = await invoke<boolean>(
+        "settings_get_scribe_capture_speaker",
+      ).catch(() => captureSpeaker);
+    }
+  }
+
   // ── Actions ───────────────────────────────────────────────────────────────
   async function startRecording() {
     if (startInProgress || phase === "recording") return;
     startInProgress = true;
     try {
-      // Re-read the persistent default each time a new recording starts so that
-      // changes made in the Settings window (or from a previous session toggle)
-      // are reflected without needing to reload the prewarmed window.
-      captureSpeaker = await invoke<boolean>(
-        "settings_get_scribe_capture_speaker",
-      ).catch(() => captureSpeaker);
+      await reloadSpeakerCaptureSettings();
 
       const perms = await invoke<PermissionStatus[]>(
         "settings_permissions_status",
@@ -184,7 +209,7 @@
       await invoke("scribe_start", {
         preferredMic: selectedMic || null,
         preferredSpeaker: selectedSpeakerSource || null,
-        captureSpeaker,
+        captureSpeaker: speakerCaptureAvailable && captureSpeaker,
       });
       phase = "recording";
       autoStart = false;
@@ -346,9 +371,7 @@
     >("settings_get_preferred_audio_devices").catch(() => [null, null]);
     selectedMic = preferredInputDevice ?? "";
     selectedSpeakerSource = preferredSpeakerDevice ?? "";
-    captureSpeaker = await invoke<boolean>(
-      "settings_get_scribe_capture_speaker",
-    ).catch(() => false);
+    await reloadSpeakerCaptureSettings();
 
     // Sync model selector with the currently selected model
     const sel = modelStore.models.find((m) => m.selected && m.downloaded);
@@ -380,10 +403,16 @@
     const ul3 = await listen("scribe://native-close-requested", () => {
       void handleNativeCloseRequested();
     });
-    unlisteners = [ul1, ul2, ulSpeaker, ulSpeakerUnavailable, ul3];
+    const ulSpeakerSaved = await listen("settings://speaker-capture-saved", () => {
+      void reloadSpeakerCaptureSettings();
+    });
+    unlisteners = [ul1, ul2, ulSpeaker, ulSpeakerUnavailable, ul3, ulSpeakerSaved];
     unlistenFocus = await getCurrentWindow().onFocusChanged(
       ({ payload: focused }) => {
-        if (focused) void maybeAutoStartRecording();
+        if (focused) {
+          void reloadSpeakerCaptureSettings();
+          void maybeAutoStartRecording();
+        }
       },
     );
   });
@@ -433,7 +462,7 @@
         <AudioWaveFormVisualizer
           micLevel={micLevel}
           speakerLevel={speakerLevel}
-          speakerEnabled={captureSpeaker}
+          speakerEnabled={speakerEnabledForWaveform}
           size="normal"
         />
 
@@ -500,6 +529,7 @@
                     </select>
                   </div>
                 {/if}
+                {#if speakerCaptureAvailable}
                 <div class="flex items-center justify-between">
                   <span
                     class="font-mono text-label-sm font-normal tracking-stamped uppercase"
@@ -529,6 +559,7 @@
                     }}
                   />
                 </div>
+                {/if}
                 <div class="flex items-center justify-between">
                   <span
                     class="font-mono text-label-sm font-normal tracking-stamped uppercase"

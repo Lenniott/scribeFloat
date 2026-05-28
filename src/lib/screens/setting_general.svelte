@@ -1,12 +1,25 @@
 <script lang="ts">
 	import { onDestroy, onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
+	import { emit } from "@tauri-apps/api/event";
 	import Button from "@lib/components/Button.svelte";
 import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	import OptionGroup from "@lib/components/form/OptionGroup.svelte";
 	import PathSelectorField from "@lib/components/form/PathSelectorField.svelte";
 	import ToggleSwitch from "@lib/components/form/ToggleSwitch.svelte";
 	import { applyThemeMode, type ThemeMode } from "$lib/theme";
+
+	let {
+		savedSpeakerDeviceName = "",
+		blackholeDetected = false,
+		speakerCaptureRequiresDeviceName = false,
+		onSpeakerConfigSaved,
+	}: {
+		savedSpeakerDeviceName?: string;
+		blackholeDetected?: boolean;
+		speakerCaptureRequiresDeviceName?: boolean;
+		onSpeakerConfigSaved?: (name: string) => void;
+	} = $props();
 
 	let outputPath = $state("");
 	let openHotkey = $state("");
@@ -15,7 +28,6 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	let outputLabel = $state("");
 	let preferredInputDevice = $state("");
 	let preferredSpeakerDevice = $state("");
-	let outputDevices = $state<string[]>([]);
 	let scribeCaptureSpeaker = $state(false);
 	let dictateAutoEnter = $state(false);
 	let keepWav = $state(false);
@@ -23,6 +35,11 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	let openWithApp = $state("");
 	let message = $state("");
 	let messageClearId: ReturnType<typeof setTimeout> | undefined;
+
+	const speakerCaptureAvailable = $derived(
+		!speakerCaptureRequiresDeviceName ||
+			(blackholeDetected && savedSpeakerDeviceName.trim().length > 0),
+	);
 
 	// Apply theme immediately as the user toggles it (live preview)
 	$effect(() => {
@@ -53,7 +70,6 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 		).catch(() => [null, null]);
 		preferredInputDevice = preferredInput ?? "";
 		preferredSpeakerDevice = preferredSpeaker ?? "";
-		outputDevices = await invoke<string[]>("settings_list_output_devices").catch(() => []);
 		scribeCaptureSpeaker = await invoke<boolean>("settings_get_scribe_capture_speaker").catch(
 			() => false,
 		);
@@ -71,15 +87,25 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 			await invoke("settings_set_output_path", { path: outputPath });
 			await invoke("settings_set_hotkeys", { openScribe: openHotkey, dictate: dictateHotkey });
 			await invoke("settings_set_input_labels", { inputLabel, outputLabel });
+			const trimmedSpeaker = preferredSpeakerDevice.trim();
 			await invoke("settings_set_preferred_audio_devices", {
 				preferredInputDevice: preferredInputDevice.trim() || null,
-				preferredSpeakerDevice: preferredSpeakerDevice.trim() || null,
+				preferredSpeakerDevice: trimmedSpeaker || null,
 			});
-			await invoke("settings_set_scribe_capture_speaker", { enabled: scribeCaptureSpeaker });
+			const captureAvailableAfterSave =
+				!speakerCaptureRequiresDeviceName ||
+				(blackholeDetected && trimmedSpeaker.length > 0);
+			const captureDefault =
+				captureAvailableAfterSave && scribeCaptureSpeaker ? scribeCaptureSpeaker : false;
+			await invoke("settings_set_scribe_capture_speaker", { enabled: captureDefault });
+			scribeCaptureSpeaker = captureDefault;
 		await invoke("settings_set_dictate_auto_enter", { enabled: dictateAutoEnter });
 			await invoke("settings_set_keep_wav", { enabled: keepWav });
 			await invoke("settings_set_theme_mode", { themeMode });
 			await invoke("settings_set_open_with_app_path", { path: openWithApp.trim() || null });
+			preferredSpeakerDevice = trimmedSpeaker;
+			onSpeakerConfigSaved?.(trimmedSpeaker);
+			await emit("settings://speaker-capture-saved");
 			message = "Saved";
 			messageClearId = setTimeout(() => {
 				message = "";
@@ -119,12 +145,14 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	</div>
 	<LabeledTextField label="Input label" bind:value={inputLabel} />
 	<LabeledTextField label="Output label" bind:value={outputLabel} />
-	<div class="flex flex-col items-start justify-center gap-1 h-10">
-		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
-			Capture speaker by default
-		</span>
-		<ToggleSwitch checked={scribeCaptureSpeaker} aria-label="Toggle default speaker capture" onchange={(next) => (scribeCaptureSpeaker = next)} />
-	</div>
+	{#if speakerCaptureAvailable}
+		<div class="flex flex-col items-start justify-center gap-1 h-10">
+			<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
+				Capture speaker by default
+			</span>
+			<ToggleSwitch checked={scribeCaptureSpeaker} aria-label="Toggle default speaker capture" onchange={(next) => (scribeCaptureSpeaker = next)} />
+		</div>
+	{/if}
 	<div class="flex flex-col items-start justify-center gap-1 h-10">
 		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
 			Press Enter after dictate
@@ -137,11 +165,13 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 		</span>
 		<ToggleSwitch checked={keepWav} aria-label="Keep WAV file after transcription" onchange={(next) => (keepWav = next)} />
 	</div>
-	<LabeledTextField
-		label="Speaker capture device name"
-		bind:value={preferredSpeakerDevice}
-		placeholder="Type the exact Audio MIDI device name"
-	/>
+	<div class="flex flex-col gap-2">
+		<LabeledTextField
+			label="Speaker capture device name"
+			bind:value={preferredSpeakerDevice}
+			placeholder="Type the exact Audio MIDI device name"
+		/>
+	</div>
 	<div class="flex items-center gap-3">
 		<Button variant="primary" onclick={saveAll}>Save</Button>
 		{#if message}

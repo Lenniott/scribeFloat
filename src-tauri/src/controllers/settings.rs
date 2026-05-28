@@ -172,6 +172,14 @@ impl SettingsController {
         self.audio.list_output_devices()
     }
 
+    pub fn speaker_capture_requires_device_name() -> bool {
+        cfg!(target_os = "macos")
+    }
+
+    pub fn blackhole_device_detected(&self) -> bool {
+        crate::platform::permissions_impl::blackhole_device_detected()
+    }
+
     pub fn get_scribe_capture_speaker(&self) -> bool {
         self.config.get().scribe_capture_speaker
     }

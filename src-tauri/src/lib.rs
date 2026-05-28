@@ -627,6 +627,8 @@ pub fn run() {
             commands::settings::settings_get_preferred_audio_devices,
             commands::settings::settings_set_preferred_audio_devices,
             commands::settings::settings_list_output_devices,
+            commands::settings::settings_speaker_capture_requires_device_name,
+            commands::settings::settings_blackhole_detected,
             commands::settings::settings_get_scribe_capture_speaker,
             commands::settings::settings_set_scribe_capture_speaker,
             commands::settings::settings_get_open_with_app_path,

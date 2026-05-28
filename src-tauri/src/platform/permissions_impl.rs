@@ -28,6 +28,22 @@ pub fn permission_granted(_kind: &str) -> bool {
     false
 }
 
+/// True when a BlackHole (or similarly named) loopback device is present — no mic grant required.
+#[cfg(target_os = "macos")]
+pub fn blackhole_device_detected() -> bool {
+    macos::blackhole_device_detected()
+}
+
+#[cfg(target_os = "windows")]
+pub fn blackhole_device_detected() -> bool {
+    false
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub fn blackhole_device_detected() -> bool {
+    false
+}
+
 #[cfg(target_os = "macos")]
 pub fn permission_can_request(kind: &str) -> bool {
     kind != "speaker_capture" && permission_settings_url(kind).is_some()
@@ -308,21 +324,33 @@ mod macos {
         }
     }
 
-    pub fn speaker_capture_ready() -> bool {
-        if !microphone_granted() {
-            return false;
-        }
-        // Use devices() not input_devices(): input_devices() lazily filters via
-        // supports_input() which calls audio_unit_from_device() per device, creating
-        // an AudioUnit and blocking on CoreAudio IPC (mach_msg2_trap). We only need
-        // device names; devices() reads those without probing device capabilities.
+    pub fn blackhole_device_detected() -> bool {
         let host = cpal::default_host();
+        // BlackHole is discovered as an input device when opening loopback capture.
+        if let Ok(mut inputs) = host.input_devices() {
+            if inputs.any(|device| {
+                device
+                    .name()
+                    .map(|name| looks_like_blackhole_name(&name))
+                    .unwrap_or(false)
+            }) {
+                return true;
+            }
+        }
+        // Fallback: enumerate all endpoints without probing input capabilities.
         let Ok(devices) = host.devices() else {
             return false;
         };
         devices
             .filter_map(|device| device.name().ok())
             .any(|name| looks_like_blackhole_name(&name))
+    }
+
+    pub fn speaker_capture_ready() -> bool {
+        if !microphone_granted() {
+            return false;
+        }
+        blackhole_device_detected()
     }
 
     fn microphone_auth_status() -> isize {

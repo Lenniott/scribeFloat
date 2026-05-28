@@ -1,7 +1,7 @@
 use crate::services::{
     audio::{AudioService, MicSession, WHISPER_SAMPLE_RATE},
     config::ConfigService,
-    model::ModelService,
+    model::{model_id_preload_eligible, ModelService},
     output::OutputService,
 };
 use crate::services::audio::read_wav_mono_f32;
@@ -44,10 +44,6 @@ const DOUBLE_TAP_WINDOW_MS: u128 = 400;
 const TOGGLE_STOP_COOLDOWN_MS: u128 = 1000;
 /// How long (ms) the Done panel stays visible before auto-dismissing.
 const DONE_DISMISS_MS: u64 = 2500;
-
-/// Model IDs eligible for record-start preload. Mirrors `controllers::scribe` — see there
-/// for the size rationale.
-const PRELOAD_ELIGIBLE_MODEL_IDS: &[&str] = &["tiny-en-q5", "base-en-q5"];
 
 // ── Key tracker state machine ────────────────────────────────────────────────
 
@@ -946,7 +942,7 @@ fn preload_path_for_dictate(config: &Config, model: &ModelService) -> Option<Pat
         .dictate_model_id
         .as_deref()
         .or(config.selected_model_id.as_deref())?;
-    if !PRELOAD_ELIGIBLE_MODEL_IDS.contains(&model_id) {
+    if !model_id_preload_eligible(model_id) {
         return None;
     }
     model.model_path_for_id(model_id)

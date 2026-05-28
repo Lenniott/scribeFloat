@@ -1,18 +1,18 @@
 # scribefloat — Working Guide
 
 > How to build, debug, and extend this codebase.
-> For what the app does and how it is designed, read `docs/context.md` first.
+> For what the app does and how it is designed, read `context/README.md` first.
 
 ---
 
 ## Read before touching anything
 
 ```
-docs/context.md          ← Start here. Reading order for all other docs.
-docs/architecture.md     ← Layer rules, call chain, C4 diagrams.
-docs/folder-structure.md ← Where every file lives. Key rules for agents.
-docs/requirements.md     ← Full feature spec. Source of truth for behaviour.
-docs/action-flows.md     ← Step-by-step flows for each workflow.
+context/README.md          ← Start here. Reading order and behaviour quick reference.
+context/architecture.md    ← Layer rules, call chain, C4 diagrams.
+context/action-flows.md    ← Step-by-step flows for each workflow.
+context/componets.md       ← UI component catalogue.
+docs/remaining-work.md     ← Deferred items from the Intel perf branch.
 ```
 
 ---
@@ -72,8 +72,8 @@ panel (HTML/JS)
 **Platform** (`src-tauri/src/platform/`) — the only place `#[cfg(target_os = "...")]` is allowed. Everything above is platform-agnostic.
 
 **Hard ownership rules:**
-- `OutputService` is the only code that writes to disk.
-- `AudioService` is the only code that opens audio streams.
+- `OutputService` owns durable user-facing files: transcripts, session manifests, post-transcription cleanup, dictate failure salvage, and dictate history.
+- `AudioService` opens audio streams **and** streams capture to checkpointed temp/session WAV files (16 kHz writer thread). This keeps RAM flat during long recordings; do not accumulate PCM in controllers.
 - `PermissionsService` is the only code that checks OS permissions.
 
 ---
@@ -102,7 +102,7 @@ The Scribe webview is **prewarmed at startup** (`prewarm_scribe_window` in `src-
 
 ## How to add a new feature
 
-1. Check `docs/requirements.md` — if it is not there, confirm scope before building.
+1. Check `context/action-flows.md` — if the behaviour is not described there, confirm scope before building.
 2. Decide which layer it belongs to (controller, service, or platform adapter).
 3. If it requires OS-specific behaviour, define a trait in `platform/mod.rs` and implement it per platform. The controller calls the trait, never the concrete type.
 4. If it writes files, route through `OutputService`.

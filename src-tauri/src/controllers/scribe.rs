@@ -1,11 +1,11 @@
 use crate::services::{
     audio::{AudioService, MicSession},
     config::ConfigService,
-    model::ModelService,
+    model::{model_id_preload_eligible, ModelService},
     output::OutputService,
 };
 use crate::services::audio::{read_wav_mono_f32, WHISPER_SAMPLE_RATE};
-use crate::types::{Config, Note, ProcessingStage, ScribeState, ScribeStateEvent, Segment, SessionManifest, SessionManifestState};
+use crate::types::{Config, Note, ProcessingStage, RecoverySessionInfo, ScribeState, ScribeStateEvent, Segment, SessionManifest, SessionManifestState};
 use anyhow::{anyhow, Result};
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -54,11 +54,6 @@ struct ActiveSession {
 /// Speaker RMS below this threshold (-60 dBFS) is treated as digital silence.
 /// BlackHole outputs exact zeros when nothing is playing; this margin covers near-silence noise.
 const SPEAKER_SILENCE_THRESHOLD: f32 = 1e-3;
-
-/// Model IDs eligible for record-start preload. Limited to the small models (≤ ~80 MB
-/// resident) so we don't spike memory on a system where the user just wants to hit record.
-/// Larger models load on first transcribe and stay cached for the rest of the session.
-const PRELOAD_ELIGIBLE_MODEL_IDS: &[&str] = &["tiny-en-q5", "base-en-q5"];
 
 /// Intermediate state produced by prepare_audio and consumed by run_transcription / write_outputs.
 struct PreparedAudio {
@@ -768,6 +763,12 @@ impl ScribeController {
         self.config.get().include_timestamps
     }
 
+    /// Incomplete Scribe sessions under the configured save folder (crash/interrupted recordings).
+    pub fn list_recovery_sessions(&self) -> Result<Vec<RecoverySessionInfo>> {
+        let cfg = self.config.get();
+        self.output.scan_incomplete_scribe_sessions(&cfg.save_folder)
+    }
+
     pub fn set_include_timestamps(&self, enabled: bool) -> Result<()> {
         self.config
             .update(|cfg| cfg.include_timestamps = enabled)
@@ -1192,7 +1193,7 @@ fn preload_path_for_config(config: &Config, model: &ModelService) -> Option<Path
         return None;
     }
     let model_id = config.selected_model_id.as_deref()?;
-    if !PRELOAD_ELIGIBLE_MODEL_IDS.contains(&model_id) {
+    if !model_id_preload_eligible(model_id) {
         return None;
     }
     model.model_path_for_id(model_id)

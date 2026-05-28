@@ -12,6 +12,29 @@ use std::sync::Arc;
 
 pub struct OutputService;
 
+fn transcript_filename_base(model_path: &Path, title: &str) -> String {
+    let slug: String = title
+        .chars()
+        .map(|c| match c {
+            ' ' => '_',
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '-',
+            c => c,
+        })
+        .collect();
+    let slug = if slug.is_empty() {
+        chrono::Local::now()
+            .format("%Y-%m-%d_%H-%M-%S")
+            .to_string()
+    } else {
+        slug
+    };
+    let stem = model_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "model".to_string());
+    format!("{slug}_{stem}")
+}
+
 #[derive(Debug, Serialize)]
 struct SessionNotesPayload<'a> {
     format_version: u8,
@@ -33,29 +56,22 @@ impl OutputService {
         Ok(dir)
     }
 
-    /// Build the transcript file path using the recording title as the filename base.
-    /// Spaces become underscores; chars forbidden on Windows/macOS become dashes.
-    pub fn transcript_path(&self, session_dir: &Path, model_path: &Path, title: &str) -> PathBuf {
-        let slug: String = title
-            .chars()
-            .map(|c| match c {
-                ' ' => '_',
-                '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '-',
-                c => c,
-            })
-            .collect();
-        let slug = if slug.is_empty() {
-            chrono::Local::now()
-                .format("%Y-%m-%d_%H-%M-%S")
-                .to_string()
-        } else {
-            slug
-        };
-        let stem = model_path
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "model".to_string());
-        session_dir.join(format!("{}_{}.md", slug, stem))
+    /// Build a transcript path in the save folder root: `{save_folder}/{title}_{model}.md`.
+    /// When that file already exists, appends `_1`, `_2`, … before `.md`. Spaces in the title
+    /// become underscores; forbidden path chars become dashes.
+    pub fn transcript_path(&self, save_folder: &Path, model_path: &Path, title: &str) -> PathBuf {
+        let base = transcript_filename_base(model_path, title);
+        let candidate = save_folder.join(format!("{base}.md"));
+        if !candidate.exists() {
+            return candidate;
+        }
+        for n in 1.. {
+            let numbered = save_folder.join(format!("{base}_{n}.md"));
+            if !numbered.exists() {
+                return numbered;
+            }
+        }
+        unreachable!("transcript_path suffix loop is bounded by filesystem")
     }
 
     /// Write mono f32 PCM as a 16-bit WAV file.
@@ -310,7 +326,8 @@ impl OutputService {
     }
 
     /// After a successful Scribe transcription: drop `session.json` (and `notes.json`).
-    /// When `keep_wav` is false, also delete audio files and remove the staging folder.
+    /// When `keep_wav` is false, delete staging WAVs and remove the session directory
+    /// (the transcript `.md` lives at the save-folder root, not inside this folder).
     pub fn finalize_scribe_session(
         &self,
         session_dir: &Path,
@@ -1107,6 +1124,39 @@ mod tests {
         let path = svc.transcript_path(&dir, model, "foo/bar:baz");
         let name = path.file_name().unwrap().to_string_lossy();
         assert!(name.starts_with("foo-bar-baz_"));
+    }
+
+    #[test]
+    fn transcript_path_uses_save_folder_root_without_suffix_when_free() {
+        let svc = OutputService;
+        let dir = temp_save_folder();
+        let model = std::path::Path::new("/models/ggml-small.en-q5_1.bin");
+        let path = svc.transcript_path(Path::new(&dir), model, "Standup");
+        assert_eq!(path.parent().unwrap(), Path::new(&dir));
+        assert_eq!(path.file_name().unwrap().to_string_lossy(), "Standup_ggml-small.en-q5_1.md");
+    }
+
+    #[test]
+    fn transcript_path_appends_numeric_suffix_on_collision() {
+        let svc = OutputService;
+        let dir = temp_save_folder();
+        let folder = Path::new(&dir);
+        let model = std::path::Path::new("/models/ggml-small.en-q5_1.bin");
+        let first = svc.transcript_path(folder, model, "Standup");
+        std::fs::write(&first, "# first").expect("seed first transcript");
+
+        let second = svc.transcript_path(folder, model, "Standup");
+        assert_eq!(
+            second.file_name().unwrap().to_string_lossy(),
+            "Standup_ggml-small.en-q5_1_1.md"
+        );
+
+        std::fs::write(&second, "# second").expect("seed second transcript");
+        let third = svc.transcript_path(folder, model, "Standup");
+        assert_eq!(
+            third.file_name().unwrap().to_string_lossy(),
+            "Standup_ggml-small.en-q5_1_2.md"
+        );
     }
 
     // ── write_dictate_history_entry / read_dictate_history ───────────────────

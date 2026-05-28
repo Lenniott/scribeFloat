@@ -31,7 +31,7 @@ graph LR
 - **Hugging Face**: contacted only when the user clicks "Download model" in Settings. A single HTTPS GET for the model binary. No user data is sent. No account required.
 - **OS Audio Layer**: cpal abstracts platform differences. Controllers never touch the audio layer directly — only `AudioService` does.
 - **Clipboard and Input**: Dictate writes to the clipboard as fallback, or uses OS input injection (macOS: Accessibility API, Windows: SendInput). Scribe and Transcribe do not touch the clipboard.
-- **Local File System**: all reads and writes go through `OutputService` (transcripts, WAV) or `ConfigService` (config, models). No other component writes to disk.
+- **Local File System**: durable user-facing files (transcripts, manifests, cleanup, dictate history, failure salvage) go through `OutputService`. Capture-time WAV streaming (checkpointed every 30 s) is handled by `AudioService`'s writer thread. Config and models go through `ConfigService`.
 
 ---
 
@@ -157,31 +157,31 @@ graph TB
 
 ### Audio Service
 
-Capture only. Returns raw PCM buffers. Never writes to disk.
+Opens audio streams and streams capture to 16 kHz mono WAV on disk via a dedicated writer thread (checkpointed headers every 30 s). Controllers read WAVs back for Whisper — they do not accumulate PCM in RAM.
 
 ```mermaid
 graph TB
     subgraph audio["AudioService — services/audio.rs"]
-        device["Device Manager\nlists inputs, detects preferred mic"]
-        mic["Mic Capture\nopens mic stream, buffers raw PCM"]
-        system["System Audio Capture\nmacOS: BlackHole, Windows: WASAPI"]
-        session["MicSession\ncoordinates streams, drains with recv_timeout"]
-        power["Sleep Prevention\nmacOS: IOPMAssertion, Windows: SetThreadExecutionState"]
-        resample["Resampler\nresample_linear to 16 kHz for Whisper"]
+        device["Device Manager\nlists inputs/outputs, preferred device lookup"]
+        mic["Mic Capture\ncpal callback → channel → writer thread"]
+        system["System Audio Capture\nmacOS: BlackHole loopback, Windows: WASAPI"]
+        session["MicSession\nstop_and_finalize drains with recv_timeout 200 ms"]
+        writer["WAV Writer Thread\nresample to 16 kHz, checkpoint RIFF header"]
         platform_audio["Platform Adapter"]
     end
 
     config["ConfigService"]
     os_audio["OS Audio Layer"]
+    fs["Local File System"]
     ctrl_scribe["ScribeController"]
     ctrl_dictate["DictateController"]
 
-    ctrl_scribe -->|"start / stop dual-source session"| session
-    ctrl_dictate -->|"start / stop mic"| mic
+    ctrl_scribe -->|"start / stop session"| session
+    ctrl_dictate -->|"start / stop mic"| session
     session --> mic
     session --> system
-    session --> power
-    session --> resample
+    session --> writer
+    writer --> fs
     mic --> platform_audio
     system --> platform_audio
     device --> platform_audio
@@ -190,12 +190,12 @@ graph TB
 ```
 
 **Component notes:**
-- **Device Manager**: lists inputs, detects preferred mic by name, falls back to system default
-- **Mic Capture**: opens mic stream via cpal, buffers raw PCM chunks in a channel
-- **System Audio Capture**: macOS = BlackHole virtual device via Core Audio; Windows = WASAPI loopback
-- **MicSession**: coordinates the mic stream; drains with `recv_timeout` (200 ms) — never `recv()` — to handle cpal's async stream teardown on macOS. Speaker capture is tracked separately via `SpeakerAccumulator` in `ScribeController`: holds `Vec<SpeakerSegment>` (start_ms, raw_pcm, native_rate) representing each ON/OFF loopback window, assembled into a single silence-padded 16 kHz PCM buffer at session end via `assemble_speaker_pcm`
-- **Sleep Prevention**: acquired when stream opens, released on close. Prevents the OS from suspending mid-recording
-- **Resampler**: `resample_linear` converts captured audio to 16 kHz mono f32, the input format Whisper requires
+- **Device Manager**: lists inputs and outputs, resolves preferred device by name, falls back to system default
+- **Mic Capture**: cpal callback mixes to mono and pushes chunks into a channel; no disk I/O on the callback thread
+- **System Audio Capture**: macOS = BlackHole virtual device via Core Audio; Windows = WASAPI loopback. Speaker capture requires BlackHole + a configured Multi-Output Device name on macOS
+- **MicSession**: `stop_and_finalize()` pauses the stream, signals the writer, and joins the writer thread. Drain uses `recv_timeout` (200 ms) — never blocking `recv()` — because cpal tears down CoreAudio asynchronously on macOS
+- **WAV Writer Thread**: resamples to 16 kHz mono i16 and appends to the target path (`mic.wav`, `speaker_seg_N.wav`, or dictate temp). Checkpoints the RIFF header periodically so crash mid-recording leaves a playable file
+- **SpeakerAccumulator** (in `ScribeController`): holds `CapturedSpeakerSegment { start_ms, wav_path }` for each ON/OFF loopback window. At stop, segments are read back and assembled via `assemble_speaker_pcm`; per-segment WAVs are deleted after merge
 - **Platform Adapter**: the only place `#[cfg(target_os)]` lives for audio. Everything above is platform-agnostic
 
 ---
@@ -248,11 +248,10 @@ graph TB
 - **Dual Source Merger**: sorts mic and speaker segments chronologically by timestamp; suppresses near-duplicate lines within 1.5 s (mic bleed); applies `in:`/`out:` labels. Before merging, speaker segments are filtered by `filter_hallucination_phrases` — segments matching known Whisper hallucination phrases ("Thank you.", "Thanks for watching.", etc.) are stripped. Upstream, `ScribeController` also applies an RMS silence gate: if the assembled speaker PCM has RMS < −60 dBFS (1e-3), the speaker channel is skipped entirely and the session is treated as single-source
 
 **Loading strategy:**
-- Default model for Dictate → loaded at app startup
-- Default model for Scribe → loaded at app startup (cached; no reload if same model)
+- Whisper contexts cached in `ModelService` keyed by model path (`get_or_load_context`) — eliminates cold-load on every transcribe
+- Tiny/base models preloaded in background when a Scribe or Dictate recording starts (`PRELOAD_ELIGIBLE_MODEL_IDS` in `services/model.rs`)
 - Transcribe model → loaded when a Transcribe job starts
-- Extra models selected in Scribe → loaded when transcription starts after Stop & Save
-- Cached for the app session — no reload cost for repeated use of the same model
+- Inference thread count capped at physical cores (max 8)
 
 ---
 
@@ -288,17 +287,19 @@ graph TB
 
 ### Output Service
 
-All file writes. No other component writes to disk.
+Durable user-facing file writes: transcripts, session manifests, post-transcription cleanup, dictate history, and dictate failure salvage. Capture-time WAV streaming is owned by `AudioService`.
 
 ```mermaid
 graph TB
     subgraph output["OutputService — services/output.rs"]
-        wav_writer["WAV Writer\nwrites mic.wav, speaker.wav from PCM"]
         formatter["Transcript Formatter\nbuilds markdown from segments"]
         replacements["Word Replacement\napplies find/replace rules"]
-        file_writer["File Writer\nwrites .md, verifies non-empty, sets permissions"]
-        wav_cleanup["WAV Cleanup\ndeletes mic.wav, speaker.wav, session.json after verify"]
+        file_writer["File Writer\nwrites .md to save folder root"]
+        manifest["Session Manifest\nsession.json lifecycle tracking"]
+        wav_cleanup["Session Cleanup\nremoves staging dir when keep_wav=off"]
+        salvage["Dictate Salvage\nmoves failed captures to dictate_failures/"]
         dictate_log["Dictate Log\nappends to dictate.jsonl"]
+        merged_wav["Merged speaker.wav\nwritten after segment assembly"]
     end
 
     config["ConfigService"]
@@ -308,17 +309,20 @@ graph TB
     ctrl_transcribe["TranscribeController"]
     svc_model["ModelService"]
 
-    ctrl_scribe -->|"PCM buffers"| wav_writer
     ctrl_scribe -->|"save transcript"| formatter
+    ctrl_scribe -->|"manifest + cleanup"| manifest
+    ctrl_scribe -->|"merged speaker PCM"| merged_wav
+    ctrl_dictate -->|"salvage on error"| salvage
     ctrl_dictate -->|"formatted text"| dictate_log
     ctrl_transcribe -->|"save transcript"| formatter
     svc_model -->|"segments"| formatter
     formatter --> replacements
     replacements --> file_writer
     file_writer --> fs
-    file_writer -->|"confirmed written"| wav_cleanup
-    wav_writer --> fs
+    manifest --> fs
+    merged_wav --> fs
     wav_cleanup --> fs
+    salvage --> fs
     dictate_log --> fs
     config -->|"replacement rules"| replacements
     config -->|"save folder"| file_writer
@@ -326,12 +330,13 @@ graph TB
 ```
 
 **Component notes:**
-- **WAV Writer**: writes `mic.wav` and optionally `speaker.wav` from raw PCM buffers
-- **Transcript Formatter**: builds Markdown from Whisper segments. Segments are grouped: consecutive same-source segments within an 8-second gap are merged into one paragraph. Dual-source speaker-change boundaries (`in:` → `out:` or vice versa) are separated by a single newline (`\n`); same-source paragraph breaks (long silence) and all single-source breaks use a blank line (`\n\n`). Optional timestamps prepended per group
+- **Transcript path**: `{save_folder}/{title}_{model}.md`; appends `_1`, `_2`, … before `.md` when the base name already exists. WAV staging lives in `{save_folder}/{timestamp}/`
+- **Transcript Formatter**: builds Markdown from Whisper segments. Segments are grouped: consecutive same-source segments within an 8-second gap are merged into one paragraph. Dual-source speaker-change boundaries use `\n`; same-source paragraph breaks use `\n\n`
 - **Word Replacement**: applies user-defined find/replace rules. Scope per rule: transcripts, dictate, or both
-- **File Writer**: writes Markdown to the save folder. Verifies file is written and non-empty before reporting success. Uses atomic write (temp + rename) for config; direct write for transcripts
-- **WAV Cleanup**: deletes `mic.wav`, `speaker.wav`, `session.json` only after transcript is confirmed written and non-empty. Skipped if `keep_wav = true`. Skipped if no model was available at record time (preserving audio for later Transcribe use)
-- **Dictate Log**: appends `{ date, time, text }` to `dictate.jsonl`. Skips empty transcriptions
+- **Session Manifest**: `session.json` tracks recording lifecycle (`recording`, `transcribing`, `complete`, `error`, `interrupted`) for crash recovery. Scribe UI polls `scribe_list_recovery_sessions` on open
+- **WAV Cleanup**: when `keep_wav = false`, deletes staging WAVs and removes the session directory after a successful transcript. Transcript `.md` stays at save folder root
+- **Dictate Salvage**: on transcription failure, moves the temp WAV from `dictate_temp/` to `{save_folder}/dictate_failures/`
+- **Dictate Log**: appends entries to `dictate.jsonl`. Skips empty transcriptions
 
 ---
 
@@ -553,8 +558,8 @@ IPC: JS calls `invoke('command_name', { args })` → Rust `#[tauri::command]` in
 | Commands do type translation only — no logic | Verified by code review; any business logic found here is a bug |
 | Services are singletons created in `lib.rs` | Never instantiate a service inside a controller |
 | Controllers never import platform files directly | Controllers call services; services call platform adapters |
-| `OutputService` is the only code that writes to disk | All `std::fs::write` / `File::create` calls must be in `services/output.rs` |
-| `AudioService` is the only code that opens audio streams | All `cpal` stream creation in `services/audio.rs` |
+| `OutputService` owns durable user-facing files | Transcripts, manifests, cleanup, dictate history, failure salvage, merged `speaker.wav` |
+| `AudioService` streams capture to checkpointed WAV files | All live capture writes during recording; 16 kHz writer thread in `services/audio.rs` |
 | `PermissionsService` is the only code that checks OS permission state | All permission queries in `services/permissions.rs` |
 | `#[cfg(target_os)]` belongs only in `platform/` | Checked by code review and `cargo check --target` for both platforms |
 | Engine files are frozen once stable | Bugs get a `// BUG:` comment, not an in-place fix without full understanding |
@@ -597,7 +602,7 @@ src-tauri/src/
 │
 ├── services/
 │   ├── mod.rs
-│   ├── audio.rs                AudioService, MicSession, resample_linear
+│   ├── audio.rs                AudioService, MicSession, streaming WAV writer, read_wav_mono_f32
 │   ├── model.rs                ModelService, WhisperContext cache, Downloader, Merger
 │   ├── output.rs               OutputService, WAV writer, formatter, replacement, cleanup
 │   ├── config.rs               ConfigService, atomic save, get/update

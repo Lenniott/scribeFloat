@@ -35,7 +35,7 @@ ScribeFloat runs OpenAI's [Whisper](https://github.com/openai/whisper) model ent
 
 ## Privacy at a glance
 
-All audio processing is local. The only outbound network request is a one-time Whisper model download from Hugging Face. Dictate audio is **never written to disk** — it lives in RAM for the duration of the recording and is discarded immediately after transcription.
+All audio processing is local. The only outbound network request is a one-time Whisper model download from Hugging Face. Dictate streams to a short-lived temp WAV during capture (deleted after success, or salvaged to `dictate_failures/` on error).
 
 See [PRIVACY.md](PRIVACY.md) for the full data-flow audit, OS permission breakdown, and compliance notes for security officers.
 
@@ -111,7 +111,7 @@ Transcripts and audio files are saved to `~/Documents/transcripts_scribefloat/` 
 
 ## Architecture
 
-See [context/architecture.md](context/architecture.md) for full C4 model diagrams.
+See [context/README.md](context/README.md) for the doc reading order and [context/architecture.md](context/architecture.md) for full C4 model diagrams.
 
 The layered call chain:
 
@@ -124,8 +124,8 @@ panel (Svelte / TypeScript)
 ```
 
 Hard ownership rules:
-- **`OutputService`** is the only code that writes to disk
-- **`AudioService`** is the only code that opens audio streams
+- **`OutputService`** owns durable user-facing files (transcripts, manifests, cleanup, dictate history, failure salvage)
+- **`AudioService`** opens audio streams and streams capture to checkpointed WAV files during recording
 - **`PermissionsService`** is the only code that checks OS permission state
 
 ---

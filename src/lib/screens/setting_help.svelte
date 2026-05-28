@@ -84,7 +84,7 @@
 		<ul class="space-y-1 text-base text-fg list-disc pl-5">
 			<li>Open Scribe from the menu bar icon or press the <strong>Open Scribe hotkey</strong> (shown in General settings — <code class="font-mono text-base bg-fill px-1 rounded">CmdOrCtrl+Shift+L</code> by default).</li>
 			<li>Press <strong>Record</strong> to start. Add timestamped notes while recording if you like.</li>
-			<li>Press <strong>Stop & Save</strong> — ScribeFloat transcribes the audio and saves a <code class="font-mono text-base bg-fill px-1 rounded">.md</code> file. The recording is deleted once the transcript is confirmed saved.</li>
+			<li>Press <strong>Stop & Save</strong> — ScribeFloat transcribes the audio and saves a <code class="font-mono text-base bg-fill px-1 rounded">.md</code> file in your save folder (same title twice gets <code class="font-mono text-base bg-fill px-1 rounded">_1</code>, <code class="font-mono text-base bg-fill px-1 rounded">_2</code>, … suffixes). The recording is deleted once the transcript is confirmed saved unless <strong>Keep audio after transcription</strong> is on.</li>
 			<li>Enable <strong>Speaker capture</strong> to also record system audio (e.g. for calls and meetings). Mic lines are prefixed <code class="font-mono text-base bg-fill px-1 rounded">in:</code> and speaker lines <code class="font-mono text-base bg-fill px-1 rounded">out:</code> in the transcript.</li>
 			<li>If no model is installed, the WAV file is kept and a button appears to open it in Transcribe later.</li>
 		</ul>
@@ -94,7 +94,7 @@
 	<div class="space-y-2">
 		<h3 class="font-mono text-base font-normal tracking-stamped text-fg/80 uppercase">Dictate</h3>
 		<p class="text-base text-fg">
-			Dictate is a floating hotkey-driven voice input. Audio is processed entirely in memory — nothing is written to disk.
+			Dictate is a floating hotkey-driven voice input. Audio is streamed to a short-lived temp file while you dictate, then deleted after a successful transcription (or moved to <code class="font-mono text-base bg-fill px-1 rounded">dictate_failures/</code> in your save folder if transcription fails).
 		</p>
 		<ul>
 			<li>Tap left <strong>Ctrl</strong>, release — tap left <strong>Ctrl</strong> again: hold half a second to start push-to-talk and release when done, or tap and release quickly to stay in toggle mode and press <strong>Ctrl</strong> again after a brief pause to stop.</li>

@@ -31,7 +31,7 @@ single-step improvement available without changing the inference engine.
 4. Verify all Q4_0 file names exist on the HuggingFace repo before tagging a release — the
    `large-v3-turbo` variant name in particular has changed between whisper.cpp versions.
 
-5. Update `PRELOAD_ELIGIBLE_MODEL_IDS` in `controllers/scribe.rs` to match the new ids
+5. Update `PRELOAD_ELIGIBLE_MODEL_IDS` in `services/model.rs` to match the new ids
    (`"tiny-en-q4"`, `"base-en-q4"`).
 
 **Files:** `src-tauri/src/services/model.rs`, `src-tauri/src/services/config.rs`,
@@ -89,7 +89,7 @@ users from unknowingly choosing a model that will degrade their machine.
    `{ total_ram_bytes: u64, physical_cores: u32 }`. Put the command in
    `src-tauri/src/commands/` following the existing pattern — no logic in the command fn.
 
-2. In the model picker Svelte component (under `src/ui/panels/settings/`), call
+2. In the model picker Svelte component (`src/lib/screens/setting_models.svelte`), call
    `get_system_info` on mount. If `total_ram_bytes < 8 * 1024^3`, render a warning adjacent
    to the `medium.en` and `large-v3-turbo` options. Pull the exact warning copy and styling
    from the design skill before writing any Tailwind classes:
@@ -105,7 +105,7 @@ users from unknowingly choosing a model that will degrade their machine.
    (return 0 or omit the field) so Windows doesn't show a spurious warning.
 
 **Files:** `src-tauri/src/commands/` (new or extended command file), `src-tauri/src/lib.rs`
-(register command), relevant `src/ui/panels/settings/*.svelte` component.
+(register command), `src/lib/screens/setting_models.svelte`.
 
 ---
 

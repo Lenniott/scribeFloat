@@ -17,6 +17,13 @@ const MAX_INFERENCE_THREADS: usize = 8;
 
 pub const SMALL_MODEL_FILENAME: &str = "ggml-small.en-q5_1.bin";
 
+/// Model catalog ids eligible for record-start preload (small models only).
+pub const PRELOAD_ELIGIBLE_MODEL_IDS: &[&str] = &["tiny-en-q5", "base-en-q5"];
+
+pub fn model_id_preload_eligible(model_id: &str) -> bool {
+    PRELOAD_ELIGIBLE_MODEL_IDS.contains(&model_id)
+}
+
 pub const VAD_MODEL_FILENAME: &str = "ggml-silero-v6.2.0.bin";
 const VAD_MODEL_URL: &str =
     "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin";
@@ -623,6 +630,13 @@ mod tests {
         assert_eq!(progress_from_segment_end(50, 1_000.0), 0.5);
         assert_eq!(progress_from_segment_end(100, 1_000.0), 1.0);
         assert_eq!(progress_from_segment_end(150, 1_000.0), 1.0);
+    }
+
+    #[test]
+    fn model_id_preload_eligible_only_tiny_and_base() {
+        assert!(model_id_preload_eligible("tiny-en-q5"));
+        assert!(model_id_preload_eligible("base-en-q5"));
+        assert!(!model_id_preload_eligible("small-en-q5"));
     }
 
     #[test]

@@ -17,23 +17,22 @@ User records mic only. No system audio capture.
 6. Scribe panel enters **Recording** state — waveform active, timer running
 7. User optionally types timestamped notes during recording
 8. User presses **Stop & Save**
-9. Audio Service: Mic Capture stops stream, returns raw PCM buffer
-10. Audio Service: Sleep Prevention released
-11. Output Service: writes `mic.wav` from buffer to session folder
-12. Check: is a model downloaded and selected?
-    - **No model** → skip to step 18
+9. Audio Service: Mic Capture finalizes `mic.wav` in the session staging folder (`{save_folder}/{timestamp}/mic.wav`)
+10. ScribeController reads `mic.wav` into PCM for Whisper
+11. Check: is a model downloaded and selected?
+    - **No model** → skip to step 17
     - **Model available** → continue
-13. Scribe panel enters **Transcribing** state — progress bar shown
-14. Model Service: loads selected model(s)
-15. Model Service: transcribes `mic.wav` → returns timestamped segments
-16. Output Service: builds single-source markdown transcript
-17. Output Service: applies word replacement rules
-18. Output Service: writes `<timestamp>_<model>.md` to save folder
-19. Check: WAV retention setting
-    - **Keep** → WAV stays
-    - **Delete** → Output Service deletes `mic.wav` only after transcript confirmed written and non-empty
-20. Scribe panel enters **Done** state — file path(s) shown, Open Transcript button
-21. **No model path**: Output Service keeps WAV regardless of retention setting. Panel shows "Open in Transcribe →" with audio path and save folder pre-filled
+12. Scribe panel enters **Transcribing** state — progress bar shown
+13. Model Service: loads selected model (from cache or disk; tiny/base may already be preloaded)
+14. Model Service: transcribes PCM → returns timestamped segments
+15. Output Service: builds single-source markdown transcript
+16. Output Service: applies word replacement rules
+17. Output Service: writes `{title}_{model}.md` to **save folder root** (appends `_1`, `_2`, … on filename collision)
+18. Check: WAV retention setting
+    - **Keep** → staging folder and WAVs kept
+    - **Delete** → Output Service removes staging folder after transcript confirmed non-empty
+19. Scribe panel enters **Done** state — file path(s) shown, Open Transcript button
+20. **No model path**: staging WAV kept regardless of retention setting. Panel shows "Open in Transcribe →" with session path pre-filled
 
 ---
 
@@ -50,7 +49,7 @@ User records mic + system audio (remote call, meeting, etc). Speaker capture can
     - Platform Adapter: `loopback_device_and_config` finds the configured loopback device; if none configured, auto-detects any input device with "blackhole" in its name
     - Audio Service: output device switched to the preferred speaker route (e.g. "Liscribe" Multi-Output Device); previous output device saved for restore
     - Audio Service: System Audio Capture (loopback) stream opened; speaker waveform becomes active
-    - ScribeController records `SpeakerSegment { start_ms, raw_pcm, native_rate }` for this capture window
+    - ScribeController records `CapturedSpeakerSegment { start_ms, wav_path }` for this capture window (segment WAV streamed by Audio Service)
 7. User may toggle speaker capture off during the recording
     - Audio Service: loopback stream stopped; segment saved to `SpeakerAccumulator`
     - Audio Service: output device restored immediately to previous value
@@ -58,29 +57,27 @@ User records mic + system audio (remote call, meeting, etc). Speaker capture can
 8. **Toggle is session-only**: the in-recording toggle does NOT update the persistent settings default. Only the Settings page toggle changes the default for future sessions
 9. User optionally types timestamped notes
 10. User presses **Stop & Save**
-11. Audio Service: mic stream stopped, raw PCM returned; any still-active loopback stream stopped and final segment saved
-12. Audio Service: output device restored; Sleep Prevention released
-13. `ScribeController.prepare_audio`: assembles all `SpeakerSegment` entries into one silence-padded 16 kHz PCM buffer (`assemble_speaker_pcm`) — gaps between ON windows are silence
-14. **RMS silence gate**: if the assembled speaker PCM has RMS < −60 dBFS, speaker transcription is skipped entirely; session treated as single-source
-15. Output Service: writes `mic.wav` (and `speaker.wav` if capture was active) to session folder
-16. Check: is a model downloaded and selected?
-    - **No model** → skip to step 24
+11. Audio Service: mic and any active loopback streams finalized to disk; output device restored
+12. ScribeController reads segment WAVs, assembles speaker PCM (`assemble_speaker_pcm`) — gaps between ON windows are silence
+13. **RMS silence gate**: if assembled speaker PCM has RMS < −60 dBFS, speaker transcription is skipped; session treated as single-source
+14. Output Service: writes merged `speaker.wav` to session folder when capture was active
+15. Check: is a model downloaded and selected?
+    - **No model** → skip to step 23
     - **Model available** → continue
-17. Scribe panel enters **Transcribing** state — indeterminate progress bar shown during model load
-18. Model Service: loads selected model(s)
-19. Model Service: transcribes `mic.wav` → mic segments (progress 0–50%)
-20. Model Service: transcribes `speaker.wav` → raw speaker segments (progress 50–100%)
-21. `filter_hallucination_phrases`: strips segments matching known Whisper hallucination phrases ("Thank you.", "Thanks for watching.", etc.) from speaker segments
-22. Model Service: merges mic and speaker segments chronologically; suppresses near-duplicate lines within 1.5 s (mic bleed); applies `in:`/`out:` labels
-23. Output Service: groups segments — same-source segments within 8 s merged into one paragraph; speaker-change boundaries use `\n`; same-source paragraph breaks use `\n\n`
-24. Output Service: builds dual-source markdown transcript
-25. Output Service: applies word replacement rules
-26. Output Service: writes `<timestamp>_<model>.md` to save folder
-27. Check: WAV retention setting
-    - **Keep** → `mic.wav`, `speaker.wav` kept
-    - **Delete** → Output Service deletes both only after transcript confirmed written and non-empty
-28. Scribe panel enters **Done** state — file path(s) shown; `captureSpeaker` reset to the persistent settings default
-29. **No model path**: all session files kept regardless of retention setting. Panel shows "Open in Transcribe →" with session path pre-filled
+16. Scribe panel enters **Transcribing** state
+17. Model Service: loads selected model
+18. Model Service: transcribes mic PCM → mic segments (progress 0–50%)
+19. Model Service: transcribes speaker PCM → raw speaker segments (progress 50–100%) when dual-source
+20. `filter_hallucination_phrases`: strips known Whisper hallucination phrases from speaker segments
+21. Model Service: merges mic and speaker segments chronologically; suppresses near-duplicate lines within 1.5 s; applies `in:`/`out:` labels
+22. Output Service: groups segments and builds dual-source markdown
+23. Output Service: applies word replacement rules
+24. Output Service: writes `{title}_{model}.md` to save folder root (with `_1`, `_2`, … suffix on collision)
+25. Check: WAV retention setting
+    - **Keep** → staging folder and WAVs kept
+    - **Delete** → Output Service removes staging folder after transcript confirmed non-empty
+26. Scribe panel enters **Done** state
+27. **No model path**: staging files kept. Panel shows "Open in Transcribe →" with session path pre-filled
 
 ---
 
@@ -108,20 +105,22 @@ Key listener (always on): **Left Control** only (`CGEventTap` on macOS, low-leve
 
 ### Shared: after mic closes (either mode)
 
-1. Audio Service: Mic Capture stops, returns raw PCM buffer from memory
-2. Floating panel enters **Transcribing** state
-3. Model Service: loads dictate model
-4. Model Service: transcribes buffer → returns text
-5. Output Service: applies word replacement rules (dictate scope)
-6. Check: is there a focused text input?
+1. Audio Service: Mic Capture finalizes temp WAV under app local data (`dictate_temp/{uuid}.wav`)
+2. ScribeController reads WAV → PCM for Whisper
+3. Floating panel enters **Transcribing** state
+4. Model Service: loads dictate model (tiny/base may already be preloaded)
+5. Model Service: transcribes PCM → returns text
+6. Output Service: applies word replacement rules (dictate scope)
+7. Check: is there a focused text input?
     - **Yes** → paste text at cursor via OS input injection
     - **No** → copy text to clipboard + show system notification
-7. Check: auto-enter setting on?
+8. Check: auto-enter setting on?
     - **Yes** → send Enter keystroke after paste
     - **No** → paste only
-8. Output Service: appends to dictate history (`dictate_history.json`)
+9. Audio Service temp WAV deleted on success; on failure Output Service may salvage to `{save_folder}/dictate_failures/`
+10. Output Service: appends to dictate history (`dictate.jsonl`)
     - Empty transcript → skip log entry
-9. Floating panel dismissed (auto)
+11. Floating panel dismissed (auto)
 
 ---
 
@@ -151,10 +150,14 @@ User brings an existing audio file. No recording step.
 
 ## WAV lifecycle summary
 
+Default save folder: `~/Documents/transcripts_scribefloat/` (configurable in Settings → General).
+
 | Workflow | WAV written? | Who writes | Who deletes | When deleted |
 |---|---|---|---|---|
-| Scribe single | Yes — `mic.wav` | Output Service | Output Service | After transcript confirmed, if keep=off |
-| Scribe dual | Yes — `mic.wav` + `speaker.wav` (speaker.wav written even if RMS gate skips transcription) | Output Service | Output Service | After transcript confirmed, if keep=off |
-| Scribe no model | Yes — WAV only output | Output Service | Never | Always kept |
-| Dictate | No — memory only | — | — | — |
+| Scribe single | Yes — `{save_folder}/{timestamp}/mic.wav` streamed during capture | Audio Service (capture); Output Service (merged `speaker.wav` only in dual-source) | Output Service | Staging folder removed after successful transcript if keep=off |
+| Scribe dual | Yes — `mic.wav` + per-segment `speaker_seg_*.wav`, merged `speaker.wav` | Audio Service (capture streams); Output Service (merged archive) | Output Service | Staging folder removed after successful transcript if keep=off |
+| Scribe no model | Yes — staging WAV only | Audio Service | Never (until user deletes) | Always kept for Transcribe recovery |
+| Dictate | Yes — temp `{app_data}/dictate_temp/{uuid}.wav` | Audio Service | Deleted on success; salvaged to `dictate_failures/` on error | After transcription completes or fails |
 | Transcribe | No — user owns source file | — | — | — |
+
+Transcripts (`.md`) are written to the **save folder root** as `{title}_{model}.md`, with `_1`, `_2`, … suffixes when the same title is reused.

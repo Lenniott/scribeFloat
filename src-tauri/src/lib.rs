@@ -535,12 +535,11 @@ pub fn run() {
             let save_folder = app.state::<Arc<services::config::ConfigService>>().get().save_folder;
             match output.scan_incomplete_scribe_sessions(&save_folder) {
                 Ok(sessions) => {
-                    for info in sessions {
+                    for info in &sessions {
                         eprintln!(
                             "[recovery] incomplete scribe session at {} (state: {})",
                             info.session_dir, info.state
                         );
-                        let _ = app.emit("scribe://recovery-found", info);
                     }
                 }
                 Err(e) => eprintln!("[recovery] scribe session scan failed: {e}"),
@@ -609,6 +608,7 @@ pub fn run() {
             commands::scribe::scribe_list_input_devices,
             commands::scribe::scribe_list_output_devices,
             commands::scribe::scribe_read_transcript,
+            commands::scribe::scribe_list_recovery_sessions,
             commands::scribe::scribe_toggle_speaker_capture,
             commands::model::model_setup_status,
             commands::model::model_list,

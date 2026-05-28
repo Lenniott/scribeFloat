@@ -115,8 +115,8 @@ jobs:
           body: |
             ## Installation
 
-            **macOS — Apple Silicon (M1/M2/M3/M4):** download the `aarch64.dmg` artifact, open the DMG and drag ScribeFloat to Applications. Inference runs on the GPU via Metal.
+            **macOS — Apple Silicon (M1/M2/M3/M4):** download the DMG from the `macos-14-aarch64-apple-darwin-artifact` build, open it, and drag ScribeFloat to Applications. Inference runs on the GPU via Metal.
 
-            **macOS — Intel:** download the `x64.dmg` artifact. Built natively on Intel CI with AVX2 + FMA + F16C and the Accelerate BLAS path enabled, so transcription is materially faster than the previous cross-compiled slice.
+            **macOS — Intel:** download the DMG from the `macos-13-x86_64-apple-darwin-artifact` build. Built natively on Intel CI with AVX2 + FMA + F16C and the Accelerate BLAS path enabled, so transcription is materially faster than the previous cross-compiled slice.
 
             **Windows (NSIS .exe):** Run the installer. If Windows SmartScreen warns you, click **More info → Run anyway**.

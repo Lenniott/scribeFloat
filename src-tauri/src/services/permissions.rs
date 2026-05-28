@@ -51,6 +51,11 @@ impl PermissionsService {
         permissions_impl::request_permission(kind)
     }
 
+    /// True when a BlackHole (or similarly named) loopback input device is present.
+    pub fn blackhole_device_detected(&self) -> bool {
+        permissions_impl::blackhole_device_detected()
+    }
+
     fn speaker_capture_granted(&self) -> bool {
         let mic_now = permissions_impl::permission_granted("microphone");
         let mut cache = self.speaker_cache.lock().unwrap();

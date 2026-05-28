@@ -104,6 +104,18 @@
   );
   let saveFolder = $state("");
   let micOptions = $state([{ value: "", label: "System Default" }]);
+  type RecoverySessionInfo = {
+    session_dir: string;
+    mic_wav: string;
+    state: string;
+  };
+  let recoverySessions = $state<RecoverySessionInfo[]>([]);
+
+  async function loadRecoverySessions() {
+    recoverySessions = await invoke<RecoverySessionInfo[]>(
+      "scribe_list_recovery_sessions",
+    ).catch(() => []);
+  }
 
   // ── Backend events ────────────────────────────────────────────────────────
   type ScribePayload = {
@@ -372,6 +384,7 @@
     selectedMic = preferredInputDevice ?? "";
     selectedSpeakerSource = preferredSpeakerDevice ?? "";
     await reloadSpeakerCaptureSettings();
+    await loadRecoverySessions();
 
     // Sync model selector with the currently selected model
     const sel = modelStore.models.find((m) => m.selected && m.downloaded);
@@ -454,6 +467,27 @@
         {/if}
       </div>
     </header>
+
+    {#if recoverySessions.length > 0 && phase === "idle"}
+      <div class="border-b border-warning bg-warning/15 px-5 py-2 text-label-sm text-fg">
+        <p>
+          {recoverySessions.length === 1
+            ? "An interrupted recording was found."
+            : `${recoverySessions.length} interrupted recordings were found.`}
+          Open <strong>Transcribe</strong> from the menu bar and drop the session folder
+          (contains <code class="font-mono bg-fill px-1 rounded">mic.wav</code>) to recover it.
+        </p>
+        <button
+          type="button"
+          class="mt-1 underline cursor-pointer text-fg/80"
+          onclick={() => {
+            recoverySessions = [];
+          }}
+        >
+          Dismiss
+        </button>
+      </div>
+    {/if}
 
     <!-- Body -->
     <div class="grid min-h-0 flex-1 grid-cols-[0.45fr_0.99fr] items-stretch">

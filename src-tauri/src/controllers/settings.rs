@@ -177,7 +177,7 @@ impl SettingsController {
     }
 
     pub fn blackhole_device_detected(&self) -> bool {
-        crate::platform::permissions_impl::blackhole_device_detected()
+        self.permissions.blackhole_device_detected()
     }
 
     pub fn get_scribe_capture_speaker(&self) -> bool {

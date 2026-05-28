@@ -7,6 +7,27 @@ use crate::types::{PermissionStatus, ReplacementRule, ReplacementRuleType, Theme
 use std::path::Path;
 use std::sync::Arc;
 
+fn normalize_platform_hotkeys(open: &str, dictate: &str) -> (String, String) {
+    #[cfg(target_os = "windows")]
+    {
+        let open = if open == "CmdOrCtrl+Shift+L" {
+            crate::platform::default_open_scribe_hotkey().to_string()
+        } else {
+            open.to_string()
+        };
+        let dictate = if dictate == "Ctrl" {
+            crate::platform::default_dictate_activation_key().to_string()
+        } else {
+            dictate.to_string()
+        };
+        (open, dictate)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        (open.to_string(), dictate.to_string())
+    }
+}
+
 pub struct SettingsController {
     config: Arc<ConfigService>,
     hotkeys: Arc<HotkeyService>,
@@ -89,7 +110,9 @@ impl SettingsController {
     }
 
     pub fn rehydrate_hotkeys(&self) -> Result<(), String> {
-        let (existing_open, existing_dictate) = self.get_hotkeys();
+        let (disk_open, disk_dictate) = self.get_hotkeys();
+        let (existing_open, existing_dictate) =
+            normalize_platform_hotkeys(&disk_open, &disk_dictate);
         let defaults = crate::types::Config::default();
         let validated = self
             .hotkeys
@@ -101,7 +124,7 @@ impl SettingsController {
 
         self.hotkeys.rebind(&validated.0, &validated.1)?;
 
-        if validated.0 != existing_open || validated.1 != existing_dictate {
+        if validated.0 != disk_open || validated.1 != disk_dictate {
             self.config
                 .update(|cfg| {
                     cfg.open_scribe_hotkey = validated.0.clone();
@@ -587,5 +610,31 @@ mod tests {
         assert!(ctrl.set_output_path("".to_string()).is_err());
         assert!(ctrl.set_output_path("   ".to_string()).is_err());
         assert!(ctrl.set_output_path("relative/path".to_string()).is_err());
+    }
+
+    #[test]
+    fn speaker_capture_requires_device_name_is_macos_only() {
+        assert_eq!(
+            SettingsController::speaker_capture_requires_device_name(),
+            cfg!(target_os = "macos")
+        );
+    }
+
+    #[test]
+    fn normalize_platform_hotkeys_leaves_macos_defaults_unchanged() {
+        let (open, dictate) = super::normalize_platform_hotkeys("CmdOrCtrl+Shift+L", "Ctrl+D");
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(open, "CmdOrCtrl+Shift+L");
+            assert_eq!(dictate, "Ctrl+D");
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn normalize_platform_hotkeys_migrates_legacy_windows_defaults() {
+        let (open, dictate) = super::normalize_platform_hotkeys("CmdOrCtrl+Shift+L", "Ctrl");
+        assert_eq!(open, "Alt+Shift+L");
+        assert_eq!(dictate, "Alt");
     }
 }

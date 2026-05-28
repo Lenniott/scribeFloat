@@ -8,6 +8,7 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	import PathSelectorField from "@lib/components/form/PathSelectorField.svelte";
 	import ToggleSwitch from "@lib/components/form/ToggleSwitch.svelte";
 	import { applyThemeMode, type ThemeMode } from "$lib/theme";
+	import { dictateModifierLabel } from "$lib/platform";
 
 	let {
 		savedSpeakerDeviceName = "",
@@ -140,7 +141,7 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	<div class="flex flex-col gap-1">
 		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">Dictate hotkey</span>
 		<p class="text-label-sm text-fg/50">
-			Tap left <strong>Ctrl</strong>, release, then tap <strong>Ctrl</strong> again — hold ~½s for push-to-talk (release stops), or a quick tap–release toggles mic on/off; press <strong>Ctrl</strong> again to stop. Dictate listens to left Ctrl only here; the dictate hotkey is fixed and cannot be changed.
+			Tap left <strong>{dictateModifierLabel}</strong>, release, then tap <strong>{dictateModifierLabel}</strong> again — hold ~½s for push-to-talk (release stops), or a quick tap–release toggles mic on/off; press <strong>{dictateModifierLabel}</strong> again to stop. Dictate listens to left {dictateModifierLabel} only here; the dictate hotkey is fixed and cannot be changed.
 		</p>
 	</div>
 	<LabeledTextField label="Input label" bind:value={inputLabel} />
@@ -165,13 +166,15 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 		</span>
 		<ToggleSwitch checked={keepWav} aria-label="Keep WAV file after transcription" onchange={(next) => (keepWav = next)} />
 	</div>
-	<div class="flex flex-col gap-2">
-		<LabeledTextField
-			label="Speaker capture device name"
-			bind:value={preferredSpeakerDevice}
-			placeholder="Type the exact Audio MIDI device name"
-		/>
-	</div>
+	{#if speakerCaptureRequiresDeviceName}
+		<div class="flex flex-col gap-2">
+			<LabeledTextField
+				label="Speaker capture device name"
+				bind:value={preferredSpeakerDevice}
+				placeholder="Type the exact Audio MIDI device name"
+			/>
+		</div>
+	{/if}
 	<div class="flex items-center gap-3">
 		<Button variant="primary" onclick={saveAll}>Save</Button>
 		{#if message}

@@ -142,6 +142,16 @@ pub fn set_default_output_device(_device_name: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+pub fn default_open_scribe_hotkey() -> &'static str {
+    "Alt+Shift+L"
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn default_open_scribe_hotkey() -> &'static str {
+    "CmdOrCtrl+Shift+L"
+}
+
 /// Returns the default modifier key used to activate push-to-talk dictation.
 /// Windows uses Alt to avoid conflicting with common Ctrl shortcuts.
 /// macOS uses Ctrl, which is rarely bound by apps and works well as a hold key.
@@ -207,4 +217,37 @@ pub fn loopback_device_and_config(
     };
     let config = device.default_input_config().map_err(|e| e.to_string())?;
     Ok((device, config))
+}
+
+/// True when a persisted save folder should be rewritten on Windows startup.
+#[cfg(target_os = "windows")]
+pub fn windows_save_folder_needs_migration(path: &str) -> bool {
+    path == "/tmp/transcripts_scribefloat"
+        || path.starts_with("/tmp/")
+        || (!path.is_empty() && !std::path::Path::new(path).has_root())
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn windows_save_folder_needs_migration(_path: &str) -> bool {
+    false
+}
+
+#[cfg(test)]
+mod save_folder_tests {
+    use super::windows_save_folder_needs_migration;
+
+    #[test]
+    fn legacy_unix_tmp_path_migration_flag() {
+        #[cfg(target_os = "windows")]
+        {
+            assert!(windows_save_folder_needs_migration("/tmp/transcripts_scribefloat"));
+            assert!(!windows_save_folder_needs_migration(
+                r"C:\Users\me\Documents\transcripts_scribefloat"
+            ));
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert!(!windows_save_folder_needs_migration("/tmp/transcripts_scribefloat"));
+        }
+    }
 }

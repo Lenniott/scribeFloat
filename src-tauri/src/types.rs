@@ -232,14 +232,22 @@ fn default_true() -> bool {
     true
 }
 
+#[cfg(target_os = "windows")]
+fn default_save_folder() -> String {
+    std::env::var("USERPROFILE")
+        .map(|h| format!(r"{h}\Documents\transcripts_scribefloat"))
+        .unwrap_or_else(|_| r"C:\Users\Public\Documents\transcripts_scribefloat".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
 fn default_save_folder() -> String {
     std::env::var("HOME")
-        .map(|h| format!("{}/Documents/transcripts_scribefloat", h))
+        .map(|h| format!("{h}/Documents/transcripts_scribefloat"))
         .unwrap_or_else(|_| "/tmp/transcripts_scribefloat".to_string())
 }
 
 fn default_open_scribe_hotkey() -> String {
-    "CmdOrCtrl+Shift+L".to_string()
+    crate::platform::default_open_scribe_hotkey().to_string()
 }
 
 fn default_dictate_hotkey() -> String {

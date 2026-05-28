@@ -137,6 +137,18 @@ pub fn request_permission(kind: &str) -> Result<()> {
             return Ok(());
         }
     }
+    #[cfg(target_os = "windows")]
+    {
+        if kind == "microphone" {
+            if windows::microphone_granted() {
+                return Ok(());
+            }
+            if windows::microphone_not_determined() {
+                windows::request_microphone_access();
+                return Ok(());
+            }
+        }
+    }
     open_permission_settings(kind)?;
     Ok(())
 }
@@ -384,6 +396,7 @@ mod macos {
 
 #[cfg(target_os = "windows")]
 mod windows {
+    use cpal::traits::{DeviceTrait, HostTrait};
     use std::os::windows::process::CommandExt;
     use std::process::Command;
 
@@ -391,7 +404,28 @@ mod windows {
     // screen polls every 10s and on every focus change, so it was very visible.
     const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-    pub fn microphone_granted() -> bool {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum MicConsent {
+        Allow,
+        Deny,
+        Prompt,
+        Unknown,
+    }
+
+    pub fn mic_consent_from_registry_output(text: &str) -> MicConsent {
+        if text.lines().any(|line| line.contains("Allow")) {
+            return MicConsent::Allow;
+        }
+        if text.lines().any(|line| line.contains("Deny")) {
+            return MicConsent::Deny;
+        }
+        if text.lines().any(|line| line.contains("Prompt")) {
+            return MicConsent::Prompt;
+        }
+        MicConsent::Unknown
+    }
+
+    fn read_mic_consent() -> MicConsent {
         let output = Command::new("reg")
             .args([
                 "query",
@@ -403,21 +437,64 @@ mod windows {
             .output();
 
         let Ok(output) = output else {
-            return false;
+            return MicConsent::Unknown;
         };
         if !output.status.success() {
+            return MicConsent::Unknown;
+        }
+
+        mic_consent_from_registry_output(&String::from_utf8_lossy(&output.stdout))
+    }
+
+    pub fn microphone_granted() -> bool {
+        read_mic_consent() == MicConsent::Allow
+    }
+
+    pub fn microphone_denied() -> bool {
+        read_mic_consent() == MicConsent::Deny
+    }
+
+    pub fn microphone_not_determined() -> bool {
+        !microphone_granted() && !microphone_denied()
+    }
+
+    /// Probe cpal to trigger the Windows microphone consent dialog when status is Prompt.
+    pub fn request_microphone_access() -> bool {
+        if microphone_granted() {
+            return true;
+        }
+        if microphone_denied() {
             return false;
         }
 
-        let text = String::from_utf8_lossy(&output.stdout);
-        // ConsentStore values are typically Allow / Deny / Prompt.
-        text.lines().any(|line| line.contains("Allow"))
+        let host = cpal::default_host();
+        let Some(device) = host.default_input_device() else {
+            return microphone_granted();
+        };
+        let Ok(supported) = device.default_input_config() else {
+            return microphone_granted();
+        };
+        let config = supported.config();
+        if let Ok(stream) = device.build_input_stream(
+            &config,
+            |_data: &[f32], _| {},
+            |err| eprintln!("[permissions] mic probe stream error: {err}"),
+            None,
+        ) {
+            let _ = stream.play();
+            drop(stream);
+        }
+
+        microphone_granted()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{open_permission_settings, permission_hint, permission_settings_url};
+
+    #[cfg(target_os = "windows")]
+    use super::windows::{mic_consent_from_registry_output, MicConsent};
 
     #[test]
     fn unknown_permission_has_no_settings_target() {
@@ -440,5 +517,22 @@ mod tests {
     fn speaker_capture_has_platform_specific_hint() {
         let hint = permission_hint("speaker_capture");
         assert!(hint.is_some());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn mic_consent_parses_registry_output() {
+        assert_eq!(
+            mic_consent_from_registry_output("    Value    REG_SZ    Allow\n"),
+            MicConsent::Allow
+        );
+        assert_eq!(
+            mic_consent_from_registry_output("    Value    REG_SZ    Deny\n"),
+            MicConsent::Deny
+        );
+        assert_eq!(
+            mic_consent_from_registry_output("    Value    REG_SZ    Prompt\n"),
+            MicConsent::Prompt
+        );
     }
 }

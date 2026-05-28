@@ -469,6 +469,20 @@ pub fn run() {
                 );
             }
             let config = services::config::ConfigService::load(data_dir.join("config.json"))?;
+            {
+                let save_folder = config.get().save_folder;
+                if platform::windows_save_folder_needs_migration(&save_folder) {
+                    let migrated = crate::types::Config::default().save_folder;
+                    if let Ok(normalized) =
+                        output.ensure_output_dir(std::path::Path::new(&migrated))
+                    {
+                        let normalized = normalized.to_string_lossy().to_string();
+                        config
+                            .update(|cfg| cfg.save_folder = normalized)
+                            .map_err(|e| format!("failed to migrate save folder: {e}"))?;
+                    }
+                }
+            }
             let hotkeys = services::hotkeys::HotkeyService::new(
                 services::hotkeys::TauriHotkeyRegistrar::new(app.handle().clone()),
             );

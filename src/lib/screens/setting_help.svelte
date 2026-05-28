@@ -1,14 +1,18 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import type { UpdateCheckResult } from '$lib/types';
-  import Button from '@lib/components/Button.svelte';
+	import Button from '@lib/components/Button.svelte';
+	import { dictateModifierLabel, isWindows } from '$lib/platform';
 
 	type UpdateState = 'idle' | 'checking' | 'up_to_date' | 'update_available' | 'error';
 
 	let updateState = $state<UpdateState>('idle');
 	let updateResult = $state<UpdateCheckResult | null>(null);
 	let updateError = $state('');
+	let openScribeHotkey = $state('CmdOrCtrl+Shift+L');
+	let speakerCaptureRequiresDeviceName = $state(false);
 
 	async function checkForUpdates() {
 		updateState = 'checking';
@@ -27,6 +31,14 @@
 	async function openDownloadPage() {
 		if (updateResult) await openUrl(updateResult.release_url);
 	}
+
+	onMount(async () => {
+		const [open] = await invoke<[string, string]>('settings_get_hotkeys').catch(() => ['', '']);
+		openScribeHotkey = open || openScribeHotkey;
+		speakerCaptureRequiresDeviceName = await invoke<boolean>(
+			'settings_speaker_capture_requires_device_name',
+		).catch(() => false);
+	});
 </script>
 
 <section class="space-y-8 max-w-2xl">
@@ -82,10 +94,10 @@
 			Scribe records your microphone and transcribes the audio into a timestamped Markdown file saved in your save folder.
 		</p>
 		<ul class="space-y-1 text-base text-fg list-disc pl-5">
-			<li>Open Scribe from the menu bar icon or press the <strong>Open Scribe hotkey</strong> (shown in General settings — <code class="font-mono text-base bg-fill px-1 rounded">CmdOrCtrl+Shift+L</code> by default).</li>
+			<li>Open Scribe from the menu bar icon or press the <strong>Open Scribe hotkey</strong> (shown in General settings — <code class="font-mono text-base bg-fill px-1 rounded">{openScribeHotkey}</code> by default).</li>
 			<li>Press <strong>Record</strong> to start. Add timestamped notes while recording if you like.</li>
 			<li>Press <strong>Stop & Save</strong> — ScribeFloat transcribes the audio and saves a <code class="font-mono text-base bg-fill px-1 rounded">.md</code> file in your save folder (same title twice gets <code class="font-mono text-base bg-fill px-1 rounded">_1</code>, <code class="font-mono text-base bg-fill px-1 rounded">_2</code>, … suffixes). The recording is deleted once the transcript is confirmed saved unless <strong>Keep audio after transcription</strong> is on.</li>
-			<li>Enable <strong>Speaker capture</strong> to also record system audio (e.g. for calls and meetings). Mic lines are prefixed <code class="font-mono text-base bg-fill px-1 rounded">in:</code> and speaker lines <code class="font-mono text-base bg-fill px-1 rounded">out:</code> in the transcript.</li>
+			<li>Enable <strong>Speaker capture</strong> to also record system audio (e.g. for calls and meetings). Mic lines are prefixed <code class="font-mono text-base bg-fill px-1 rounded">in:</code> and speaker lines <code class="font-mono text-base bg-fill px-1 rounded">out:</code> in the transcript.{#if isWindows} On Windows, system audio must be playing for the speaker waveform to move — loopback captures what your speakers are outputting.{/if}</li>
 			<li>If no model is installed, the WAV file is kept and a button appears to open it in Transcribe later.</li>
 		</ul>
 	</div>
@@ -97,7 +109,7 @@
 			Dictate is a floating hotkey-driven voice input. Audio is streamed to a short-lived temp file while you dictate, then deleted after a successful transcription (or moved to <code class="font-mono text-base bg-fill px-1 rounded">dictate_failures/</code> in your save folder if transcription fails).
 		</p>
 		<ul>
-			<li>Tap left <strong>Ctrl</strong>, release — tap left <strong>Ctrl</strong> again: hold half a second to start push-to-talk and release when done, or tap and release quickly to stay in toggle mode and press <strong>Ctrl</strong> again after a brief pause to stop.</li>
+			<li>Tap left <strong>{dictateModifierLabel}</strong>, release — tap left <strong>{dictateModifierLabel}</strong> again: hold half a second to start push-to-talk and release when done, or tap and release quickly to stay in toggle mode and press <strong>{dictateModifierLabel}</strong> again after a brief pause to stop.</li>
 			<li>If Accessibility permission is granted, the text is pasted automatically via <code class="font-mono text-base bg-fill px-1 rounded">Cmd/Ctrl+V</code>. Otherwise it goes to the clipboard.</li>
 			<li>Enable <strong>Press Enter after dictate</strong> in General settings to send an Enter keystroke after the paste — handy for messaging apps.</li>
 			<li>Each successful dictation is appended to <code class="font-mono text-base bg-fill px-1 rounded">dictate.jsonl</code> in your save folder.</li>
@@ -199,10 +211,12 @@
 						<td class="px-3 py-2 text-sm text-fg font-medium">Press Enter after dictate</td>
 						<td class="px-3 py-2 text-sm text-fg-dim">Sends an Enter keystroke immediately after the dictated text is pasted. Useful in messaging and search apps.</td>
 					</tr>
+					{#if speakerCaptureRequiresDeviceName}
 					<tr>
 						<td class="px-3 py-2 text-sm text-fg font-medium">Speaker capture device name</td>
-						<td class="px-3 py-2 text-sm text-fg-dim">Exact device name for system audio capture. On macOS this is usually <code class="font-mono text-base bg-fill px-1 rounded">BlackHole 2ch</code>. Leave blank to use the system default.</td>
+						<td class="px-3 py-2 text-sm text-fg-dim">macOS only — exact BlackHole or Multi-Output device name (usually <code class="font-mono text-base bg-fill px-1 rounded">BlackHole 2ch</code>). Windows uses your default output device automatically.</td>
 					</tr>
+					{/if}
 					<tr>
 						<td class="px-3 py-2 text-sm text-fg font-medium">Input / Output label</td>
 						<td class="px-3 py-2 text-sm text-fg-dim">Prefix labels for each audio source in dual-source transcripts. Defaults: <code class="font-mono text-base bg-fill px-1 rounded">in:</code> for mic, <code class="font-mono text-base bg-fill px-1 rounded">out:</code> for speaker.</td>
@@ -210,6 +224,16 @@
 				</tbody>
 			</table>
 			<div class="mt-4 text-fg-dim">
+				{#if isWindows}
+					<p class="mb-2">
+						<strong>Windows install:</strong> the installer places ScribeFloat in <code class="font-mono text-base bg-fill px-1 rounded">C:\Program Files\ScribeFloat</code>.
+						Transcripts default to <code class="font-mono text-base bg-fill px-1 rounded">Documents\transcripts_scribefloat</code>.
+					</p>
+					<p class="mb-2">
+						<strong>Uninstall:</strong> Settings → Apps → Installed apps → ScribeFloat → Uninstall.
+						Config, models, and transcripts are kept unless you delete them manually.
+					</p>
+				{/if}
 				<p>Enjoying scribeFloat? <a href="https://buymeacoffee.com/benjamiz">Send a tip</a></p>
 			</div>
 		</div>

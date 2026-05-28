@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { browser } from "$app/environment";
-	import { getCurrentWindow } from "@tauri-apps/api/window";
 	import ScribeScreen from "@lib/screens/scribe.svelte";
 	import ScribeProcessingScreen from "@lib/screens/scribe-processing.svelte";
 	import SettingsScreen from "@lib/screens/settings.svelte";
@@ -25,14 +24,10 @@ const standaloneTranscribe = viewParam === "transcribe";
 	function returnToRecording() {
 		appScreen = "recording";
 	}
-
-	async function closeStandaloneSettings() {
-		await getCurrentWindow().close();
-	}
 </script>
 
 {#if standaloneSettings}
-	<SettingsScreen standalone onClose={closeStandaloneSettings} />
+	<SettingsScreen standalone />
 {:else if standaloneDictate}
 	<DictateScreen />
 {:else if standaloneTranscribe}

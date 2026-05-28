@@ -8,11 +8,16 @@
 
   let {
     ready = $bindable(false),
+    micOnly = false,
   }: {
     ready?: boolean;
+    micOnly?: boolean;
   } = $props();
 
   let statuses = $state<PermissionStatus[]>([]);
+  const visibleStatuses = $derived(
+    micOnly ? statuses.filter((s) => s.kind === "microphone") : statuses,
+  );
   function formatKindLabel(kind: string): string {
     if (kind === "speaker_capture") return "speaker capture";
     return kind.replace(/_/g, " ");
@@ -62,7 +67,7 @@
 
 <section class="space-y-3 h-full">
   <h2 class="sf-headline-sm">Permissions</h2>
-  {#each statuses as status (status.kind)}
+  {#each visibleStatuses as status (status.kind)}
     <div class="rounded-md border border-fill px-3 py-2 transition bg-card">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-2">
@@ -101,6 +106,11 @@
           </div>
         {/if}
       </div>
+      {#if !status.granted && status.can_request && status.kind === "microphone" && micOnly}
+        <p class="mt-1.5 text-label-sm text-fg/50">
+          Windows will show a microphone consent dialog, or open Settings → Privacy → Microphone if access was previously denied.
+        </p>
+      {/if}
       {#if !status.granted && status.can_request && status.kind !== "microphone"}
         <p class="mt-1.5 text-label-sm text-fg/50">
           {status.kind === "accessibility"

@@ -18,11 +18,8 @@ pub struct KeyEvent {
     pub kind: KeyEventKind,
 }
 
-/// Spawn a background thread that calls `callback` for every Left Control
-/// keydown / keyup event.  Returns immediately; the thread runs until the
-/// process exits.
-///
-/// On Windows a WH_KEYBOARD_LL hook is used instead.
+/// Spawn a background thread that calls `callback` for every Left Control (macOS)
+/// or Left Alt (Windows) keydown / keyup event.
 pub fn start_modifier_listener<F>(callback: F)
 where
     F: Fn(KeyEvent) + Send + 'static,
@@ -158,8 +155,8 @@ mod windows {
         std::thread::spawn(move || {
             if let Err(e) = rdev::listen(move |event| {
                 let kind = match event.event_type {
-                    rdev::EventType::KeyPress(rdev::Key::ControlLeft) => KeyEventKind::Down,
-                    rdev::EventType::KeyRelease(rdev::Key::ControlLeft) => KeyEventKind::Up,
+                    rdev::EventType::KeyPress(rdev::Key::AltLeft) => KeyEventKind::Down,
+                    rdev::EventType::KeyRelease(rdev::Key::AltLeft) => KeyEventKind::Up,
                     _ => return,
                 };
                 callback(KeyEvent { kind });

@@ -18,6 +18,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine"
+      }
+    },
     "macOS": {
       "infoPlist": "Info.plist",
       "minimumSystemVersion": "13.0",

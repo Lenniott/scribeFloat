@@ -22,6 +22,7 @@
   import Cog from "lucide-svelte/icons/settings-2";
   import type { Note } from "@components/notes/NoteCard.svelte";
   import type { PermissionStatus } from "$lib/types";
+  import { isWindows } from "$lib/platform";
 
   type Props = {
     processingStart?: (title: string) => void;
@@ -217,10 +218,16 @@
       ).catch(() => []);
       const mic = perms.find((p) => p.kind === "microphone");
       if (mic && !mic.granted) {
-        phase = "error";
-        errorMessage =
-          "Microphone access is required. Grant it under Settings → Permissions, then try again.";
-        return;
+        if (isWindows) {
+          await invoke("settings_permissions_request", { kind: "microphone" }).catch(
+            () => {},
+          );
+        } else {
+          phase = "error";
+          errorMessage =
+            "Microphone access is required. Grant it under Settings → Permissions, then try again.";
+          return;
+        }
       }
 
       await invoke("scribe_start", {

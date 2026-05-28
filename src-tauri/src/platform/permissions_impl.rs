@@ -384,7 +384,12 @@ mod macos {
 
 #[cfg(target_os = "windows")]
 mod windows {
+    use std::os::windows::process::CommandExt;
     use std::process::Command;
+
+    // Without this, every `reg query` flashes a black cmd window — the permissions
+    // screen polls every 10s and on every focus change, so it was very visible.
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
 
     pub fn microphone_granted() -> bool {
         let output = Command::new("reg")
@@ -394,6 +399,7 @@ mod windows {
                 "/v",
                 "Value",
             ])
+            .creation_flags(CREATE_NO_WINDOW)
             .output();
 
         let Ok(output) = output else {

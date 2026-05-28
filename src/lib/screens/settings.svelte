@@ -21,6 +21,12 @@
 		standalone?: boolean;
 	} = $props();
 
+	// Windows auto-prompts for mic on first use and exposes no other permissions
+	// we manage, so the Permissions tab is dead weight there — and querying status
+	// triggers a `reg query` subprocess which used to flash a cmd window.
+	const isWindows =
+		typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
+
 	let activeTab = $state<SettingsTab>('general');
 	let permissionsKnown = $state(false);
 	let modelKnown = $state(false);
@@ -63,12 +69,15 @@
 
 	onMount(async () => {
 		const [statuses, list] = await Promise.all([
-			invoke<PermissionStatus[]>('settings_permissions_status').catch(() => []),
+			isWindows
+				? Promise.resolve([] as PermissionStatus[])
+				: invoke<PermissionStatus[]>('settings_permissions_status').catch(() => []),
 			invoke<ModelListItem[]>('model_list').catch(() => []),
 			loadSpeakerCaptureBannerState(),
 		]);
-		permissionsReady =
-			statuses.find((s) => s.kind === 'microphone')?.granted ?? false;
+		permissionsReady = isWindows
+			? true
+			: (statuses.find((s) => s.kind === 'microphone')?.granted ?? false);
 		permissionsKnown = true;
 
 		const downloaded = list.filter((m) => m.downloaded);
@@ -84,7 +93,7 @@
 
 	const tabs: Array<{ id: SettingsTab; label: string }> = [
 		{ id: 'general', label: 'General' },
-		{ id: 'permissions', label: 'Permissions' },
+		...(isWindows ? [] : [{ id: 'permissions' as SettingsTab, label: 'Permissions' }]),
 		{ id: 'models', label: 'Models' },
 		{ id: 'replacements', label: 'Replacements' },
 		{ id: 'help', label: 'Help' },

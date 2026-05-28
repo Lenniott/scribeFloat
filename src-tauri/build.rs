@@ -10,7 +10,6 @@ fn build_set_default_output_helper() {
     use std::process::Command;
 
     let target = std::env::var("TARGET").expect("TARGET");
-    let profile = std::env::var("PROFILE").unwrap_or_default();
     println!("cargo:rustc-env=SCRIBEFLOAT_TARGET_TRIPLE={target}");
     println!("cargo:rerun-if-changed=Swift/SetDefaultOutput/main.swift");
 
@@ -37,12 +36,28 @@ fn build_set_default_output_helper() {
         dest.display()
     );
 
-    // Tauri externalBin expects triple-suffixed binaries here at bundle time only.
-    // Writing this during `tauri dev` retriggers the file watcher in an infinite loop.
-    if profile == "release" {
-        let bundle_dir = manifest_dir.join("binaries");
-        std::fs::create_dir_all(&bundle_dir).expect("create binaries dir");
-        let bundle_dest = bundle_dir.join(format!("set-default-output-{target}"));
-        std::fs::copy(&dest, &bundle_dest).expect("copy set-default-output for bundle");
+    // Tauri `externalBin` validates triple-suffixed binaries at build time (dev and release).
+    // Copy only when missing or stale so `tauri dev` does not rewrite an unchanged file every
+    // rebuild and retrigger the file watcher in a loop.
+    let bundle_dir = manifest_dir.join("binaries");
+    std::fs::create_dir_all(&bundle_dir).expect("create binaries dir");
+    let bundle_dest = bundle_dir.join(format!("set-default-output-{target}"));
+    copy_helper_if_changed(&dest, &bundle_dest);
+}
+
+#[cfg(target_os = "macos")]
+fn copy_helper_if_changed(src: &std::path::Path, dest: &std::path::Path) {
+    use std::io::Read;
+
+    let src_bytes = std::fs::read(src).expect("read compiled set-default-output helper");
+    if dest.is_file() {
+        let mut dest_bytes = Vec::new();
+        std::fs::File::open(dest)
+            .and_then(|mut f| f.read_to_end(&mut dest_bytes))
+            .expect("read existing set-default-output bundle binary");
+        if dest_bytes == src_bytes {
+            return;
+        }
     }
+    std::fs::write(dest, src_bytes).expect("write set-default-output bundle binary");
 }

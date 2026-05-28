@@ -231,7 +231,9 @@ fn prewarm_scribe_window(app: &AppHandle) {
         if let Some(icon) = app.default_window_icon() {
             builder = builder.icon(icon.clone())?;
         }
-        builder.build()?;
+        let window = builder.build()?;
+        // `visible(false)` alone can still leave the webview reported visible on macOS until hide().
+        let _ = window.hide();
         Ok(())
     })();
     if let Err(err) = result {
@@ -290,7 +292,6 @@ pub(crate) fn open_scribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow
         SCRIBE_WINDOW_W,
         SCRIBE_WINDOW_H,
     )?;
-    let _ = window.emit("scribe://open-requested", serde_json::json!({}));
     Ok(window)
 }
 

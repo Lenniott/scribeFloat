@@ -47,7 +47,7 @@ pub fn scribe_abort_transcription(ctrl: State<'_, Arc<ScribeController>>) -> Res
 /// tray-backed process; hide matches native close behaviour (`CloseRequested` → hide).
 ///
 /// Always tries to end an active recording first so mic/speaker streams release even if the
-/// frontend hid the window without awaiting `scribe_cancel` (focus/auto-start races).
+/// frontend hid the window without awaiting `scribe_cancel`.
 #[tauri::command]
 pub fn scribe_destroy_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(ctrl) = app.try_state::<Arc<ScribeController>>() {

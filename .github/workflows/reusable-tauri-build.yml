@@ -3,7 +3,6 @@ name: Reusable Tauri build
 
 on:
   workflow_call:
-    secrets: inherit
     inputs:
       os:
         required: true

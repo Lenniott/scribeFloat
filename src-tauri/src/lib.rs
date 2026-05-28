@@ -459,6 +459,14 @@ pub fn run() {
             create_tray(app)?;
 
             let data_dir = app.path().app_data_dir()?;
+            #[cfg(target_os = "macos")]
+            if let Some(helper) = platform::resolve_set_default_output_helper() {
+                platform::init_set_default_output_helper(helper);
+            } else {
+                eprintln!(
+                    "set-default-output helper missing; speaker capture output restore may fail"
+                );
+            }
             let config = services::config::ConfigService::load(data_dir.join("config.json"))?;
             let hotkeys = services::hotkeys::HotkeyService::new(
                 services::hotkeys::TauriHotkeyRegistrar::new(app.handle().clone()),

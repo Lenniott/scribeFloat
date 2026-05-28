@@ -10,4 +10,5 @@ scripts/release-build.env.local
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 /target
+/src-tauri/binaries/set-default-output-*
 /context

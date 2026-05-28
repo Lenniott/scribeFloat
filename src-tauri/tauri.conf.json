@@ -18,6 +18,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/set-default-output"],
     "macOS": {
       "infoPlist": "Info.plist",
       "minimumSystemVersion": "13.0",

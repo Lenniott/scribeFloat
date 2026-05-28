@@ -50,40 +50,78 @@ pub fn open_file(path: &str, app: Option<&str>) -> Result<(), String> {
 }
 
 #[cfg(target_os = "macos")]
-fn switch_audio_source_path() -> Result<std::path::PathBuf, String> {
-    const CANDIDATES: &[&str] = &[
-        "/opt/homebrew/bin/SwitchAudioSource", // Apple Silicon Homebrew
-        "/usr/local/bin/SwitchAudioSource",    // Intel Homebrew
-    ];
-    for candidate in CANDIDATES {
-        if std::path::Path::new(candidate).exists() {
-            return Ok(std::path::PathBuf::from(candidate));
+use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
+use std::sync::OnceLock;
+
+#[cfg(target_os = "macos")]
+static SET_DEFAULT_OUTPUT_HELPER: OnceLock<PathBuf> = OnceLock::new();
+
+/// Path to the bundled `set-default-output` helper (compiled in build.rs, registered as externalBin).
+#[cfg(target_os = "macos")]
+pub fn init_set_default_output_helper(path: PathBuf) {
+    let _ = SET_DEFAULT_OUTPUT_HELPER.set(path);
+}
+
+#[cfg(target_os = "macos")]
+fn set_default_output_helper_path() -> Result<&'static Path, String> {
+    SET_DEFAULT_OUTPUT_HELPER
+        .get()
+        .map(|p| p.as_path())
+        .ok_or_else(|| "set-default-output helper not initialized".to_string())
+}
+
+#[cfg(target_os = "macos")]
+pub fn resolve_set_default_output_helper() -> Option<PathBuf> {
+    if let Some(path) = option_env!("SCRIBEFLOAT_SET_DEFAULT_OUTPUT_HELPER") {
+        let helper = PathBuf::from(path);
+        if helper.is_file() {
+            return Some(helper);
         }
     }
-    Err("SwitchAudioSource not found (install via `brew install switchaudio-osx`)".to_string())
+
+    let triple = env!("SCRIBEFLOAT_TARGET_TRIPLE");
+    let binary_name = format!("set-default-output-{triple}");
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let bundled = dir.join(&binary_name);
+            if bundled.is_file() {
+                return Some(bundled);
+            }
+        }
+    }
+
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let dev = manifest.join("binaries").join(&binary_name);
+    if dev.is_file() {
+        return Some(dev);
+    }
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn run_set_default_output_helper(args: &[&str]) -> Result<std::process::Output, String> {
+    let bin = set_default_output_helper_path()?;
+    std::process::Command::new(bin)
+        .args(args)
+        .output()
+        .map_err(|e| format!("failed to run set-default-output helper: {e}"))
 }
 
 #[cfg(target_os = "macos")]
 pub fn get_default_output_device() -> Result<String, String> {
-    let bin = switch_audio_source_path()?;
-    let output = std::process::Command::new(&bin)
-        .args(["-c", "-t", "output"])
-        .output()
-        .map_err(|e| format!("failed to query current output device: {e}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("failed to query current output device: {stderr}"));
+    let output = run_set_default_output_helper(&["get-default-output"])?;
+    if output.status.success() {
+        return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
     }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(format!("failed to query current output device: {stderr}"))
 }
 
 #[cfg(target_os = "macos")]
 pub fn set_default_output_device(device_name: &str) -> Result<(), String> {
-    let bin = switch_audio_source_path()?;
-    let output = std::process::Command::new(&bin)
-        .args(["-s", device_name, "-t", "output"])
-        .output()
-        .map_err(|e| format!("failed to set output device `{device_name}`: {e}"))?;
+    let output = run_set_default_output_helper(&["set-default-output", device_name])?;
     if output.status.success() {
         Ok(())
     } else {

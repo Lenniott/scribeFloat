@@ -61,6 +61,13 @@ jobs:
           name: macos-arm-dmg
           path: artifacts/macos-arm
 
+      - name: Rename Apple Silicon DMG
+        if: needs.build-macos-arm.result == 'success'
+        run: |
+          for f in artifacts/macos-arm/*.dmg; do
+            mv "$f" "${f/_aarch64.dmg/_apple-silicon.dmg}"
+          done
+
       - name: Download Windows artifact
         if: needs.build-windows.result == 'success'
         uses: actions/download-artifact@v5
@@ -75,13 +82,13 @@ jobs:
             echo "## Installation"
             echo
             if [[ "${{ needs.build-macos-arm.result }}" == "success" ]]; then
-              echo "**macOS — Apple Silicon (M1/M2/M3/M4):** download the \`.dmg\` below (macos-arm-dmg), open it, and drag ScribeFloat to Applications. Inference runs on the GPU via Metal."
+              echo "**macOS (Apple Silicon — M1/M2/M3/M4):** download the \`apple-silicon.dmg\` below, open it, and drag ScribeFloat to Applications."
               echo
             fi
-            echo "**macOS — Intel:** the Intel \`.dmg\` is built separately on \`macos-15-intel\` runners. If it is not attached yet, check the workflow run — it will be added automatically when that job succeeds."
+            echo "**macOS (Intel):** download the \`intel.dmg\` below. It is built separately — if not yet attached, check back shortly."
             echo
             if [[ "${{ needs.build-windows.result }}" == "success" ]]; then
-              echo "**Windows (NSIS .exe):** Run the installer below (windows-nsis). If Windows SmartScreen warns you, click **More info → Run anyway**."
+              echo "**Windows:** run the \`.exe\` installer below. If SmartScreen warns you, click **More info → Run anyway**."
               echo
             fi
             echo "## Build status (${TAG})"
@@ -113,6 +120,12 @@ jobs:
           name: macos-intel-dmg
           path: artifacts/macos-intel
 
+      - name: Rename Intel DMG
+        run: |
+          for f in artifacts/macos-intel/*.dmg; do
+            mv "$f" "${f/_x64.dmg/_intel.dmg}"
+          done
+
       - name: Attach Intel DMG to release
         uses: softprops/action-gh-release@v2
         with:
@@ -120,4 +133,4 @@ jobs:
           files: artifacts/macos-intel/*
           append_body: true
           body: |
-            **macOS — Intel:** Intel \`.dmg\` attached (native AVX2 + FMA + F16C build).
+            **macOS (Intel):** `intel.dmg` now attached.

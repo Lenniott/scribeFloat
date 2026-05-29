@@ -952,6 +952,7 @@ mod tests {
             start_ms: 12_000,
             end_ms: 14_000,
             text: "hello world".to_string(),
+            ..Default::default()
         }];
 
         svc.write_transcript(&segments, &[], "Test", "tiny", true, &[], &file)
@@ -969,6 +970,7 @@ mod tests {
             start_ms: 12_000,
             end_ms: 14_000,
             text: "hello world".to_string(),
+            ..Default::default()
         }];
 
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
@@ -986,9 +988,9 @@ mod tests {
         let svc = OutputService;
         let file = temp_file("dual-source-newlines.md");
         let segments = vec![
-            Segment { start_ms: 0, end_ms: 1_000, text: "in: yeah".to_string() },
-            Segment { start_ms: 1_200, end_ms: 3_000, text: "out: Hello there.".to_string() },
-            Segment { start_ms: 3_100, end_ms: 4_000, text: "out: How are you?".to_string() },
+            Segment { start_ms: 0, end_ms: 1_000, text: "in: yeah".to_string(), ..Default::default() },
+            Segment { start_ms: 1_200, end_ms: 3_000, text: "out: Hello there.".to_string(), ..Default::default() },
+            Segment { start_ms: 3_100, end_ms: 4_000, text: "out: How are you?".to_string(), ..Default::default() },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
             .expect("write");
@@ -1010,9 +1012,9 @@ mod tests {
         let svc = OutputService;
         let file = temp_file("dual-source-compact.md");
         let segments = vec![
-            Segment { start_ms: 0, end_ms: 1_000, text: "in: yeah".to_string() },
-            Segment { start_ms: 2_000, end_ms: 4_000, text: "out: Thanks for sharing.".to_string() },
-            Segment { start_ms: 5_000, end_ms: 6_000, text: "in: Absolutely.".to_string() },
+            Segment { start_ms: 0, end_ms: 1_000, text: "in: yeah".to_string(), ..Default::default() },
+            Segment { start_ms: 2_000, end_ms: 4_000, text: "out: Thanks for sharing.".to_string(), ..Default::default() },
+            Segment { start_ms: 5_000, end_ms: 6_000, text: "in: Absolutely.".to_string(), ..Default::default() },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
             .expect("write");
@@ -1028,8 +1030,8 @@ mod tests {
         let file = temp_file("single-source-separator.md");
         // Two segments with a gap > 8 s so they stay separate paragraphs
         let segments = vec![
-            Segment { start_ms: 0, end_ms: 2_000, text: "First thought.".to_string() },
-            Segment { start_ms: 12_000, end_ms: 14_000, text: "Second thought.".to_string() },
+            Segment { start_ms: 0, end_ms: 2_000, text: "First thought.".to_string(), ..Default::default() },
+            Segment { start_ms: 12_000, end_ms: 14_000, text: "Second thought.".to_string(), ..Default::default() },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
             .expect("write");
@@ -1045,8 +1047,8 @@ mod tests {
         let svc = OutputService;
         let file = temp_file("single-source-merge.md");
         let segments = vec![
-            Segment { start_ms: 0, end_ms: 500, text: "Hello".to_string() },
-            Segment { start_ms: 700, end_ms: 1_200, text: "world.".to_string() },
+            Segment { start_ms: 0, end_ms: 500, text: "Hello".to_string(), ..Default::default() },
+            Segment { start_ms: 700, end_ms: 1_200, text: "world.".to_string(), ..Default::default() },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
             .expect("write");

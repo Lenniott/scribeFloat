@@ -12,7 +12,7 @@
   import { Copy, SquareArrowOutUpRight, X } from "lucide-svelte";
   import IconButton from "@lib/components/IconButton.svelte";
 
-  type Phase = "transcribing" | "done" | "no_model" | "error";
+  type Phase = "transcribing" | "drafting" | "refining" | "done" | "no_model" | "error";
   type ProcessingStage =
     | "LOADING_MODEL"
     | "TRANSCRIBING_AUDIO"
@@ -89,6 +89,27 @@
           );
         }
         break;
+      case "DRAFTING":
+        phase = "drafting";
+        if (payload.processing_stage)
+          processingStage = payload.processing_stage;
+        if (payload.progress != null) {
+          progress = Math.round(
+            Math.max(0, Math.min(1, payload.progress)) * 100,
+          );
+        }
+        break;
+      case "REFINING":
+        phase = "refining";
+        if (payload.transcript_path) transcriptPath = payload.transcript_path;
+        if (payload.processing_stage)
+          processingStage = payload.processing_stage;
+        if (payload.progress != null) {
+          progress = Math.round(
+            Math.max(0, Math.min(1, payload.progress)) * 100,
+          );
+        }
+        break;
       case "DONE": {
         const path = payload.transcript_path ?? "";
         transcriptPath = path;
@@ -127,7 +148,7 @@
 
   async function closeScribeWindowCompletely(): Promise<void> {
     if (!browser) return;
-    if (phase === "transcribing") {
+    if (phase === "transcribing" || phase === "drafting" || phase === "refining") {
       await invoke("scribe_abort_transcription").catch(() => {});
     }
     await invoke("scribe_cancel").catch(() => {});
@@ -176,6 +197,10 @@
         <h1 class="sf-headline-sm">
           {#if phase === "transcribing"}
             Processing...
+          {:else if phase === "drafting"}
+            Creating draft...
+          {:else if phase === "refining"}
+            Refining...
           {:else if phase === "done"}
             Complete
           {:else if phase === "no_model"}
@@ -194,12 +219,37 @@
     </header>
 
     <div class="flex min-h-0 flex-1 flex-col justify-center gap-8 px-5 py-6">
-      {#if phase === "transcribing"}
+      {#if phase === "transcribing" || phase === "drafting"}
         <StackProgressBar
           {progress}
           {sequence}
           indeterminate={processingStage === "LOADING_MODEL"}
         />
+      {:else if phase === "refining"}
+        <StackProgressBar
+          {progress}
+          {sequence}
+          indeterminate={processingStage === "LOADING_MODEL"}
+        />
+        {#if transcriptPath}
+          <div class="flex items-center justify-between">
+            <p class="text-body-md text-fg/60">Draft ready</p>
+            <div class="flex gap-2">
+              <IconButton
+                aria-label="copy draft to clipboard"
+                variant="normal"
+                icon={Copy}
+                onclick={copyContent}
+              />
+              <IconButton
+                aria-label="Open draft transcript"
+                icon={SquareArrowOutUpRight}
+                variant="normal"
+                onclick={openTranscript}
+              />
+            </div>
+          </div>
+        {/if}
       {:else}
         <div class="flex flex-col gap-4">
           {#if phase === "done"}

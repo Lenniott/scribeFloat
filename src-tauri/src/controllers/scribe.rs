@@ -507,8 +507,8 @@ impl ScribeController {
     ) -> Result<()> {
         let config = self.config.get();
 
-        let model_path = resolve_model_path(&config, &self.model);
-        if !self.model.model_available(&model_path) {
+        let quality_path = resolve_model_path(&config, &self.model);
+        if !self.model.model_available(&quality_path) {
             self.clear_transcription_tracking();
             self.transition(ScribeState::NoModel);
             let _ = self.write_session_manifest(
@@ -531,27 +531,37 @@ impl ScribeController {
             return Ok(());
         }
 
-        let segments = match self.run_transcription(&model_path, &prepared, &abort_flag) {
-            Ok(segments) => segments,
-            Err(e) => {
-                let _ = self.write_session_manifest(
-                    &prepared.session_dir,
-                    SessionManifestState::Error,
-                    "",
-                    vec![],
-                    None,
-                    None,
-                );
-                return Err(e);
-            }
-        };
-        if abort_flag.load(Ordering::SeqCst) {
-            self.clear_transcription_tracking();
-            return Ok(());
-        }
+        // Two-pass only applies to single-source recordings; dual-source falls back to
+        // single-pass with the quality model (speaker refinement is a future extension).
+        let draft_path = config.draft_model_id.as_deref()
+            .and_then(|id| self.model.model_path_for_id(id))
+            .filter(|p| p != &quality_path && self.model.model_available(p));
 
-        if let Err(e) = self.write_outputs(&segments, &notes, title, &model_path, &config, &prepared)
-        {
+        let result = if let (Some(draft), None) = (draft_path, &prepared.speaker_pcm_16k) {
+            self.do_two_pass(&draft, &quality_path, &prepared, &notes, title, &config, &abort_flag)
+        } else {
+            let segments = match self.run_transcription(&quality_path, &prepared, &abort_flag, ScribeState::Transcribing) {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = self.write_session_manifest(
+                        &prepared.session_dir,
+                        SessionManifestState::Error,
+                        "",
+                        vec![],
+                        None,
+                        None,
+                    );
+                    return Err(e);
+                }
+            };
+            if abort_flag.load(Ordering::SeqCst) {
+                self.clear_transcription_tracking();
+                return Ok(());
+            }
+            self.write_outputs(&segments, &notes, title, &quality_path, &config, &prepared)
+        };
+
+        if let Err(e) = result {
             let _ = self.write_session_manifest(
                 &prepared.session_dir,
                 SessionManifestState::Error,
@@ -562,6 +572,150 @@ impl ScribeController {
             );
             return Err(e);
         }
+        Ok(())
+    }
+
+    /// Two-pass transcription: draft model runs first for a quick result, then the quality
+    /// model re-transcribes low-confidence segments in the background.
+    #[allow(clippy::too_many_arguments)]
+    fn do_two_pass(
+        &self,
+        draft_path: &Path,
+        quality_path: &Path,
+        prepared: &PreparedAudio,
+        notes: &[Note],
+        title: &str,
+        config: &Config,
+        abort_flag: &Arc<AtomicBool>,
+    ) -> Result<()> {
+        let save_folder = PathBuf::from(&config.save_folder);
+        let transcript_path = self.output.transcript_path(&save_folder, quality_path, title);
+        let model_name = quality_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().replace("ggml-", ""))
+            .unwrap_or_else(|| "model".to_string());
+
+        // ── Draft pass ──────────────────────────────────────────────────────────
+        self.app.emit("scribe://state-changed", ScribeStateEvent {
+            progress: Some(0.0),
+            processing_stage: Some(ProcessingStage::LoadingModel),
+            ..ScribeStateEvent::new(ScribeState::Drafting)
+        }).ok();
+
+        let draft_segs = self.run_transcription(draft_path, prepared, abort_flag, ScribeState::Drafting)?;
+
+        if abort_flag.load(Ordering::SeqCst) {
+            self.clear_transcription_tracking();
+            return Ok(());
+        }
+
+        // Write draft to disk immediately so the frontend can surface it.
+        self.app.emit("scribe://state-changed", ScribeStateEvent {
+            progress: Some(1.0),
+            processing_stage: Some(ProcessingStage::WritingTranscript),
+            ..ScribeStateEvent::new(ScribeState::Drafting)
+        }).ok();
+        self.output.write_transcript(
+            &draft_segs, notes, title, &model_name,
+            config.include_timestamps, &config.replacement_rules,
+            &transcript_path,
+        )?;
+
+        // ── Transition to refining ───────────────────────────────────────────────
+        self.app.emit("scribe://state-changed", ScribeStateEvent {
+            transcript_path: Some(transcript_path.to_string_lossy().into()),
+            progress: Some(0.0),
+            processing_stage: Some(ProcessingStage::LoadingModel),
+            ..ScribeStateEvent::new(ScribeState::Refining)
+        }).ok();
+
+        // Free the draft model's RAM before loading the quality model.
+        self.model.evict_context(draft_path);
+
+        // ── Refine pass ──────────────────────────────────────────────────────────
+        let candidates = refine_candidates(&draft_segs);
+        let vad_path = self.model.vad_model_path();
+        let vad = self.model.model_available(&vad_path).then_some(vad_path.as_path());
+
+        let total_candidates = candidates.len().max(1) as f32;
+        let mut refined_replacements: Vec<(usize, Vec<Segment>)> = Vec::new();
+
+        for (done, &idx) in candidates.iter().enumerate() {
+            if abort_flag.load(Ordering::SeqCst) {
+                self.clear_transcription_tracking();
+                return Ok(());
+            }
+
+            let seg = &draft_segs[idx];
+            let start_sample = (seg.start_ms as f64 / 1000.0 * 16_000.0) as usize;
+            let end_sample = ((seg.end_ms as f64 / 1000.0 * 16_000.0) as usize)
+                .min(prepared.pcm_16k.len());
+
+            // Skip slices shorter than 0.5 s — Whisper can't produce useful output.
+            if end_sample.saturating_sub(start_sample) < 8_000 {
+                continue;
+            }
+
+            let slice: Vec<f32> = prepared.pcm_16k[start_sample..end_sample].to_vec();
+            let base_progress = done as f32 / total_candidates;
+            let app_ref = self.app.clone();
+            let refined = self.model.transcribe_pcm_with_progress(
+                quality_path,
+                &slice,
+                vad,
+                move |p| {
+                    app_ref.emit("scribe://state-changed", ScribeStateEvent {
+                        progress: Some(base_progress + p / total_candidates),
+                        processing_stage: Some(ProcessingStage::TranscribingAudio),
+                        ..ScribeStateEvent::new(ScribeState::Refining)
+                    }).ok();
+                },
+            )?;
+
+            // Re-anchor timestamps: Whisper returns times relative to the slice start.
+            let offset_ms = seg.start_ms;
+            let anchored: Vec<Segment> = refined.into_iter().map(|mut s| {
+                s.start_ms += offset_ms;
+                s.end_ms += offset_ms;
+                s
+            }).collect();
+
+            refined_replacements.push((idx, anchored));
+        }
+
+        let final_segs = merge_refined(draft_segs, refined_replacements);
+
+        // ── Write final transcript ───────────────────────────────────────────────
+        self.app.emit("scribe://state-changed", ScribeStateEvent {
+            progress: Some(1.0),
+            processing_stage: Some(ProcessingStage::WritingTranscript),
+            ..ScribeStateEvent::new(ScribeState::Refining)
+        }).ok();
+        self.output.write_transcript(
+            &final_segs, notes, title, &model_name,
+            config.include_timestamps, &config.replacement_rules,
+            &transcript_path,
+        )?;
+
+        if !final_segs.is_empty() {
+            self.app.emit("scribe://state-changed", ScribeStateEvent {
+                progress: Some(1.0),
+                processing_stage: Some(ProcessingStage::CleaningUpAudio),
+                ..ScribeStateEvent::new(ScribeState::Refining)
+            }).ok();
+        }
+        self.output.finalize_scribe_session(
+            &prepared.session_dir,
+            config.keep_wav && !final_segs.is_empty(),
+        )?;
+
+        self.clear_transcription_tracking();
+        self.transition(ScribeState::Done);
+        self.app.emit("scribe://state-changed", ScribeStateEvent {
+            transcript_path: Some(transcript_path.to_string_lossy().into()),
+            ..ScribeStateEvent::new(ScribeState::Done)
+        }).ok();
+
         Ok(())
     }
 
@@ -631,11 +785,14 @@ impl ScribeController {
     }
 
     /// Run Whisper on the prepared audio, reporting progress via state events.
+    /// `emit_state` controls which state appears in progress events (Transcribing for
+    /// single-pass, Drafting or Refining for two-pass).
     fn run_transcription(
         &self,
         model_path: &Path,
         prepared: &PreparedAudio,
         _abort_flag: &AtomicBool,
+        emit_state: ScribeState,
     ) -> Result<Vec<Segment>> {
         let (progress_tx, progress_rx) = mpsc::channel::<ProgressMessage>();
         let progress_app = self.app.clone();
@@ -649,7 +806,7 @@ impl ScribeController {
                                 ScribeStateEvent {
                                     progress: Some(p),
                                     processing_stage: Some(ProcessingStage::TranscribingAudio),
-                                    ..ScribeStateEvent::new(ScribeState::Transcribing)
+                                    ..ScribeStateEvent::new(emit_state.clone())
                                 },
                             )
                             .ok();
@@ -1173,6 +1330,31 @@ fn filter_hallucination_phrases(segments: Vec<Segment>) -> Vec<Segment> {
         .collect()
 }
 
+/// Indices of segments that should be re-transcribed by the quality model.
+/// A segment is a candidate when no_speech_prob exceeds the threshold, indicating
+/// the fast model was uncertain whether the audio contains real speech.
+const REFINE_NO_SPEECH_THRESHOLD: f32 = 0.3;
+
+fn refine_candidates(segments: &[Segment]) -> Vec<usize> {
+    segments.iter().enumerate()
+        .filter(|(_, seg)| seg.no_speech_prob > REFINE_NO_SPEECH_THRESHOLD)
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Replace draft segments at the given indices with quality-model output, then re-sort by
+/// start_ms. Processing in descending index order means earlier splices don't shift later indices.
+fn merge_refined(mut draft: Vec<Segment>, mut refined: Vec<(usize, Vec<Segment>)>) -> Vec<Segment> {
+    refined.sort_by_key(|(i, _)| std::cmp::Reverse(*i));
+    for (idx, replacements) in refined {
+        if idx < draft.len() {
+            draft.splice(idx..=idx, replacements);
+        }
+    }
+    draft.sort_by_key(|s| s.start_ms);
+    draft
+}
+
 fn resolve_model_path(config: &Config, model: &ModelService) -> PathBuf {
     if let Some(p) = &config.scribe_model_path {
         PathBuf::from(p)
@@ -1458,10 +1640,10 @@ mod tests {
     #[test]
     fn filter_removes_known_hallucination_phrases() {
         let segs = vec![
-            Segment { start_ms: 0, end_ms: 500, text: "Thank you.".to_string() },
-            Segment { start_ms: 1_000, end_ms: 1_500, text: "Hello world".to_string() },
-            Segment { start_ms: 2_000, end_ms: 2_500, text: "Thanks for watching.".to_string() },
-            Segment { start_ms: 3_000, end_ms: 3_500, text: "Transcribed by Whisper".to_string() },
+            Segment { start_ms: 0, end_ms: 500, text: "Thank you.".to_string(), ..Default::default() },
+            Segment { start_ms: 1_000, end_ms: 1_500, text: "Hello world".to_string(), ..Default::default() },
+            Segment { start_ms: 2_000, end_ms: 2_500, text: "Thanks for watching.".to_string(), ..Default::default() },
+            Segment { start_ms: 3_000, end_ms: 3_500, text: "Transcribed by Whisper".to_string(), ..Default::default() },
         ];
         let filtered = filter_hallucination_phrases(segs);
         assert_eq!(filtered.len(), 1);
@@ -1471,8 +1653,8 @@ mod tests {
     #[test]
     fn filter_is_case_insensitive() {
         let segs = vec![
-            Segment { start_ms: 0, end_ms: 500, text: "THANK YOU.".to_string() },
-            Segment { start_ms: 1_000, end_ms: 1_500, text: "Real speech here".to_string() },
+            Segment { start_ms: 0, end_ms: 500, text: "THANK YOU.".to_string(), ..Default::default() },
+            Segment { start_ms: 1_000, end_ms: 1_500, text: "Real speech here".to_string(), ..Default::default() },
         ];
         let filtered = filter_hallucination_phrases(segs);
         assert_eq!(filtered.len(), 1);
@@ -1482,8 +1664,8 @@ mod tests {
     #[test]
     fn filter_keeps_real_speech_intact() {
         let segs = vec![
-            Segment { start_ms: 0, end_ms: 1_000, text: "I'm talking about the project".to_string() },
-            Segment { start_ms: 1_000, end_ms: 2_000, text: "Let me explain the architecture".to_string() },
+            Segment { start_ms: 0, end_ms: 1_000, text: "I'm talking about the project".to_string(), ..Default::default() },
+            Segment { start_ms: 1_000, end_ms: 2_000, text: "Let me explain the architecture".to_string(), ..Default::default() },
         ];
         let filtered = filter_hallucination_phrases(segs);
         assert_eq!(filtered.len(), 2);
@@ -1493,9 +1675,83 @@ mod tests {
     fn filter_does_not_strip_thank_you_mid_sentence() {
         // Only exact matches should be stripped, not substrings
         let segs = vec![
-            Segment { start_ms: 0, end_ms: 1_000, text: "I want to thank you for coming today".to_string() },
+            Segment { start_ms: 0, end_ms: 1_000, text: "I want to thank you for coming today".to_string(), ..Default::default() },
         ];
         let filtered = filter_hallucination_phrases(segs);
         assert_eq!(filtered.len(), 1);
+    }
+
+    // ── refine_candidates ────────────────────────────────────────────────────────
+
+    #[test]
+    fn refine_candidates_selects_high_no_speech_prob_segments() {
+        let segs = vec![
+            Segment { no_speech_prob: 0.1, text: "clear speech".to_string(), ..Default::default() },
+            Segment { no_speech_prob: 0.5, text: "maybe noise".to_string(), ..Default::default() },
+            Segment { no_speech_prob: 0.0, text: "definitely speech".to_string(), ..Default::default() },
+            Segment { no_speech_prob: 0.9, text: "background noise".to_string(), ..Default::default() },
+        ];
+        let candidates = refine_candidates(&segs);
+        assert_eq!(candidates, vec![1, 3]);
+    }
+
+    #[test]
+    fn refine_candidates_returns_empty_when_all_confident() {
+        let segs = vec![
+            Segment { no_speech_prob: 0.1, ..Default::default() },
+            Segment { no_speech_prob: 0.05, ..Default::default() },
+        ];
+        assert!(refine_candidates(&segs).is_empty());
+    }
+
+    // ── merge_refined ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn merge_refined_replaces_single_segment_with_multiple() {
+        let draft = vec![
+            Segment { start_ms: 0, end_ms: 1_000, text: "noisy".to_string(), ..Default::default() },
+            Segment { start_ms: 1_000, end_ms: 2_000, text: "good".to_string(), ..Default::default() },
+            Segment { start_ms: 2_000, end_ms: 3_000, text: "also noisy".to_string(), ..Default::default() },
+        ];
+        let refined = vec![(
+            0,
+            vec![
+                Segment { start_ms: 0, end_ms: 500, text: "first".to_string(), ..Default::default() },
+                Segment { start_ms: 500, end_ms: 1_000, text: "second".to_string(), ..Default::default() },
+            ],
+        )];
+        let result = merge_refined(draft, refined);
+        assert_eq!(result.len(), 4);
+        assert_eq!(result[0].text, "first");
+        assert_eq!(result[1].text, "second");
+        assert_eq!(result[2].text, "good");
+        assert_eq!(result[3].text, "also noisy");
+    }
+
+    #[test]
+    fn merge_refined_preserves_draft_when_no_replacements() {
+        let draft = vec![
+            Segment { start_ms: 0, end_ms: 1_000, text: "a".to_string(), ..Default::default() },
+            Segment { start_ms: 1_000, end_ms: 2_000, text: "b".to_string(), ..Default::default() },
+        ];
+        let result = merge_refined(draft.clone(), vec![]);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].text, "a");
+    }
+
+    #[test]
+    fn merge_refined_sorts_by_start_ms_after_splice() {
+        let draft = vec![
+            Segment { start_ms: 0, end_ms: 500, text: "early".to_string(), ..Default::default() },
+            Segment { start_ms: 500, end_ms: 1_000, text: "mid".to_string(), ..Default::default() },
+        ];
+        // Replace index 0 with a segment that ends later than the original index 1
+        let refined = vec![(
+            0,
+            vec![Segment { start_ms: 100, end_ms: 800, text: "replaced".to_string(), ..Default::default() }],
+        )];
+        let result = merge_refined(draft, refined);
+        assert_eq!(result[0].start_ms, 100);
+        assert_eq!(result[1].start_ms, 500);
     }
 }

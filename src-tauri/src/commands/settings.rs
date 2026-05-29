@@ -247,6 +247,21 @@ pub fn settings_set_dictate_model_id(
 }
 
 #[tauri::command]
+pub fn settings_get_draft_model_id(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<Option<String>, String> {
+    Ok(ctrl.get_draft_model_id())
+}
+
+#[tauri::command]
+pub fn settings_set_draft_model_id(
+    ctrl: State<'_, Arc<SettingsController>>,
+    model_id: Option<String>,
+) -> Result<(), String> {
+    ctrl.set_draft_model_id(model_id)
+}
+
+#[tauri::command]
 pub fn settings_show_window(app: AppHandle) -> Result<(), String> {
     crate::open_settings_window(&app)
         .map(|_| ())

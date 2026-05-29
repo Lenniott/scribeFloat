@@ -314,6 +314,10 @@ impl SettingsController {
         self.config.get().dictate_model_id
     }
 
+    pub fn get_draft_model_id(&self) -> Option<String> {
+        self.config.get().draft_model_id
+    }
+
     pub fn set_dictate_model_id(&self, model_id: Option<String>) -> Result<(), String> {
         let model_id = model_id.and_then(|id| {
             let trimmed = id.trim().to_string();
@@ -322,6 +326,16 @@ impl SettingsController {
         self.config
             .update(|cfg| cfg.dictate_model_id = model_id)
             .map_err(|e| format!("failed to persist dictate_model_id: {e}"))
+    }
+
+    pub fn set_draft_model_id(&self, model_id: Option<String>) -> Result<(), String> {
+        let model_id = model_id.and_then(|id| {
+            let trimmed = id.trim().to_string();
+            if trimmed.is_empty() { None } else { Some(trimmed) }
+        });
+        self.config
+            .update(|cfg| cfg.draft_model_id = model_id)
+            .map_err(|e| format!("failed to persist draft_model_id: {e}"))
     }
 
     pub fn is_onboarding_complete(&self) -> bool {

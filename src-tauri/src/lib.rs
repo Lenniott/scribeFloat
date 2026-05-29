@@ -674,6 +674,8 @@ pub fn run() {
             commands::settings::settings_set_keep_wav,
             commands::settings::settings_get_dictate_model_id,
             commands::settings::settings_set_dictate_model_id,
+            commands::settings::settings_get_draft_model_id,
+            commands::settings::settings_set_draft_model_id,
             commands::settings::settings_get_replacement_rules,
             commands::settings::settings_add_replacement_rule,
             commands::settings::settings_update_replacement_rule,

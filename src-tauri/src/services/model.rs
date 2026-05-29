@@ -444,6 +444,13 @@ impl ModelService {
             .unwrap_or_else(|p| p.into_inner())
     }
 
+    /// Remove a loaded model context from the cache, freeing its memory.
+    /// Called after the draft pass in two-pass transcription so the quality model
+    /// can load without holding two large contexts simultaneously.
+    pub fn evict_context(&self, model_path: &Path) {
+        self.lock_contexts().remove(model_path);
+    }
+
     /// Transcribe mono f32 PCM at 16 kHz and report Whisper's own progress.
     /// Must be called from spawn_blocking.
     /// Pass `vad_model_path` to enable Silero VAD — silence mid-recording is skipped,
@@ -513,6 +520,8 @@ impl ModelService {
                     start_ms: seg.start_timestamp() * 10,
                     end_ms: seg.end_timestamp() * 10,
                     text,
+                    no_speech_prob: seg.no_speech_probability(),
+                    ..Default::default()
                 });
             }
         }
@@ -563,6 +572,7 @@ impl ModelService {
                 start_ms: item.seg.start_ms,
                 end_ms: item.seg.end_ms,
                 text,
+                ..Default::default()
             });
         }
         out
@@ -656,11 +666,13 @@ mod tests {
             start_ms: 2_000,
             end_ms: 2_500,
             text: "hello from mic".to_string(),
+            ..Default::default()
         }];
         let speaker = vec![Segment {
             start_ms: 1_000,
             end_ms: 1_500,
             text: "hello from speaker".to_string(),
+            ..Default::default()
         }];
         let merged = service.merge_dual_source(&mic, &speaker);
         assert_eq!(merged.len(), 2);

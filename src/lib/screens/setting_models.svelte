@@ -45,6 +45,9 @@
   /** `null` means "follow Scribe default"; non-null means an explicit override. */
   let dictateModelId = $state<string | null>(null);
 
+  /** `null` means single-pass; non-null enables two-pass with this model as the fast draft. */
+  let draftModelId = $state<string | null>(null);
+
   let vadDownloaded = $state(false);
   let vadDownloading = $state(false);
 
@@ -66,6 +69,9 @@
     await modelStore.refresh();
     dictateModelId = await invoke<string | null>(
       "settings_get_dictate_model_id",
+    ).catch(() => null);
+    draftModelId = await invoke<string | null>(
+      "settings_get_draft_model_id",
     ).catch(() => null);
     vadDownloaded = await invoke<boolean>("model_vad_status").catch(
       () => false,
@@ -128,6 +134,18 @@
     dictateModelId = value;
     try {
       await invoke("settings_set_dictate_model_id", { modelId: value });
+      showToastMessage(toastMessages.modelSelected);
+    } catch (e) {
+      modelStore.error = String(e);
+    }
+  }
+
+  async function onDraftSelectChange(ev: Event) {
+    const el = ev.currentTarget as HTMLSelectElement;
+    const value = el.value || null;
+    draftModelId = value;
+    try {
+      await invoke("settings_set_draft_model_id", { modelId: value });
       showToastMessage(toastMessages.modelSelected);
     } catch (e) {
       modelStore.error = String(e);
@@ -246,6 +264,40 @@
               disabled={downloadedModels.length === 0}
             >
               <option value="">Same as Scribe</option>
+              {#each downloadedModels as dm (dm.id)}
+                <option value={dm.id}>{dm.label}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+        <!-- Draft (two-pass) -->
+        <div
+          class="sf-body-md flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-fg-dim"
+        >
+          <div class="flex min-w-0 flex-col gap-0.5">
+            <div class="flex items-center gap-2">
+              <span
+                class="sf-label-sm shrink-0 rounded-sm border border-warning bg-warning/10 px-1 py-px text-warning"
+              >
+                Draft
+              </span>
+            </div>
+            <p class="sf-label-sm text-fg-dim">
+              Set a fast model to enable two-pass transcription
+            </p>
+          </div>
+          <div class="flex shrink-0 flex-col items-end gap-0.5">
+            <label class="sr-only" for="draft-model-select"
+              >Draft model for two-pass transcription</label
+            >
+            <select
+              id="draft-model-select"
+              class="sf-body-md h-8 min-w-40 max-w-56 cursor-pointer truncate rounded-md border border-fill bg-panel py-2 pr-8 pl-2 text-fg disabled:cursor-not-allowed disabled:opacity-40"
+              value={draftModelId ?? ""}
+              onchange={onDraftSelectChange}
+              disabled={downloadedModels.length === 0}
+            >
+              <option value="">Off (single-pass)</option>
               {#each downloadedModels as dm (dm.id)}
                 <option value={dm.id}>{dm.label}</option>
               {/each}
@@ -378,6 +430,13 @@
                     class="sf-label-sm shrink-0 rounded-sm border border-focus bg-focus/15 px-1 py-px text-focus"
                   >
                     dictate
+                  </span>
+                {/if}
+                {#if model.downloaded && model.id === draftModelId}
+                  <span
+                    class="sf-label-sm shrink-0 rounded-sm border border-warning bg-warning/10 px-1 py-px text-warning"
+                  >
+                    draft
                   </span>
                 {/if}
               </div>

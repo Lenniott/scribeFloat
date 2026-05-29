@@ -71,6 +71,11 @@ pub struct Config {
     #[serde(default)]
     pub dictate_auto_enter: bool,
 
+    /// Fast draft model ID for two-pass transcription. None = single-pass using selected_model_id.
+    /// When set, this model runs first for a quick draft, then selected_model_id refines low-confidence segments.
+    #[serde(default)]
+    pub draft_model_id: Option<String>,
+
     #[serde(default = "default_replacement_rules")]
     pub replacement_rules: Vec<ReplacementRule>,
 }
@@ -96,6 +101,7 @@ impl Default for Config {
             dictate_model_id: None,
             dictate_auto_paste: true,
             dictate_auto_enter: false,
+            draft_model_id: None,
             replacement_rules: default_replacement_rules(),
         }
     }
@@ -262,11 +268,17 @@ fn default_output_label() -> String {
     "Speaker".to_string()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Segment {
     pub start_ms: i64,
     pub end_ms: i64,
     pub text: String,
+    /// Average log-probability of tokens in this segment. Values below -0.8 indicate low confidence.
+    #[serde(default)]
+    pub avg_logprob: f32,
+    /// Probability that this segment contains no speech. Values above 0.3 are likely silence/noise.
+    #[serde(default)]
+    pub no_speech_prob: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -282,6 +294,10 @@ pub enum ScribeState {
     Idle,
     Recording,
     Transcribing,
+    /// Two-pass only: fast draft model is running.
+    Drafting,
+    /// Two-pass only: quality model is refining low-confidence segments.
+    Refining,
     Done,
     NoModel,
     Error,

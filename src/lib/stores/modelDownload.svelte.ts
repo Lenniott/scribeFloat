@@ -95,7 +95,7 @@ export function createModelDownloadStore() {
 				downloadingByModel = { ...downloadingByModel, [model_id]: false };
 				statusByModel = { ...statusByModel, [model_id]: 'Installed' };
 				activeDownloadModelId = null;
-				refresh();
+				void refresh().catch(() => {});
 			}
 		});
 

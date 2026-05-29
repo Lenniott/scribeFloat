@@ -267,7 +267,7 @@ impl DictateController {
             {
                 let _ = store.lock().map(|mut g| *g = Some(pid));
             }
-            *open_clone.lock().unwrap() = crate::open_dictate_window(&app_open)
+            *open_clone.lock().unwrap_or_else(|p| p.into_inner()) = crate::open_dictate_window(&app_open)
                 .map(|_| ())
                 .map_err(|e| e.to_string());
         });
@@ -361,7 +361,7 @@ impl DictateController {
                 this.hide_window();
                 return;
             }
-            if open_result.lock().unwrap().as_ref().is_err() {
+            if open_result.lock().unwrap_or_else(|p| p.into_inner()).as_ref().is_err() {
                 clear_in_flight();
                 return;
             }
@@ -646,6 +646,7 @@ impl DictateController {
             &model_path,
             &pcm_16k,
             vad,
+            None,
             move |p| {
                 app_clone
                     .emit(

@@ -2,6 +2,7 @@ use crate::types::{ModelDownloadEvent, Segment};
 use anyhow::{anyhow, Context, Result};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
@@ -27,6 +28,9 @@ pub fn model_id_preload_eligible(model_id: &str) -> bool {
 pub const VAD_MODEL_FILENAME: &str = "ggml-silero-v6.2.0.bin";
 const VAD_MODEL_URL: &str =
     "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin";
+// TODO(S1): paste the verified lowercase hex SHA-256 of ggml-silero-v6.2.0.bin here,
+// e.g. Some("abc123…"). While this is None, the VAD download is NOT integrity-checked.
+const VAD_MODEL_SHA256: Option<&str> = None;
 
 #[derive(Clone, Copy)]
 pub struct ModelCatalogItem {
@@ -39,6 +43,10 @@ pub struct ModelCatalogItem {
     pub wer: f32,
     /// Real-time factor from Open ASR Leaderboard on GPU (higher is faster). None = not benchmarked.
     pub rtfx: Option<u32>,
+    /// Verified lowercase-hex SHA-256 of the model file. When `Some`, the download is
+    /// rejected unless the bytes hash to this value (see `verify_sha256`). When `None`,
+    /// the download is accepted unverified — fill these in (TODO(S1)) to enable pinning.
+    pub sha256: Option<&'static str>,
 }
 
 const MODEL_CATALOG: [ModelCatalogItem; 5] = [
@@ -50,6 +58,7 @@ const MODEL_CATALOG: [ModelCatalogItem; 5] = [
         size_mb: 31,
         wer: 5.66,
         rtfx: Some(348),
+        sha256: None, // TODO(S1): paste verified SHA-256 of ggml-tiny.en-q5_1.bin
     },
     ModelCatalogItem {
         id: "base-en-q5",
@@ -59,6 +68,7 @@ const MODEL_CATALOG: [ModelCatalogItem; 5] = [
         size_mb: 57,
         wer: 4.25,
         rtfx: Some(321),
+        sha256: None, // TODO(S1): paste verified SHA-256 of ggml-base.en-q5_1.bin
     },
     ModelCatalogItem {
         id: "small-en-q5",
@@ -68,6 +78,7 @@ const MODEL_CATALOG: [ModelCatalogItem; 5] = [
         size_mb: 181,
         wer: 3.05,
         rtfx: Some(269),
+        sha256: None, // TODO(S1): paste verified SHA-256 of ggml-small.en-q5_1.bin
     },
     ModelCatalogItem {
         id: "medium-en-q5",
@@ -77,6 +88,7 @@ const MODEL_CATALOG: [ModelCatalogItem; 5] = [
         size_mb: 514,
         wer: 3.02,
         rtfx: None,
+        sha256: None, // TODO(S1): paste verified SHA-256 of ggml-medium.en-q5_0.bin
     },
     ModelCatalogItem {
         id: "large-v3-turbo-q5",
@@ -86,8 +98,50 @@ const MODEL_CATALOG: [ModelCatalogItem; 5] = [
         size_mb: 547,
         wer: 2.10,
         rtfx: Some(200),
+        sha256: None, // TODO(S1): paste verified SHA-256 of ggml-large-v3-turbo-q5_0.bin
     },
 ];
+
+/// Compute the lowercase-hex SHA-256 of a file on disk, streaming it so a multi-hundred-MB
+/// model never lands in memory all at once.
+fn file_sha256_hex(path: &Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write as _;
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        let _ = write!(hex, "{byte:02x}");
+    }
+    Ok(hex)
+}
+
+/// Verify a freshly downloaded file against an expected SHA-256. Runs the (CPU-bound) hash on a
+/// blocking thread so it never stalls the async runtime. Returns an error on any mismatch.
+async fn verify_sha256(path: &Path, expected_hex: &str) -> Result<()> {
+    let path = path.to_path_buf();
+    let expected = expected_hex.to_ascii_lowercase();
+    let actual = tokio::task::spawn_blocking(move || file_sha256_hex(&path))
+        .await
+        .context("checksum task panicked")?
+        .context("failed to hash downloaded file")?;
+    if actual != expected {
+        return Err(anyhow!(
+            "checksum mismatch: expected {expected}, got {actual}"
+        ));
+    }
+    Ok(())
+}
 
 pub struct ModelService {
     models_dir: PathBuf,
@@ -222,6 +276,13 @@ impl ModelService {
         }
         drop(file);
 
+        if let Some(expected) = VAD_MODEL_SHA256 {
+            if let Err(e) = verify_sha256(&tmp, expected).await {
+                let _ = tokio::fs::remove_file(&tmp).await;
+                return Err(e).context("VAD model failed integrity check");
+            }
+        }
+
         if let Err(e) = tokio::fs::rename(&tmp, &dest)
             .await
             .context("failed to move VAD model into place")
@@ -354,6 +415,13 @@ impl ModelService {
         }
         drop(file);
 
+        if let Some(expected) = item.sha256 {
+            if let Err(e) = verify_sha256(&tmp, expected).await {
+                let _ = tokio::fs::remove_file(&tmp).await;
+                return Err(e).context("model failed integrity check");
+            }
+        }
+
         if let Err(e) = tokio::fs::rename(&tmp, &dest)
             .await
             .context("failed to move model into place")
@@ -453,6 +521,7 @@ impl ModelService {
         model_path: &Path,
         pcm: &[f32],
         vad_model_path: Option<&Path>,
+        abort: Option<Arc<AtomicBool>>,
         mut on_progress: F,
     ) -> Result<Vec<Segment>>
     where
@@ -480,6 +549,12 @@ impl ModelService {
         params.set_segment_callback_safe_lossy(move |segment: SegmentCallbackData| {
             on_progress(progress_from_segment_end(segment.end_timestamp, total_ms));
         });
+        // Let an in-flight inference be interrupted: whisper.cpp polls this between work units
+        // and bails out of `full()` early when it returns true. Without this, an abort is only
+        // observed after the entire pass completes.
+        if let Some(abort) = abort {
+            params.set_abort_callback_safe(move || abort.load(Ordering::SeqCst));
+        }
 
         let infer_started = Instant::now();
         state
@@ -586,6 +661,18 @@ mod tests {
             std::env::temp_dir().join(format!("liscribe-model-tests-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         dir
+    }
+
+    #[test]
+    fn file_sha256_hex_matches_known_vector() {
+        // SHA-256("abc") per FIPS 180-4 — pins both the digest and the hex encoding.
+        let dir = temp_models_dir();
+        let path = dir.join("abc.bin");
+        std::fs::write(&path, b"abc").expect("write test file");
+        assert_eq!(
+            file_sha256_hex(&path).expect("hash file"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]

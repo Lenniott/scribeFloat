@@ -41,6 +41,7 @@ rdev = "0.5"
 enigo = "0.6"
 symphonia = { version = "0.5", features = ["aac", "flac", "isomp4", "mp3", "ogg", "pcm", "vorbis", "wav"] }
 regex = "1"
+sha2 = "0.10"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Used directly for sysctlbyname in lib::log_system_info; pinned loose to match the

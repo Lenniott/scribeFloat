@@ -75,7 +75,12 @@ fn is_newer(candidate: &str, current: &str) -> bool {
 }
 
 fn parse_version(v: &str) -> (u32, u32, u32) {
-    let mut parts = v.splitn(3, '.').map(|p| p.parse::<u32>().unwrap_or(0));
+    // Take only the leading digits of each component so pre-release/build suffixes
+    // (e.g. "1.2.3-beta", "1.2.3+build") don't collapse the component to 0.
+    let mut parts = v.splitn(3, '.').map(|p| {
+        let digits: String = p.chars().take_while(|c| c.is_ascii_digit()).collect();
+        digits.parse::<u32>().unwrap_or(0)
+    });
     (
         parts.next().unwrap_or(0),
         parts.next().unwrap_or(0),

@@ -144,6 +144,16 @@ impl TranscribeController {
         if !canonical.is_file() {
             return Err(format!("`{}` is not a file", canonical.display()));
         }
+        // Transcribe only ever writes `.md` transcripts. Restrict the OS "open" hand-off to that
+        // extension so this command can't be coerced into launching an arbitrary file type
+        // (e.g. an executable or `.app`) via the default handler.
+        let is_markdown = canonical
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("md"));
+        if !is_markdown {
+            return Err("only transcript (.md) files can be opened".to_string());
+        }
         let open_with = self.config.get().open_with_app_path;
         self.output
             .open_file_for_user(canonical.to_string_lossy().as_ref(), open_with.as_deref())
@@ -197,7 +207,7 @@ impl TranscribeController {
             let segments = if let Some(speaker_pcm) = decoded.speaker_pcm_16k.as_ref() {
                 let mic_segments = self
                     .model
-                    .transcribe_pcm_with_progress(model_path, &decoded.mic_pcm_16k, vad, {
+                    .transcribe_pcm_with_progress(model_path, &decoded.mic_pcm_16k, vad, None, {
                         let app = self.app.clone();
                         let item_id = queue[index].id.clone();
                         move |p| {
@@ -230,7 +240,7 @@ impl TranscribeController {
 
                 let speaker_segments = self
                     .model
-                    .transcribe_pcm_with_progress(model_path, speaker_pcm, vad, {
+                    .transcribe_pcm_with_progress(model_path, speaker_pcm, vad, None, {
                         let app = self.app.clone();
                         let item_id = queue[index].id.clone();
                         move |p| {
@@ -267,6 +277,7 @@ impl TranscribeController {
                     model_path,
                     &decoded.mic_pcm_16k,
                     vad,
+                    None,
                     {
                         let app = self.app.clone();
                         let item_id = queue[index].id.clone();

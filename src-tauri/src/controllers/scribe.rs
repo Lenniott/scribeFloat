@@ -534,6 +534,12 @@ impl ScribeController {
         let segments = match self.run_transcription(&model_path, &prepared, &abort_flag) {
             Ok(segments) => segments,
             Err(e) => {
+                // An abort interrupting `full()` can surface as an Err; treat that as a clean
+                // stop rather than a transcription error.
+                if abort_flag.load(Ordering::SeqCst) {
+                    self.clear_transcription_tracking();
+                    return Ok(());
+                }
                 let _ = self.write_session_manifest(
                     &prepared.session_dir,
                     SessionManifestState::Error,
@@ -635,7 +641,7 @@ impl ScribeController {
         &self,
         model_path: &Path,
         prepared: &PreparedAudio,
-        _abort_flag: &AtomicBool,
+        abort_flag: &Arc<AtomicBool>,
     ) -> Result<Vec<Segment>> {
         let (progress_tx, progress_rx) = mpsc::channel::<ProgressMessage>();
         let progress_app = self.app.clone();
@@ -667,13 +673,21 @@ impl ScribeController {
                 model_path,
                 &prepared.pcm_16k,
                 vad,
+                Some(Arc::clone(abort_flag)),
                 move |p| { tx1.send(ProgressMessage::Progress(p * 0.5)).ok(); },
             )?;
+            // Skip the second (speaker) pass entirely if the user aborted during the mic pass.
+            if abort_flag.load(Ordering::SeqCst) {
+                progress_tx.send(ProgressMessage::Finished).ok();
+                progress_thread.join().ok();
+                return Ok(Vec::new());
+            }
             let tx2 = progress_tx.clone();
             let speaker_segs = self.model.transcribe_pcm_with_progress(
                 model_path,
                 speaker_pcm,
                 vad,
+                Some(Arc::clone(abort_flag)),
                 move |p| { tx2.send(ProgressMessage::Progress(0.5 + p * 0.5)).ok(); },
             )?;
             let speaker_segs = filter_hallucination_phrases(speaker_segs);
@@ -684,6 +698,7 @@ impl ScribeController {
                 model_path,
                 &prepared.pcm_16k,
                 vad,
+                Some(Arc::clone(abort_flag)),
                 move |p| { tx.send(ProgressMessage::Progress(p)).ok(); },
             )
         };

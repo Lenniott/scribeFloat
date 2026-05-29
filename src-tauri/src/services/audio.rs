@@ -476,7 +476,8 @@ pub(crate) fn resample_linear(input: &[f32], from_rate: u32, to_rate: u32) -> Ve
     let mut out = Vec::with_capacity(out_len);
     for i in 0..out_len {
         let src = i as f64 * ratio;
-        let lo = src.floor() as usize;
+        // Clamp defensively: float rounding could otherwise push `lo` to `input.len()`.
+        let lo = (src.floor() as usize).min(input.len() - 1);
         let hi = (lo + 1).min(input.len() - 1);
         let frac = (src - lo as f64) as f32;
         out.push(input[lo] * (1.0 - frac) + input[hi] * frac);

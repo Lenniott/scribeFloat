@@ -28,9 +28,8 @@ pub fn model_id_preload_eligible(model_id: &str) -> bool {
 pub const VAD_MODEL_FILENAME: &str = "ggml-silero-v6.2.0.bin";
 const VAD_MODEL_URL: &str =
     "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin";
-// TODO(S1): paste the verified lowercase hex SHA-256 of ggml-silero-v6.2.0.bin here,
-// e.g. Some("abc123…"). While this is None, the VAD download is NOT integrity-checked.
-const VAD_MODEL_SHA256: Option<&str> = None;
+const VAD_MODEL_SHA256: Option<&str> =
+    Some("2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987");
 
 #[derive(Clone, Copy)]
 pub struct ModelCatalogItem {
@@ -58,7 +57,7 @@ const MODEL_CATALOG: [ModelCatalogItem; 5] = [
         size_mb: 31,
         wer: 5.66,
         rtfx: Some(348),
-        sha256: None, // TODO(S1): paste verified SHA-256 of ggml-tiny.en-q5_1.bin
+        sha256: Some("c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b"),
     },
     ModelCatalogItem {
         id: "base-en-q5",
@@ -68,7 +67,7 @@ const MODEL_CATALOG: [ModelCatalogItem; 5] = [
         size_mb: 57,
         wer: 4.25,
         rtfx: Some(321),
-        sha256: None, // TODO(S1): paste verified SHA-256 of ggml-base.en-q5_1.bin
+        sha256: Some("4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f"),
     },
     ModelCatalogItem {
         id: "small-en-q5",
@@ -78,7 +77,7 @@ const MODEL_CATALOG: [ModelCatalogItem; 5] = [
         size_mb: 181,
         wer: 3.05,
         rtfx: Some(269),
-        sha256: None, // TODO(S1): paste verified SHA-256 of ggml-small.en-q5_1.bin
+        sha256: Some("bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30"),
     },
     ModelCatalogItem {
         id: "medium-en-q5",
@@ -88,7 +87,7 @@ const MODEL_CATALOG: [ModelCatalogItem; 5] = [
         size_mb: 514,
         wer: 3.02,
         rtfx: None,
-        sha256: None, // TODO(S1): paste verified SHA-256 of ggml-medium.en-q5_0.bin
+        sha256: Some("76733e26ad8fe1c7a5bf7531a9d41917b2adc0f20f2e4f5531688a8c6cd88eb0"),
     },
     ModelCatalogItem {
         id: "large-v3-turbo-q5",
@@ -98,7 +97,7 @@ const MODEL_CATALOG: [ModelCatalogItem; 5] = [
         size_mb: 547,
         wer: 2.10,
         rtfx: Some(200),
-        sha256: None, // TODO(S1): paste verified SHA-256 of ggml-large-v3-turbo-q5_0.bin
+        sha256: Some("394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2"),
     },
 ];
 

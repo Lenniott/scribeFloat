@@ -87,6 +87,15 @@ jobs:
           cp "${VCPKG}/installed/x64-windows/bin/libopenblas.dll" \
              src-tauri/windows-resources/libopenblas.dll
 
+      - name: Download bundled base model
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src-tauri/bundled-models
+          curl -fL \
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin" \
+            -o src-tauri/bundled-models/ggml-base.en-q5_1.bin
+
       - name: Build
         shell: bash
         env:

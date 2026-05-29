@@ -12,4 +12,5 @@ vite.config.ts.timestamp-*
 /target
 /src-tauri/binaries/set-default-output-*
 /src-tauri/windows-resources/
+/src-tauri/bundled-models/
 /context

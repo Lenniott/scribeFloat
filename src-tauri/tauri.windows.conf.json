@@ -1,7 +1,7 @@
 {
   "bundle": {
     "resources": {
-      "windows-resources/libopenblas.dll": "."
+      "windows-resources/libopenblas.dll": "libopenblas.dll"
     }
   }
 }

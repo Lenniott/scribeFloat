@@ -62,6 +62,31 @@ jobs:
       # macOS: Tauri imports APPLE_CERTIFICATE (.p12) and signs with that cert's identity.
       # Do not set APPLE_SIGNING_IDENTITY unless it is a substring of the p12 identity
       # (tauri-bundler: certificate_identity.contains(identity)).
+      - name: Cache vcpkg (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v5
+        with:
+          path: C:\vcpkg\installed
+          key: vcpkg-openblas-x64-windows-${{ hashFiles('.github/workflows/reusable-tauri-build.yml') }}
+
+      - name: Install OpenBLAS (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          vcpkg install openblas:x64-windows
+          VCPKG="${VCPKG_INSTALLATION_ROOT:-C:/vcpkg}"
+          echo "OPENBLAS_PATH=${VCPKG}/installed/x64-windows" >> "$GITHUB_ENV"
+          echo "BLAS_INCLUDE_DIRS=${VCPKG}/installed/x64-windows/include" >> "$GITHUB_ENV"
+          # Override config.toml's global GGML_*=Apple values so they don't reach
+          # whisper-rs-sys build.rs's env-var loop on Windows. cargo [env] only sets
+          # vars not already in the process environment (force=false), so these win.
+          echo "GGML_BLAS_VENDOR=OpenBLAS" >> "$GITHUB_ENV"
+          echo "GGML_ACCELERATE=OFF" >> "$GITHUB_ENV"
+          mkdir -p src-tauri/windows-resources
+          cp "${VCPKG}/installed/x64-windows/bin/libopenblas.dll" \
+             src-tauri/windows-resources/libopenblas.dll
+
       - name: Build
         shell: bash
         env:
@@ -73,9 +98,14 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          if [[ -n "${EXTRA_CMAKE_ARGS}" ]]; then
-            export CMAKE_ARGS="-DGGML_ACCELERATE=ON -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=Apple ${EXTRA_CMAKE_ARGS}"
-          fi
+          # Parse EXTRA_CMAKE_ARGS (-DKEY=VALUE) into individual env vars.
+          # The cmake crate does not split CMAKE_ARGS — each GGML/WHISPER flag must be a
+          # separate env var for whisper-rs-sys build.rs to pick it up as a real cmake flag.
+          for flag in ${EXTRA_CMAKE_ARGS}; do
+            if [[ "$flag" =~ ^-D([A-Z_0-9]+)=(.+)$ ]]; then
+              export "${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"
+            fi
+          done
           if [[ "${{ inputs.bundle_nsis }}" == "true" ]]; then
             npm run tauri -- build --target "$TAURI_BUILD_TARGET" --bundles nsis
           else

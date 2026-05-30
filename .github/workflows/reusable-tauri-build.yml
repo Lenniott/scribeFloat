@@ -81,7 +81,7 @@ jobs:
           OPENBLAS_BIN="${VCPKG}/installed/x64-windows/bin"
           OPENBLAS_LIB="${VCPKG}/installed/x64-windows/lib"
           echo "OPENBLAS_PATH=${VCPKG}/installed/x64-windows" >> "$GITHUB_ENV"
-          echo "BLAS_INCLUDE_DIRS=${VCPKG}/installed/x64-windows/include" >> "$GITHUB_ENV"
+          echo "BLAS_INCLUDE_DIRS=${VCPKG}/installed/x64-windows/include/openblas" >> "$GITHUB_ENV"
           # Override config.toml's global GGML_*=Apple values so they don't reach
           # whisper-rs-sys build.rs's env-var loop on Windows. cargo [env] only sets
           # vars not already in the process environment (force=false), so these win.

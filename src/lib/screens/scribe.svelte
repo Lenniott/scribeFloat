@@ -116,6 +116,23 @@
     ).catch(() => []);
   }
 
+  /** Enumerate input devices if mic permission is currently granted.
+   * Called on mount and on focus — needed because the window is prewarmed before
+   * permission may have been granted, so the first run can leave micOptions empty. */
+  async function refreshMicDevices() {
+    const perms = await invoke<PermissionStatus[]>(
+      "settings_permissions_status",
+    ).catch(() => [] as PermissionStatus[]);
+    if (!(perms.find((p) => p.kind === "microphone")?.granted ?? false)) return;
+    const devices = await invoke<string[]>("scribe_list_input_devices").catch(
+      () => [],
+    );
+    micOptions = [
+      { value: "", label: "System Default" },
+      ...devices.map((d) => ({ value: d, label: d })),
+    ];
+  }
+
   /** Re-scan disk when Scribe is shown — prewarm runs `loadRecoverySessions` once at startup and would otherwise stay stale. */
   async function refreshRecoverySessionsIfVisible() {
     const visible = await getCurrentWindow().isVisible().catch(() => false);
@@ -348,18 +365,9 @@
     // Only enumerate input devices if mic permission is already granted.
     // On macOS 14+ calling input_devices() triggers the permission dialog when
     // status is NotDetermined — avoid that on prewarm / before the user asks.
-    const permsOnMount = await invoke<PermissionStatus[]>(
-      "settings_permissions_status",
-    ).catch(() => [] as PermissionStatus[]);
-    const micGrantedOnMount =
-      permsOnMount.find((p) => p.kind === "microphone")?.granted ?? false;
-    const devices = micGrantedOnMount
-      ? await invoke<string[]>("scribe_list_input_devices").catch(() => [])
-      : [];
-    micOptions = [
-      { value: "", label: "System Default" },
-      ...devices.map((d) => ({ value: d, label: d })),
-    ];
+    // refreshMicDevices is also called on focus so a prewarm-before-grant never
+    // leaves the list permanently empty.
+    await refreshMicDevices();
     const [preferredInputDevice, preferredSpeakerDevice] = await invoke<
       [string | null, string | null]
     >("settings_get_preferred_audio_devices").catch(() => [null, null]);
@@ -405,6 +413,7 @@
     unlistenFocus = await getCurrentWindow().onFocusChanged(
       ({ payload: focused }) => {
         if (!focused) return;
+        void refreshMicDevices();
         void reloadSpeakerCaptureSettings();
         void refreshRecoverySessionsIfVisible();
       },

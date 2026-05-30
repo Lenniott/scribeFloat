@@ -1,10 +1,15 @@
 # ggml (via whisper-rs-sys) uses std::filesystem; libc++ requires deployment target ≥ 10.15.
-# whisper-rs-sys forwards CMAKE_* env vars into its CMake config (see its build.rs).
 #
-# CMAKE_ARGS enables ggml's Accelerate + BLAS (Apple sgemm) paths. On non-Apple targets
-# ggml's CMake config gracefully no-ops these flags (find_library / find_package fail
-# soft and emit a warning), so leaving them unscoped is safe.
+# GGML_* env vars are picked up individually by whisper-rs-sys build.rs via its env-var
+# for-loop and become real cmake -D flags. A bundled CMAKE_ARGS string is NOT parsed by
+# the cmake crate — each flag must be a separate env var.
+#
+# On macOS these enable Accelerate BLAS. On Windows the openblas cargo feature overrides
+# GGML_BLAS_VENDOR to OpenBLAS (applied after the for-loop in build.rs, so cmake takes
+# the later value).
 [env]
 MACOSX_DEPLOYMENT_TARGET = "13.0"
 CMAKE_OSX_DEPLOYMENT_TARGET = "13.0"
-CMAKE_ARGS = "-DGGML_ACCELERATE=ON -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=Apple"
+GGML_ACCELERATE = "ON"
+GGML_BLAS = "ON"
+GGML_BLAS_VENDOR = "Apple"

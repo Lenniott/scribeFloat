@@ -491,6 +491,17 @@ pub fn run() {
 
             let models_dir = data_dir.join("models");
             std::fs::create_dir_all(&models_dir)?;
+            // Seed the bundled base model into the user's models dir on first install.
+            // Silently skipped in dev builds where the resource file isn't present.
+            let base_dest = models_dir.join("ggml-base.en-q5_1.bin");
+            if !base_dest.exists() {
+                if let Ok(resource_dir) = app.path().resource_dir() {
+                    let bundled = resource_dir.join("ggml-base.en-q5_1.bin");
+                    if bundled.is_file() {
+                        let _ = std::fs::copy(&bundled, &base_dest);
+                    }
+                }
+            }
             let model = services::model::ModelService::new(models_dir);
             let model_ctrl =
                 controllers::model::ModelController::new(Arc::clone(&model), Arc::clone(&config));

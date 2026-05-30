@@ -13,7 +13,21 @@ impl ConfigService {
     pub fn load(path: PathBuf) -> Result<Arc<Self>> {
         let config = if path.exists() {
             let data = std::fs::read_to_string(&path).context("failed to read config file")?;
-            serde_json::from_str::<Config>(&data).unwrap_or_default()
+            match serde_json::from_str::<Config>(&data) {
+                Ok(config) => config,
+                Err(err) => {
+                    // Don't silently clobber a corrupt-but-possibly-recoverable file on the next
+                    // save: move it aside first so the user can salvage their settings.
+                    let backup = path.with_extension("json.corrupt");
+                    let _ = std::fs::rename(&path, &backup);
+                    eprintln!(
+                        "[config] failed to parse {}: {err}; backed up to {} and loaded defaults",
+                        path.display(),
+                        backup.display()
+                    );
+                    Config::default()
+                }
+            }
         } else {
             Config::default()
         };

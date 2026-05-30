@@ -1,6 +1,6 @@
 [package]
 name = "ScribeFloat"
-version = "0.2.192"
+version = "0.2.193"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"

@@ -99,9 +99,9 @@ jobs:
               cp "${OPENBLAS_BIN}/${src}.dll" "${OPENBLAS_BIN}/libopenblas.dll"
             fi
           done
-          # Tell CMake's FindBLAS exactly where the library is so it doesn't
-          # have to search (BLAS_INCLUDE_DIRS alone is not enough).
-          echo "BLAS_LIBRARIES=${VCPKG}/installed/x64-windows/lib/libopenblas.lib" >> "$GITHUB_ENV"
+          # whisper-rs-sys forwards all CMAKE_* env vars as cmake -D flags.
+          # CMAKE_PREFIX_PATH lets FindBLAS search vcpkg's lib dir for openblas.lib.
+          echo "CMAKE_PREFIX_PATH=${VCPKG}/installed/x64-windows" >> "$GITHUB_ENV"
           mkdir -p src-tauri/windows-resources
           cp "${OPENBLAS_BIN}/libopenblas.dll" src-tauri/windows-resources/libopenblas.dll
 

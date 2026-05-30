@@ -75,7 +75,11 @@ jobs:
         run: |
           set -euo pipefail
           vcpkg install openblas:x64-windows
-          VCPKG="${VCPKG_INSTALLATION_ROOT:-C:/vcpkg}"
+          # cygpath converts the Windows-style VCPKG_INSTALLATION_ROOT (C:\vcpkg) to a
+          # POSIX path (/c/vcpkg) so bash file operations work without mixed separators.
+          VCPKG="$(cygpath "${VCPKG_INSTALLATION_ROOT:-C:\\vcpkg}")"
+          OPENBLAS_BIN="${VCPKG}/installed/x64-windows/bin"
+          OPENBLAS_LIB="${VCPKG}/installed/x64-windows/lib"
           echo "OPENBLAS_PATH=${VCPKG}/installed/x64-windows" >> "$GITHUB_ENV"
           echo "BLAS_INCLUDE_DIRS=${VCPKG}/installed/x64-windows/include" >> "$GITHUB_ENV"
           # Override config.toml's global GGML_*=Apple values so they don't reach
@@ -83,9 +87,20 @@ jobs:
           # vars not already in the process environment (force=false), so these win.
           echo "GGML_BLAS_VENDOR=OpenBLAS" >> "$GITHUB_ENV"
           echo "GGML_ACCELERATE=OFF" >> "$GITHUB_ENV"
+          # whisper-rs-sys 0.15 links 'libopenblas' on Windows. vcpkg may install the
+          # DLL as 'openblas.dll' (no lib prefix). Create libopenblas.* aliases so the
+          # linker and runtime both find the right name.
+          for pfx in "" lib; do
+            src="${pfx}openblas"
+            if [ -f "${OPENBLAS_LIB}/${src}.lib" ] && [ ! -f "${OPENBLAS_LIB}/libopenblas.lib" ]; then
+              cp "${OPENBLAS_LIB}/${src}.lib" "${OPENBLAS_LIB}/libopenblas.lib"
+            fi
+            if [ -f "${OPENBLAS_BIN}/${src}.dll" ] && [ ! -f "${OPENBLAS_BIN}/libopenblas.dll" ]; then
+              cp "${OPENBLAS_BIN}/${src}.dll" "${OPENBLAS_BIN}/libopenblas.dll"
+            fi
+          done
           mkdir -p src-tauri/windows-resources
-          cp "${VCPKG}/installed/x64-windows/bin/libopenblas.dll" \
-             src-tauri/windows-resources/libopenblas.dll
+          cp "${OPENBLAS_BIN}/libopenblas.dll" src-tauri/windows-resources/libopenblas.dll
 
       - name: Download bundled base model
         shell: bash

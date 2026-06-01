@@ -135,7 +135,7 @@
 	</header>
 
 	<div
-		class="shrink-0 flex items-center gap-1 overflow-x-auto border-b border-card/60 bg-panel/70 px-1.5 py-1.5"
+		class="shrink-0 flex items-center gap-1 overflow-x-auto border-b border-card/60 bg-panel/70 px-3 py-1.5"
 		role="tablist"
 		aria-label="Filter history"
 	>
@@ -145,7 +145,7 @@
 				role="tab"
 				aria-selected={activeTab === tab.id}
 				aria-controls="history-list"
-				class="border-0 border-b-2 px-2.5 py-1.5 text-label-sm font-normal tracking-stamped whitespace-nowrap uppercase transition-colors {activeTab === tab.id
+				class="border-0 border-b-2 px-3 py-1.5 text-label-sm font-normal tracking-stamped whitespace-nowrap uppercase transition-colors {activeTab === tab.id
 					? 'border-active bg-active/15'
 					: 'border-transparent text-fg/70 hover:bg-fill hover:text-fg'}"
 				onclick={() => (activeTab = tab.id)}

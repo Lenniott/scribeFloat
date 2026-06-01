@@ -4,9 +4,10 @@
   import { createModelDownloadStore } from "$lib/stores/modelDownload.svelte";
   import Toast from "@lib/components/Toast.svelte";
   import type { ToastState } from "@lib/components/Toast.svelte";
+  import ConfigField from "@lib/components/form/ConfigField.svelte";
   import IconButton from "@lib/components/IconButton.svelte";
   import Chip from "@lib/components/Chip.svelte";
-  import { Download, RefreshCw, Trash2 } from "lucide-svelte";
+  import { Download, Trash2 } from "lucide-svelte";
 
   let {
     ready = $bindable(false),
@@ -30,7 +31,6 @@
   let unlisteners: (() => void)[] = [];
   let toast = $state<ToastConfig>({ ...emptyToast });
   let toastTimeout: ReturnType<typeof setTimeout> | null = null;
-  let refreshing = $state(false);
   /** Avoid pushing `ready=false` while the store list is still empty before first refresh. */
   let readyHydrated = $state(false);
 
@@ -90,45 +90,17 @@
     if (!modelStore.error) showToastMessage(toastMessages.modelSelected);
   }
 
-  async function onRefresh() {
-    if (refreshing) return;
-    clearToast();
-    refreshing = true;
-    const minSpinMs = 550;
-    const started =
-      typeof performance !== "undefined" ? performance.now() : Date.now();
-    try {
-      await modelStore.refresh();
-      if (!modelStore.error) showToastMessage(toastMessages.modelsRefreshed);
-    } finally {
-      const elapsed =
-        (typeof performance !== "undefined" ? performance.now() : Date.now()) -
-        started;
-      if (elapsed < minSpinMs) {
-        await new Promise((r) => setTimeout(r, minSpinMs - elapsed));
-      }
-      refreshing = false;
-    }
-  }
-
   async function removeModel(modelId: string) {
     clearToast();
     await modelStore.remove(modelId);
     if (!modelStore.error) showToastMessage(toastMessages.modelRemoved);
   }
 
-  function onSelectChange(ev: Event) {
-    const el = ev.currentTarget as HTMLSelectElement;
-    const value = el.value;
-    if (value) selectModel(value);
-  }
-
-  async function onDictateSelectChange(ev: Event) {
-    const el = ev.currentTarget as HTMLSelectElement;
-    const value = el.value || null;
-    dictateModelId = value;
+  async function onDictateModelChange(value: string) {
+    const modelId = value || null;
+    dictateModelId = modelId;
     try {
-      await invoke("settings_set_dictate_model_id", { modelId: value });
+      await invoke("settings_set_dictate_model_id", { modelId });
       showToastMessage(toastMessages.modelSelected);
     } catch (e) {
       modelStore.error = String(e);
@@ -193,58 +165,33 @@
     <div class="shrink-0 border-b border-card bg-panel px-4 py-3">
       <h3 class="sf-label-sm text-fg-dim">Default models</h3>
       <div class="mt-2 flex flex-col gap-2">
-        <!-- Scribe -->
-        <div
-          class="sf-body-md flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-fg-dim"
+        <ConfigField
+          label="Default Scribe transcription model"
+          layout="horizontal"
+          id="scribe-model-select"
+          options={downloadedModels.map((m) => ({ value: m.id, label: m.label }))}
+          emptyOption={!selectedId && downloadedModels.length > 0
+            ? { label: 'Choose model…', disabled: true }
+            : undefined}
+          value={selectedId}
+          onchange={(v: string) => { if (v) selectModel(v); }}
+          disabled={downloadedModels.length === 0}
         >
-          <div class="flex min-w-0 items-center gap-2">
-            <Chip variant="brand">Scribe</Chip>
-          </div>
-          <div class="flex shrink-0 flex-col items-end gap-0.5">
-            <label class="sr-only" for="scribe-model-select"
-              >Default Scribe transcription model</label
-            >
-            <select
-              id="scribe-model-select"
-              class="sf-body-md h-8 min-w-40 max-w-56 cursor-pointer truncate rounded-md border border-fill bg-panel py-2 pr-8 pl-2 text-fg disabled:cursor-not-allowed disabled:opacity-40"
-              value={selectedId}
-              onchange={onSelectChange}
-              disabled={downloadedModels.length === 0}
-            >
-              {#if !selectedId && downloadedModels.length > 0}
-                <option value="" disabled>Choose model…</option>
-              {/if}
-              {#each downloadedModels as dm (dm.id)}
-                <option value={dm.id}>{dm.label}</option>
-              {/each}
-            </select>
-          </div>
-        </div>
-        <!-- Dictate -->
-        <div
-          class="sf-body-md flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-fg-dim"
+          {#snippet labelContent()}<Chip variant="brand">Scribe</Chip>{/snippet}
+        </ConfigField>
+
+        <ConfigField
+          label="Dictate transcription model override"
+          layout="horizontal"
+          id="dictate-model-select"
+          options={downloadedModels.map((m) => ({ value: m.id, label: m.label }))}
+          emptyOption={{ label: 'Same as Scribe' }}
+          value={dictateModelId ?? ''}
+          onchange={onDictateModelChange}
+          disabled={downloadedModels.length === 0}
         >
-          <div class="flex min-w-0 items-center gap-2">
-            <Chip variant="focus">Dictate</Chip>
-          </div>
-          <div class="flex shrink-0 flex-col items-end gap-0.5">
-            <label class="sr-only" for="dictate-model-select"
-              >Dictate transcription model override</label
-            >
-            <select
-              id="dictate-model-select"
-              class="sf-body-md h-8 min-w-40 max-w-56 cursor-pointer truncate rounded-md border border-fill bg-panel py-2 pr-8 pl-2 text-fg disabled:cursor-not-allowed disabled:opacity-40"
-              value={dictateModelId ?? ""}
-              onchange={onDictateSelectChange}
-              disabled={downloadedModels.length === 0}
-            >
-              <option value="">Same as Scribe</option>
-              {#each downloadedModels as dm (dm.id)}
-                <option value={dm.id}>{dm.label}</option>
-              {/each}
-            </select>
-          </div>
-        </div>
+          {#snippet labelContent()}<Chip variant="focus">Dictate</Chip>{/snippet}
+        </ConfigField>
       </div>
     </div>
 
@@ -311,10 +258,6 @@
         </div>
         <div class="flex shrink-0 items-center gap-4">
           <span class="sf-label-sm w-14 text-left text-fg-dim">Size</span>
-          <span class="sf-label-sm w-14 text-right text-fg-dim">Accuracy</span>
-          <span class="sf-label-sm w-16 text-right text-fg-dim"
-            >10 min audio</span
-          >
           <div class="w-8"></div>
         </div>
       </div>
@@ -369,17 +312,9 @@
             </div>
 
             <div class="flex shrink-0 items-center gap-4">
-              <span class="sf-label-sm w-14 text-right font-mono text-fg-dim"
+              <span class="sf-label-sm w-14 text-left font-mono text-fg-dim"
                 >{model.size_mb} MB</span
               >
-              <span class="sf-label-sm w-14 text-right font-mono text-fg-dim"
-                >{(100 - model.wer).toFixed(1)}%</span
-              >
-              <span class="sf-label-sm w-16 text-right font-mono text-fg-dim">
-                {model.rtfx != null
-                  ? `${(600 / model.rtfx).toFixed(1)}s`
-                  : "no bench"}
-              </span>
               <div class="w-8 flex items-start justify-end pt-0.5">
                 {#if model.downloaded && !rowDownloading(model.id)}
                   <IconButton

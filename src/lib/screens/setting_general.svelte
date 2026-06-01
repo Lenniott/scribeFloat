@@ -32,6 +32,7 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	let scribeCaptureSpeaker = $state(false);
 	let dictateAutoEnter = $state(false);
 	let keepWav = $state(false);
+	let saveTranscriptsAsMarkdown = $state(false);
 	let themeMode = $state<ThemeMode>("system");
 	let openWithApp = $state("");
 	let message = $state("");
@@ -76,6 +77,7 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 		);
 		dictateAutoEnter = await invoke<boolean>("settings_get_dictate_auto_enter").catch(() => false);
 		keepWav = await invoke<boolean>("settings_get_keep_wav").catch(() => false);
+		saveTranscriptsAsMarkdown = await invoke<boolean>("settings_get_save_transcripts_as_markdown").catch(() => false);
 	}
 
 	async function saveAll() {
@@ -102,6 +104,7 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 			scribeCaptureSpeaker = captureDefault;
 		await invoke("settings_set_dictate_auto_enter", { enabled: dictateAutoEnter });
 			await invoke("settings_set_keep_wav", { enabled: keepWav });
+			await invoke("settings_set_save_transcripts_as_markdown", { enabled: saveTranscriptsAsMarkdown });
 			await invoke("settings_set_theme_mode", { themeMode });
 			await invoke("settings_set_open_with_app_path", { path: openWithApp.trim() || null });
 			preferredSpeakerDevice = trimmedSpeaker;
@@ -165,6 +168,13 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 			Keep audio after transcription
 		</span>
 		<ToggleSwitch checked={keepWav} aria-label="Keep WAV file after transcription" onchange={(next) => (keepWav = next)} />
+	</div>
+	<div class="flex flex-col items-start justify-center gap-1">
+		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
+			Save transcripts as Markdown
+		</span>
+		<ToggleSwitch checked={saveTranscriptsAsMarkdown} aria-label="Save transcripts as Markdown" onchange={(next) => (saveTranscriptsAsMarkdown = next)} />
+		<p class="text-label-sm text-fg/50">Off by default — history is always saved; Markdown is an extra export.</p>
 	</div>
 	{#if speakerCaptureRequiresDeviceName}
 		<div class="flex flex-col gap-2">

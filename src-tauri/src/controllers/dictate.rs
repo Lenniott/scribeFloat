@@ -1,11 +1,12 @@
 use crate::services::{
     audio::{AudioService, MicSession, WHISPER_SAMPLE_RATE},
     config::ConfigService,
+    history::HistoryService,
     model::{model_id_preload_eligible, ModelService},
     output::OutputService,
 };
 use crate::services::audio::read_wav_mono_f32;
-use crate::types::{Config, DictateProcessingStage, DictateState, DictateStateEvent};
+use crate::types::{Config, DictateProcessingStage, DictateState, DictateStateEvent, HistoryRecord};
 use anyhow::{anyhow, Result};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -213,6 +214,7 @@ pub struct DictateController {
     audio: Arc<AudioService>,
     model: Arc<ModelService>,
     output: Arc<OutputService>,
+    history: Arc<HistoryService>,
     config: Arc<ConfigService>,
     app: AppHandle,
     /// Set when cancelling a deferred hold Start before `Recording`; async mic spawn observes this.
@@ -228,6 +230,7 @@ impl DictateController {
         audio: Arc<AudioService>,
         model: Arc<ModelService>,
         output: Arc<OutputService>,
+        history: Arc<HistoryService>,
         config: Arc<ConfigService>,
         app: AppHandle,
     ) -> Arc<Self> {
@@ -240,6 +243,7 @@ impl DictateController {
             audio,
             model,
             output,
+            history,
             config,
             app,
             hold_start_cancel: Arc::new(AtomicBool::new(false)),
@@ -691,8 +695,13 @@ impl DictateController {
                 .ok();
         }
 
+        let model_name = model_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().replace("ggml-", ""))
+            .unwrap_or_else(|| "model".to_string());
+        let record = HistoryRecord::from_dictate(&segments, &text, model_name);
         let history_write_failed =
-            if let Err(e) = self.output.write_dictate_history_entry(&config.save_folder, &text) {
+            if let Err(e) = self.history.append(&config.save_folder, record) {
                 eprintln!("[dictate] failed to write history: {e}");
                 true
             } else {

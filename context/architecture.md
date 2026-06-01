@@ -31,7 +31,7 @@ graph LR
 - **Hugging Face**: contacted only when the user clicks "Download model" in Settings. A single HTTPS GET for the model binary. No user data is sent. No account required.
 - **OS Audio Layer**: cpal abstracts platform differences. Controllers never touch the audio layer directly — only `AudioService` does.
 - **Clipboard and Input**: Dictate writes to the clipboard as fallback, or uses OS input injection (macOS: Accessibility API, Windows: SendInput). Scribe and Transcribe do not touch the clipboard.
-- **Local File System**: durable user-facing files (transcripts, manifests, cleanup, dictate history, failure salvage) go through `OutputService`. Capture-time WAV streaming (checkpointed every 30 s) is handled by `AudioService`'s writer thread. Config and models go through `ConfigService`.
+- **Local File System**: the structured record store (`history.jsonl`) goes through `HistoryService`. Markdown rendering and durable file I/O (transcripts, manifests, cleanup, dictate failure salvage, legacy reads) go through `OutputService`. Capture-time WAV streaming (checkpointed every 30 s) is handled by `AudioService`'s writer thread. Config and models go through `ConfigService`.
 
 ---
 
@@ -56,6 +56,7 @@ graph TB
         cmd_scribe["commands/scribe.rs"]
         cmd_transcribe["commands/transcribe.rs"]
         cmd_dictate["commands/dictate.rs"]
+        cmd_history["commands/history.rs"]
         cmd_model["commands/model.rs"]
         cmd_settings["commands/settings.rs"]
     end
@@ -64,6 +65,7 @@ graph TB
         ctrl_scribe["ScribeController\ncontrollers/scribe.rs"]
         ctrl_transcribe["TranscribeController\ncontrollers/transcribe.rs"]
         ctrl_dictate["DictateController\ncontrollers/dictate.rs"]
+        ctrl_history["HistoryController\ncontrollers/history.rs"]
         ctrl_model["ModelController\ncontrollers/model.rs"]
         ctrl_settings["SettingsController\ncontrollers/settings.rs"]
     end
@@ -72,6 +74,7 @@ graph TB
         svc_audio["AudioService\nservices/audio.rs"]
         svc_model["ModelService\nservices/model.rs"]
         svc_output["OutputService\nservices/output.rs"]
+        svc_history["HistoryService\nservices/history.rs"]
         svc_config["ConfigService\nservices/config.rs"]
         svc_hotkeys["HotkeyService\nservices/hotkeys.rs"]
         svc_permissions["PermissionsService\nservices/permissions.rs"]
@@ -104,7 +107,7 @@ graph TB
     scribe_ui -->|"invoke()"| cmd_scribe
     transcribe_ui -->|"invoke()"| cmd_transcribe
     dictate_ui -->|"invoke()"| cmd_dictate
-    history_ui -->|"invoke()"| cmd_dictate
+    history_ui -->|"invoke()"| cmd_history
     history_ui -->|"invoke()"| cmd_settings
     settings_ui -->|"invoke()"| cmd_model
     settings_ui -->|"invoke()"| cmd_settings
@@ -112,25 +115,33 @@ graph TB
     cmd_scribe --> ctrl_scribe
     cmd_transcribe --> ctrl_transcribe
     cmd_dictate --> ctrl_dictate
+    cmd_history --> ctrl_history
     cmd_model --> ctrl_model
     cmd_settings --> ctrl_settings
 
     ctrl_scribe --> svc_audio
     ctrl_scribe --> svc_model
     ctrl_scribe --> svc_output
+    ctrl_scribe --> svc_history
     ctrl_scribe --> svc_config
 
     ctrl_transcribe --> svc_model
     ctrl_transcribe --> svc_output
+    ctrl_transcribe --> svc_history
     ctrl_transcribe --> svc_config
     ctrl_transcribe --> svc_transcribe_input
 
     ctrl_dictate --> svc_audio
     ctrl_dictate --> svc_model
     ctrl_dictate --> svc_output
+    ctrl_dictate --> svc_history
     ctrl_dictate --> svc_config
     ctrl_dictate --> plat_paste
     ctrl_dictate --> plat_key
+
+    ctrl_history --> svc_history
+    ctrl_history --> svc_output
+    ctrl_history --> svc_config
 
     ctrl_model --> svc_model
     ctrl_model --> svc_config
@@ -149,6 +160,7 @@ graph TB
     plat_permissions --> os_permissions
 
     svc_output --> fs
+    svc_history --> fs
     svc_config --> fs
     svc_model --> fs
     svc_model --> hf
@@ -289,20 +301,63 @@ graph TB
 
 ---
 
+### History Service
+
+Owns the structured record store at `{save_folder}/history.jsonl` — an append-only, one-compact-JSON-object-per-line log. Every transcript-bearing flow (Scribe, Dictate, Transcribe) appends a record here on completion. Updates (`set_markdown_path`) and deletes (tombstone `deleted = true`) also append a new line for the same id; the loader does last-writer-wins by id. Startup `compact()` rewrites the live set atomically (temp file + rename). Mirrors `OutputService`'s stateless-with-folder style: save_folder is passed per call and the cache reloads when the folder changes.
+
+```mermaid
+graph TB
+    subgraph history["HistoryService — services/history.rs"]
+        appender["Appender\nappend — adds a new JSONL record"]
+        updater["Updater\nset_markdown_path — appends updated record for same id"]
+        tombstone["Tombstone\ndelete — appends deleted=true record for id"]
+        loader["Loader\nlast-writer-wins by id; excludes tombstoned records"]
+        compact["Compactor\nstartup compact() — rewrites live set atomically"]
+    end
+
+    fs["Local File System\nhistory.jsonl"]
+    ctrl_scribe["ScribeController"]
+    ctrl_dictate["DictateController"]
+    ctrl_transcribe["TranscribeController"]
+    ctrl_history["HistoryController"]
+
+    ctrl_scribe -->|"append record on DONE"| appender
+    ctrl_dictate -->|"append record on completion"| appender
+    ctrl_transcribe -->|"append record on DONE"| appender
+    ctrl_history -->|"list live records"| loader
+    ctrl_history -->|"set_markdown_path after export"| updater
+    ctrl_history -->|"tombstone on delete"| tombstone
+    appender --> fs
+    updater --> fs
+    tombstone --> fs
+    loader --> fs
+    compact --> fs
+```
+
+**Component notes:**
+- **Appender**: appends a new JSON object line to `history.jsonl` for a completed session. Called by ScribeController, DictateController, and TranscribeController on every successful completion — independent of whether a `.md` file was written
+- **Updater**: `set_markdown_path` appends a new line for an existing id (sets the `markdown_path` field). The loader's last-writer-wins semantics mean the updated record supersedes the original
+- **Tombstone**: `delete` appends a line with `deleted = true` for the id. The loader excludes tombstoned records from the live set
+- **Loader**: reads all lines, groups by id, and returns the last-written record per id, excluding any with `deleted = true`
+- **Compactor**: `compact()` runs at startup — rewrites only the live (non-tombstoned) records to a temp file, then renames it over `history.jsonl`. Keeps the file from growing unboundedly
+
+---
+
 ### Output Service
 
-Durable user-facing file writes: transcripts, session manifests, post-transcription cleanup, dictate history, and dictate failure salvage. Capture-time WAV streaming is owned by `AudioService`.
+Markdown rendering (pure) and durable file I/O: `.md` writes (opt-in, gated by `save_transcripts_as_markdown`), session manifests, post-transcription cleanup, dictate failure salvage, legacy reads (`list_transcripts`, `read_dictate_history`), and delete primitives (`delete_file`, `delete_wav`, `remove_session_dir`). Does not own the structured record store — that is `HistoryService`. Capture-time WAV streaming is owned by `AudioService`.
 
 ```mermaid
 graph TB
     subgraph output["OutputService — services/output.rs"]
-        formatter["Transcript Formatter\nbuilds markdown from segments"]
+        formatter["Markdown Renderer\npure fns: render_transcript_markdown, render_transcript_body, render_from_record, count_words"]
         replacements["Word Replacement\napplies find/replace rules"]
-        file_writer["File Writer\nwrites .md to save folder root"]
+        file_writer["File Writer\nwrites .md to save folder root (opt-in)"]
         manifest["Session Manifest\nsession.json lifecycle tracking"]
         wav_cleanup["Session Cleanup\nremoves staging dir when keep_wav=off"]
         salvage["Dictate Salvage\nmoves failed captures to dictate_failures/"]
-        dictate_log["Dictate Log\nappends to dictate.jsonl"]
+        legacy_reads["Legacy Reads\nlist_transcripts, read_dictate_history"]
+        delete_prims["Delete Primitives\ndelete_file, delete_wav, remove_session_dir"]
         merged_wav["Merged speaker.wav\nwritten after segment assembly"]
     end
 
@@ -311,14 +366,18 @@ graph TB
     ctrl_scribe["ScribeController"]
     ctrl_dictate["DictateController"]
     ctrl_transcribe["TranscribeController"]
+    ctrl_history["HistoryController"]
     svc_model["ModelService"]
 
-    ctrl_scribe -->|"save transcript"| formatter
+    ctrl_scribe -->|"render + write .md (when enabled)"| formatter
     ctrl_scribe -->|"manifest + cleanup"| manifest
     ctrl_scribe -->|"merged speaker PCM"| merged_wav
     ctrl_dictate -->|"salvage on error"| salvage
-    ctrl_dictate -->|"formatted text"| dictate_log
-    ctrl_transcribe -->|"save transcript"| formatter
+    ctrl_transcribe -->|"render + write .md (when enabled)"| formatter
+    ctrl_history -->|"render markdown preview"| formatter
+    ctrl_history -->|"export .md on demand"| file_writer
+    ctrl_history -->|"legacy list + read"| legacy_reads
+    ctrl_history -->|"delete artifacts"| delete_prims
     svc_model -->|"segments"| formatter
     formatter --> replacements
     replacements --> file_writer
@@ -327,20 +386,22 @@ graph TB
     merged_wav --> fs
     wav_cleanup --> fs
     salvage --> fs
-    dictate_log --> fs
+    legacy_reads --> fs
+    delete_prims --> fs
     config -->|"replacement rules"| replacements
     config -->|"save folder"| file_writer
     config -->|"keep_wav setting"| wav_cleanup
 ```
 
 **Component notes:**
-- **Transcript path**: `{save_folder}/{title}_{model}.md`; appends `_1`, `_2`, … before `.md` when the base name already exists. WAV staging lives in `{save_folder}/{timestamp}/`
-- **Transcript Formatter**: builds Markdown from Whisper segments. Segments are grouped: consecutive same-source segments within an 8-second gap are merged into one paragraph. Dual-source speaker-change boundaries use `\n`; same-source paragraph breaks use `\n\n`
+- **Markdown Renderer**: pure free functions (`render_transcript_markdown`, `render_transcript_body`, `render_from_record`, `count_words`). Builds Markdown from Whisper segments — no file I/O. `write_transcript` is a thin wrapper over `render_transcript_markdown`. Segments are grouped: consecutive same-source segments within an 8-second gap are merged into one paragraph. Dual-source speaker-change boundaries use `\n`; same-source paragraph breaks use `\n\n`
+- **Transcript path**: `{save_folder}/{title}_{model}.md`; appends `_1`, `_2`, … before `.md` when the base name already exists. WAV staging lives in `{save_folder}/{timestamp}/`. `.md` is written only when `save_transcripts_as_markdown` is on (default off); Dictate never writes `.md`
 - **Word Replacement**: applies user-defined find/replace rules. Scope per rule: transcripts, dictate, or both
 - **Session Manifest**: `session.json` tracks recording lifecycle (`recording`, `transcribing`, `complete`, `error`, `interrupted`) for crash recovery. Scribe UI polls `scribe_list_recovery_sessions` on open
-- **WAV Cleanup**: when `keep_wav = false`, deletes staging WAVs and removes the session directory after a successful transcript. Transcript `.md` stays at save folder root
+- **WAV Cleanup**: when `keep_wav = false`, deletes staging WAVs and removes the session directory after a successful transcript. Transcript `.md` (if written) stays at save folder root
 - **Dictate Salvage**: on transcription failure, moves the temp WAV from `dictate_temp/` to `{save_folder}/dictate_failures/`
-- **Dictate Log**: appends entries to `dictate.jsonl`. Skips empty transcriptions
+- **Legacy Reads**: `list_transcripts` enumerates existing `.md` files in the save folder; `read_dictate_history` reads the legacy `dictate_history.json` file. Both are read-only — used by `HistoryController` to merge with the structured record store
+- **Delete Primitives**: `delete_file`, `delete_wav`, `remove_session_dir` — called by `HistoryController` when deleting a store record's artifacts (boundary-checked)
 
 ---
 
@@ -362,17 +423,19 @@ graph TB
     svc_audio["AudioService"]
     svc_model["ModelService"]
     svc_output["OutputService"]
+    svc_history["HistoryService"]
     svc_config["ConfigService"]
     svc_hotkeys["HotkeyService"]
     ctrl_transcribe["TranscribeController"]
 
-    svc_hotkeys -->|"open panel — recording starts immediately"| controller
+    svc_hotkeys -->|"open panel"| controller
     panel -->|"stop and save, cancel"| controller
     panel -->|"change mic, toggle speaker, select models"| controller
     controller --> state
     state -->|"on RECORDING: start audio stream"| svc_audio
     state -->|"on TRANSCRIBING: run inference"| svc_model
-    state -->|"on DONE: write transcript"| svc_output
+    state -->|"on DONE: append history record (always)"| svc_history
+    state -->|"on DONE: write .md (when save_transcripts_as_markdown on)"| svc_output
     state -->|"on NO_MODEL: surface wav path for Transcribe"| ctrl_transcribe
     controller --> svc_config
     panel --> waveform
@@ -383,10 +446,10 @@ graph TB
 ```
 
 **State transitions:**
-- `IDLE → RECORDING`: panel opens (hotkey `CmdOrCtrl+Shift+L` or tray click)
+- `IDLE → RECORDING`: user presses **Start Recording** in panel (hotkey `CmdOrCtrl+Shift+L` or tray click opens the panel; recording does not start automatically)
 - `RECORDING → TRANSCRIBING`: Stop & Save pressed
 - `RECORDING → IDLE`: Cancel pressed — audio discarded
-- `TRANSCRIBING → DONE`: transcript written to save folder
+- `TRANSCRIBING → DONE`: history record appended; `.md` written if `save_transcripts_as_markdown` is on
 - `TRANSCRIBING → NO_MODEL`: no model configured at record time — WAV preserved, "Open in Transcribe" shown
 - `TRANSCRIBING → ERROR`: unexpected failure
 
@@ -407,6 +470,7 @@ graph TB
 
     svc_model["ModelService"]
     svc_output["OutputService"]
+    svc_history["HistoryService"]
     svc_config["ConfigService"]
     svc_transcribe_input["TranscribeInputService"]
 
@@ -416,7 +480,8 @@ graph TB
     state -->|"expand and decode inputs"| svc_transcribe_input
     state -->|"load model on action start"| svc_model
     state -->|"transcribe file or session"| svc_model
-    state -->|"save transcript"| svc_output
+    state -->|"append history record (always)"| svc_history
+    state -->|"write .md (when save_transcripts_as_markdown on)"| svc_output
     controller --> svc_config
     svc_transcribe_input -->|"decoded PCM"| svc_model
 ```
@@ -445,6 +510,7 @@ graph TB
     svc_audio["AudioService"]
     svc_model["ModelService"]
     svc_output["OutputService"]
+    svc_history["HistoryService"]
     svc_config["ConfigService"]
     clipboard["Clipboard and Input"]
 
@@ -456,8 +522,10 @@ graph TB
     hud --> waveform
     state -->|"on TRANSCRIBING: in-memory PCM"| svc_model
     svc_model -->|"text"| svc_output
-    svc_output -->|"formatted text"| paste_handler
+    svc_output -->|"formatted text (word replacement)"| paste_handler
     paste_handler --> clipboard
+    state -->|"on completion: append history record"| svc_history
+    state -->|"on error: salvage WAV"| svc_output
     controller --> svc_config
 ```
 
@@ -465,7 +533,7 @@ graph TB
 - **Key Listener**: macOS uses `CGEventTap` reading raw keycodes — does not call `TSMGetInputSourceProperty`, safe on macOS 13+. Windows uses a system keyboard hook. `rdev::listen` must NOT be used on macOS (crashes on 13+ due to `TSMGetInputSourceProperty` assertion on non-main thread)
 - **Floating HUD**: appears near cursor. Never calls `set_focus()` — the app may be in `.accessory` activation policy and `set_focus()` would kill the process in that state
 - **Paste Handler**: macOS = Accessibility API (`enigo` Cmd+V simulation). Windows = `SendInput`. Fallback = clipboard write + system notification. HUD is hidden before paste, with ~150 ms sleep to let the OS restore focus to the target app. Clipboard contents are verified unchanged immediately before the keypress fires — if another process modified the clipboard during the sleep window, paste is aborted and `paste_failed` is set
-- **Audio buffer**: memory only. `OutputService` is never called during a Dictate session. There is no WAV file, no temp file, no disk path of any kind
+- **Audio buffer**: PCM lives in memory only during dictation. There is no staging WAV file for dictate. On success the temp WAV (written by AudioService under `dictate_temp/`) is deleted; on failure OutputService salvages it to `dictate_failures/`. Dictate never writes a `.md` file
 
 ---
 
@@ -562,7 +630,8 @@ IPC: JS calls `invoke('command_name', { args })` → Rust `#[tauri::command]` in
 | Commands do type translation only — no logic | Verified by code review; any business logic found here is a bug |
 | Services are singletons created in `lib.rs` | Never instantiate a service inside a controller |
 | Controllers never import platform files directly | Controllers call services; services call platform adapters |
-| `OutputService` owns durable user-facing files | Transcripts, manifests, cleanup, dictate history, failure salvage, merged `speaker.wav` |
+| `HistoryService` owns the structured record store | `{save_folder}/history.jsonl` — append, compact, tombstone delete; every transcript-bearing flow always appends here |
+| `OutputService` owns markdown rendering and durable file I/O | Pure markdown renderers, `.md` writes (opt-in via `save_transcripts_as_markdown`), manifests, cleanup, failure salvage, legacy reads, delete primitives; Dictate never writes `.md` |
 | `AudioService` streams capture to checkpointed WAV files | All live capture writes during recording; 16 kHz writer thread in `services/audio.rs` |
 | `PermissionsService` is the only code that checks OS permission state | All permission queries in `services/permissions.rs` |
 | `#[cfg(target_os)]` belongs only in `platform/` | Checked by code review and `cargo check --target` for both platforms |
@@ -592,15 +661,17 @@ src-tauri/src/
 │   ├── mod.rs                  generate_handler![] macro registration
 │   ├── scribe.rs               scribe_start, scribe_stop, scribe_cancel, scribe_state
 │   ├── transcribe.rs           transcribe_add, transcribe_start, transcribe_cancel
-│   ├── dictate.rs              dictate_start, dictate_stop, dictate_history
+│   ├── dictate.rs              dictate_start, dictate_stop
+│   ├── history.rs              history_list, history_get_detail, history_render_markdown, history_export_markdown, history_delete, history_read_legacy
 │   ├── model.rs                model_list, model_download, model_delete, model_select
-│   └── settings.rs             config_get, config_update, permissions_status, open_settings
+│   └── settings.rs             config_get, config_update, permissions_status, open_settings, settings_get/set_save_transcripts_as_markdown
 │
 ├── controllers/
 │   ├── mod.rs
 │   ├── scribe.rs               ScribeController — Arc<Mutex<ScribeInner>>
 │   ├── transcribe.rs           TranscribeController — Arc<Mutex<TranscribeInner>>
 │   ├── dictate.rs              DictateController — Arc<Mutex<DictateInner>>
+│   ├── history.rs              HistoryController — read/orchestration only (no state machine); merges store + legacy, dedupes, delete
 │   ├── model.rs                ModelController — model list, download, delete
 │   └── settings.rs             SettingsController — config read/write
 │
@@ -608,7 +679,8 @@ src-tauri/src/
 │   ├── mod.rs
 │   ├── audio.rs                AudioService, MicSession, streaming WAV writer, read_wav_mono_f32
 │   ├── model.rs                ModelService, WhisperContext cache, Downloader, Merger
-│   ├── output.rs               OutputService, WAV writer, formatter, replacement, cleanup
+│   ├── output.rs               OutputService, markdown rendering (pure), .md writes, manifest, cleanup, legacy reads, delete primitives
+│   ├── history.rs              HistoryService, append-only JSONL record store, compact, tombstone delete
 │   ├── config.rs               ConfigService, atomic save, get/update
 │   ├── hotkeys.rs              HotkeyService, HotkeyRegistrar trait, TauriHotkeyRegistrar
 │   ├── permissions.rs          PermissionsService (delegates to platform/permissions_impl)
@@ -635,6 +707,7 @@ src/
 │   │   ├── transcribe.svelte   File import and queue UI
 │   │   ├── dictate.svelte      Floating HUD
 │   │   ├── history.svelte             Unified history: Scribe transcripts + dictations (opened via tray)
+│   │   ├── HistoryDetailPane.svelte   Right-hand detail pane: markdown preview, metadata, Copy/Export/Open/Delete actions
 │   │   ├── settings.svelte     Settings shell with tab routing
 │   │   └── setting_*.svelte    Individual settings tabs
 │   └── stores/

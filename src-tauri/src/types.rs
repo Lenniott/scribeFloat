@@ -73,6 +73,12 @@ pub struct Config {
 
     #[serde(default = "default_replacement_rules")]
     pub replacement_rules: Vec<ReplacementRule>,
+
+    /// When true, Scribe and Transcribe also write a derived `.md` next to the canonical
+    /// history record. Default OFF — markdown is opt-in; the JSONL store is the source of
+    /// truth. Dictate never writes `.md` regardless of this flag.
+    #[serde(default)]
+    pub save_transcripts_as_markdown: bool,
 }
 
 impl Default for Config {
@@ -97,6 +103,7 @@ impl Default for Config {
             dictate_auto_paste: true,
             dictate_auto_enter: false,
             replacement_rules: default_replacement_rules(),
+            save_transcripts_as_markdown: false,
         }
     }
 }
@@ -527,6 +534,203 @@ pub struct ScribeTranscriptEntry {
     pub modified_at: String,
 }
 
+// ── History record store ────────────────────────────────────────────────────────
+
+/// Which capture flow produced a history record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HistoryKind {
+    Scribe,
+    Dictate,
+    Transcribe,
+}
+
+/// The canonical, source-of-truth record persisted to `{save_folder}/history.jsonl`.
+/// One compact JSON object per line. Markdown is a derived, optional output.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoryRecord {
+    pub format_version: u8,
+    pub id: String,
+    pub kind: HistoryKind,
+    /// RFC3339 UTC timestamp.
+    pub created_at: String,
+    pub title: String,
+    pub model: String,
+    /// Raw merged segments (preserving `in:`/`out:` speaker labels) — re-renderable.
+    pub segments: Vec<Segment>,
+    #[serde(default)]
+    pub notes: Vec<Note>,
+    pub duration_ms: i64,
+    pub word_count: usize,
+    #[serde(default)]
+    pub speaker_capture: bool,
+    #[serde(default)]
+    pub dual_source: bool,
+    /// Source audio path (Transcribe imports).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    /// Exported markdown path, when written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub markdown_path: Option<String>,
+    /// Kept-audio session directory (Scribe with keep_wav).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_dir: Option<String>,
+    /// Primary kept audio file (e.g. `{session_dir}/mic.wav`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_path: Option<String>,
+    /// Tombstone: a later line with `deleted = true` removes the record from the live view.
+    #[serde(default)]
+    pub deleted: bool,
+}
+
+/// Where a history list item originated. Legacy sources are read-only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HistoryItemSource {
+    Store,
+    LegacyMarkdown,
+    LegacyDictate,
+}
+
+/// Lightweight projection of a record for the History list UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoryListItem {
+    pub id: String,
+    pub kind: HistoryKind,
+    pub created_at: String,
+    pub title: String,
+    pub model: String,
+    pub word_count: usize,
+    pub duration_ms: i64,
+    pub has_markdown: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub markdown_path: Option<String>,
+    pub source: HistoryItemSource,
+}
+
+impl HistoryRecord {
+    /// Shared scaffolding: format version, fresh uuid, current UTC time, duration and
+    /// word count. `word_count` is computed via the same renderer the `.md` uses so the
+    /// store and any exported markdown never diverge.
+    fn base(
+        kind: HistoryKind,
+        title: String,
+        model: String,
+        segments: Vec<Segment>,
+        notes: Vec<Note>,
+        word_count: usize,
+    ) -> Self {
+        let duration_ms = segments.last().map(|s| s.end_ms.max(0)).unwrap_or(0);
+        Self {
+            format_version: 1,
+            id: uuid::Uuid::new_v4().to_string(),
+            kind,
+            created_at: chrono::Utc::now().to_rfc3339(),
+            title,
+            model,
+            segments,
+            notes,
+            duration_ms,
+            word_count,
+            speaker_capture: false,
+            dual_source: false,
+            source_path: None,
+            markdown_path: None,
+            session_dir: None,
+            audio_path: None,
+            deleted: false,
+        }
+    }
+
+    /// Build a Scribe record. `session_dir`/`audio_path` are set when `keep_wav` is on so
+    /// the History delete path can remove the kept audio. `markdown_path` is set when the
+    /// markdown toggle is on.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_scribe(
+        title: String,
+        model: String,
+        segments: Vec<Segment>,
+        notes: Vec<Note>,
+        rules: &[ReplacementRule],
+        speaker_capture: bool,
+        dual_source: bool,
+        session_dir: Option<String>,
+        audio_path: Option<String>,
+        markdown_path: Option<String>,
+    ) -> Self {
+        let word_count = crate::services::output::count_words(&segments, rules);
+        let mut rec = Self::base(HistoryKind::Scribe, title, model, segments, notes, word_count);
+        rec.speaker_capture = speaker_capture;
+        rec.dual_source = dual_source;
+        rec.session_dir = session_dir;
+        rec.audio_path = audio_path;
+        rec.markdown_path = markdown_path;
+        rec
+    }
+
+    /// Build a Dictate record. Stores the final (post-replacement) dictation text as a single
+    /// segment — dictate output is plain text, not a re-renderable transcript. Never has `.md`.
+    pub fn from_dictate(segments: &[Segment], text: &str, model: String) -> Self {
+        let duration_ms = segments.last().map(|s| s.end_ms.max(0)).unwrap_or(0);
+        let word_count = text.split_whitespace().count();
+        let title = title_from_text(text);
+        let stored = vec![Segment {
+            start_ms: 0,
+            end_ms: duration_ms,
+            text: text.to_string(),
+        }];
+        Self::base(HistoryKind::Dictate, title, model, stored, Vec::new(), word_count)
+    }
+
+    /// Build a Transcribe record from an imported audio file.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_transcribe(
+        title: String,
+        model: String,
+        segments: Vec<Segment>,
+        rules: &[ReplacementRule],
+        dual_source: bool,
+        source_path: String,
+        markdown_path: Option<String>,
+    ) -> Self {
+        let word_count = crate::services::output::count_words(&segments, rules);
+        let mut rec =
+            Self::base(HistoryKind::Transcribe, title, model, segments, Vec::new(), word_count);
+        rec.dual_source = dual_source;
+        rec.source_path = Some(source_path);
+        rec.markdown_path = markdown_path;
+        rec
+    }
+
+    /// Project to the lightweight list item shown in History.
+    pub fn to_list_item(&self) -> HistoryListItem {
+        HistoryListItem {
+            id: self.id.clone(),
+            kind: self.kind,
+            created_at: self.created_at.clone(),
+            title: self.title.clone(),
+            model: self.model.clone(),
+            word_count: self.word_count,
+            duration_ms: self.duration_ms,
+            has_markdown: self.markdown_path.is_some(),
+            markdown_path: self.markdown_path.clone(),
+            source: HistoryItemSource::Store,
+        }
+    }
+}
+
+/// Derive a short title from free text: first few words, trimmed, with a sensible fallback.
+fn title_from_text(text: &str) -> String {
+    let words: Vec<&str> = text.split_whitespace().take(8).collect();
+    let joined = words.join(" ");
+    let trimmed = joined.trim_end_matches(|c: char| !c.is_alphanumeric());
+    if trimmed.is_empty() {
+        "Dictation".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 impl ScribeStateEvent {
     pub fn new(state: ScribeState) -> Self {
         Self {
@@ -594,5 +798,68 @@ mod tests {
         let json = serde_json::to_value(&event).expect("serialize transcribing event");
         assert_eq!(json["state"], "TRANSCRIBING");
         assert_eq!(json["progress"], 0.25);
+    }
+
+    #[test]
+    fn config_save_transcripts_as_markdown_defaults_false_from_old_config() {
+        // An old config file missing the new field must still deserialize.
+        let old = r#"{"save_folder":"/tmp/x"}"#;
+        let cfg: Config = serde_json::from_str(old).expect("deserialize old config");
+        assert!(!cfg.save_transcripts_as_markdown);
+    }
+
+    #[test]
+    fn from_scribe_sets_dual_source_duration_and_kept_audio() {
+        let segments = vec![
+            Segment { start_ms: 0, end_ms: 1_000, text: "in: hi".to_string() },
+            Segment { start_ms: 1_200, end_ms: 5_000, text: "out: hello there".to_string() },
+        ];
+        let rec = HistoryRecord::from_scribe(
+            "Meeting".to_string(),
+            "tiny".to_string(),
+            segments,
+            vec![],
+            &[],
+            true,
+            true,
+            Some("/save/2026/sess".to_string()),
+            Some("/save/2026/sess/mic.wav".to_string()),
+            None,
+        );
+        assert_eq!(rec.kind, HistoryKind::Scribe);
+        assert_eq!(rec.duration_ms, 5_000);
+        assert!(rec.dual_source);
+        assert!(rec.speaker_capture);
+        assert_eq!(rec.session_dir.as_deref(), Some("/save/2026/sess"));
+        assert!(!rec.id.is_empty());
+        assert_eq!(rec.format_version, 1);
+    }
+
+    #[test]
+    fn from_dictate_word_count_matches_text() {
+        let segments = vec![Segment { start_ms: 0, end_ms: 2_000, text: "raw".to_string() }];
+        let rec = HistoryRecord::from_dictate(&segments, "hello there friend", "tiny".to_string());
+        assert_eq!(rec.kind, HistoryKind::Dictate);
+        assert_eq!(rec.word_count, 3);
+        assert_eq!(rec.duration_ms, 2_000);
+        assert_eq!(rec.segments[0].text, "hello there friend");
+        assert!(rec.markdown_path.is_none());
+    }
+
+    #[test]
+    fn from_transcribe_sets_source_path() {
+        let segments = vec![Segment { start_ms: 0, end_ms: 3_000, text: "one two".to_string() }];
+        let rec = HistoryRecord::from_transcribe(
+            "clip".to_string(),
+            "tiny".to_string(),
+            segments,
+            &[],
+            false,
+            "/in/clip.mp3".to_string(),
+            None,
+        );
+        assert_eq!(rec.kind, HistoryKind::Transcribe);
+        assert_eq!(rec.source_path.as_deref(), Some("/in/clip.mp3"));
+        assert_eq!(rec.word_count, 2);
     }
 }

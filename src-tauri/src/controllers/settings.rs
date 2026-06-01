@@ -310,6 +310,16 @@ impl SettingsController {
             .map_err(|e| format!("failed to persist keep_wav: {e}"))
     }
 
+    pub fn get_save_transcripts_as_markdown(&self) -> bool {
+        self.config.get().save_transcripts_as_markdown
+    }
+
+    pub fn set_save_transcripts_as_markdown(&self, enabled: bool) -> Result<(), String> {
+        self.config
+            .update(|cfg| cfg.save_transcripts_as_markdown = enabled)
+            .map_err(|e| format!("failed to persist save_transcripts_as_markdown: {e}"))
+    }
+
     pub fn get_dictate_model_id(&self) -> Option<String> {
         self.config.get().dictate_model_id
     }

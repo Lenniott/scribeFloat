@@ -1,10 +1,11 @@
 use crate::services::config::ConfigService;
+use crate::services::history::HistoryService;
 use crate::services::model::ModelService;
 use crate::services::output::OutputService;
 use crate::services::transcribe_input::{TranscribeInputItem, TranscribeInputService};
 use crate::types::{
-    Config, ProcessingStage, TranscribeItemStatus, TranscribeQueueItem, TranscribeState,
-    TranscribeStateEvent,
+    Config, HistoryRecord, ProcessingStage, TranscribeItemStatus, TranscribeQueueItem,
+    TranscribeState, TranscribeStateEvent,
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -26,6 +27,7 @@ pub struct TranscribeController {
     input: Arc<TranscribeInputService>,
     model: Arc<ModelService>,
     output: Arc<OutputService>,
+    history: Arc<HistoryService>,
     config: Arc<ConfigService>,
     app: AppHandle,
 }
@@ -35,6 +37,7 @@ impl TranscribeController {
         input: Arc<TranscribeInputService>,
         model: Arc<ModelService>,
         output: Arc<OutputService>,
+        history: Arc<HistoryService>,
         config: Arc<ConfigService>,
         app: AppHandle,
     ) -> Arc<Self> {
@@ -45,6 +48,7 @@ impl TranscribeController {
             input,
             model,
             output,
+            history,
             config,
             app,
         })
@@ -170,6 +174,11 @@ impl TranscribeController {
         replacement_rules: &[crate::types::ReplacementRule],
         queue: &mut [TranscribeQueueItem],
     ) -> Result<Vec<TranscribeQueueItem>, String> {
+        // Snapshot once: history records always go to the save folder; `.md` is opt-in (and may
+        // target a different output folder).
+        let cfg = self.config.get();
+        let save_folder = cfg.save_folder.clone();
+        let markdown_on = cfg.save_transcripts_as_markdown;
         for (index, input) in inputs.iter().enumerate() {
             if queue.get(index).is_none() {
                 continue;
@@ -318,29 +327,57 @@ impl TranscribeController {
                 None,
             );
 
-            let output_name = format!("{}_{}.md", slugify(&input.display_name), model_name);
-            let transcript_dest = output_folder.join(output_name);
-            match self.output.write_transcript(
-                &segments,
-                &[],
-                &input.display_name,
-                model_name,
-                include_timestamps,
+            let dual_source = decoded.speaker_pcm_16k.is_some();
+            // Markdown is opt-in; write `.md` only when the toggle is on.
+            let markdown_path = if markdown_on {
+                let output_name = format!("{}_{}.md", slugify(&input.display_name), model_name);
+                let transcript_dest = output_folder.join(output_name);
+                match self.output.write_transcript(
+                    &segments,
+                    &[],
+                    &input.display_name,
+                    model_name,
+                    include_timestamps,
+                    replacement_rules,
+                    &transcript_dest,
+                ) {
+                    Ok(path) => Some(path),
+                    Err(err) => {
+                        queue[index].status = TranscribeItemStatus::Error;
+                        queue[index].progress = 1.0;
+                        queue[index].error = Some(err.to_string());
+                        self.emit_queue_state(
+                            TranscribeState::Transcribing,
+                            queue.to_vec(),
+                            Some(overall_progress(queue)),
+                            Some(ProcessingStage::WritingTranscript),
+                            None,
+                        );
+                        continue;
+                    }
+                }
+            } else {
+                None
+            };
+
+            // Persist the canonical record — always, regardless of the markdown toggle.
+            let record = HistoryRecord::from_transcribe(
+                input.display_name.clone(),
+                model_name.to_string(),
+                segments.clone(),
                 replacement_rules,
-                &transcript_dest,
-            ) {
-                Ok(path) => {
-                    queue[index].status = TranscribeItemStatus::Done;
-                    queue[index].progress = 1.0;
-                    queue[index].transcript_path = Some(path.to_string_lossy().to_string());
-                    queue[index].error = None;
-                }
-                Err(err) => {
-                    queue[index].status = TranscribeItemStatus::Error;
-                    queue[index].progress = 1.0;
-                    queue[index].error = Some(err.to_string());
-                }
+                dual_source,
+                input.source_path.to_string_lossy().into_owned(),
+                markdown_path.as_ref().map(|p| p.to_string_lossy().into_owned()),
+            );
+            if let Err(e) = self.history.append(&save_folder, record) {
+                eprintln!("[transcribe] failed to append history record: {e}");
             }
+
+            queue[index].status = TranscribeItemStatus::Done;
+            queue[index].progress = 1.0;
+            queue[index].transcript_path = markdown_path.map(|p| p.to_string_lossy().to_string());
+            queue[index].error = None;
 
             self.emit_queue_state(
                 TranscribeState::Transcribing,

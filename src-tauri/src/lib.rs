@@ -451,6 +451,7 @@ pub fn run() {
 
     let audio = services::audio::AudioService::new();
     let output = services::output::OutputService::new();
+    let history = services::history::HistoryService::new();
     let permissions = services::permissions::PermissionsService::new();
     let transcribe_input = services::transcribe_input::TranscribeInputService::new();
 
@@ -548,6 +549,7 @@ pub fn run() {
                 Arc::clone(&audio),
                 Arc::clone(&model),
                 Arc::clone(&output),
+                Arc::clone(&history),
                 Arc::clone(&config),
                 app.handle().clone(),
             );
@@ -556,6 +558,7 @@ pub fn run() {
                 Arc::clone(&audio),
                 Arc::clone(&model),
                 Arc::clone(&output),
+                Arc::clone(&history),
                 Arc::clone(&config),
                 app.handle().clone(),
             );
@@ -563,8 +566,14 @@ pub fn run() {
                 Arc::clone(&transcribe_input),
                 Arc::clone(&model),
                 Arc::clone(&output),
+                Arc::clone(&history),
                 Arc::clone(&config),
                 app.handle().clone(),
+            );
+            let history_ctrl = controllers::history::HistoryController::new(
+                Arc::clone(&history),
+                Arc::clone(&output),
+                Arc::clone(&config),
             );
 
             let update = services::update::UpdateService::new();
@@ -576,6 +585,7 @@ pub fn run() {
             app.manage(ctrl); // for scribe commands
             app.manage(Arc::clone(&dictate_ctrl)); // for dictate commands
             app.manage(Arc::clone(&transcribe_ctrl)); // for transcribe commands
+            app.manage(history_ctrl); // for history commands
             app.manage(update);
 
             dictate_ctrl.start_key_listener();
@@ -595,6 +605,10 @@ pub fn run() {
             platform::window_impl::sync_activation_policy(app.handle());
 
             let save_folder = app.state::<Arc<services::config::ConfigService>>().get().save_folder;
+            // Compact the history store once at startup (drops tombstones/superseded lines).
+            if let Err(e) = history.compact(&save_folder) {
+                eprintln!("[history] startup compaction skipped: {e}");
+            }
             match output.scan_incomplete_scribe_sessions(&save_folder) {
                 Ok(sessions) => {
                     for info in &sessions {
@@ -712,6 +726,8 @@ pub fn run() {
             commands::settings::settings_set_dictate_auto_enter,
             commands::settings::settings_get_keep_wav,
             commands::settings::settings_set_keep_wav,
+            commands::settings::settings_get_save_transcripts_as_markdown,
+            commands::settings::settings_set_save_transcripts_as_markdown,
             commands::settings::settings_get_dictate_model_id,
             commands::settings::settings_set_dictate_model_id,
             commands::settings::settings_get_replacement_rules,
@@ -721,6 +737,12 @@ pub fn run() {
             commands::dictate::dictate_cancel,
             commands::dictate::dictate_dismiss,
             commands::dictate::dictate_get_history,
+            commands::history::history_list,
+            commands::history::history_get_detail,
+            commands::history::history_render_markdown,
+            commands::history::history_export_markdown,
+            commands::history::history_delete,
+            commands::history::history_read_legacy,
             commands::transcribe::transcribe_inspect_inputs,
             commands::transcribe::transcribe_start,
             commands::transcribe::transcribe_open_output,

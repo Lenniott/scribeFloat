@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod config;
+pub mod history;
 pub mod hotkeys;
 pub mod model;
 pub mod output;

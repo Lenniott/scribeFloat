@@ -25,13 +25,15 @@ User records mic only. No system audio capture.
 12. Scribe panel enters **Transcribing** state — progress bar shown
 13. Model Service: loads selected model (from cache or disk; tiny/base may already be preloaded)
 14. Model Service: transcribes PCM → returns timestamped segments
-15. Output Service: builds single-source markdown transcript
-16. Output Service: applies word replacement rules
-17. Output Service: writes `{title}_{model}.md` to **save folder root** (appends `_1`, `_2`, … on filename collision)
+15. Output Service: renders single-source markdown transcript and applies word replacement rules
+16. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting)
+17. Check: `save_transcripts_as_markdown` setting
+    - **On** → Output Service writes `{title}_{model}.md` to **save folder root** (appends `_1`, `_2`, … on collision); Done event carries `transcript_path`
+    - **Off** → no `.md` written; Done event carries `transcript_path = None`
 18. Check: WAV retention setting
     - **Keep** → staging folder and WAVs kept
     - **Delete** → Output Service removes staging folder after transcript confirmed non-empty
-19. Scribe panel enters **Done** state — file path(s) shown, Open Transcript button
+19. Scribe panel enters **Done** state — file path shown when available, Open Transcript button shown when path is present
 20. **No model path**: staging WAV kept regardless of retention setting. Panel shows "Open in Transcribe →" with session path pre-filled
 
 ---
@@ -70,9 +72,11 @@ User records mic + system audio (remote call, meeting, etc). Speaker capture can
 19. Model Service: transcribes speaker PCM → raw speaker segments (progress 50–100%) when dual-source
 20. `filter_hallucination_phrases`: strips known Whisper hallucination phrases from speaker segments
 21. Model Service: merges mic and speaker segments chronologically; suppresses near-duplicate lines within 1.5 s; applies `in:`/`out:` labels
-22. Output Service: groups segments and builds dual-source markdown
-23. Output Service: applies word replacement rules
-24. Output Service: writes `{title}_{model}.md` to save folder root (with `_1`, `_2`, … suffix on collision)
+22. Output Service: groups segments, builds dual-source markdown, applies word replacement rules
+23. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting)
+24. Check: `save_transcripts_as_markdown` setting
+    - **On** → Output Service writes `{title}_{model}.md` to save folder root (with `_1`, `_2`, … suffix on collision); Done event carries `transcript_path`
+    - **Off** → no `.md` written; Done event carries `transcript_path = None`
 25. Check: WAV retention setting
     - **Keep** → staging folder and WAVs kept
     - **Delete** → Output Service removes staging folder after transcript confirmed non-empty
@@ -118,12 +122,14 @@ Key listener (always on): **Left Control** only (`CGEventTap` on macOS, low-leve
     - **Yes** → send Enter keystroke after paste
     - **No** → paste only
 9. Audio Service temp WAV deleted on success; on failure Output Service may salvage to `{save_folder}/dictate_failures/`
-10. Output Service: appends to dictate history (`dictate_history.json`)
+10. History Service: appends a JSONL record to `{save_folder}/history.jsonl`
     - Empty transcript → skip log entry
+    - Dictate never writes a `.md` file
 11. Floating panel dismissed (auto)
 
 ---
 
+## 4. Transcribe
 
 User brings an existing audio file. No recording step.
 
@@ -141,10 +147,60 @@ User brings an existing audio file. No recording step.
 8c. Output Service: merges, suppresses bleed, applies `in:`/`out:` labels
 8d. Continue to step 10
 9. Model Service: transcribes audio file → timestamped segments (progress 0–100%)
-10. Output Service: builds markdown transcript
-11. Output Service: applies word replacement rules
-12. Output Service: writes `<source_filename>_<model>.md` to selected output folder
-13. Transcribe panel enters **Done** state — file path shown, Open Transcript button
+10. Output Service: renders markdown transcript and applies word replacement rules
+11. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting)
+12. Check: `save_transcripts_as_markdown` setting
+    - **On** → Output Service writes `<source_filename>_<model>.md` to selected output folder; Done event carries `transcript_path`
+    - **Off** → no `.md` written; Done event carries `transcript_path = None`
+13. Transcribe panel enters **Done** state — file path shown when available, Open Transcript button shown when path is present
+
+---
+
+## 5. History view
+
+Unified read-only and management view across all transcript-bearing flows.
+
+### 5a. List
+
+1. User opens History via tray
+2. `history_list` IPC command → `HistoryController::list`
+3. HistoryController reads all live records from `HistoryService` (last-writer-wins by id from `history.jsonl`; deleted tombstones excluded)
+4. HistoryController reads legacy on-disk items: existing `.md` files via `OutputService::list_transcripts`, legacy dictate entries via `OutputService::read_dictate_history` (`dictate_history.json`)
+5. Legacy items deduped: a legacy `.md` whose path matches a store record's `markdown_path` is suppressed (the store record takes precedence)
+6. Merged list returned to frontend; legacy items carry prefixed ids (`md::` / `dictate::`) and are read-only
+
+### 5b. Select and preview
+
+1. User selects a history item
+2. `history_get_detail` IPC command → HistoryController returns metadata for the selected record
+3. `history_render_markdown` IPC command → OutputService renders markdown from the record's segments (pure function, no disk read required unless already exported)
+4. `HistoryDetailPane` renders markdown preview, metadata chips (date, model, duration, word count), and action buttons
+
+### 5c. Export to markdown (on demand)
+
+1. User clicks **Export to Markdown** in `HistoryDetailPane`
+2. `history_export_markdown` IPC command → HistoryController
+3. Output Service writes `.md` to save folder; HistoryService updates the record (`set_markdown_path`) — a new line for the same id is appended to `history.jsonl`
+4. Detail pane updates to show the new file path and enables the **Open** button
+
+### 5d. Open exported file
+
+1. User clicks **Open** in `HistoryDetailPane` (only shown when `markdown_path` is set)
+2. OS opens the `.md` file in the configured or default viewer
+
+### 5e. Delete
+
+1. User clicks **Delete** in `HistoryDetailPane` (only available for store records, not legacy items)
+2. `history_delete` IPC command → HistoryController
+3. HistoryService appends a tombstone (`deleted = true`) for the record id to `history.jsonl`
+4. If the record has a `markdown_path`, Output Service deletes the `.md` file
+5. If the record has a `session_dir`, Output Service recursively removes the kept audio directory (boundary-checked)
+6. History list refreshes; deleted item is gone
+
+### 5f. Read legacy items
+
+- Legacy items (prefixed `md::` / `dictate::`) are read-only: they cannot be deleted via `history_delete` and cannot be exported via `history_export_markdown`
+- `history_read_legacy` IPC command is available for direct legacy access if needed
 
 ---
 

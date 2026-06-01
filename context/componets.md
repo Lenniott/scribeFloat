@@ -43,6 +43,12 @@ The sketch clearly separates settings into collapsible groups and notes that onl
 | `NoteComposer` | Input area for adding new notes.   | Combines a text entry field and submit action for manual note creation.   |
 | `IconSubmitButton` | Compact circular action button.   | Used in the note composer to submit entered content via an icon-based trigger.   |
 
+## History components
+
+| Component | What it is | How it works |
+|---|---|---|
+| `HistoryDetailPane` | Right-hand detail pane for the History view.   | Renders a markdown preview of the selected history record alongside metadata chips (date, model, duration, word count) and action buttons: Copy, Export to Markdown, Open (only when `markdown_path` is set), and Delete (only for store records — not legacy items). Export calls `history_export_markdown`; delete calls `history_delete` and refreshes the list.   |
+
 ## Layout components
 
 | Component | What it is | How it works |

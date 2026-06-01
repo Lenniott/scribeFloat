@@ -1,11 +1,12 @@
 use crate::services::{
     audio::{AudioService, MicSession},
     config::ConfigService,
+    history::HistoryService,
     model::{model_id_preload_eligible, ModelService},
     output::OutputService,
 };
 use crate::services::audio::{read_wav_mono_f32, WHISPER_SAMPLE_RATE};
-use crate::types::{Config, Note, ProcessingStage, RecoverySessionInfo, ScribeState, ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest, SessionManifestState};
+use crate::types::{Config, HistoryRecord, Note, ProcessingStage, RecoverySessionInfo, ScribeState, ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest, SessionManifestState};
 use anyhow::{anyhow, Result};
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -86,6 +87,7 @@ pub struct ScribeController {
     audio: Arc<AudioService>,
     model: Arc<ModelService>,
     output: Arc<OutputService>,
+    history: Arc<HistoryService>,
     config: Arc<ConfigService>,
     app: AppHandle,
 }
@@ -95,6 +97,7 @@ impl ScribeController {
         audio: Arc<AudioService>,
         model: Arc<ModelService>,
         output: Arc<OutputService>,
+        history: Arc<HistoryService>,
         config: Arc<ConfigService>,
         app: AppHandle,
     ) -> Arc<Self> {
@@ -110,6 +113,7 @@ impl ScribeController {
             audio,
             model,
             output,
+            history,
             config,
             app,
         })
@@ -719,11 +723,17 @@ impl ScribeController {
         prepared: &PreparedAudio,
     ) -> Result<()> {
         let save_folder = PathBuf::from(&config.save_folder);
-        let transcript_path = self.output.transcript_path(&save_folder, model_path, title);
         let model_name = model_path
             .file_stem()
             .map(|s| s.to_string_lossy().replace("ggml-", ""))
             .unwrap_or_else(|| "model".to_string());
+
+        // Markdown is opt-in: reserve a non-colliding `.md` name only when the toggle is on.
+        let markdown_path = if config.save_transcripts_as_markdown {
+            Some(self.output.transcript_path(&save_folder, model_path, title))
+        } else {
+            None
+        };
 
         self.app
             .emit(
@@ -735,15 +745,50 @@ impl ScribeController {
                 },
             )
             .ok();
-        self.output.write_transcript(
-            segments,
-            notes,
-            title,
-            &model_name,
-            config.include_timestamps,
+        if let Some(dest) = markdown_path.as_ref() {
+            self.output.write_transcript(
+                segments,
+                notes,
+                title,
+                &model_name,
+                config.include_timestamps,
+                &config.replacement_rules,
+                dest,
+            )?;
+        }
+
+        // Persist the canonical history record — always, regardless of the markdown toggle.
+        let keep_audio = config.keep_wav && !segments.is_empty();
+        let dual_source = prepared.speaker_pcm_16k.is_some();
+        let (session_dir, audio_path) = if keep_audio {
+            (
+                Some(prepared.session_dir.to_string_lossy().into_owned()),
+                Some(
+                    mic_wav_path_for(&prepared.session_dir)
+                        .to_string_lossy()
+                        .into_owned(),
+                ),
+            )
+        } else {
+            (None, None)
+        };
+        let record = HistoryRecord::from_scribe(
+            title.to_string(),
+            model_name.clone(),
+            segments.to_vec(),
+            notes.to_vec(),
             &config.replacement_rules,
-            &transcript_path,
-        )?;
+            dual_source,
+            dual_source,
+            session_dir,
+            audio_path,
+            markdown_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned()),
+        );
+        if let Err(e) = self.history.append(&config.save_folder, record) {
+            eprintln!("[scribe] failed to append history record: {e}");
+        }
 
         if !segments.is_empty() {
             self.app
@@ -758,7 +803,7 @@ impl ScribeController {
                 .ok();
         }
         self.output
-            .finalize_scribe_session(&prepared.session_dir, config.keep_wav && !segments.is_empty())?;
+            .finalize_scribe_session(&prepared.session_dir, keep_audio)?;
 
         self.clear_transcription_tracking();
         self.transition(ScribeState::Done);
@@ -766,7 +811,9 @@ impl ScribeController {
             .emit(
                 "scribe://state-changed",
                 ScribeStateEvent {
-                    transcript_path: Some(transcript_path.to_string_lossy().into()),
+                    transcript_path: markdown_path
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().into_owned()),
                     ..ScribeStateEvent::new(ScribeState::Done)
                 },
             )

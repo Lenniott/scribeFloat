@@ -72,7 +72,8 @@ panel (HTML/JS)
 **Platform** (`src-tauri/src/platform/`) — the only place `#[cfg(target_os = "...")]` is allowed. Everything above is platform-agnostic.
 
 **Hard ownership rules:**
-- `OutputService` owns durable user-facing files: transcripts, session manifests, post-transcription cleanup, dictate failure salvage, and dictate history.
+- `HistoryService` owns the structured record store (`{save_folder}/history.jsonl`): append, compact, delete (tombstone). Every transcript-bearing flow (Scribe, Dictate, Transcribe) always appends a record here on completion.
+- `OutputService` owns markdown rendering (pure free functions: `render_transcript_markdown`, `render_transcript_body`, `count_words`, `render_from_record`) and durable file I/O: `.md` writes, session manifests, post-transcription cleanup, dictate failure salvage, legacy reads, and delete primitives. It no longer owns the structured record store. Markdown output is **opt-in** via `save_transcripts_as_markdown` (default off) and gates Scribe and Transcribe only — Dictate never writes `.md`.
 - `AudioService` opens audio streams **and** streams capture to checkpointed temp/session WAV files (16 kHz writer thread). This keeps RAM flat during long recordings; do not accumulate PCM in controllers.
 - `PermissionsService` is the only code that checks OS permissions.
 
@@ -121,6 +122,8 @@ The Scribe webview is **prewarmed at startup** (`prewarm_scribe_window` in `src-
 | Loopback device not found | `platform/mod.rs` → `loopback_device_and_config`; check BlackHole install or `preferred_speaker_device` config |
 | Transcript paragraphs not grouping correctly | `services/output.rs` → `write_transcript`; check `MERGE_GAP_MS` and `speaker_source_prefix` |
 | File not saved or wrong path | `services/output.rs` |
+| History record missing or wrong after a session | `services/history.rs` → `append` / `compact` |
+| History list wrong, merge/dedupe incorrect, or delete fails | `controllers/history.rs` |
 | UI shows stale state | `commands/` fn for that panel → check emitted events |
 | Hotkey not triggering | `lib.rs::run()` → `global_shortcut.on_shortcut` |
 | Config not persisting | `services/config.rs` → `update()` and `save()` |

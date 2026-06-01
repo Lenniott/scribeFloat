@@ -125,6 +125,8 @@ impl OutputService {
     }
 
     /// Render segments as markdown and write. Verifies file is non-empty before returning Ok.
+    /// This is now a thin wrapper around the pure [`render_transcript_markdown`] renderer so
+    /// the exact same markdown is produced at capture time, on-demand export, and preview.
     #[allow(clippy::too_many_arguments)]
     pub fn write_transcript(
         &self,
@@ -136,93 +138,8 @@ impl OutputService {
         rules: &[ReplacementRule],
         dest: &Path,
     ) -> Result<PathBuf> {
-        // Merge consecutive same-source segments separated by less than 8 seconds into
-        // a single paragraph. Never merge across speaker sources (in: vs out:).
-        const MERGE_GAP_MS: i64 = 8_000;
-        struct Group {
-            start_ms: i64,
-            end_ms: i64,
-            parts: Vec<String>,
-            source: &'static str, // "in", "out", or "" for single-source
-        }
-        let mut groups: Vec<Group> = Vec::new();
-        for seg in segments {
-            let clean = cleanup_text(seg.text.trim());
-            if clean.is_empty() {
-                continue;
-            }
-            let deduped = dedup_repeated_block(&dedup_consecutive_phrases(&clean));
-            let seg_source = speaker_source_prefix(&deduped);
-            let last = groups.last_mut().filter(|g| {
-                seg.start_ms - g.end_ms < MERGE_GAP_MS && g.source == seg_source
-            });
-            match last {
-                Some(g) => {
-                    g.end_ms = seg.end_ms;
-                    let body = deduped
-                        .strip_prefix("in: ")
-                        .or_else(|| deduped.strip_prefix("out: "))
-                        .map(|s| s.to_string())
-                        .unwrap_or(deduped);
-                    g.parts.push(body);
-                }
-                None => groups.push(Group {
-                    start_ms: seg.start_ms,
-                    end_ms: seg.end_ms,
-                    parts: vec![deduped],
-                    source: seg_source,
-                }),
-            }
-        }
-        let raw_body = {
-            let mut out = String::new();
-            for (i, g) in groups.iter().enumerate() {
-                if i > 0 {
-                    out.push_str("\n\n");
-                }
-                let text = g.parts.join(" ");
-                if include_timestamps {
-                    out.push_str(&format!("[{}] {}", format_ms(g.start_ms), text));
-                } else {
-                    out.push_str(&text);
-                }
-            }
-            out
-        };
-
-        let transcript_body = apply_replacements(&raw_body, rules, &ReplacementScope::Transcripts);
-
-        let duration_seconds = segments
-            .last()
-            .map(|s| s.end_ms.max(0) as f64 / 1000.0)
-            .unwrap_or(0.0);
-        let word_count = transcript_body.split_whitespace().count();
-        let token_estimate = ((word_count as f64) * 1.3).round() as usize;
-
-        let mut md = String::new();
-        md.push_str("---\n");
-        md.push_str(&format!("title: '{}'\n", title.replace('\'', "’")));
-        md.push_str(&format!("duration_seconds: {:.1}\n", duration_seconds));
-        md.push_str(&format!("word_count: {word_count}\n"));
-        md.push_str(&format!("token_estimate: {token_estimate}\n"));
-        md.push_str(&format!("model: {model_name}\n"));
-        md.push_str("---\n\n");
-        md.push_str("## Transcript\n\n");
-        md.push_str(&transcript_body);
-
-        if !notes.is_empty() {
-            md.push_str("\n\n## Notes\n");
-            for (i, note) in notes.iter().enumerate() {
-                md.push_str(&format!(
-                    "[{}] ({}) {}\n",
-                    i + 1,
-                    format_ms(note.recorded_at_ms as i64),
-                    note.text
-                ));
-            }
-        }
-
-        md.push('\n');
+        let md =
+            render_transcript_markdown(segments, notes, title, model_name, include_timestamps, rules);
         std::fs::write(dest, &md).context("failed to write transcript")?;
         if std::fs::metadata(dest)?.len() == 0 {
             return Err(anyhow::anyhow!("transcript was written empty"));
@@ -230,12 +147,18 @@ impl OutputService {
         Ok(dest.to_path_buf())
     }
 
-    /// Delete a WAV file. Silent no-op if it no longer exists.
-    pub fn delete_wav(&self, path: &Path) -> Result<()> {
+    /// Delete a single file. Silent no-op if it no longer exists. The generic primitive
+    /// used by the History delete path to remove an exported `.md`.
+    pub fn delete_file(&self, path: &Path) -> Result<()> {
         if path.exists() {
             std::fs::remove_file(path)?;
         }
         Ok(())
+    }
+
+    /// Delete a WAV file. Silent no-op if it no longer exists. Delegates to [`delete_file`].
+    pub fn delete_wav(&self, path: &Path) -> Result<()> {
+        self.delete_file(path)
     }
 
     /// Write `[session_dir]/notes.json` capturing title and recorded notes for a WAV-only save.
@@ -282,30 +205,6 @@ impl OutputService {
     /// so that controllers do not call the platform layer directly.
     pub fn open_file_for_user(&self, path: &str, app: Option<&str>) -> Result<(), String> {
         crate::platform::open_file(path, app)
-    }
-
-    /// Prepend a new entry to `{save_folder}/dictate_history.json`.
-    /// Creates the save folder and file if they do not exist. The list is newest-first.
-    pub fn write_dictate_history_entry(&self, save_folder: &str, text: &str) -> Result<()> {
-        let path = PathBuf::from(save_folder).join("dictate_history.json");
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).context("create save folder for dictate history")?;
-        }
-        let mut entries: Vec<DictateHistoryEntry> = if path.exists() {
-            let raw = std::fs::read_to_string(&path).context("read dictate_history.json")?;
-            serde_json::from_str(&raw).unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-        entries.insert(0, DictateHistoryEntry {
-            id: uuid::Uuid::new_v4().to_string(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            text: text.to_string(),
-        });
-        let json = serde_json::to_string_pretty(&entries)
-            .context("serialize dictate_history.json")?;
-        std::fs::write(&path, json).context("write dictate_history.json")?;
-        Ok(())
     }
 
     /// Read all entries from `{save_folder}/dictate_history.json` (newest-first).
@@ -516,6 +415,141 @@ impl OutputService {
         }
         Ok(salvaged)
     }
+}
+
+// ── Transcript markdown rendering (pure — no I/O) ───────────────────────────────
+
+/// Group segments into paragraphs and render the transcript body (after replacement rules).
+/// Consecutive same-source segments separated by less than 8 s merge into one paragraph;
+/// speaker sources (`in:` vs `out:`) never merge. This is the single body-rendering path
+/// shared by the markdown writer, on-demand export/preview, and word counting.
+pub fn render_transcript_body(
+    segments: &[Segment],
+    include_timestamps: bool,
+    rules: &[ReplacementRule],
+) -> String {
+    const MERGE_GAP_MS: i64 = 8_000;
+    struct Group {
+        start_ms: i64,
+        end_ms: i64,
+        parts: Vec<String>,
+        source: &'static str, // "in", "out", or "" for single-source
+    }
+    let mut groups: Vec<Group> = Vec::new();
+    for seg in segments {
+        let clean = cleanup_text(seg.text.trim());
+        if clean.is_empty() {
+            continue;
+        }
+        let deduped = dedup_repeated_block(&dedup_consecutive_phrases(&clean));
+        let seg_source = speaker_source_prefix(&deduped);
+        let last = groups
+            .last_mut()
+            .filter(|g| seg.start_ms - g.end_ms < MERGE_GAP_MS && g.source == seg_source);
+        match last {
+            Some(g) => {
+                g.end_ms = seg.end_ms;
+                let body = deduped
+                    .strip_prefix("in: ")
+                    .or_else(|| deduped.strip_prefix("out: "))
+                    .map(|s| s.to_string())
+                    .unwrap_or(deduped);
+                g.parts.push(body);
+            }
+            None => groups.push(Group {
+                start_ms: seg.start_ms,
+                end_ms: seg.end_ms,
+                parts: vec![deduped],
+                source: seg_source,
+            }),
+        }
+    }
+    let raw_body = {
+        let mut out = String::new();
+        for (i, g) in groups.iter().enumerate() {
+            if i > 0 {
+                out.push_str("\n\n");
+            }
+            let text = g.parts.join(" ");
+            if include_timestamps {
+                out.push_str(&format!("[{}] {}", format_ms(g.start_ms), text));
+            } else {
+                out.push_str(&text);
+            }
+        }
+        out
+    };
+    apply_replacements(&raw_body, rules, &ReplacementScope::Transcripts)
+}
+
+/// Count words in the rendered transcript body, excluding timestamp labels. Shared by the
+/// `HistoryRecord` builders and the markdown front matter so the store and the `.md` agree.
+pub fn count_words(segments: &[Segment], rules: &[ReplacementRule]) -> usize {
+    render_transcript_body(segments, false, rules)
+        .split_whitespace()
+        .count()
+}
+
+/// Render a complete transcript markdown document (YAML front matter + `## Transcript` +
+/// optional `## Notes`, trailing newline). Pure: performs no file I/O.
+pub fn render_transcript_markdown(
+    segments: &[Segment],
+    notes: &[Note],
+    title: &str,
+    model_name: &str,
+    include_timestamps: bool,
+    rules: &[ReplacementRule],
+) -> String {
+    let transcript_body = render_transcript_body(segments, include_timestamps, rules);
+
+    let duration_seconds = segments
+        .last()
+        .map(|s| s.end_ms.max(0) as f64 / 1000.0)
+        .unwrap_or(0.0);
+    let word_count = count_words(segments, rules);
+    let token_estimate = ((word_count as f64) * 1.3).round() as usize;
+
+    let mut md = String::new();
+    md.push_str("---\n");
+    md.push_str(&format!("title: '{}'\n", title.replace('\'', "’")));
+    md.push_str(&format!("duration_seconds: {:.1}\n", duration_seconds));
+    md.push_str(&format!("word_count: {word_count}\n"));
+    md.push_str(&format!("token_estimate: {token_estimate}\n"));
+    md.push_str(&format!("model: {model_name}\n"));
+    md.push_str("---\n\n");
+    md.push_str("## Transcript\n\n");
+    md.push_str(&transcript_body);
+
+    if !notes.is_empty() {
+        md.push_str("\n\n## Notes\n");
+        for (i, note) in notes.iter().enumerate() {
+            md.push_str(&format!(
+                "[{}] ({}) {}\n",
+                i + 1,
+                format_ms(note.recorded_at_ms as i64),
+                note.text
+            ));
+        }
+    }
+
+    md.push('\n');
+    md
+}
+
+/// Adapter: render markdown directly from a stored [`crate::types::HistoryRecord`].
+pub fn render_from_record(
+    record: &crate::types::HistoryRecord,
+    include_timestamps: bool,
+    rules: &[ReplacementRule],
+) -> String {
+    render_transcript_markdown(
+        &record.segments,
+        &record.notes,
+        &record.title,
+        &record.model,
+        include_timestamps,
+        rules,
+    )
 }
 
 /// Write a placeholder 16-bit PCM WAV header for streaming capture.
@@ -1202,6 +1236,69 @@ mod tests {
         assert!(raw.contains("remember this"));
     }
 
+    // ── renderer extraction / parity ─────────────────────────────────────────
+
+    #[test]
+    fn render_transcript_markdown_golden_dual_source_notes_rules_timestamps() {
+        // Locks the exact byte output of the extracted renderer: dual-source grouping,
+        // a replacement rule, timestamps on, and a notes section.
+        let segments = vec![
+            Segment { start_ms: 0, end_ms: 1_000, text: "in: hello dash world".to_string() },
+            Segment { start_ms: 1_200, end_ms: 3_000, text: "out: How are you?".to_string() },
+            Segment { start_ms: 3_100, end_ms: 4_000, text: "out: I am well.".to_string() },
+        ];
+        let notes = vec![Note {
+            id: "n1".to_string(),
+            text: "follow up".to_string(),
+            recorded_at_ms: 2_000,
+        }];
+        let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
+        let md = render_transcript_markdown(&segments, &notes, "My Title", "tiny", true, &rules);
+        // word_count counts every whitespace token of the timestamp-free body, including the
+        // `in:`/`out:` speaker labels and the substituted `-` (11 tokens). A notes section ends
+        // with a blank line (the loop's trailing `\n` plus the document's final `\n`).
+        let expected = "---\n\
+title: 'My Title'\n\
+duration_seconds: 4.0\n\
+word_count: 11\n\
+token_estimate: 14\n\
+model: tiny\n\
+---\n\n\
+## Transcript\n\n\
+[00:00:00] in: hello - world\n\n\
+[00:00:01] out: How are you? I am well.\n\n\
+## Notes\n\
+[1] (00:00:02) follow up\n\n";
+        assert_eq!(md, expected);
+    }
+
+    #[test]
+    fn write_transcript_matches_pure_renderer() {
+        let svc = OutputService;
+        let file = temp_file("parity.md");
+        let segments = vec![Segment {
+            start_ms: 0,
+            end_ms: 2_000,
+            text: "hello world".to_string(),
+        }];
+        svc.write_transcript(&segments, &[], "T", "tiny", false, &[], &file)
+            .expect("write");
+        let on_disk = std::fs::read_to_string(&file).expect("read");
+        let pure = render_transcript_markdown(&segments, &[], "T", "tiny", false, &[]);
+        assert_eq!(on_disk, pure);
+    }
+
+    #[test]
+    fn count_words_excludes_timestamp_labels() {
+        let segments = vec![Segment {
+            start_ms: 12_000,
+            end_ms: 14_000,
+            text: "hello world".to_string(),
+        }];
+        // Two real words regardless of timestamp rendering.
+        assert_eq!(count_words(&segments, &[]), 2);
+    }
+
     // ── format_ms ────────────────────────────────────────────────────────────
 
     #[test]
@@ -1302,62 +1399,18 @@ mod tests {
     }
 
     #[test]
-    fn write_dictate_history_creates_missing_save_folder() {
-        let svc = OutputService;
-        let folder = std::env::temp_dir()
-            .join(format!(
-                "liscribe-dictate-mkdir-tests-{}",
-                uuid::Uuid::new_v4()
-            ))
-            .join("nested")
-            .join("save");
-        let folder = folder.to_string_lossy().to_string();
-        assert!(!PathBuf::from(&folder).exists());
-
-        svc.write_dictate_history_entry(&folder, "hello")
-            .expect("write creates parent dirs");
-
-        let entries = svc.read_dictate_history(&folder).expect("read");
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].text, "hello");
-    }
-
-    #[test]
-    fn write_then_read_dictate_history_entry() {
+    fn read_dictate_history_parses_legacy_file() {
+        // Legacy dictate_history.json is read-only now; verify the parser still handles it.
         let svc = OutputService;
         let folder = temp_save_folder();
-
-        svc.write_dictate_history_entry(&folder, "hello world").expect("write");
-
-        let entries = svc.read_dictate_history(&folder).expect("read");
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].text, "hello world");
-    }
-
-    #[test]
-    fn dictate_history_entries_are_newest_first() {
-        let svc = OutputService;
-        let folder = temp_save_folder();
-
-        svc.write_dictate_history_entry(&folder, "first").expect("write first");
-        svc.write_dictate_history_entry(&folder, "second").expect("write second");
+        let json = r#"[{"id":"a1","timestamp":"2026-01-01T00:00:00Z","text":"second"},
+                       {"id":"a0","timestamp":"2025-12-31T00:00:00Z","text":"first"}]"#;
+        std::fs::write(PathBuf::from(&folder).join("dictate_history.json"), json).unwrap();
 
         let entries = svc.read_dictate_history(&folder).expect("read");
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].text, "second");
-        assert_eq!(entries[1].text, "first");
-    }
-
-    #[test]
-    fn dictate_history_entry_has_non_empty_id_and_timestamp() {
-        let svc = OutputService;
-        let folder = temp_save_folder();
-
-        svc.write_dictate_history_entry(&folder, "test entry").expect("write");
-
-        let entries = svc.read_dictate_history(&folder).expect("read");
-        assert!(!entries[0].id.is_empty());
-        assert!(!entries[0].timestamp.is_empty());
+        assert_eq!(entries[1].id, "a0");
     }
 
     // ── sync_wav_header / session manifest / salvage ─────────────────────────

@@ -232,6 +232,21 @@ pub fn settings_set_keep_wav(
 }
 
 #[tauri::command]
+pub fn settings_get_save_transcripts_as_markdown(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<bool, String> {
+    Ok(ctrl.get_save_transcripts_as_markdown())
+}
+
+#[tauri::command]
+pub fn settings_set_save_transcripts_as_markdown(
+    ctrl: State<'_, Arc<SettingsController>>,
+    enabled: bool,
+) -> Result<(), String> {
+    ctrl.set_save_transcripts_as_markdown(enabled)
+}
+
+#[tauri::command]
 pub fn settings_get_dictate_model_id(
     ctrl: State<'_, Arc<SettingsController>>,
 ) -> Result<Option<String>, String> {

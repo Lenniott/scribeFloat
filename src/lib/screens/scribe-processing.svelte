@@ -206,18 +206,20 @@
             <div class="flex items-center justify-between">
               <p class="text-body-md text-fg/80">Transcript saved.</p>
               <div class="flex gap-2">
-                <IconButton
-                  aria-label="copy transcript to clipboard"
-                  variant="normal"
-                  icon={Copy}
-                  onclick={copyContent}
-                />
-                <IconButton
-                  aria-label="Open Transcript"
-                  icon={SquareArrowOutUpRight}
-                  variant="normal"
-                  onclick={openTranscript}
-                />
+                {#if transcriptPath}
+                  <IconButton
+                    aria-label="copy transcript to clipboard"
+                    variant="normal"
+                    icon={Copy}
+                    onclick={copyContent}
+                  />
+                  <IconButton
+                    aria-label="Open Transcript"
+                    icon={SquareArrowOutUpRight}
+                    variant="normal"
+                    onclick={openTranscript}
+                  />
+                {/if}
               </div>
             </div>
           {:else if phase === "no_model"}

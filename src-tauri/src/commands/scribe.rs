@@ -131,3 +131,10 @@ pub fn scribe_list_recovery_sessions(
     ctrl.list_recovery_sessions()
         .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn scribe_list_transcripts(
+    ctrl: State<'_, Arc<ScribeController>>,
+) -> Result<Vec<crate::types::ScribeTranscriptEntry>, String> {
+    ctrl.list_transcripts()
+}

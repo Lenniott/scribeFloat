@@ -1,6 +1,7 @@
 use crate::types::{
     DictateHistoryEntry, Note, RecoverySessionInfo, ReplacementRule, ReplacementRuleType,
-    ReplacementScope, Segment, SessionManifest, SessionManifestState, WordTransform,
+    ReplacementScope, ScribeTranscriptEntry, Segment, SessionManifest, SessionManifestState,
+    WordTransform,
 };
 use anyhow::{anyhow, Context, Result};
 use hound::{SampleFormat, WavSpec, WavWriter};
@@ -11,6 +12,25 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub struct OutputService;
+
+/// Extract a scalar value from a YAML front matter block (the `---` delimited header).
+/// Handles both quoted (`key: 'value'`) and unquoted (`key: value`) forms.
+fn parse_front_matter_field(content: &str, key: &str) -> Option<String> {
+    let after_open = content.strip_prefix("---")?;
+    let close = after_open.find("\n---")?;
+    let front = &after_open[..close];
+    for line in front.lines() {
+        if let Some(after_key) = line.strip_prefix(key) {
+            if let Some(rest) = after_key.strip_prefix(':') {
+                let value = rest.trim().trim_matches('\'').trim_matches('"');
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
+    None
+}
 
 fn transcript_filename_base(model_path: &Path, title: &str) -> String {
     let slug: String = title
@@ -297,6 +317,47 @@ impl OutputService {
         }
         let raw = std::fs::read_to_string(&path).context("read dictate_history.json")?;
         serde_json::from_str(&raw).context("parse dictate_history.json")
+    }
+
+    /// Scan `save_folder` root for `*.md` files and return their metadata sorted newest-first.
+    /// Reads YAML front matter from each file to recover the original title and model name.
+    pub fn list_transcripts(&self, save_folder: &str) -> Result<Vec<ScribeTranscriptEntry>> {
+        let dir = PathBuf::from(save_folder);
+        if !dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut entries: Vec<ScribeTranscriptEntry> = std::fs::read_dir(&dir)
+            .context("read save folder")?
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.path().extension().and_then(|x| x.to_str()) == Some("md")
+                    && e.path().is_file()
+            })
+            .filter_map(|e| {
+                let path = e.path();
+                let content = std::fs::read_to_string(&path).ok()?;
+                let fallback_title = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                let title = parse_front_matter_field(&content, "title")
+                    .unwrap_or(fallback_title);
+                let model = parse_front_matter_field(&content, "model").unwrap_or_default();
+                let mtime = std::fs::metadata(&path).ok()?.modified().ok()?;
+                let modified_at: chrono::DateTime<chrono::Utc> = mtime.into();
+                Some(ScribeTranscriptEntry {
+                    path: path.to_string_lossy().into_owned(),
+                    title,
+                    model,
+                    modified_at: modified_at.to_rfc3339(),
+                })
+            })
+            .collect();
+
+        entries.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+        Ok(entries)
     }
 
     /// Simulate Cmd/Ctrl+V into the currently focused application.
@@ -936,12 +997,76 @@ mod tests {
         assert_eq!(apply_replacements("hello", &rules, &ReplacementScope::Both), "hello");
     }
 
+    #[test]
+    fn float_prefix_trigger_replaces() {
+        let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
+        assert_eq!(apply_replacements("11 float dash may", &rules, &ReplacementScope::Both), "11 - may");
+    }
+
+    #[test]
+    fn bare_word_does_not_trigger_float_prefixed_rule() {
+        let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
+        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Both), "11 dash may");
+    }
+
+    #[test]
+    fn float_prefix_newline_rule_replaces() {
+        let rules = vec![newline_rule("float new line")];
+        assert_eq!(apply_replacements("hello float new line world", &rules, &ReplacementScope::Both), "hello\nworld");
+    }
+
+    #[test]
+    fn bare_new_line_does_not_trigger_float_prefixed_rule() {
+        let rules = vec![newline_rule("float new line")];
+        assert_eq!(apply_replacements("hello new line world", &rules, &ReplacementScope::Both), "hello new line world");
+    }
+
 
     fn temp_file(name: &str) -> PathBuf {
         let dir =
             std::env::temp_dir().join(format!("liscribe-output-tests-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         dir.join(name)
+    }
+
+    fn temp_dir() -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("liscribe-output-tests-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[test]
+    fn list_transcripts_empty_folder() {
+        let dir = temp_dir();
+        let svc = OutputService;
+        let result = svc.list_transcripts(dir.to_str().unwrap()).expect("list transcripts");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn list_transcripts_reads_title_and_model_from_front_matter() {
+        let dir = temp_dir();
+        let content = "---\ntitle: 'My Meeting'\nduration_seconds: 30.0\nword_count: 50\ntoken_estimate: 65\nmodel: tiny\n---\n\n## Transcript\n\nHello world.\n";
+        std::fs::write(dir.join("my_meeting_tiny.md"), content).unwrap();
+        let svc = OutputService;
+        let entries = svc.list_transcripts(dir.to_str().unwrap()).expect("list transcripts");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].title, "My Meeting");
+        assert_eq!(entries[0].model, "tiny");
+    }
+
+    #[test]
+    fn list_transcripts_returns_all_md_files_sorted_desc() {
+        let dir = temp_dir();
+        let content = |title: &str| format!("---\ntitle: '{title}'\nmodel: tiny\n---\n\n## Transcript\n\nText.\n");
+        std::fs::write(dir.join("a.md"), content("Alpha")).unwrap();
+        std::fs::write(dir.join("b.md"), content("Beta")).unwrap();
+        let svc = OutputService;
+        let entries = svc.list_transcripts(dir.to_str().unwrap()).expect("list transcripts");
+        assert_eq!(entries.len(), 2);
+        // entries are sorted descending; verify the invariant holds
+        assert!(entries[0].modified_at >= entries[1].modified_at);
     }
 
     #[test]

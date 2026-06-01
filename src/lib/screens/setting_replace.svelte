@@ -2,6 +2,7 @@
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import Button from "@lib/components/Button.svelte";
+	import Chip from "@lib/components/Chip.svelte";
 	import IconButton from "@lib/components/IconButton.svelte";
 	import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	import { Pencil, Trash2 } from "lucide-svelte";
@@ -141,10 +142,10 @@
 					<span class="text-label-sm text-fg/50 shrink-0">{ruleDescription(rule)}</span>
 					<div class="flex items-center gap-1 ml-auto shrink-0">
 						{#if rule.scope === "both" || rule.scope === "transcripts"}
-							<span class="sf-label-sm shrink-0 rounded-sm border border-brand bg-brand/10 px-1 py-px text-brand">transcripts</span>
+							<Chip variant="brand">transcripts</Chip>
 						{/if}
 						{#if rule.scope === "both" || rule.scope === "dictate"}
-							<span class="sf-label-sm shrink-0 rounded-sm border border-focus bg-focus/15 px-1 py-px text-focus">dictate</span>
+							<Chip variant="focus">dictate</Chip>
 						{/if}
 					</div>
 					<IconButton icon={Pencil} size="small" variant="normal" aria-label="Edit rule" onclick={() => startEdit(i)} />

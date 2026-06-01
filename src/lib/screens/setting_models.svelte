@@ -5,6 +5,7 @@
   import Toast from "@lib/components/Toast.svelte";
   import type { ToastState } from "@lib/components/Toast.svelte";
   import IconButton from "@lib/components/IconButton.svelte";
+  import Chip from "@lib/components/Chip.svelte";
   import { Download, RefreshCw, Trash2 } from "lucide-svelte";
 
   let {
@@ -197,11 +198,7 @@
           class="sf-body-md flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-fg-dim"
         >
           <div class="flex min-w-0 items-center gap-2">
-            <span
-              class="sf-label-sm shrink-0 rounded-sm border border-brand bg-brand/10 px-1.5 py-0.5 text-center min-w-11 text-brand"
-            >
-              Scribe
-            </span>
+            <Chip variant="brand">Scribe</Chip>
           </div>
           <div class="flex shrink-0 flex-col items-end gap-0.5">
             <label class="sr-only" for="scribe-model-select"
@@ -228,11 +225,7 @@
           class="sf-body-md flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-fg-dim"
         >
           <div class="flex min-w-0 items-center gap-2">
-            <span
-              class="sf-label-sm shrink-0 rounded-sm border border-focus bg-focus/15 px-1 py-px text-focus"
-            >
-              Dictate
-            </span>
+            <Chip variant="focus">Dictate</Chip>
           </div>
           <div class="flex shrink-0 flex-col items-end gap-0.5">
             <label class="sr-only" for="dictate-model-select"
@@ -367,18 +360,10 @@
                   </div>
                 {/if}
                 {#if model.selected && model.downloaded}
-                  <span
-                    class="sf-label-sm shrink-0 rounded-sm border border-brand bg-brand/10 px-1 py-px text-brand"
-                  >
-                    scribe
-                  </span>
+                  <Chip variant="brand">scribe</Chip>
                 {/if}
                 {#if model.downloaded && (model.id === dictateModelId || (dictateModelId === null && model.selected))}
-                  <span
-                    class="sf-label-sm shrink-0 rounded-sm border border-focus bg-focus/15 px-1 py-px text-focus"
-                  >
-                    dictate
-                  </span>
+                  <Chip variant="focus">dictate</Chip>
                 {/if}
               </div>
             </div>

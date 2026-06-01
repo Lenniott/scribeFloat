@@ -107,8 +107,11 @@ pub(crate) const SCRIBE_WINDOW_LABEL: &str = "scribe";
 const TRANSCRIBE_WINDOW_LABEL: &str = "transcribe";
 const SETTINGS_WINDOW_LABEL: &str = "settings";
 pub(crate) const DICTATE_WINDOW_LABEL: &str = "dictate";
+const HISTORY_WINDOW_LABEL: &str = "history";
+
 const OPEN_SCRIBE_MENU_ID: &str = "open_scribe";
 const OPEN_TRANSCRIBE_MENU_ID: &str = "open_transcribe";
+const OPEN_HISTORY_MENU_ID: &str = "open_history";
 const OPEN_SETTINGS_MENU_ID: &str = "open_settings";
 const QUIT_MENU_ID: &str = "quit";
 
@@ -118,6 +121,8 @@ const TRANSCRIBE_WINDOW_W: f64 = 800.0;
 const TRANSCRIBE_WINDOW_H: f64 = 600.0;
 const SETTINGS_WINDOW_W: f64 = 960.0;
 const SETTINGS_WINDOW_H: f64 = 680.0;
+const HISTORY_WINDOW_W: f64 = 480.0;
+const HISTORY_WINDOW_H: f64 = 600.0;
 const DICTATE_WINDOW_W: f64 = 240.0;
 const DICTATE_WINDOW_H: f64 = 48.0;
 /// Margin from the right and top edge of the primary monitor.
@@ -159,6 +164,13 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
+    let open_history = MenuItem::with_id(
+        app,
+        OPEN_HISTORY_MENU_ID,
+        "History",
+        true,
+        None::<&str>,
+    )?;
     let open_settings = MenuItem::with_id(
         app,
         OPEN_SETTINGS_MENU_ID,
@@ -169,7 +181,7 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, QUIT_MENU_ID, "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
-        &[&open_scribe, &open_transcribe, &open_settings, &quit],
+        &[&open_scribe, &open_transcribe, &open_history, &open_settings, &quit],
     )?;
 
     let mut tray = TrayIconBuilder::with_id("main")
@@ -184,6 +196,11 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
             OPEN_TRANSCRIBE_MENU_ID => {
                 if let Err(err) = open_transcribe_window(app) {
                     eprintln!("failed to open transcribe window: {err}");
+                }
+            }
+            OPEN_HISTORY_MENU_ID => {
+                if let Err(err) = open_history_window(app) {
+                    eprintln!("failed to open history window: {err}");
                 }
             }
             OPEN_SETTINGS_MENU_ID => {
@@ -314,6 +331,17 @@ pub(crate) fn open_transcribe_window(app: &AppHandle) -> tauri::Result<WebviewWi
         WebviewUrl::App("?view=transcribe".into()),
         TRANSCRIBE_WINDOW_W,
         TRANSCRIBE_WINDOW_H,
+    )
+}
+
+fn open_history_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    open_or_focus_window(
+        app,
+        HISTORY_WINDOW_LABEL,
+        "History",
+        WebviewUrl::App("?view=history".into()),
+        HISTORY_WINDOW_W,
+        HISTORY_WINDOW_H,
     )
 }
 
@@ -643,6 +671,7 @@ pub fn run() {
             commands::scribe::scribe_list_output_devices,
             commands::scribe::scribe_read_transcript,
             commands::scribe::scribe_list_recovery_sessions,
+            commands::scribe::scribe_list_transcripts,
             commands::scribe::scribe_toggle_speaker_capture,
             commands::model::model_setup_status,
             commands::model::model_list,

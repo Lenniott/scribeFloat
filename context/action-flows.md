@@ -118,7 +118,7 @@ Key listener (always on): **Left Control** only (`CGEventTap` on macOS, low-leve
     - **Yes** → send Enter keystroke after paste
     - **No** → paste only
 9. Audio Service temp WAV deleted on success; on failure Output Service may salvage to `{save_folder}/dictate_failures/`
-10. Output Service: appends to dictate history (`dictate.jsonl`)
+10. Output Service: appends to dictate history (`dictate_history.json`)
     - Empty transcript → skip log entry
 11. Floating panel dismissed (auto)
 

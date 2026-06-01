@@ -5,7 +5,7 @@ use crate::services::{
     output::OutputService,
 };
 use crate::services::audio::{read_wav_mono_f32, WHISPER_SAMPLE_RATE};
-use crate::types::{Config, Note, ProcessingStage, RecoverySessionInfo, ScribeState, ScribeStateEvent, Segment, SessionManifest, SessionManifestState};
+use crate::types::{Config, Note, ProcessingStage, RecoverySessionInfo, ScribeState, ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest, SessionManifestState};
 use anyhow::{anyhow, Result};
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -782,6 +782,11 @@ impl ScribeController {
     pub fn list_recovery_sessions(&self) -> Result<Vec<RecoverySessionInfo>> {
         let cfg = self.config.get();
         self.output.scan_incomplete_scribe_sessions(&cfg.save_folder)
+    }
+
+    pub fn list_transcripts(&self) -> Result<Vec<ScribeTranscriptEntry>, String> {
+        let cfg = self.config.get();
+        self.output.list_transcripts(&cfg.save_folder).map_err(|e| e.to_string())
     }
 
     pub fn set_include_timestamps(&self, enabled: bool) -> Result<()> {

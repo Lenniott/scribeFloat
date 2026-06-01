@@ -42,8 +42,10 @@ These details change often — if code and docs disagree, **fix the doc or confi
 | Transcripts | Save folder **root**: `{title}_{model}.md`; `_1`, `_2`, … on collision |
 | Scribe WAVs | Staging dir `{save_folder}/{timestamp}/`; removed when **Keep audio** is off |
 | Capture I/O | `AudioService` streams checkpointed WAV during recording |
-| Durable files | `OutputService` — transcripts, manifests, cleanup, dictate history, failure salvage |
+| Durable files | `OutputService` — transcripts, manifests, cleanup, dictate history (`dictate_history.json`), failure salvage |
 | Dictate audio | Temp WAV in app data (`dictate_temp/`); deleted on success; salvaged on error |
+| History | **History** window (tray menu) lists Scribe transcripts + dictations chronologically; filter by source; copy or open each entry |
+| Word replacements | Trigger phrases require a `float` prefix (e.g. "float dash" → `-`) to avoid accidental substitution |
 | Model perf | Cached Whisper contexts; tiny/base preloaded when recording starts |
 | macOS releases | Separate Apple Silicon (Metal) and Intel (AVX2) native builds |
 

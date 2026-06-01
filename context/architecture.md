@@ -48,6 +48,7 @@ graph TB
         scribe_ui["Scribe Screen\nscribe.svelte\nscribe-processing.svelte"]
         transcribe_ui["Transcribe Screen\ntranscribe.svelte"]
         dictate_ui["Dictate HUD\ndictate.svelte"]
+        history_ui["History\nhistory.svelte"]
         settings_ui["Settings\nsettings.svelte\nsetting_*.svelte"]
     end
 
@@ -97,11 +98,14 @@ graph TB
     tray --> scribe_ui
     tray --> transcribe_ui
     tray --> dictate_ui
+    tray --> history_ui
     tray --> settings_ui
 
     scribe_ui -->|"invoke()"| cmd_scribe
     transcribe_ui -->|"invoke()"| cmd_transcribe
     dictate_ui -->|"invoke()"| cmd_dictate
+    history_ui -->|"invoke()"| cmd_dictate
+    history_ui -->|"invoke()"| cmd_settings
     settings_ui -->|"invoke()"| cmd_model
     settings_ui -->|"invoke()"| cmd_settings
 
@@ -502,7 +506,7 @@ graph TB
 - **General**: save folder, default mic, WAV retention, auto-enter, open-transcripts-with app, start on login
 - **Models**: per-action default model (Dictate / Scribe / Transcribe), download and delete; download progress shown via `model://download-progress` event
 - **Hotkeys**: Scribe hotkey, Dictate trigger key and mode — currently shown in General; dedicated tab planned
-- **Replacements**: add/edit/delete rules, scope per rule (transcripts / dictate / both)
+- **Replacements**: add/edit/delete rules, scope per rule (transcripts / dictate / both). Default rules use a `float` prefix (e.g. "float dash" → `-`) so normal speech does not accidentally trigger replacements
 - **Permissions**: live permission status via `PermissionsService`; one-tap path to OS settings pane
 - **Help**: inline topics; no network required
 - **Webhook**: placeholder screen — feature not yet implemented in backend
@@ -630,6 +634,7 @@ src/
 │   │   ├── scribe-processing.svelte   Transcribing / Done / No-model UI
 │   │   ├── transcribe.svelte   File import and queue UI
 │   │   ├── dictate.svelte      Floating HUD
+│   │   ├── history.svelte             Unified history: Scribe transcripts + dictations (opened via tray)
 │   │   ├── settings.svelte     Settings shell with tab routing
 │   │   └── setting_*.svelte    Individual settings tabs
 │   └── stores/

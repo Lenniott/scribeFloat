@@ -4,12 +4,14 @@
 	import ScribeProcessingScreen from "@lib/screens/scribe-processing.svelte";
 	import SettingsScreen from "@lib/screens/settings.svelte";
 	import DictateScreen from "@lib/screens/dictate.svelte";
-import TranscribeScreen from "@lib/screens/transcribe.svelte";
+	import HistoryScreen from "@lib/screens/history.svelte";
+	import TranscribeScreen from "@lib/screens/transcribe.svelte";
 
 	const viewParam = browser ? new URLSearchParams(window.location.search).get("view") : null;
 	const standaloneSettings = viewParam === "settings";
 	const standaloneDictate = viewParam === "dictate";
-const standaloneTranscribe = viewParam === "transcribe";
+	const standaloneHistory = viewParam === "history";
+	const standaloneTranscribe = viewParam === "transcribe";
 
 	type AppScreen = "recording" | "processing";
 
@@ -30,6 +32,8 @@ const standaloneTranscribe = viewParam === "transcribe";
 	<SettingsScreen standalone />
 {:else if standaloneDictate}
 	<DictateScreen />
+{:else if standaloneHistory}
+	<HistoryScreen />
 {:else if standaloneTranscribe}
 	<TranscribeScreen />
 {:else}

@@ -176,7 +176,7 @@ pub struct ReplacementRule {
 fn default_replacement_rules() -> Vec<ReplacementRule> {
     vec![
         ReplacementRule {
-            trigger: "to do".to_string(),
+            trigger: "float to do".to_string(),
             aliases: vec![],
             rule_type: ReplacementRuleType::Simple,
             output: "[ ]".to_string(),
@@ -186,7 +186,7 @@ fn default_replacement_rules() -> Vec<ReplacementRule> {
             transform: WordTransform::None,
         },
         ReplacementRule {
-            trigger: "open bracket".to_string(),
+            trigger: "float open bracket".to_string(),
             aliases: vec![],
             rule_type: ReplacementRuleType::Simple,
             output: "[".to_string(),
@@ -196,8 +196,8 @@ fn default_replacement_rules() -> Vec<ReplacementRule> {
             transform: WordTransform::None,
         },
         ReplacementRule {
-            trigger: "close bracket".to_string(),
-            aliases: vec!["closed bracket".to_string()],
+            trigger: "float close bracket".to_string(),
+            aliases: vec!["float closed bracket".to_string()],
             rule_type: ReplacementRuleType::Simple,
             output: "]".to_string(),
             scope: ReplacementScope::Both,
@@ -206,7 +206,7 @@ fn default_replacement_rules() -> Vec<ReplacementRule> {
             transform: WordTransform::None,
         },
         ReplacementRule {
-            trigger: "dash".to_string(),
+            trigger: "float dash".to_string(),
             aliases: vec![],
             rule_type: ReplacementRuleType::Simple,
             output: "-".to_string(),
@@ -216,8 +216,8 @@ fn default_replacement_rules() -> Vec<ReplacementRule> {
             transform: WordTransform::None,
         },
         ReplacementRule {
-            trigger: "new line".to_string(),
-            aliases: vec!["newline".to_string()],
+            trigger: "float new line".to_string(),
+            aliases: vec!["float newline".to_string()],
             rule_type: ReplacementRuleType::Newline,
             output: String::new(),
             scope: ReplacementScope::Both,
@@ -519,6 +519,14 @@ pub struct DictateHistoryEntry {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScribeTranscriptEntry {
+    pub path: String,
+    pub title: String,
+    pub model: String,
+    pub modified_at: String,
+}
+
 impl ScribeStateEvent {
     pub fn new(state: ScribeState) -> Self {
         Self {
@@ -544,6 +552,26 @@ pub struct UpdateCheckResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_replacement_rules_all_have_float_prefix() {
+        let rules = default_replacement_rules();
+        for rule in &rules {
+            assert!(
+                rule.trigger.starts_with("float "),
+                "trigger {:?} must start with 'float '",
+                rule.trigger
+            );
+            for alias in &rule.aliases {
+                assert!(
+                    alias.starts_with("float "),
+                    "alias {:?} in rule {:?} must start with 'float '",
+                    alias,
+                    rule.trigger
+                );
+            }
+        }
+    }
 
     #[test]
     fn scribe_state_event_serializes_ui_expected_keys() {

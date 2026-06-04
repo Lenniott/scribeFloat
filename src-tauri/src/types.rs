@@ -851,6 +851,29 @@ mod tests {
     }
 
     #[test]
+    fn from_scribe_can_distinguish_speaker_capture_enabled_from_dual_source_success() {
+        let segments = vec![Segment {
+            start_ms: 0,
+            end_ms: 2_000,
+            text: "mic only".to_string(),
+        }];
+        let rec = HistoryRecord::from_scribe(
+            "Call".to_string(),
+            "tiny".to_string(),
+            segments,
+            vec![],
+            &[],
+            true,
+            false,
+            None,
+            None,
+            None,
+        );
+        assert!(rec.speaker_capture);
+        assert!(!rec.dual_source);
+    }
+
+    #[test]
     fn from_dictate_word_count_matches_text() {
         let segments = vec![Segment { start_ms: 0, end_ms: 2_000, text: "raw".to_string() }];
         let rec = HistoryRecord::from_dictate(&segments, "hello there friend", "tiny".to_string());

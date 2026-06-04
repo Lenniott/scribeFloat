@@ -223,6 +223,8 @@ pub struct DictateController {
     hold_start_in_flight: Arc<AtomicBool>,
     /// macOS: PID of frontmost app before HUD `show()`, restored before Cmd+V paste (see dictate_focus).
     restore_paste_target_pid: Arc<Mutex<Option<i32>>>,
+    /// Guards against a second simulated paste in the same transcription (e.g. duplicate Stop events).
+    paste_once: AtomicBool,
 }
 
 impl DictateController {
@@ -249,6 +251,7 @@ impl DictateController {
             hold_start_cancel: Arc::new(AtomicBool::new(false)),
             hold_start_in_flight: Arc::new(AtomicBool::new(false)),
             restore_paste_target_pid: Arc::new(Mutex::new(None)),
+            paste_once: AtomicBool::new(false),
         })
     }
 
@@ -322,6 +325,8 @@ impl DictateController {
                 match source {
                     DictateStartSource::Toggle => Self::spawn_dictate_window_and_start(this),
                     DictateStartSource::HoldImmediateStop => {
+                        // Abort any in-flight hold-to-talk open so we don't also Stop later.
+                        this.hold_start_cancel.store(true, Ordering::SeqCst);
                         Self::spawn_dictate_hold_immediate_stop(this);
                     }
                     DictateStartSource::HoldWhileHeld => {
@@ -552,6 +557,13 @@ impl DictateController {
         let abort_flag = Arc::new(AtomicBool::new(false));
         let session = {
             let mut inner = this.lock();
+            if matches!(
+                inner.state,
+                DictateState::Transcribing | DictateState::Pasting | DictateState::Done
+            ) {
+                eprintln!("[dictate] ignoring duplicate stop — pipeline already running");
+                return Ok(());
+            }
             if inner.state != DictateState::Recording {
                 return Err(anyhow!("cannot stop dictate: not recording"));
             }
@@ -721,20 +733,29 @@ impl DictateController {
 
         let mut paste_failed = false;
         if config.dictate_auto_paste {
-            match self.paste_on_main_thread(config.dictate_auto_enter, text.clone()) {
-                Ok((paste_res, enter_res)) => {
-                    if let Err(e) = paste_res {
-                        eprintln!("[dictate] paste simulation failed: {e}");
+            if self
+                .paste_once
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_err()
+            {
+                eprintln!("[dictate] skipping duplicate paste in same session");
+            } else {
+                match self.paste_on_main_thread(config.dictate_auto_enter, text.clone()) {
+                    Ok((paste_res, enter_res)) => {
+                        if let Err(e) = paste_res {
+                            eprintln!("[dictate] paste simulation failed: {e}");
+                            paste_failed = true;
+                        }
+                        if let Err(e) = enter_res {
+                            eprintln!("[dictate] enter simulation failed: {e}");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[dictate] paste dispatch failed: {e}");
                         paste_failed = true;
                     }
-                    if let Err(e) = enter_res {
-                        eprintln!("[dictate] enter simulation failed: {e}");
-                    }
                 }
-                Err(e) => {
-                    eprintln!("[dictate] paste dispatch failed: {e}");
-                    paste_failed = true;
-                }
+                self.paste_once.store(false, Ordering::SeqCst);
             }
         } else {
             self.clear_restore_paste_target_pid();

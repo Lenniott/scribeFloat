@@ -12,7 +12,9 @@ context/README.md          ← Start here. Reading order and behaviour quick ref
 context/architecture.md    ← Layer rules, call chain, C4 diagrams.
 context/action-flows.md    ← Step-by-step flows for each workflow.
 context/componets.md       ← UI component catalogue.
-docs/remaining-work.md     ← Deferred items from the Intel perf branch.
+docs/README.md             ← Docs index (History UI guide, backlog).
+docs/history-ui-review.md  ← Required before History list/detail UI changes.
+docs/backlog.md            ← Deferred follow-ups.
 ```
 
 ---
@@ -91,6 +93,21 @@ The Scribe webview is **prewarmed at startup** (`prewarm_scribe_window` in `src-
 
 ---
 
+## History UI (do not regress)
+
+Read **`docs/history-ui-review.md`** before changing History screens or components.
+
+**Rules for agents:**
+
+- **List vs detail** are separate full-height modes — no `SplitPane`. Detail opens from the list row title or **View** (`Eye`); list and filter tabs stay hidden until **Close**.
+- **Delete** only on `HistoryListCard` for store records; confirm modal on `history.svelte` — cards emit events, never call `history_delete` directly.
+- **Detail footer** uses `PanelFooter` (flex `shrink-0` below scroll). Do not add `FixedFooterBar` to History detail.
+- **List card**: title is a `<button>`; action icons are siblings with `stopPropagation` — no nested buttons.
+- **Legacy ids** (`md::`, `dictate::`): read-only in UI (no delete/export).
+- **Scribe history metadata**: `speaker_capture` = `scribe_capture_speaker` config at write time; `dual_source` = speaker PCM was merged for transcription — do not set both from the same boolean.
+
+---
+
 ## How to add a new IPC command
 
 1. Add a `#[tauri::command]` fn to the relevant file in `commands/`.
@@ -105,8 +122,9 @@ The Scribe webview is **prewarmed at startup** (`prewarm_scribe_window` in `src-
 1. Check `context/action-flows.md` — if the behaviour is not described there, confirm scope before building.
 2. Decide which layer it belongs to (controller, service, or platform adapter).
 3. If it requires OS-specific behaviour, define a trait in `platform/mod.rs` and implement it per platform. The controller calls the trait, never the concrete type.
-4. If it writes files, route through `OutputService`.
-5. If it needs config, add a field to `Config` in `types.rs` with a `#[serde(default)]` so existing config files keep loading.
+4. If it writes durable transcript **files** (`.md`, WAV cleanup, manifests), route through `OutputService`.
+5. If it appends or updates the structured session **record** (`history.jsonl`), route through `HistoryService` (controllers orchestrate; never append JSONL from the frontend).
+6. If it needs config, add a field to `Config` in `types.rs` with a `#[serde(default)]` so existing config files keep loading.
 
 ---
 
@@ -124,6 +142,8 @@ The Scribe webview is **prewarmed at startup** (`prewarm_scribe_window` in `src-
 | File not saved or wrong path | `services/output.rs` |
 | History record missing or wrong after a session | `services/history.rs` → `append` / `compact` |
 | History list wrong, merge/dedupe incorrect, or delete fails | `controllers/history.rs` |
+| History detail layout, delete placement, or prev/next wrong | `docs/history-ui-review.md` → `history.svelte`, `HistoryDetailPane`, `HistoryListCard` |
+| History chips wrong (dual source vs speaker capture) | `types.rs` `HistoryRecord::from_scribe` + `controllers/scribe.rs` write path |
 | UI shows stale state | `commands/` fn for that panel → check emitted events |
 | Hotkey not triggering | `lib.rs::run()` → `global_shortcut.on_shortcut` |
 | Config not persisting | `services/config.rs` → `update()` and `save()` |

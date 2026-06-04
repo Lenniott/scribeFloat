@@ -1,5 +1,5 @@
 <script lang="ts">
-	export type ChipVariant = 'brand' | 'focus';
+	export type ChipVariant = 'brand' | 'focus' | 'muted';
 
 	let {
 		variant,
@@ -12,6 +12,7 @@
 	const variantClass: Record<ChipVariant, string> = {
 		brand: 'border-brand bg-brand/10 text-brand',
 		focus: 'border-focus bg-focus/15 text-focus',
+		muted: 'border-card bg-fill text-fg/55',
 	};
 </script>
 

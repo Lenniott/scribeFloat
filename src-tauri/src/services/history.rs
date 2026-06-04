@@ -1,4 +1,4 @@
-use crate::types::HistoryRecord;
+use crate::types::{HistoryListItem, HistoryRecord};
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::io::Write;
@@ -151,11 +151,27 @@ impl HistoryService {
     }
 
     /// All live (non-deleted) records, newest-first by `created_at`.
+    /// Prefer [`list_summaries`](Self::list_summaries) for History UI; this clones full segment payloads.
+    #[allow(dead_code)]
     pub fn list(&self, save_folder: &str) -> Result<Vec<HistoryRecord>> {
         let mut inner = self.inner.lock().unwrap();
         self.ensure_loaded(&mut inner, save_folder)?;
         let mut out: Vec<HistoryRecord> =
             inner.records.iter().filter(|r| !r.deleted).cloned().collect();
+        out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(out)
+    }
+
+    /// Lightweight list projection for History UI — no segment payload in the return value.
+    pub fn list_summaries(&self, save_folder: &str) -> Result<Vec<HistoryListItem>> {
+        let mut inner = self.inner.lock().unwrap();
+        self.ensure_loaded(&mut inner, save_folder)?;
+        let mut out: Vec<HistoryListItem> = inner
+            .records
+            .iter()
+            .filter(|r| !r.deleted)
+            .map(HistoryRecord::to_list_item)
+            .collect();
         out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         Ok(out)
     }
@@ -215,6 +231,28 @@ mod tests {
     fn record(text: &str) -> HistoryRecord {
         let segs = vec![Segment { start_ms: 0, end_ms: 1_000, text: text.to_string() }];
         HistoryRecord::from_dictate(&segs, text, "tiny".to_string())
+    }
+
+    #[test]
+    fn list_summaries_matches_list_ids_without_cloning_segments_in_api() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let mut rec = record("short");
+        rec.segments = (0..200)
+            .map(|i| Segment {
+                start_ms: i * 1000,
+                end_ms: (i + 1) * 1000,
+                text: format!("word{i} "),
+            })
+            .collect();
+        rec.word_count = 200;
+        let id = svc.append(&folder, rec).expect("append");
+        let summaries = svc.list_summaries(&folder).expect("summaries");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].id, id);
+        assert_eq!(summaries[0].word_count, 200);
+        let full = svc.list(&folder).expect("list");
+        assert_eq!(full[0].segments.len(), 200);
     }
 
     #[test]

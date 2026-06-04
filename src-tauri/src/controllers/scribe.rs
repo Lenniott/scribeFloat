@@ -759,6 +759,8 @@ impl ScribeController {
 
         // Persist the canonical history record — always, regardless of the markdown toggle.
         let keep_audio = config.keep_wav && !segments.is_empty();
+        // speaker_capture = user setting; dual_source = speaker PCM actually used for merge
+        let speaker_capture = config.scribe_capture_speaker;
         let dual_source = prepared.speaker_pcm_16k.is_some();
         let (session_dir, audio_path) = if keep_audio {
             (
@@ -778,7 +780,7 @@ impl ScribeController {
             segments.to_vec(),
             notes.to_vec(),
             &config.replacement_rules,
-            dual_source,
+            speaker_capture,
             dual_source,
             session_dir,
             audio_path,

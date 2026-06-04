@@ -1,57 +1,69 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
 	import { writeText } from '@tauri-apps/plugin-clipboard-manager';
-	import { X, Copy, SquareArrowOutUpRight, FileDown, Trash2 } from 'lucide-svelte';
+	import { X, Copy, SquareArrowOutUpRight, FileDown, ChevronLeft, ChevronRight } from 'lucide-svelte';
 	import PanelHeader from '@lib/components/layout/PanelHeader.svelte';
-	import FixedFooterBar from '@lib/components/layout/FixedFooterBar.svelte';
+	import PanelFooter from '@lib/components/layout/PanelFooter.svelte';
 	import ScrollablePanel from '@lib/components/accordion/ScrollablePanel.svelte';
-	import Button from '@lib/components/Button.svelte';
 	import IconButton from '@lib/components/IconButton.svelte';
 	import Chip from '@lib/components/Chip.svelte';
-	import Modal from '@lib/components/Modal.svelte';
 	import Toast from '@lib/components/Toast.svelte';
 	import type { ToastState } from '@lib/components/Toast.svelte';
+	import type { HistoryListItem } from '@lib/services/historyActions';
+	import { loadTranscriptPreview } from '@lib/services/historyTranscript';
+	import { exportHistoryMarkdown, openHistoryMarkdown } from '@lib/services/historyActions';
 
-	export type HistoryListItem = {
+	type HistoryDetail = {
+		format_version: number;
 		id: string;
 		kind: string;
 		created_at: string;
 		title: string;
 		model: string;
-		word_count: number;
+		segments: { start_ms: number; end_ms: number; text: string }[];
+		notes: { id: string; text: string; recorded_at_ms: number }[];
 		duration_ms: number;
-		has_markdown: boolean;
+		word_count: number;
+		speaker_capture: boolean;
+		dual_source: boolean;
+		source_path?: string;
 		markdown_path?: string;
-		source: string;
+		session_dir?: string;
+		audio_path?: string;
+		deleted: boolean;
 	};
 
 	let {
 		item,
 		onclose,
 		onrefresh,
+		canGoPrev = false,
+		canGoNext = false,
+		onprev,
+		onnext,
 	}: {
 		item: HistoryListItem;
 		onclose: () => void;
 		onrefresh: () => void;
+		canGoPrev?: boolean;
+		canGoNext?: boolean;
+		onprev?: () => void;
+		onnext?: () => void;
 	} = $props();
 
 	let bodyText = $state('');
+	let loadError = $state('');
+	let detail = $state<HistoryDetail | null>(null);
 	let loadingBody = $state(true);
-	let showDeleteModal = $state(false);
-	let deleting = $state(false);
 
 	let toastMessage = $state('');
 	let toastState = $state<ToastState>('normal');
 	let toastTimeout: ReturnType<typeof setTimeout> | null = null;
 
-	// Scribe and Transcribe use a full-height reader layout; Dictate uses the compact layout.
-	const isReader = $derived(item.kind === 'scribe' || item.kind === 'transcribe');
-
 	const showExport = $derived(
 		item.source === 'store' && item.kind !== 'dictate' && !item.has_markdown,
 	);
 	const showOpenMd = $derived(item.has_markdown && !!item.markdown_path);
-	const showDelete = $derived(item.source === 'store');
 
 	function showToast(msg: string, state: ToastState = 'normal') {
 		if (toastTimeout) clearTimeout(toastTimeout);
@@ -72,12 +84,23 @@
 
 	async function loadContent() {
 		loadingBody = true;
+		loadError = '';
+		detail = null;
 		try {
-			bodyText = await invoke<string>('history_render_markdown', { id: item.id });
-		} catch {
+			bodyText = await loadTranscriptPreview(item.id);
+		} catch (e) {
 			bodyText = '';
+			loadError = String(e);
 		} finally {
 			loadingBody = false;
+		}
+
+		if (item.source === 'store') {
+			try {
+				detail = await invoke<HistoryDetail>('history_get_detail', { id: item.id });
+			} catch {
+				detail = null;
+			}
 		}
 	}
 
@@ -92,7 +115,7 @@
 
 	async function exportMarkdown() {
 		try {
-			await invoke<string>('history_export_markdown', { id: item.id });
+			await exportHistoryMarkdown(item.id);
 			onrefresh();
 			showToast('Exported', 'success');
 		} catch (e) {
@@ -103,181 +126,133 @@
 	async function openMarkdown() {
 		if (!item.markdown_path) return;
 		try {
-			await invoke('settings_open_transcript', { filePath: item.markdown_path });
+			await openHistoryMarkdown(item.markdown_path);
 		} catch {
 			showToast('Could not open file', 'error');
 		}
 	}
 
-	async function confirmDelete() {
-		deleting = true;
-		try {
-			await invoke('history_delete', { id: item.id });
-			showDeleteModal = false;
-			onrefresh();
-			onclose();
-		} catch (e) {
-			showToast('Delete failed: ' + String(e), 'error');
-			showDeleteModal = false;
-		} finally {
-			deleting = false;
+	function handleKeydown(e: KeyboardEvent) {
+		const tag = (e.target as HTMLElement)?.tagName;
+		if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+		if (e.key === 'ArrowLeft' && canGoPrev) {
+			e.preventDefault();
+			onprev?.();
+		} else if (e.key === 'ArrowRight' && canGoNext) {
+			e.preventDefault();
+			onnext?.();
 		}
 	}
 
-	// Reload whenever the item changes
 	$effect(() => {
 		void item;
 		void loadContent();
 	});
 </script>
 
-<div class="flex min-h-0 flex-1 flex-col">
-	{#if isReader}
-		<!-- Reader layout: full-height transcript viewer for Scribe / Transcribe -->
-		<PanelHeader>
-			{#snippet left()}
-				<p class="truncate font-mono text-label-md tracking-stamped text-fg/80 uppercase">
-					{item.title || 'Detail'}
-				</p>
-			{/snippet}
-			{#snippet right()}
-				<div class="flex items-center gap-1">
-					{#if showDelete}
-						<IconButton
-							aria-label="Delete recording"
-							icon={Trash2}
-							size="small"
-							variant="normal"
-							onclick={() => (showDeleteModal = true)}
-						/>
-					{/if}
-					{#if showExport}
-						<IconButton
-							aria-label="Export to Markdown"
-							icon={FileDown}
-							size="small"
-							variant="normal"
-							onclick={exportMarkdown}
-						/>
-					{/if}
-					{#if showOpenMd}
-						<IconButton
-							aria-label="Open Markdown file"
-							icon={SquareArrowOutUpRight}
-							size="small"
-							variant="normal"
-							onclick={openMarkdown}
-						/>
-					{/if}
-					<IconButton
-						aria-label="Copy transcript"
-						icon={Copy}
-						size="small"
-						variant="normal"
-						onclick={copyContent}
-					/>
-					<IconButton
-						aria-label="Close detail"
-						icon={X}
-						size="small"
-						variant="normal"
-						onclick={onclose}
-					/>
-				</div>
-			{/snippet}
-		</PanelHeader>
+<svelte:window onkeydown={handleKeydown} />
 
-		<ScrollablePanel class="px-4 py-3">
-			{#if loadingBody}
-				<p class="text-label-md text-fg/45">Loading…</p>
-			{:else if bodyText}
-				<p class="text-body-md whitespace-pre-wrap wrap-break-word text-fg/90">{bodyText}</p>
-			{:else}
-				<p class="text-label-md text-fg/45">No content available.</p>
-			{/if}
-		</ScrollablePanel>
-	{:else}
-		<!-- Compact layout: for Dictate items (short text, keep chips + footer) -->
-		<PanelHeader>
-			{#snippet left()}
-				<p class="truncate font-mono text-label-md tracking-stamped text-fg/80 uppercase">
-					{item.title || 'Detail'}
-				</p>
-			{/snippet}
-			{#snippet right()}
-				<IconButton aria-label="Close detail" icon={X} size="small" variant="normal" onclick={onclose} />
-			{/snippet}
-		</PanelHeader>
+<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+	<PanelHeader>
+		{#snippet left()}
+			<p class="truncate font-mono text-label-md tracking-stamped text-fg/80 uppercase">
+				{item.title || 'Detail'}
+			</p>
+		{/snippet}
+		{#snippet right()}
+			<div class="flex items-center gap-1">
+				<IconButton
+					aria-label="Previous item"
+					icon={ChevronLeft}
+					size="small"
+					variant="normal"
+					disabled={!canGoPrev}
+					onclick={() => onprev?.()}
+				/>
+				<IconButton
+					aria-label="Next item"
+					icon={ChevronRight}
+					size="small"
+					variant="normal"
+					disabled={!canGoNext}
+					onclick={() => onnext?.()}
+				/>
+			</div>
+		{/snippet}
+	</PanelHeader>
 
-		<!-- Metadata chips -->
-		<div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-card/60 px-4 py-2">
-			{#if item.model}
-				<Chip variant="brand">{item.model}</Chip>
-			{/if}
-			{#if item.duration_ms > 0}
-				<Chip variant="brand">{formatDuration(item.duration_ms)}</Chip>
-			{/if}
-			{#if item.word_count > 0}
-				<Chip variant="brand">{item.word_count} words</Chip>
-			{/if}
-			{#if item.source !== 'store'}
-				<span class="font-mono text-label-sm tracking-stamped text-fg/45 uppercase">Legacy</span>
-			{/if}
-		</div>
+	<div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-card/60 px-4 py-2">
+		{#if item.model}
+			<Chip variant="muted">{item.model}</Chip>
+		{/if}
+		{#if item.duration_ms > 0}
+			<Chip variant="muted">{formatDuration(item.duration_ms)}</Chip>
+		{/if}
+		{#if item.word_count > 0}
+			<Chip variant="muted">{item.word_count} words</Chip>
+		{/if}
+		{#if detail?.dual_source}
+			<Chip variant="muted">Dual source</Chip>
+		{:else if detail?.speaker_capture}
+			<Chip variant="muted">Speaker capture</Chip>
+		{/if}
+		{#if item.source !== 'store'}
+			<span class="font-mono text-label-sm tracking-stamped text-fg/45 uppercase">Legacy</span>
+		{/if}
+	</div>
 
-		<ScrollablePanel class="px-4 py-3">
-			{#if loadingBody}
-				<p class="text-label-md text-fg/45">Loading…</p>
-			{:else if bodyText}
-				<p class="text-body-md whitespace-pre-wrap wrap-break-word text-fg/90">{bodyText}</p>
-			{:else}
-				<p class="text-label-md text-fg/45">No content available.</p>
-			{/if}
-		</ScrollablePanel>
+	<ScrollablePanel class="min-h-0 flex-1 px-4 py-3">
+		{#if loadingBody}
+			<p class="text-label-md text-fg/45">Loading…</p>
+		{:else if loadError}
+			<p class="text-label-md text-destructive">Could not load transcript.</p>
+			<p class="mt-1 text-label-sm text-fg/45">{loadError}</p>
+		{:else if bodyText}
+			<p class="text-body-md whitespace-pre-wrap wrap-break-word text-fg/90">{bodyText}</p>
+		{:else}
+			<p class="text-label-md text-fg/45">No content available.</p>
+		{/if}
+	</ScrollablePanel>
 
-		<FixedFooterBar>
-			{#if showDelete}
-				<Button variant="destructive" onclick={() => (showDeleteModal = true)}>
-					<Trash2 class="size-4" />
-					Delete
-				</Button>
-			{/if}
-			<div class="flex-1"></div>
+	<PanelFooter>
+		<!-- Fixed-width slots so Copy/Close stay put when Export/Open vary per item -->
+		<div class="flex size-8 items-center justify-center">
 			{#if showExport}
-				<Button variant="normal" onclick={exportMarkdown}>
-					<FileDown class="size-4" />
-					Export .md
-				</Button>
+				<IconButton
+					aria-label="Export to Markdown"
+					icon={FileDown}
+					size="small"
+					variant="normal"
+					onclick={exportMarkdown}
+				/>
 			{/if}
-			{#if showOpenMd}
-				<Button variant="normal" onclick={openMarkdown}>
-					<SquareArrowOutUpRight class="size-4" />
-					Open .md
-				</Button>
-			{/if}
-			<Button variant="normal" onclick={copyContent}>
-				<Copy class="size-4" />
-				Copy
-			</Button>
-		</FixedFooterBar>
-	{/if}
-</div>
-
-<Modal
-	open={showDeleteModal}
-	title="Delete recording?"
-	description="This will permanently delete the transcript and any associated audio. This cannot be undone."
-	maxWidthClass="max-w-sm"
-	onClose={() => (showDeleteModal = false)}
->
-	{#snippet footer()}
-		<div class="flex gap-3">
-			<Button variant="normal" onclick={() => (showDeleteModal = false)}>Cancel</Button>
-			<Button variant="destructive" disabled={deleting} onclick={confirmDelete}>
-				{deleting ? 'Deleting…' : 'Delete'}
-			</Button>
 		</div>
-	{/snippet}
-</Modal>
+		<div class="flex size-8 items-center justify-center">
+			{#if showOpenMd}
+				<IconButton
+					aria-label="Open Markdown file"
+					icon={SquareArrowOutUpRight}
+					size="small"
+					variant="normal"
+					onclick={openMarkdown}
+				/>
+			{/if}
+		</div>
+		<IconButton
+			aria-label="Copy transcript"
+			icon={Copy}
+			size="small"
+			variant="normal"
+			onclick={copyContent}
+		/>
+		<IconButton
+			aria-label="Close detail"
+			icon={X}
+			size="small"
+			variant="normal"
+			onclick={onclose}
+		/>
+	</PanelFooter>
+</div>
 
 <Toast message={toastMessage} state={toastState} position="bottom-center" />

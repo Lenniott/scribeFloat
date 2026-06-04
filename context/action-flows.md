@@ -74,6 +74,7 @@ User records mic + system audio (remote call, meeting, etc). Speaker capture can
 21. Model Service: merges mic and speaker segments chronologically; suppresses near-duplicate lines within 1.5 s; applies `in:`/`out:` labels
 22. Output Service: groups segments, builds dual-source markdown, applies word replacement rules
 23. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting)
+    - Record fields: `speaker_capture` = persistent `scribe_capture_speaker` setting at write time; `dual_source` = speaker PCM was assembled and used for merge/transcription (false if capture was off, silence-gated, or no loopback audio)
 24. Check: `save_transcripts_as_markdown` setting
     - **On** → Output Service writes `{title}_{model}.md` to save folder root (with `_1`, `_2`, … suffix on collision); Done event carries `transcript_path`
     - **Off** → no `.md` written; Done event carries `transcript_path = None`
@@ -171,10 +172,14 @@ Unified read-only and management view across all transcript-bearing flows.
 
 ### 5b. Select and preview
 
-1. User selects a history item
-2. `history_get_detail` IPC command → HistoryController returns metadata for the selected record
-3. `history_render_markdown` IPC command → OutputService renders markdown from the record's segments (pure function, no disk read required unless already exported)
-4. `HistoryDetailPane` renders markdown preview, metadata chips (date, model, duration, word count), and action buttons
+1. User selects a history item from the list (title row or **View** icon on `HistoryListCard`)
+2. List and filter tabs hide; **fullscreen detail** (`HistoryDetailPane`) fills the window until Close
+3. `history_get_detail` IPC command → HistoryController returns metadata for the selected record (`speaker_capture`, `dual_source`, etc.)
+    - **Dual source** chip: `dual_source` true — merged speaker transcription ran
+    - **Speaker capture** chip: `speaker_capture` true — setting was on when the record was written (may be true without dual source)
+4. `history_render_markdown` IPC command → OutputService renders markdown from the record's segments (pure function, no disk read required unless already exported)
+5. `HistoryDetailPane` renders scrollable transcript preview, muted metadata chips, prev/next in the header, and item actions (Export / Open / Copy / Close) in `PanelFooter`
+6. **Prev/next** (chevrons or Arrow keys) cycles within the active filter tab (All / Scribe / Dictate); changing tabs while detail is open closes detail if the item is not in the new filter
 
 ### 5c. Export to markdown (on demand)
 
@@ -190,7 +195,7 @@ Unified read-only and management view across all transcript-bearing flows.
 
 ### 5e. Delete
 
-1. User clicks **Delete** in `HistoryDetailPane` (only available for store records, not legacy items)
+1. User clicks **Delete** on `HistoryListCard` (only available for store records, not legacy items); `history.svelte` opens a confirm modal
 2. `history_delete` IPC command → HistoryController
 3. HistoryService appends a tombstone (`deleted = true`) for the record id to `history.jsonl`
 4. If the record has a `markdown_path`, Output Service deletes the `.md` file

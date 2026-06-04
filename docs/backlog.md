@@ -6,5 +6,5 @@
     -[] keyboard shortcuts should be at the top and more promninate
 -[] text replacement settings need a prefix word that you can add to all the words ie “float” so to do doesn’t become [] if I say “I have something I need to do” but does become [] when I say “float to do”
 -[] onboarding flow, permissions, model installed, test both scribe and dicate (have a thing to paste text into so they can see its working)
--[] no delete in history, this needs to be added
--[] scribe content not viewable in app should of been changed in last comit but wasnt
+-[x] no delete in history, this needs to be added
+-[x] scribe content not viewable in app should of been changed in last comit but wasnt

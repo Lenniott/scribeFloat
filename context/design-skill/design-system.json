@@ -455,9 +455,74 @@
           "active": "fill: fg at 40% opacity",
           "note": "fg-dim gives ~3.5:1 contrast on canvas bg. rim gives ~2:1 — too low."
         }
+      },
+
+      "historyListCard": {
+        "description": "History list row: selectable title + icon actions (Copy, Open, Delete). Implemented in src/lib/components/history/HistoryListCard.svelte. NoteCard remains notes-only.",
+        "status": "shipped",
+        "tw": {
+          "article": "rounded-md px-3 py-2 text-left transition-colors",
+          "selected": "bg-fill",
+          "default": "bg-card hover:bg-fill/80",
+          "titleButton": "w-full text-left min-w-0",
+          "title": "text-body-md truncate text-fg",
+          "header": "flex w-full justify-between items-center gap-2",
+          "meta": "flex items-center gap-4 shrink-0",
+          "actions": "flex shrink-0 items-center gap-0.5"
+        },
+        "actions": {
+          "view": { "icon": "Eye", "variant": "normal", "ariaLabel": "View transcript", "when": "onselect provided" },
+          "copy": { "icon": "Copy", "variant": "normal", "ariaLabel": "Copy to clipboard" },
+          "open": { "icon": "SquareArrowOutUpRight", "variant": "normal", "ariaLabel": "Open Markdown file", "when": "has_markdown && markdown_path" },
+          "delete": { "icon": "Trash2", "variant": "destructive", "ariaLabel": "Delete recording", "when": "source === store" }
+        },
+        "interaction": {
+          "select": "Click title row or View — opens fullscreen detail; does not fire when clicking other action icons",
+          "copy": "stopPropagation; parent invokes copy handler",
+          "open": "stopPropagation; only when exported .md exists",
+          "delete": "stopPropagation; parent opens screen-level confirm modal — card never calls IPC"
+        },
+        "legacy": {
+          "label": "Legacy — font-mono text-label-sm tracking-stamped text-fg/45 uppercase",
+          "delete": "hidden"
+        }
+      },
+
+      "transcriptReader": {
+        "description": "Scrollable plain-text transcript body (History detail + Scribe processing DONE). No YAML headings in preview.",
+        "tw": {
+          "panel": "flex min-h-0 flex-1 flex-col",
+          "scroll": "px-4 py-3 (ScrollablePanel)",
+          "body": "text-body-md whitespace-pre-wrap wrap-break-word text-fg/90",
+          "empty": "text-label-md text-fg/45",
+          "error": "text-label-md text-destructive"
+        }
+      },
+
+      "chip": {
+        "description": "Small label pill (Chip.svelte). History metadata uses variant muted.",
+        "status": "shipped",
+        "variants": {
+          "brand": "border-brand bg-brand/10 text-brand",
+          "focus": "border-focus bg-focus/15 text-focus",
+          "muted": "border-card bg-fill text-fg/55 — metadata in HistoryDetailPane (Dual source, Speaker capture, model, etc.)"
+        },
+        "tw": "sf-label-sm shrink-0 rounded-sm border px-1.5 py-0.5"
+      },
+
+      "panelFooter": {
+        "description": "Bottom action bar in a flex column (PanelFooter.svelte). shrink-0 sibling below flex-1 scroll — not position:fixed.",
+        "status": "shipped",
+        "tw": {
+          "root": "shrink-0 flex items-center gap-2 border-t border-card px-4 py-3 bg-panel",
+          "rules": [
+            "Prefer over FixedFooterBar for new panes (History detail)",
+            "Parent column needs min-h-0 overflow-hidden so scroll region gets remaining height"
+          ]
+        }
       }
     },
-  
+
     "surfaces": {
       "scribeWindow": {
         "description": "Main floating panel. Menu-bar app, no Dock icon.",
@@ -472,6 +537,21 @@
         "overlay": "fixed inset-0 bg-black/50 flex items-center justify-center",
         "panel": "bg-panel rounded-md w-[520px] max-h-[80vh] flex flex-col shadow-ambient"
       },
+      "historyPanel": {
+        "description": "Tray History window (history.svelte). Two modes: list (tabs + HistoryListCard) or fullscreen detail (HistoryDetailPane).",
+        "status": "shipped",
+        "listMode": {
+          "tabs": "All / Scribe / Dictate — filter store + legacy merge",
+          "rows": "HistoryListCard — View, Copy, Open (if .md), Delete (store only)",
+          "deleteModal": "on history.svelte — not on card"
+        },
+        "detailMode": {
+          "layout": "flex flex-col min-h-0 overflow-hidden; header prev/next; scroll transcriptReader; PanelFooter actions",
+          "keyboard": "ArrowLeft/ArrowRight cycle filteredItems",
+          "close": "Returns to list mode — restores tabs"
+        },
+        "agentDoc": "docs/history-ui-review.md"
+      },
       "onboarding": {
         "description": "First-run 4-step wizard. Full panel, no close button.",
         "container": "flex flex-col items-center justify-center h-full p-6 gap-6 bg-panel"
@@ -479,6 +559,31 @@
       "dictateBar": {
         "description": "Compact menu-bar overlay for quick dictation.",
         "container": "bg-panel rounded-md shadow-ambient px-3 py-2 flex items-center gap-3"
+      },
+      "historyPanel": {
+        "description": "History window (?view=history). List mode (tabs + cards) OR fullscreen detail — not split-pane.",
+        "listMode": "filter tabs + HistoryListCard list; full width when no selection",
+        "detailMode": "HistoryDetailPane only; list/tabs hidden until Close",
+        "list": "flex-1 overflow-y-auto p-3 gap-2",
+        "deleteModal": {
+          "owner": "history.svelte screen — not HistoryListCard",
+          "title": "Delete recording?",
+          "description": "This will permanently delete the transcript and any associated audio. This cannot be undone.",
+          "footer": "Cancel (normal) + Delete (destructive)",
+          "trigger": "HistoryListCard ondelete only"
+        },
+        "detailPane": {
+          "layout": "PanelHeader (title + prev/next) + muted chips + ScrollablePanel + PanelFooter (Export/Open/Copy/Close)",
+          "metadataChips": "variant muted; dual_source vs speaker_capture distinguished",
+          "navigation": "ChevronLeft/Right and Arrow keys within active filter tab",
+          "deleteInDetail": "none — single destructive entry point on list card"
+        }
+      },
+      "scribeProcessingDone": {
+        "description": "Scribe window after transcription completes (scribe-processing.svelte phase=done).",
+        "layout": "flex min-h-0 flex-1 flex-col — status line + transcriptReader + footer Record Again",
+        "toolbar": "Copy always when recordId or transcript_path; Open only when transcript_path",
+        "errorNoRecord": "Transcript could not be saved to history. — when DONE without recordId or path"
       }
     },
 

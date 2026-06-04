@@ -698,7 +698,8 @@ src/
 │   ├── components/             Reusable Svelte components
 │   │   ├── audio/              AudioWaveFormVisualizer, RecordingStatusDot, RecordingTimer
 │   │   ├── form/               DeviceSelect, ToggleSwitch, PathSelectorField, OptionGroup, …
-│   │   ├── layout/             PanelShell, PanelHeader, SplitPane, FixedFooterBar
+│   │   ├── layout/             PanelShell, PanelHeader, PanelFooter, SplitPane, FixedFooterBar
+│   │   ├── history/            HistoryListCard, HistoryDetailPane
 │   │   ├── notes/              NotesPanel, NoteCard, NotesList, NoteComposer
 │   │   └── transcribe/         TranscribeQueueList, TranscribeQueueRow
 │   ├── screens/                Full panel screens
@@ -706,8 +707,7 @@ src/
 │   │   ├── scribe-processing.svelte   Transcribing / Done / No-model UI
 │   │   ├── transcribe.svelte   File import and queue UI
 │   │   ├── dictate.svelte      Floating HUD
-│   │   ├── history.svelte             Unified history: Scribe transcripts + dictations (opened via tray)
-│   │   ├── HistoryDetailPane.svelte   Right-hand detail pane: markdown preview, metadata, Copy/Export/Open/Delete actions
+│   │   ├── history.svelte      Unified history (list mode + fullscreen detail)
 │   │   ├── settings.svelte     Settings shell with tab routing
 │   │   └── setting_*.svelte    Individual settings tabs
 │   └── stores/

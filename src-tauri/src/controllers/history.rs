@@ -40,16 +40,19 @@ impl HistoryController {
     pub fn list(&self) -> Result<Vec<HistoryListItem>, String> {
         let save_folder = self.config.get().save_folder;
 
-        let store = self.history.list(&save_folder).map_err(|e| e.to_string())?;
+        let store = self
+            .history
+            .list_summaries(&save_folder)
+            .map_err(|e| e.to_string())?;
         let known_markdown: HashSet<String> = store
             .iter()
             .filter_map(|r| r.markdown_path.clone())
             .collect();
 
-        let mut items: Vec<HistoryListItem> = store.iter().map(|r| r.to_list_item()).collect();
+        let mut items: Vec<HistoryListItem> = store;
 
         // Legacy `.md` files not already represented by a store record's markdown_path.
-        if let Ok(legacy_md) = self.output.list_transcripts(&save_folder) {
+        if let Ok(legacy_md) = OutputService::list_transcript_metadata(&save_folder) {
             for entry in legacy_md {
                 if known_markdown.contains(&entry.path) {
                     continue;

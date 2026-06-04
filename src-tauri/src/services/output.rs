@@ -13,6 +13,19 @@ use std::sync::Arc;
 
 pub struct OutputService;
 
+/// Max bytes read when listing legacy `.md` metadata (front matter only).
+const TRANSCRIPT_METADATA_READ_CAP: usize = 4096;
+
+/// Read up to `cap` bytes from `path` for front-matter parsing (avoids loading full transcripts on list).
+fn read_file_prefix(path: &Path, cap: usize) -> Option<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut buf = vec![0u8; cap];
+    let n = file.read(&mut buf).ok()?;
+    buf.truncate(n);
+    String::from_utf8(buf).ok()
+}
+
 /// Extract a scalar value from a YAML front matter block (the `---` delimited header).
 /// Handles both quoted (`key: 'value'`) and unquoted (`key: value`) forms.
 fn parse_front_matter_field(content: &str, key: &str) -> Option<String> {
@@ -120,7 +133,7 @@ impl OutputService {
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
             .join(" ");
-        let deduped = dedup_repeated_block(&dedup_consecutive_phrases(&joined));
+        let deduped = dedup_repeated_block(&dedup_consecutive_phrases(&dedup_exact_halves(&joined)));
         apply_replacements(&deduped, rules, &ReplacementScope::Dictate)
     }
 
@@ -219,8 +232,13 @@ impl OutputService {
     }
 
     /// Scan `save_folder` root for `*.md` files and return their metadata sorted newest-first.
-    /// Reads YAML front matter from each file to recover the original title and model name.
+    /// Reads only a bounded prefix of each file for YAML front matter (title, model).
     pub fn list_transcripts(&self, save_folder: &str) -> Result<Vec<ScribeTranscriptEntry>> {
+        Self::list_transcript_metadata(save_folder)
+    }
+
+    /// Same as [`list_transcripts`](Self::list_transcripts) — bounded read for History list performance.
+    pub fn list_transcript_metadata(save_folder: &str) -> Result<Vec<ScribeTranscriptEntry>> {
         let dir = PathBuf::from(save_folder);
         if !dir.exists() {
             return Ok(Vec::new());
@@ -235,15 +253,16 @@ impl OutputService {
             })
             .filter_map(|e| {
                 let path = e.path();
-                let content = std::fs::read_to_string(&path).ok()?;
+                let prefix =
+                    read_file_prefix(&path, TRANSCRIPT_METADATA_READ_CAP).unwrap_or_default();
                 let fallback_title = path
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("")
                     .to_string();
-                let title = parse_front_matter_field(&content, "title")
-                    .unwrap_or(fallback_title);
-                let model = parse_front_matter_field(&content, "model").unwrap_or_default();
+                let title =
+                    parse_front_matter_field(&prefix, "title").unwrap_or(fallback_title);
+                let model = parse_front_matter_field(&prefix, "model").unwrap_or_default();
                 let mtime = std::fs::metadata(&path).ok()?.modified().ok()?;
                 let modified_at: chrono::DateTime<chrono::Utc> = mtime.into();
                 Some(ScribeTranscriptEntry {
@@ -674,6 +693,27 @@ fn dedup_consecutive_phrases(text: &str) -> String {
     result.join(" ")
 }
 
+/// When Whisper (or a double-paste bug) yields the same paragraph twice back-to-back, keep one copy.
+fn dedup_exact_halves(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.len() < 40 {
+        return trimmed.to_string();
+    }
+    let mid = trimmed.len() / 2;
+    let (first, second) = trimmed.split_at(mid);
+    let second = second.trim_start();
+    if first == second {
+        return first.trim().to_string();
+    }
+    // Allow a single missing/extra space at the join (common when segments abut).
+    let a = first.trim();
+    let b = second.trim();
+    if a.len() >= 20 && b.starts_with(a) && b.len() <= a.len() + 2 {
+        return a.to_string();
+    }
+    trimmed.to_string()
+}
+
 /// If the transcript appears twice (Whisper hallucination on long audio), keep the first copy.
 /// Uses the opening fingerprint (~20% of text, ≤100 chars) to detect the repeat start.
 fn dedup_repeated_block(text: &str) -> String {
@@ -903,6 +943,13 @@ mod tests {
     // ── dedup_consecutive_phrases ─────────────────────────────────────────────
 
     #[test]
+    fn dedup_exact_halves_removes_verbatim_repeat() {
+        let once = "No, I'm using dictate right now to test.";
+        let twice = format!("{once}{once}");
+        assert_eq!(dedup_exact_halves(&twice), once);
+    }
+
+    #[test]
     fn dedup_removes_consecutive_duplicate_words() {
         assert_eq!(dedup_consecutive_phrases("hello world world next"), "hello world next");
     }
@@ -1075,6 +1122,19 @@ mod tests {
         let svc = OutputService;
         let result = svc.list_transcripts(dir.to_str().unwrap()).expect("list transcripts");
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn list_transcript_metadata_reads_title_from_prefix_only() {
+        let dir = temp_dir();
+        let mut content = String::from("---\ntitle: 'Huge Doc'\nmodel: small\n---\n\n## Transcript\n\n");
+        content.push_str(&"x".repeat(50_000));
+        std::fs::write(dir.join("huge.md"), content).unwrap();
+        let entries =
+            OutputService::list_transcript_metadata(dir.to_str().unwrap()).expect("list metadata");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].title, "Huge Doc");
+        assert_eq!(entries[0].model, "small");
     }
 
     #[test]

@@ -46,11 +46,6 @@
 	const selectClass =
 		'h-10 cursor-pointer rounded-md border border-rim bg-panel py-2 pr-8 pl-2 text-body-md text-fg disabled:cursor-not-allowed disabled:opacity-40';
 
-	function handleChange(e: Event) {
-		const v = (e.currentTarget as HTMLSelectElement).value;
-		value = v;
-		onchange?.(v);
-	}
 </script>
 
 {#if layout === 'horizontal'}
@@ -67,9 +62,9 @@
 			<select
 				id={fieldId}
 				class="{selectClass} min-w-40 max-w-56 truncate"
-				{value}
+				bind:value
 				{disabled}
-				onchange={handleChange}
+				onchange={(e) => onchange?.((e.currentTarget as HTMLSelectElement).value)}
 			>
 				{#if emptyOption}
 					<option value="" disabled={emptyOption.disabled}>{emptyOption.label}</option>
@@ -78,6 +73,17 @@
 					<option value={opt.value}>{opt.label}</option>
 				{/each}
 			</select>
+		{:else}
+			<div class="flex min-w-0 max-w-full items-center gap-2 sm:max-w-md">
+				<code
+					id={fieldId}
+					class="flex h-10 min-w-0 flex-1 items-center truncate rounded-md bg-panel px-2 py-2 font-mono text-label-md tracking-stamped text-fg/90"
+					title={value}
+				>
+					{value || placeholder}
+				</code>
+				<Button variant="normal" {disabled} onclick={() => onButtonClick?.()}>{buttonLabel}</Button>
+			</div>
 		{/if}
 	</div>
 {:else}

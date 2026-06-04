@@ -1,3 +1,9 @@
+# ScribeFloat — UI component catalogue
+
+For tokens and surface layout, query `context/design-skill/design-system.json`. **History interaction rules** (fullscreen detail, delete on list only, `PanelFooter`): [../docs/history-ui-review.md](../docs/history-ui-review.md).
+
+---
+
 ## Audio components
 
 | Component | What it is | How it works |
@@ -47,7 +53,8 @@ The sketch clearly separates settings into collapsible groups and notes that onl
 
 | Component | What it is | How it works |
 |---|---|---|
-| `HistoryDetailPane` | Right-hand detail pane for the History view.   | Renders a markdown preview of the selected history record alongside metadata chips (date, model, duration, word count) and action buttons: Copy, Export to Markdown, Open (only when `markdown_path` is set), and Delete (only for store records — not legacy items). Export calls `history_export_markdown`; delete calls `history_delete` and refreshes the list.   |
+| `HistoryListCard` | History list row (replaces `NoteCard` in History).   | View (`Eye`), Copy, Open (when `.md` exists), Delete (store only); selectable title with hover affordance. Delete opens a confirm modal on `history.svelte`; the card emits events only.   |
+| `HistoryDetailPane` | Fullscreen detail for the History view (`history.svelte`).   | Scrollable transcript via `history_render_markdown`; muted metadata from `history_get_detail`; prev/next in header; Export / Open / Copy / Close in `PanelFooter`. Delete is on the list card only.   |
 
 ## Layout components
 
@@ -55,8 +62,9 @@ The sketch clearly separates settings into collapsible groups and notes that onl
 |---|---|---|
 | `PanelShell` | Outer reusable application frame.   | Provides border, rounded container, internal layout regions, and fixed sizing.   |
 | `PanelHeader` | Top bar for title, timer, and status.   | Aligns metadata and controls across the top of the shell.   |
-| `SplitPane` | Two-column layout wrapper.   | Places settings/audio on the left and notes on the right with a vertical divider.   |
-| `FixedFooterBar` | Bottom action container anchored to the panel bottom.   | Keeps primary actions visible while upper content scrolls independently.   |
+| `PanelFooter` | Bottom bar in a flex column layout (not `position: fixed`).   | `shrink-0` sibling below a `flex-1` scroll region — actions stay visible without covering content. Used by `HistoryDetailPane`.   |
+| `SplitPane` | Two-column layout wrapper.   | Places settings/audio on the left and notes on the right with a vertical divider. History no longer uses it (list/detail are separate modes).   |
+| `FixedFooterBar` | Legacy footer bar component.   | Prefer `PanelFooter` for new panes.   |
 | `ActionButton` | Generic footer button.   | Used for actions like Cancel and Finished, with variant styling for primary and secondary actions.   |
 
 ## Best component boundaries

@@ -5,9 +5,12 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { copyTranscript } from "$lib/services/clipboard";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+  import { loadTranscriptPreview } from "$lib/services/historyTranscript";
+  import { openHistoryMarkdown } from "$lib/services/historyActions";
 
   import Button from "@components/Button.svelte";
   import StackProgressBar from "@components/form/StackProgressBar.svelte";
+  import ScrollablePanel from "@lib/components/accordion/ScrollablePanel.svelte";
   import Toast from "@components/Toast.svelte";
   import type { ToastState } from "@components/Toast.svelte";
   import { Copy, SquareArrowOutUpRight, X } from "lucide-svelte";
@@ -48,6 +51,10 @@
   let started = false;
   let unlisteners: UnlistenFn[] = [];
 
+  let bodyText = $state("");
+  let previewError = $state("");
+  let loadingPreview = $state(false);
+
   let toastMessage = $state("");
   let toastState = $state<ToastState>("normal");
   let toastTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -71,6 +78,7 @@
   const stageOrder = progressSequence.map((step) => step.stage);
 
   const displayPath = $derived(transcriptPath || wavPath);
+  const canCopy = $derived(!!(transcriptPath || recordId));
   const currentStageIndex = $derived(stageOrder.indexOf(processingStage));
 
   const sequence = $derived(
@@ -79,6 +87,24 @@
       complete: stageOrder.indexOf(step.stage) <= currentStageIndex,
     })),
   );
+
+  async function loadDonePreview() {
+    if (!recordId) {
+      bodyText = "";
+      previewError = "";
+      return;
+    }
+    loadingPreview = true;
+    previewError = "";
+    try {
+      bodyText = await loadTranscriptPreview(recordId);
+    } catch (e) {
+      bodyText = "";
+      previewError = String(e);
+    } finally {
+      loadingPreview = false;
+    }
+  }
 
   function handleScribeEvent(payload: ScribePayload) {
     switch (payload.state) {
@@ -99,6 +125,7 @@
         progress = 100;
         setTimeout(() => {
           phase = "done";
+          void loadDonePreview();
         }, 800);
         break;
       }
@@ -138,8 +165,9 @@
   }
 
   async function openTranscript() {
-    if (transcriptPath)
-      await invoke("settings_open_transcript", { filePath: transcriptPath });
+    if (transcriptPath) {
+      await openHistoryMarkdown(transcriptPath);
+    }
   }
 
   async function copyContent() {
@@ -147,7 +175,7 @@
       if (transcriptPath) {
         await copyTranscript(transcriptPath);
       } else if (recordId) {
-        const text = await invoke<string>('history_render_markdown', { id: recordId });
+        const text = bodyText || (await loadTranscriptPreview(recordId));
         await writeText(text);
       }
       showToast("Copied to clipboard", "success");
@@ -175,7 +203,7 @@
 
 <div class="mx-auto flex flex-col text-fg">
   <section class="flex h-screen flex-col overflow-hidden bg-panel">
-    <header class="flex min-h-14 items-end justify-between border-b border-card px-5 py-2">
+    <header class="flex min-h-14 items-end justify-between border-b border-card px-5 py-2 shrink-0">
       <div class="flex min-w-0 flex-1 flex-col gap-1">
         <p class="font-mono text-label-sm tracking-stamped text-fg/55 uppercase">
           {title || "Recording"}
@@ -200,38 +228,73 @@
       />
     </header>
 
-    <div class="flex min-h-0 flex-1 flex-col justify-center gap-8 px-5 py-6">
+    <div class="flex min-h-0 flex-1 flex-col px-5 py-4">
       {#if phase === "transcribing"}
-        <StackProgressBar
-          {progress}
-          {sequence}
-          indeterminate={processingStage === "LOADING_MODEL"}
-        />
-      {:else}
-        <div class="flex flex-col gap-4">
-          {#if phase === "done"}
-            <div class="flex items-center justify-between">
-              <p class="text-body-md text-fg/80">Transcript saved.</p>
-              <div class="flex gap-2">
-                {#if transcriptPath || recordId}
-                  <IconButton
-                    aria-label="copy transcript to clipboard"
-                    variant="normal"
-                    icon={Copy}
-                    onclick={copyContent}
-                  />
-                {/if}
-                {#if transcriptPath}
-                  <IconButton
-                    aria-label="Open Transcript"
-                    icon={SquareArrowOutUpRight}
-                    variant="normal"
-                    onclick={openTranscript}
-                  />
-                {/if}
-              </div>
+        <div class="flex flex-1 flex-col justify-center">
+          <StackProgressBar
+            {progress}
+            {sequence}
+            indeterminate={processingStage === "LOADING_MODEL"}
+          />
+        </div>
+      {:else if phase === "done"}
+        <div class="flex min-h-0 flex-1 flex-col gap-3">
+          <div class="flex shrink-0 items-center justify-between gap-2">
+            <p class="text-body-md text-fg/80">Transcript saved.</p>
+            <div class="flex gap-2">
+              {#if canCopy}
+                <IconButton
+                  aria-label="copy transcript to clipboard"
+                  variant="normal"
+                  icon={Copy}
+                  onclick={copyContent}
+                />
+              {/if}
+              {#if transcriptPath}
+                <IconButton
+                  aria-label="Open Transcript"
+                  icon={SquareArrowOutUpRight}
+                  variant="normal"
+                  onclick={openTranscript}
+                />
+              {/if}
             </div>
-          {:else if phase === "no_model"}
+          </div>
+          {#if !recordId && !transcriptPath}
+            <p class="text-label-md text-destructive">
+              Transcript could not be saved to history.
+            </p>
+          {:else if loadingPreview}
+            <p class="text-label-md text-fg/45">Loading…</p>
+          {:else if previewError}
+            <p class="text-label-md text-destructive">Could not load transcript.</p>
+            <p class="text-label-sm text-fg/45">{previewError}</p>
+          {:else if bodyText}
+            <ScrollablePanel class="flex-1 min-h-0 px-0 py-0">
+              <p class="text-body-md whitespace-pre-wrap wrap-break-word text-fg/90">
+                {bodyText}
+              </p>
+            </ScrollablePanel>
+          {:else if transcriptPath}
+            <button
+              type="button"
+              class="cursor-pointer group p-0 text-left"
+              onclick={openTranscript}
+            >
+              <p
+                class="truncate font-mono text-body-md text-fg underline decoration-fg-muted group-hover:underline-offset-2"
+                title={transcriptPath}
+              >
+                {transcriptPath}
+              </p>
+            </button>
+          {:else}
+            <p class="text-label-md text-fg/45">No content available.</p>
+          {/if}
+        </div>
+      {:else}
+        <div class="flex flex-1 flex-col justify-center gap-4">
+          {#if phase === "no_model"}
             <p class="text-body-md text-fg/80">
               No transcription model is installed. Your recording was saved as
               a WAV file and can be transcribed once a model is downloaded.
@@ -247,7 +310,12 @@
           {/if}
 
           {#if displayPath}
-            <button class="cursor-pointer group p-0 text-left" onclick={openTranscript}>
+            <button
+              type="button"
+              class="cursor-pointer group p-0 text-left"
+              onclick={() =>
+                transcriptPath ? openTranscript() : undefined}
+            >
               <p
                 class="truncate font-mono text-body-md text-fg underline decoration-fg-muted group-hover:underline-offset-2"
                 title={displayPath}
@@ -260,7 +328,7 @@
       {/if}
     </div>
 
-    <footer class="flex flex-wrap justify-end gap-3 border-t border-card px-5 py-3">
+    <footer class="flex shrink-0 flex-wrap justify-end gap-3 border-t border-card px-5 py-3">
       {#if phase === "done"}
         <Button variant="normal" onclick={onRecordAgain}>Record Again</Button>
       {:else if phase === "no_model"}

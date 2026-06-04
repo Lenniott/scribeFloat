@@ -2,14 +2,18 @@
 	import { onMount } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import { listen } from '@tauri-apps/api/event';
-	import { writeText } from '@tauri-apps/plugin-clipboard-manager';
-	import NoteCard, { type Note } from '@lib/components/notes/NoteCard.svelte';
 	import Toast from '@lib/components/Toast.svelte';
 	import type { ToastState } from '@lib/components/Toast.svelte';
-	import SplitPane from '@lib/components/layout/SplitPane.svelte';
 	import HistoryDetailPane from '@lib/components/history/HistoryDetailPane.svelte';
-	import type { HistoryListItem } from '@lib/components/history/HistoryDetailPane.svelte';
-	import { copyTranscript } from '$lib/services/clipboard';
+	import HistoryListCard from '@lib/components/history/HistoryListCard.svelte';
+	import Button from '@lib/components/Button.svelte';
+	import Modal from '@lib/components/Modal.svelte';
+	import {
+		copyHistoryItem,
+		deleteHistoryItem,
+		openHistoryMarkdown,
+		type HistoryListItem,
+	} from '@lib/services/historyActions';
 
 	type FilterTab = 'all' | 'scribe' | 'dictate';
 
@@ -27,6 +31,9 @@
 	let toastState = $state<ToastState>('normal');
 	let toastTimeout: ReturnType<typeof setTimeout> | null = null;
 
+	let deleteTarget = $state<HistoryListItem | null>(null);
+	let deleting = $state(false);
+
 	const filteredItems = $derived(
 		activeTab === 'all'
 			? allItems
@@ -34,6 +41,23 @@
 				? allItems.filter((item) => item.kind === 'scribe')
 				: allItems.filter((item) => item.kind === 'dictate'),
 	);
+
+	const selectedIndex = $derived(
+		selectedItem ? filteredItems.findIndex((i) => i.id === selectedItem!.id) : -1,
+	);
+
+	const canGoPrev = $derived(selectedIndex > 0);
+	const canGoNext = $derived(
+		selectedIndex >= 0 && selectedIndex < filteredItems.length - 1,
+	);
+
+	$effect(() => {
+		if (!selectedItem) return;
+		const inFilter = filteredItems.some((i) => i.id === selectedItem!.id);
+		if (!inFilter) {
+			selectedItem = null;
+		}
+	});
 
 	function showToast(msg: string, state: ToastState = 'normal') {
 		if (toastTimeout) clearTimeout(toastTimeout);
@@ -58,10 +82,6 @@
 		return `${dateStr}, ${timeStr}`;
 	}
 
-	function toNote(id: string, text: string): Note {
-		return { id, text, recordedAtMs: 0 };
-	}
-
 	function emptyMessage(filter: FilterTab): string {
 		if (filter === 'scribe') return 'No Scribe transcripts yet.';
 		if (filter === 'dictate') return 'No dictations yet.';
@@ -76,12 +96,7 @@
 
 	async function copyItem(item: HistoryListItem) {
 		try {
-			if (item.has_markdown && item.markdown_path) {
-				await copyTranscript(item.markdown_path);
-			} else {
-				const text = await invoke<string>('history_render_markdown', { id: item.id });
-				await writeText(text);
-			}
+			await copyHistoryItem(item);
 			showToast('Copied', 'success');
 		} catch {
 			showToast('Copy failed', 'error');
@@ -91,7 +106,7 @@
 	async function openItem(item: HistoryListItem) {
 		if (!item.markdown_path) return;
 		try {
-			await invoke('settings_open_transcript', { filePath: item.markdown_path });
+			await openHistoryMarkdown(item.markdown_path);
 		} catch {
 			showToast('Could not open file', 'error');
 		}
@@ -101,11 +116,39 @@
 		selectedItem = item;
 	}
 
+	function navigateDetail(delta: -1 | 1) {
+		if (selectedIndex < 0) return;
+		const next = filteredItems[selectedIndex + delta];
+		if (next) selectedItem = next;
+	}
+
+	function requestDelete(item: HistoryListItem) {
+		deleteTarget = item;
+	}
+
+	async function confirmDelete() {
+		if (!deleteTarget) return;
+		deleting = true;
+		try {
+			await deleteHistoryItem(deleteTarget.id);
+			if (selectedItem?.id === deleteTarget.id) {
+				selectedItem = null;
+			}
+			deleteTarget = null;
+			await loadHistory();
+			showToast('Deleted', 'success');
+		} catch (e) {
+			showToast('Delete failed: ' + String(e), 'error');
+			deleteTarget = null;
+		} finally {
+			deleting = false;
+		}
+	}
+
 	async function loadHistory() {
 		loading = true;
 		try {
 			const items = await invoke<HistoryListItem[]>('history_list');
-			// Sort newest first
 			allItems = items.sort((a, b) => b.created_at.localeCompare(a.created_at));
 		} catch {
 			showToast('Failed to load history', 'error');
@@ -129,9 +172,27 @@
 	</header>
 
 	<div class="flex min-h-0 flex-1 overflow-hidden">
-		<SplitPane>
-			{#snippet left()}
-				<!-- Tab bar -->
+		{#if selectedItem}
+			<div class="flex min-h-0 min-w-0 flex-1 flex-col bg-panel">
+				<HistoryDetailPane
+					item={selectedItem}
+					{canGoPrev}
+					{canGoNext}
+					onprev={() => navigateDetail(-1)}
+					onnext={() => navigateDetail(1)}
+					onclose={() => (selectedItem = null)}
+					onrefresh={() => {
+						void loadHistory().then(() => {
+							if (selectedItem) {
+								const refreshed = allItems.find((i) => i.id === selectedItem!.id);
+								selectedItem = refreshed ?? null;
+							}
+						});
+					}}
+				/>
+			</div>
+		{:else}
+			<div class="flex min-h-0 min-w-0 flex-1 flex-col bg-card">
 				<div
 					class="shrink-0 flex items-center gap-1 overflow-x-auto border-b border-card/60 bg-panel/70 px-3 py-1.5"
 					role="tablist"
@@ -153,7 +214,6 @@
 					{/each}
 				</div>
 
-				<!-- List -->
 				<div id="history-list" class="flex-1 overflow-y-auto p-3" role="tabpanel">
 					{#if loading}
 						<p class="py-6 text-left text-label-md text-fg/45">Loading…</p>
@@ -163,47 +223,44 @@
 						<div class="flex flex-col gap-2" role="list">
 							{#each filteredItems as item (item.id)}
 								<div role="listitem">
-									<NoteCard
-										note={toNote(item.id, item.title || item.id)}
-										selected={selectedItem?.id === item.id}
+									<HistoryListCard
+										{item}
+										selected={false}
 										timestampLabel={formatTimestamp(item.created_at)}
 										chip={chipForKind(item.kind)}
+										disabled={deleting}
 										onselect={() => selectItem(item)}
 										oncopy={() => copyItem(item)}
 										onopen={item.has_markdown && item.markdown_path
 											? () => openItem(item)
 											: undefined}
+										ondelete={item.source === 'store' ? () => requestDelete(item) : undefined}
 									/>
 								</div>
 							{/each}
 						</div>
 					{/if}
 				</div>
-			{/snippet}
-
-			{#snippet right()}
-				{#if selectedItem}
-					<HistoryDetailPane
-						item={selectedItem}
-						onclose={() => (selectedItem = null)}
-						onrefresh={() => {
-							void loadHistory().then(() => {
-								// Re-sync selectedItem so chips/paths update after export/delete
-								if (selectedItem) {
-									const refreshed = allItems.find((i) => i.id === selectedItem!.id);
-									selectedItem = refreshed ?? null;
-								}
-							});
-						}}
-					/>
-				{:else}
-					<div class="flex flex-1 items-center justify-center p-6">
-						<p class="text-label-md text-fg/35">Select an item to view details</p>
-					</div>
-				{/if}
-			{/snippet}
-		</SplitPane>
+			</div>
+		{/if}
 	</div>
 </div>
+
+<Modal
+	open={deleteTarget !== null}
+	title="Delete recording?"
+	description="This will permanently delete the transcript and any associated audio. This cannot be undone."
+	maxWidthClass="max-w-sm"
+	onClose={() => (deleteTarget = null)}
+>
+	{#snippet footer()}
+		<div class="flex gap-3">
+			<Button variant="normal" disabled={deleting} onclick={() => (deleteTarget = null)}>Cancel</Button>
+			<Button variant="destructive" disabled={deleting} onclick={() => void confirmDelete()}>
+				{deleting ? 'Deleting…' : 'Delete'}
+			</Button>
+		</div>
+	{/snippet}
+</Modal>
 
 <Toast message={toastMessage} state={toastState} position="bottom-center" />

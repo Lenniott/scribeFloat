@@ -4,6 +4,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { copyTranscript } from "$lib/services/clipboard";
+  import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
   import Button from "@components/Button.svelte";
   import StackProgressBar from "@components/form/StackProgressBar.svelte";
@@ -26,6 +27,7 @@
     transcript_path?: string;
     wav_path?: string;
     error?: string;
+    history_record_id?: string;
   };
 
   let {
@@ -39,6 +41,7 @@
   let phase = $state<Phase>("transcribing");
   let progress = $state(0);
   let transcriptPath = $state("");
+  let recordId = $state("");
   let wavPath = $state("");
   let errorMessage = $state("");
   let processingStage = $state<ProcessingStage>("LOADING_MODEL");
@@ -90,8 +93,8 @@
         }
         break;
       case "DONE": {
-        const path = payload.transcript_path ?? "";
-        transcriptPath = path;
+        transcriptPath = payload.transcript_path ?? "";
+        recordId = payload.history_record_id ?? "";
         processingStage = "CLEANING_UP_AUDIO";
         progress = 100;
         setTimeout(() => {
@@ -140,9 +143,13 @@
   }
 
   async function copyContent() {
-    if (!transcriptPath) return;
     try {
-      await copyTranscript(transcriptPath);
+      if (transcriptPath) {
+        await copyTranscript(transcriptPath);
+      } else if (recordId) {
+        const text = await invoke<string>('history_render_markdown', { id: recordId });
+        await writeText(text);
+      }
       showToast("Copied to clipboard", "success");
     } catch (e) {
       showToast("Copy failed: " + String(e), "error");
@@ -206,13 +213,15 @@
             <div class="flex items-center justify-between">
               <p class="text-body-md text-fg/80">Transcript saved.</p>
               <div class="flex gap-2">
-                {#if transcriptPath}
+                {#if transcriptPath || recordId}
                   <IconButton
                     aria-label="copy transcript to clipboard"
                     variant="normal"
                     icon={Copy}
                     onclick={copyContent}
                   />
+                {/if}
+                {#if transcriptPath}
                   <IconButton
                     aria-label="Open Transcript"
                     icon={SquareArrowOutUpRight}

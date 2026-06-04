@@ -705,6 +705,7 @@ impl DictateController {
                 eprintln!("[dictate] failed to write history: {e}");
                 true
             } else {
+                self.app.emit("history://item-added", ()).ok();
                 false
             };
 

@@ -1,0 +1,10 @@
+-[] the click of the scribe button should be the same as pressing the record again button when you're done processing a scribe. at the momement clicking scribe after it has processed a recording keeps the process screen.
+-[] remove the cross button from the processing and scribe window within the header they are not needed as the window has the cross button already.
+-[] settings order and view of options that dont need to be seen if the toggle if off.
+    -[] OPEN TRANSCRIPTS WITH shuld be paired with the save as md (only show if on)
+    -[] INPUT & OUTPUT LABEL should be paired with a the CAPTURE SPEAKER BY DEFAULT & SPEAKER CAPTURE DEVICE NAME (like the only show if blackhole is detected like the device name)
+    -[] keyboard shortcuts should be at the top and more promninate
+-[] text replacement settings need a prefix word that you can add to all the words ie “float” so to do doesn’t become [] if I say “I have something I need to do” but does become [] when I say “float to do”
+-[] onboarding flow, permissions, model installed, test both scribe and dicate (have a thing to paste text into so they can see its working)
+-[] no delete in history, this needs to be added
+-[] scribe content not viewable in app should of been changed in last comit but wasnt

@@ -307,6 +307,8 @@ pub struct ScribeStateEvent {
     pub wav_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub history_record_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -740,6 +742,7 @@ impl ScribeStateEvent {
             transcript_path: None,
             wav_path: None,
             error: None,
+            history_record_id: None,
         }
     }
 }
@@ -789,6 +792,18 @@ mod tests {
         assert_eq!(json["transcript_path"], "/tmp/result.md");
         assert_eq!(json["progress"], 0.75);
         assert_eq!(json["processing_stage"], "WRITING_TRANSCRIPT");
+    }
+
+    #[test]
+    fn scribe_state_event_serializes_history_record_id() {
+        let mut event = ScribeStateEvent::new(ScribeState::Done);
+        event.history_record_id = Some("abc-123".to_string());
+        let json = serde_json::to_value(&event).expect("serialize");
+        assert_eq!(json["history_record_id"], "abc-123");
+        // Omitted when None (skip_serializing_if)
+        let event2 = ScribeStateEvent::new(ScribeState::Done);
+        let json2 = serde_json::to_value(&event2).expect("serialize");
+        assert!(!json2.as_object().unwrap().contains_key("history_record_id"));
     }
 
     #[test]

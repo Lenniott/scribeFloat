@@ -786,9 +786,16 @@ impl ScribeController {
                 .as_ref()
                 .map(|p| p.to_string_lossy().into_owned()),
         );
-        if let Err(e) = self.history.append(&config.save_folder, record) {
-            eprintln!("[scribe] failed to append history record: {e}");
-        }
+        let record_id = match self.history.append(&config.save_folder, record) {
+            Ok(id) => {
+                self.app.emit("history://item-added", ()).ok();
+                Some(id)
+            }
+            Err(e) => {
+                eprintln!("[scribe] failed to append history record: {e}");
+                None
+            }
+        };
 
         if !segments.is_empty() {
             self.app
@@ -814,6 +821,7 @@ impl ScribeController {
                     transcript_path: markdown_path
                         .as_ref()
                         .map(|p| p.to_string_lossy().into_owned()),
+                    history_record_id: record_id,
                     ..ScribeStateEvent::new(ScribeState::Done)
                 },
             )

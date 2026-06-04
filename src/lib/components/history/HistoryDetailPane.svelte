@@ -25,26 +25,6 @@
 		source: string;
 	};
 
-	type HistoryDetail = {
-		format_version: number;
-		id: string;
-		kind: string;
-		created_at: string;
-		title: string;
-		model: string;
-		segments: { start_ms: number; end_ms: number; text: string }[];
-		notes: { id: string; text: string; recorded_at_ms: number }[];
-		duration_ms: number;
-		word_count: number;
-		speaker_capture: boolean;
-		dual_source: boolean;
-		source_path?: string;
-		markdown_path?: string;
-		session_dir?: string;
-		audio_path?: string;
-		deleted: boolean;
-	};
-
 	let {
 		item,
 		onclose,
@@ -56,7 +36,6 @@
 	} = $props();
 
 	let bodyText = $state('');
-	let detail = $state<HistoryDetail | null>(null);
 	let loadingBody = $state(true);
 	let showDeleteModal = $state(false);
 	let deleting = $state(false);
@@ -64,6 +43,15 @@
 	let toastMessage = $state('');
 	let toastState = $state<ToastState>('normal');
 	let toastTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	// Scribe and Transcribe use a full-height reader layout; Dictate uses the compact layout.
+	const isReader = $derived(item.kind === 'scribe' || item.kind === 'transcribe');
+
+	const showExport = $derived(
+		item.source === 'store' && item.kind !== 'dictate' && !item.has_markdown,
+	);
+	const showOpenMd = $derived(item.has_markdown && !!item.markdown_path);
+	const showDelete = $derived(item.source === 'store');
 
 	function showToast(msg: string, state: ToastState = 'normal') {
 		if (toastTimeout) clearTimeout(toastTimeout);
@@ -91,20 +79,11 @@
 		} finally {
 			loadingBody = false;
 		}
-
-		if (item.source === 'store') {
-			try {
-				detail = await invoke<HistoryDetail>('history_get_detail', { id: item.id });
-			} catch {
-				detail = null;
-			}
-		}
 	}
 
 	async function copyContent() {
 		try {
-			const text = bodyText || '';
-			await writeText(text);
+			await writeText(bodyText);
 			showToast('Copied', 'success');
 		} catch {
 			showToast('Copy failed', 'error');
@@ -150,80 +129,138 @@
 		void item;
 		void loadContent();
 	});
-
-	const showExport = $derived(
-		item.source === 'store' && item.kind !== 'dictate' && !item.has_markdown,
-	);
-	const showOpenMd = $derived(item.has_markdown && !!item.markdown_path);
-	const showDelete = $derived(item.source === 'store');
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col">
-	<PanelHeader>
-		{#snippet left()}
-			<p class="truncate font-mono text-label-md tracking-stamped text-fg/80 uppercase">
-				{item.title || 'Detail'}
-			</p>
-		{/snippet}
-		{#snippet right()}
-			<IconButton aria-label="Close detail" icon={X} size="small" variant="normal" onclick={onclose} />
-		{/snippet}
-	</PanelHeader>
+	{#if isReader}
+		<!-- Reader layout: full-height transcript viewer for Scribe / Transcribe -->
+		<PanelHeader>
+			{#snippet left()}
+				<p class="truncate font-mono text-label-md tracking-stamped text-fg/80 uppercase">
+					{item.title || 'Detail'}
+				</p>
+			{/snippet}
+			{#snippet right()}
+				<div class="flex items-center gap-1">
+					{#if showDelete}
+						<IconButton
+							aria-label="Delete recording"
+							icon={Trash2}
+							size="small"
+							variant="normal"
+							onclick={() => (showDeleteModal = true)}
+						/>
+					{/if}
+					{#if showExport}
+						<IconButton
+							aria-label="Export to Markdown"
+							icon={FileDown}
+							size="small"
+							variant="normal"
+							onclick={exportMarkdown}
+						/>
+					{/if}
+					{#if showOpenMd}
+						<IconButton
+							aria-label="Open Markdown file"
+							icon={SquareArrowOutUpRight}
+							size="small"
+							variant="normal"
+							onclick={openMarkdown}
+						/>
+					{/if}
+					<IconButton
+						aria-label="Copy transcript"
+						icon={Copy}
+						size="small"
+						variant="normal"
+						onclick={copyContent}
+					/>
+					<IconButton
+						aria-label="Close detail"
+						icon={X}
+						size="small"
+						variant="normal"
+						onclick={onclose}
+					/>
+				</div>
+			{/snippet}
+		</PanelHeader>
 
-	<!-- Metadata chips -->
-	<div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-card/60 px-4 py-2">
-		{#if item.model}
-			<Chip variant="brand">{item.model}</Chip>
-		{/if}
-		{#if item.duration_ms > 0}
-			<Chip variant="brand">{formatDuration(item.duration_ms)}</Chip>
-		{/if}
-		{#if item.word_count > 0}
-			<Chip variant="brand">{item.word_count} words</Chip>
-		{/if}
-		{#if item.source === 'store' && detail?.dual_source}
-			<Chip variant="focus">Speaker capture</Chip>
-		{/if}
-		{#if item.source !== 'store'}
-			<span class="font-mono text-label-sm tracking-stamped text-fg/45 uppercase">Legacy</span>
-		{/if}
-	</div>
+		<ScrollablePanel class="px-4 py-3">
+			{#if loadingBody}
+				<p class="text-label-md text-fg/45">Loading…</p>
+			{:else if bodyText}
+				<p class="text-body-md whitespace-pre-wrap wrap-break-word text-fg/90">{bodyText}</p>
+			{:else}
+				<p class="text-label-md text-fg/45">No content available.</p>
+			{/if}
+		</ScrollablePanel>
+	{:else}
+		<!-- Compact layout: for Dictate items (short text, keep chips + footer) -->
+		<PanelHeader>
+			{#snippet left()}
+				<p class="truncate font-mono text-label-md tracking-stamped text-fg/80 uppercase">
+					{item.title || 'Detail'}
+				</p>
+			{/snippet}
+			{#snippet right()}
+				<IconButton aria-label="Close detail" icon={X} size="small" variant="normal" onclick={onclose} />
+			{/snippet}
+		</PanelHeader>
 
-	<ScrollablePanel class="px-4 py-3">
-		{#if loadingBody}
-			<p class="text-label-md text-fg/45">Loading…</p>
-		{:else if bodyText}
-			<p class="text-body-md whitespace-pre-wrap wrap-break-word text-fg/90">{bodyText}</p>
-		{:else}
-			<p class="text-label-md text-fg/45">No content available.</p>
-		{/if}
-	</ScrollablePanel>
+		<!-- Metadata chips -->
+		<div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-card/60 px-4 py-2">
+			{#if item.model}
+				<Chip variant="brand">{item.model}</Chip>
+			{/if}
+			{#if item.duration_ms > 0}
+				<Chip variant="brand">{formatDuration(item.duration_ms)}</Chip>
+			{/if}
+			{#if item.word_count > 0}
+				<Chip variant="brand">{item.word_count} words</Chip>
+			{/if}
+			{#if item.source !== 'store'}
+				<span class="font-mono text-label-sm tracking-stamped text-fg/45 uppercase">Legacy</span>
+			{/if}
+		</div>
 
-	<FixedFooterBar>
-		{#if showDelete}
-			<Button variant="destructive" onclick={() => (showDeleteModal = true)}>
-				<Trash2 class="size-4" />
-				Delete
+		<ScrollablePanel class="px-4 py-3">
+			{#if loadingBody}
+				<p class="text-label-md text-fg/45">Loading…</p>
+			{:else if bodyText}
+				<p class="text-body-md whitespace-pre-wrap wrap-break-word text-fg/90">{bodyText}</p>
+			{:else}
+				<p class="text-label-md text-fg/45">No content available.</p>
+			{/if}
+		</ScrollablePanel>
+
+		<FixedFooterBar>
+			{#if showDelete}
+				<Button variant="destructive" onclick={() => (showDeleteModal = true)}>
+					<Trash2 class="size-4" />
+					Delete
+				</Button>
+			{/if}
+			<div class="flex-1"></div>
+			{#if showExport}
+				<Button variant="normal" onclick={exportMarkdown}>
+					<FileDown class="size-4" />
+					Export .md
+				</Button>
+			{/if}
+			{#if showOpenMd}
+				<Button variant="normal" onclick={openMarkdown}>
+					<SquareArrowOutUpRight class="size-4" />
+					Open .md
+				</Button>
+			{/if}
+			<Button variant="normal" onclick={copyContent}>
+				<Copy class="size-4" />
+				Copy
 			</Button>
-		{/if}
-		<div class="flex-1"></div>
-		{#if showExport}
-			<Button variant="normal" onclick={exportMarkdown}>
-				<FileDown class="size-4" />
-				Export .md
-			</Button>
-		{/if}
-		{#if showOpenMd}
-			<Button variant="normal" onclick={openMarkdown}>
-				<SquareArrowOutUpRight class="size-4" />
-				Open .md
-			</Button>
-		{/if}
-		<Button variant="normal" onclick={copyContent}>
-			<Copy class="size-4" />
-			Copy
-		</Button>
-	</FixedFooterBar>
+		</FixedFooterBar>
+	{/if}
 </div>
 
 <Modal

@@ -125,8 +125,10 @@ impl HistoryController {
             .get(&cfg.save_folder, id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "history record not found".to_string())?;
-        Ok(output::render_from_record(
-            &record,
+        // Return only the paragraph-grouped body text — no YAML front matter, no headings.
+        // The full .md format is reserved for export (history_export_markdown).
+        Ok(output::render_transcript_body(
+            &record.segments,
             cfg.include_timestamps,
             &cfg.replacement_rules,
         ))
@@ -355,6 +357,39 @@ mod tests {
         let dupes: Vec<_> = items.iter().filter(|i| i.title == "Dupe").collect();
         assert_eq!(dupes.len(), 1);
         assert_eq!(dupes[0].source, HistoryItemSource::Store);
+    }
+
+    #[test]
+    fn render_markdown_returns_body_only_no_front_matter() {
+        let f = fixture();
+        let rec = HistoryRecord::from_scribe(
+            "My Meeting".to_string(),
+            "tiny".to_string(),
+            seg("hello world"),
+            vec![],
+            &[],
+            false,
+            false,
+            None,
+            None,
+            None,
+        );
+        let id = f.history.append(&f.save_folder, rec).unwrap();
+        let text = f.ctrl.render_markdown(&id).unwrap();
+        assert!(!text.contains("---"), "must not contain YAML front matter");
+        assert!(!text.contains("## Transcript"), "must not contain section heading");
+        assert!(text.contains("hello world"), "must contain the segment text");
+    }
+
+    #[test]
+    fn render_markdown_dictate_returns_plain_text() {
+        let f = fixture();
+        let segs = seg("quick brown fox");
+        let rec = HistoryRecord::from_dictate(&segs, "quick brown fox", "tiny".to_string());
+        let id = f.history.append(&f.save_folder, rec).unwrap();
+        let text = f.ctrl.render_markdown(&id).unwrap();
+        assert!(!text.contains("---"));
+        assert!(text.contains("quick brown fox"));
     }
 
     #[test]

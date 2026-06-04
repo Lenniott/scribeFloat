@@ -372,6 +372,8 @@ impl TranscribeController {
             );
             if let Err(e) = self.history.append(&save_folder, record) {
                 eprintln!("[transcribe] failed to append history record: {e}");
+            } else {
+                self.app.emit("history://item-added", ()).ok();
             }
 
             queue[index].status = TranscribeItemStatus::Done;

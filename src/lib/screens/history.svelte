@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
+	import { listen } from '@tauri-apps/api/event';
 	import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 	import NoteCard, { type Note } from '@lib/components/notes/NoteCard.svelte';
 	import Toast from '@lib/components/Toast.svelte';
@@ -115,6 +116,10 @@
 
 	onMount(() => {
 		void loadHistory();
+		const unlistenP = listen('history://item-added', () => {
+			void loadHistory();
+		});
+		return async () => (await unlistenP)();
 	});
 </script>
 

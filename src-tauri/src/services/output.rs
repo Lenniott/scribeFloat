@@ -536,21 +536,6 @@ pub fn render_transcript_markdown(
     md
 }
 
-/// Adapter: render markdown directly from a stored [`crate::types::HistoryRecord`].
-pub fn render_from_record(
-    record: &crate::types::HistoryRecord,
-    include_timestamps: bool,
-    rules: &[ReplacementRule],
-) -> String {
-    render_transcript_markdown(
-        &record.segments,
-        &record.notes,
-        &record.title,
-        &record.model,
-        include_timestamps,
-        rules,
-    )
-}
 
 /// Write a placeholder 16-bit PCM WAV header for streaming capture.
 pub fn write_streaming_wav_placeholder(
@@ -629,12 +614,17 @@ pub fn repair_wav_header_from_file_size(path: &Path) -> Result<u64> {
 /// Strip Whisper artifact annotations and normalize whitespace from a single segment.
 /// Always-on — these are never valid speech output.
 fn cleanup_text(text: &str) -> String {
-    // Remove all-caps bracket annotations Whisper emits: [BLANK_AUDIO], [Music], [Applause], etc.
-    // Pattern: literal [ followed by uppercase letter/underscore, then uppercase/space/underscore, then ]
-    // Strip Whisper bracket annotations: first char uppercase, rest letters/space/underscore.
-    // Matches [BLANK_AUDIO], [Music], [Sounds of the toilet] but not [ ] or [note].
-    let annotation_re = Regex::new(r"\[[A-Z][A-Za-z_ ]*\]").expect("static regex");
-    let cleaned = annotation_re.replace_all(text, "");
+    // Strip uppercase-first Whisper bracket annotations: [BLANK_AUDIO], [Music], [Applause], etc.
+    // Requires first char uppercase so user annotations like [note] are preserved.
+    let caps_re = Regex::new(r"\[[A-Z][A-Za-z_ ]*\]").expect("static regex");
+    let cleaned = caps_re.replace_all(text, "");
+    // Also strip known lowercase Whisper noise tokens emitted by the VAD path.
+    // Named list is explicit: [note] and other user annotations are not affected.
+    let noise_re = Regex::new(
+        r"(?i)\[(silence|blank_audio|no_speech|music|applause|laughter|noise|inaudible)\]",
+    )
+    .expect("static regex");
+    let cleaned = noise_re.replace_all(&cleaned, "");
     // Whisper sometimes fuses its native "#word" output with a following command word
     // (e.g. "hashtag cake new line" → "#cakenewline"). Split so replacement rules fire.
     let fusion_re = Regex::new(r"(?i)(#\w+?)(newline)").expect("static regex");
@@ -894,6 +884,15 @@ mod tests {
     fn cleanup_preserves_lowercase_brackets() {
         // User-facing [note] or [1] should not be stripped — only ALL-CAPS Whisper annotations
         assert_eq!(cleanup_text("see [note] below"), "see [note] below");
+    }
+
+    #[test]
+    fn cleanup_strips_lowercase_whisper_noise_tokens() {
+        // Whisper VAD path emits [silence] in lowercase; some models emit [music], [blank_audio], etc.
+        assert_eq!(cleanup_text("[silence] hello"), "hello");
+        assert_eq!(cleanup_text("[blank_audio]"), "");
+        assert_eq!(cleanup_text("[music] intro [applause]"), "intro");
+        assert_eq!(cleanup_text("[inaudible] world"), "world");
     }
 
     #[test]

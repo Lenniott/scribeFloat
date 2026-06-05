@@ -269,6 +269,18 @@ pub fn settings_show_window(app: AppHandle) -> Result<(), AppError> {
 }
 
 #[tauri::command]
+pub fn settings_show_onboarding_window(app: AppHandle) -> Result<(), AppError> {
+    crate::open_onboarding_window(&app)
+        .map(|_| ())
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+#[tauri::command]
+pub fn settings_get_platform() -> String {
+    std::env::consts::OS.to_string()
+}
+
+#[tauri::command]
 pub fn settings_get_replacement_rules(
     ctrl: State<'_, Arc<SettingsController>>,
 ) -> Result<Vec<ReplacementRule>, AppError> {

@@ -109,6 +109,7 @@ const TRANSCRIBE_WINDOW_LABEL: &str = "transcribe";
 const SETTINGS_WINDOW_LABEL: &str = "settings";
 pub(crate) const DICTATE_WINDOW_LABEL: &str = "dictate";
 const HISTORY_WINDOW_LABEL: &str = "history";
+const ONBOARDING_WINDOW_LABEL: &str = "onboarding";
 
 const OPEN_SCRIBE_MENU_ID: &str = "open_scribe";
 const OPEN_TRANSCRIBE_MENU_ID: &str = "open_transcribe";
@@ -126,6 +127,8 @@ const HISTORY_WINDOW_W: f64 = 480.0;
 const HISTORY_WINDOW_H: f64 = 600.0;
 const DICTATE_WINDOW_W: f64 = 240.0;
 const DICTATE_WINDOW_H: f64 = 48.0;
+const ONBOARDING_WINDOW_W: f64 = 680.0;
+const ONBOARDING_WINDOW_H: f64 = 560.0;
 /// Margin from the right and top edge of the primary monitor.
 const DICTATE_MARGIN_RIGHT: f64 = 16.0;
 const DICTATE_MARGIN_TOP: f64 = 28.0;
@@ -347,6 +350,29 @@ fn open_history_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         HISTORY_WINDOW_W,
         HISTORY_WINDOW_H,
     )
+}
+
+pub(crate) fn open_onboarding_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    let window = if let Some(w) = app.get_webview_window(ONBOARDING_WINDOW_LABEL) {
+        raise_webview_window(app, &w)?;
+        w
+    } else {
+        let mut builder = WebviewWindowBuilder::new(
+            app,
+            ONBOARDING_WINDOW_LABEL,
+            WebviewUrl::App("?view=onboarding".into()),
+        )
+        .title("ScribeFloat Setup")
+        .inner_size(ONBOARDING_WINDOW_W, ONBOARDING_WINDOW_H)
+        .resizable(false)
+        .center();
+        if let Some(icon) = app.default_window_icon() {
+            builder = builder.icon(icon.clone())?;
+        }
+        builder.build()?
+    };
+    platform::window_impl::set_has_visible_windows(app, true);
+    Ok(window)
 }
 
 pub(crate) fn open_dictate_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
@@ -600,10 +626,7 @@ pub fn run() {
             dictate_ctrl.start_key_listener();
 
             if is_first_run {
-                open_settings_window(app.handle())?;
-                app.state::<Arc<controllers::settings::SettingsController>>()
-                    .complete_onboarding()
-                    .ok();
+                open_onboarding_window(app.handle())?;
             }
             prewarm_scribe_window(app.handle());
             prewarm_transcribe_window(app.handle());
@@ -674,6 +697,13 @@ pub fn run() {
                     return;
                 }
 
+                // The onboarding window is a one-time wizard: let it destroy normally.
+                // The frontend calls settings_complete_onboarding before closing.
+                if window.label() == ONBOARDING_WINDOW_LABEL {
+                    platform::window_impl::sync_activation_policy(window.app_handle());
+                    return;
+                }
+
                 api.prevent_close();
                 if let Err(err) = window.hide() {
                     tracing::debug!(label = window.label(), error = %err, "failed to hide window");
@@ -733,6 +763,8 @@ pub fn run() {
             commands::settings::settings_complete_onboarding,
             commands::settings::settings_reset_onboarding,
             commands::settings::settings_show_window,
+            commands::settings::settings_show_onboarding_window,
+            commands::settings::settings_get_platform,
             commands::settings::settings_get_dictate_auto_paste,
             commands::settings::settings_set_dictate_auto_paste,
             commands::settings::settings_get_dictate_auto_enter,

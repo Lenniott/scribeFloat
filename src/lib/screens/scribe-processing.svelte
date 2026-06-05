@@ -13,7 +13,7 @@
   import ScrollablePanel from "@lib/components/accordion/ScrollablePanel.svelte";
   import Toast from "@components/Toast.svelte";
   import type { ToastState } from "@components/Toast.svelte";
-  import { Copy, SquareArrowOutUpRight, X } from "lucide-svelte";
+  import { Copy, SquareArrowOutUpRight } from "lucide-svelte";
   import IconButton from "@lib/components/IconButton.svelte";
 
   type Phase = "transcribing" | "done" | "no_model" | "error";
@@ -220,12 +220,6 @@
           {/if}
         </h1>
       </div>
-      <IconButton
-        variant="normal"
-        aria-label="close panel"
-        onclick={() => void closeScribeWindowCompletely()}
-        icon={X}
-      />
     </header>
 
     <div class="flex min-h-0 flex-1 flex-col px-5 py-4">

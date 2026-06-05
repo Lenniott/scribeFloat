@@ -5,6 +5,76 @@
 
 ---
 
+## 0. Onboarding
+
+Triggered when `Config.onboarding_complete == false` at startup. Opens a dedicated 680×560 window (`?view=onboarding`). Runs once; can be restarted from Settings → Help.
+
+**Step 1 — Welcome**
+1. Onboarding window opens centered
+2. Brand moment: app name, one-line description, three feature pills
+3. User chooses: "Get started" → step 2, or "Skip to Settings" → [OB-Exit-Settings]
+
+**Step 2 — Permissions**
+4. `settings_permissions_status` polled (every 5 s + on focus)
+5. Microphone row: if not granted, "Continue" is disabled; grant button calls `settings_permissions_request`
+6. Accessibility row: optional; grant unlocks Dictate auto-paste
+7. Input Monitoring row (macOS only): optional; needed for key listener
+8. User clicks "Continue" (enabled only after microphone is granted) → step 3
+
+**Step 3 — Quick Setup**
+9. User answers 3 questions:
+   - Main use: Meetings / Quick notes / Transcribe files
+   - Priority: Best accuracy (→ `small-en-q5`) / Fastest speed (→ `base-en-q5`)
+   - Speaker capture: Mic + computer / Mic only
+10. On continue: `settings_set_scribe_capture_speaker` persisted; answers stored in `OnboardingAnswers`
+11. Advance to step 4
+
+**Step 4 — Install Model**
+12. ModelStep derives recommended model ID from `answers.preferAccuracy`
+13. If already installed: show ✓, "Continue" available immediately
+14. If not installed: show "Install model" → `model_download` → listen `model://download-progress` → on completion `model_select`
+15. "Skip for now" available if no model installed
+16. Advance to step 5
+
+**Step 5 — Scribe Setup**
+17. Show how Scribe works (instructional list)
+18. Speaker capture toggle (reads `scribe_capture_speaker`; writes via `settings_set_scribe_capture_speaker`)
+19. macOS + no BlackHole: show install warning if `settings_blackhole_detected` returns false
+20. Windows: show "Works automatically" copy
+21. Show save folder path (read-only; `settings_get_output_path`)
+22. Advance to step 6
+
+**Step 6 — Dictate Setup**
+23. Show double-tap gesture instructions
+24. Hotkey field (`settings_get_hotkeys` on mount; `settings_set_hotkeys` on save)
+25. Auto-paste toggle (`settings_get/set_dictate_auto_paste`)
+26. Auto-enter toggle (`settings_get/set_dictate_auto_enter`)
+27. Advance to step 7
+
+**Step 7 — History & Output**
+28. Show mock history preview card
+29. Explain what is stored (text, timestamps, metadata)
+30. Markdown export toggle (`settings_get/set_save_transcripts_as_markdown`)
+31. Show note: Dictate sessions are never written as Markdown
+32. Advance to step 8
+
+**Step 8 — Complete**
+33. Show summary chips: permissions, model installed, speaker capture state, Markdown export state
+34. Show quick-start tips
+35. "Start using ScribeFloat" → [OB-Exit-Normal]
+36. "Open Settings" → [OB-Exit-Settings]
+
+**Exit paths:**
+- **OB-Exit-Normal**: `settings_complete_onboarding` → `getCurrentWindow().close()`
+- **OB-Exit-Settings**: `settings_complete_onboarding` → `settings_show_window` → `getCurrentWindow().close()`
+
+**Restart from Help:**
+37. User clicks "Restart Setup Wizard" in Settings → Help
+38. `settings_reset_onboarding` (sets `onboarding_complete = false`)
+39. `settings_show_onboarding_window` → onboarding window opens at step 1
+
+---
+
 ## 1. Scribe — Single Source
 
 User records mic only. No system audio capture.

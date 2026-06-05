@@ -310,6 +310,9 @@ pub(crate) fn open_scribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow
         SCRIBE_WINDOW_W,
         SCRIBE_WINDOW_H,
     )?;
+    // Tell the frontend the window was deliberately opened (tray or hotkey).
+    // scribe-processing.svelte uses this to return to the recording screen when done.
+    let _ = window.emit("scribe://opened", ());
     Ok(window)
 }
 

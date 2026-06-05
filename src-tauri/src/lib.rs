@@ -747,6 +747,8 @@ pub fn run() {
             commands::settings::settings_add_replacement_rule,
             commands::settings::settings_update_replacement_rule,
             commands::settings::settings_delete_replacement_rule,
+            commands::settings::settings_get_replacement_prefix,
+            commands::settings::settings_set_replacement_prefix,
             commands::dictate::dictate_cancel,
             commands::dictate::dictate_dismiss,
             commands::dictate::dictate_get_history,

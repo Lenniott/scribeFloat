@@ -753,6 +753,7 @@ impl ScribeController {
                 &model_name,
                 config.include_timestamps,
                 &config.replacement_rules,
+                &config.replacement_prefix,
                 dest,
             )?;
         }
@@ -780,6 +781,7 @@ impl ScribeController {
             segments.to_vec(),
             notes.to_vec(),
             &config.replacement_rules,
+            &config.replacement_prefix,
             speaker_capture,
             dual_source,
             session_dir,

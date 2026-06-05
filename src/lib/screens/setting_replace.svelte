@@ -23,6 +23,8 @@
 	}
 
 	let rules = $state<ReplacementRule[]>([]);
+	let globalPrefix = $state("float");
+	let prefixMessage = $state("");
 	let message = $state("");
 	let editingIndex = $state<number | null>(null);
 	let showAddForm = $state(false);
@@ -43,6 +45,18 @@
 
 	async function refresh() {
 		rules = await invoke<ReplacementRule[]>("settings_get_replacement_rules").catch(() => []);
+		globalPrefix = await invoke<string>("settings_get_replacement_prefix").catch(() => "float");
+	}
+
+	async function savePrefix() {
+		prefixMessage = "";
+		try {
+			await invoke("settings_set_replacement_prefix", { prefix: globalPrefix.trim() });
+			prefixMessage = "Saved";
+			setTimeout(() => { prefixMessage = ""; }, 2500);
+		} catch (e) {
+			prefixMessage = String(e);
+		}
 	}
 
 	onMount(refresh);
@@ -120,6 +134,24 @@
 </script>
 
 <section class="flex flex-col gap-4">
+	<div class="flex flex-col gap-2 border-b border-rim/30 pb-4">
+		<div class="flex flex-col gap-1">
+			<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
+				Trigger prefix
+			</span>
+			<p class="text-body-md text-fg/50">
+				Say this word before any trigger (e.g. "float dash → -"). Leave empty to match triggers directly.
+			</p>
+		</div>
+		<div class="flex items-end gap-2">
+			<LabeledTextField label="" bind:value={globalPrefix} placeholder="e.g. float" />
+			<Button variant="normal" size="small" onclick={savePrefix}>Save</Button>
+		</div>
+		{#if prefixMessage}
+			<span class="text-label-sm text-fg/70">{prefixMessage}</span>
+		{/if}
+	</div>
+
 	<div class="flex items-start justify-between gap-4">
 		<div class="flex flex-col gap-1">
 			<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
@@ -138,7 +170,7 @@
 		<div class="flex flex-col divide-y divide-rim/40 rounded-md border border-rim/40 overflow-hidden">
 			{#each rules as rule, i (i)}
 				<div class="flex items-center gap-2 px-3 py-2 bg-card">
-					<span class="font-mono text-label-md text-fg min-w-0 truncate">{rule.trigger}</span>
+					<span class="font-mono text-label-md text-fg min-w-0 truncate">{globalPrefix ? `${globalPrefix} ` : ""}{rule.trigger}</span>
 					<span class="text-label-sm text-fg/50 shrink-0">{ruleDescription(rule)}</span>
 					<div class="flex items-center gap-1 ml-auto shrink-0">
 						{#if rule.scope === "both" || rule.scope === "transcripts"}

@@ -126,7 +126,12 @@ impl OutputService {
 
     /// Join segments, clean Whisper artifacts, apply replacement rules, and return the final
     /// text ready for pasting. Scope applied: Dictate.
-    pub fn format_dictate_text(&self, segments: &[Segment], rules: &[ReplacementRule]) -> String {
+    pub fn format_dictate_text(
+        &self,
+        segments: &[Segment],
+        rules: &[ReplacementRule],
+        prefix: &str,
+    ) -> String {
         let joined = segments
             .iter()
             .map(|s| cleanup_text(s.text.trim()))
@@ -134,7 +139,7 @@ impl OutputService {
             .collect::<Vec<_>>()
             .join(" ");
         let deduped = dedup_repeated_block(&dedup_consecutive_phrases(&dedup_exact_halves(&joined)));
-        apply_replacements(&deduped, rules, &ReplacementScope::Dictate)
+        apply_replacements(&deduped, rules, &ReplacementScope::Dictate, prefix)
     }
 
     /// Render segments as markdown and write. Verifies file is non-empty before returning Ok.
@@ -149,10 +154,11 @@ impl OutputService {
         model_name: &str,
         include_timestamps: bool,
         rules: &[ReplacementRule],
+        prefix: &str,
         dest: &Path,
     ) -> Result<PathBuf> {
         let md =
-            render_transcript_markdown(segments, notes, title, model_name, include_timestamps, rules);
+            render_transcript_markdown(segments, notes, title, model_name, include_timestamps, rules, prefix);
         std::fs::write(dest, &md).context("failed to write transcript")?;
         if std::fs::metadata(dest)?.len() == 0 {
             return Err(anyhow::anyhow!("transcript was written empty"));
@@ -446,6 +452,7 @@ pub fn render_transcript_body(
     segments: &[Segment],
     include_timestamps: bool,
     rules: &[ReplacementRule],
+    prefix: &str,
 ) -> String {
     const MERGE_GAP_MS: i64 = 8_000;
     struct Group {
@@ -498,13 +505,13 @@ pub fn render_transcript_body(
         }
         out
     };
-    apply_replacements(&raw_body, rules, &ReplacementScope::Transcripts)
+    apply_replacements(&raw_body, rules, &ReplacementScope::Transcripts, prefix)
 }
 
 /// Count words in the rendered transcript body, excluding timestamp labels. Shared by the
 /// `HistoryRecord` builders and the markdown front matter so the store and the `.md` agree.
-pub fn count_words(segments: &[Segment], rules: &[ReplacementRule]) -> usize {
-    render_transcript_body(segments, false, rules)
+pub fn count_words(segments: &[Segment], rules: &[ReplacementRule], prefix: &str) -> usize {
+    render_transcript_body(segments, false, rules, prefix)
         .split_whitespace()
         .count()
 }
@@ -518,14 +525,15 @@ pub fn render_transcript_markdown(
     model_name: &str,
     include_timestamps: bool,
     rules: &[ReplacementRule],
+    prefix: &str,
 ) -> String {
-    let transcript_body = render_transcript_body(segments, include_timestamps, rules);
+    let transcript_body = render_transcript_body(segments, include_timestamps, rules, prefix);
 
     let duration_seconds = segments
         .last()
         .map(|s| s.end_ms.max(0) as f64 / 1000.0)
         .unwrap_or(0.0);
-    let word_count = count_words(segments, rules);
+    let word_count = count_words(segments, rules, prefix);
     let token_estimate = ((word_count as f64) * 1.3).round() as usize;
 
     let mut md = String::new();
@@ -735,7 +743,27 @@ fn dedup_repeated_block(text: &str) -> String {
 
 /// Apply user-defined replacement rules to text. Rules are applied in order.
 /// Only rules whose scope is Both or matches the given scope are applied.
-fn apply_replacements(text: &str, rules: &[ReplacementRule], scope: &ReplacementScope) -> String {
+/// Returns the effective trigger string, prepending `prefix` when the trigger doesn't
+/// already include it. This allows old-format rules ("float dash") and new-format rules
+/// ("dash" with prefix="float") to coexist and produce identical behaviour.
+fn effective_trigger(trigger: &str, prefix: &str) -> String {
+    if prefix.is_empty() {
+        return trigger.to_string();
+    }
+    let prefix_space = format!("{} ", prefix);
+    if trigger.starts_with(&prefix_space) {
+        trigger.to_string()
+    } else {
+        format!("{} {}", prefix, trigger)
+    }
+}
+
+fn apply_replacements(
+    text: &str,
+    rules: &[ReplacementRule],
+    scope: &ReplacementScope,
+    prefix: &str,
+) -> String {
     let mut result = text.to_string();
     for rule in rules {
         if rule.trigger.trim().is_empty() {
@@ -745,10 +773,12 @@ fn apply_replacements(text: &str, rules: &[ReplacementRule], scope: &Replacement
         if rule_scope != &ReplacementScope::Both && rule_scope != scope {
             continue;
         }
-        let triggers = std::iter::once(rule.trigger.as_str())
+        let triggers: Vec<String> = std::iter::once(rule.trigger.as_str())
             .chain(rule.aliases.iter().map(String::as_str))
-            .filter(|t| !t.trim().is_empty());
-        for trigger in triggers {
+            .filter(|t| !t.trim().is_empty())
+            .map(|t| effective_trigger(t, prefix))
+            .collect();
+        for trigger in &triggers {
             result = match rule.rule_type {
                 ReplacementRuleType::Simple => {
                     let replacement = rule.output.as_str();
@@ -975,38 +1005,38 @@ mod tests {
     #[test]
     fn replacements_simple_whole_word() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Both), "11 - may");
+        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Both, ""), "11 - may");
     }
 
     #[test]
     fn replacements_case_insensitive() {
         let rules = vec![simple_rule("hashtag", "#", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("HASHTAG project", &rules, &ReplacementScope::Both), "# project");
+        assert_eq!(apply_replacements("HASHTAG project", &rules, &ReplacementScope::Both, ""), "# project");
     }
 
     #[test]
     fn replacements_whole_word_not_substring() {
         let rules = vec![simple_rule("hash", "#", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("hashtag project", &rules, &ReplacementScope::Both), "hashtag project");
+        assert_eq!(apply_replacements("hashtag project", &rules, &ReplacementScope::Both, ""), "hashtag project");
     }
 
     #[test]
     fn replacements_phrase_trigger() {
         let rules = vec![simple_rule("to do", "[ ]", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("add to do item", &rules, &ReplacementScope::Both), "add [ ] item");
+        assert_eq!(apply_replacements("add to do item", &rules, &ReplacementScope::Both, ""), "add [ ] item");
     }
 
     #[test]
     fn replacements_newline_type() {
         let rules = vec![newline_rule("new line")];
-        assert_eq!(apply_replacements("hello new line world", &rules, &ReplacementScope::Both), "hello\nworld");
+        assert_eq!(apply_replacements("hello new line world", &rules, &ReplacementScope::Both, ""), "hello\nworld");
     }
 
     #[test]
     fn replace_newline_moves_trailing_question_mark() {
         let rules = vec![newline_rule("new line")];
         assert_eq!(
-            apply_replacements("looking for new line?", &rules, &ReplacementScope::Both),
+            apply_replacements("looking for new line?", &rules, &ReplacementScope::Both, ""),
             "looking for?\n"
         );
     }
@@ -1024,7 +1054,7 @@ mod tests {
             transform: WordTransform::None,
         }];
         assert_eq!(
-            apply_replacements("go to bed newline", &rules, &ReplacementScope::Both),
+            apply_replacements("go to bed newline", &rules, &ReplacementScope::Both, ""),
             "go to bed\n"
         );
     }
@@ -1032,31 +1062,31 @@ mod tests {
     #[test]
     fn replacements_wrap_with_lower_transform() {
         let rules = vec![wrap_rule("hashtag", "#", "", WordTransform::Lower)];
-        assert_eq!(apply_replacements("hashtag Monday", &rules, &ReplacementScope::Both), "#monday");
+        assert_eq!(apply_replacements("hashtag Monday", &rules, &ReplacementScope::Both, ""), "#monday");
     }
 
     #[test]
     fn replacements_wrap_leaves_rest_unchanged() {
         let rules = vec![wrap_rule("bold", "**", "**", WordTransform::None)];
-        assert_eq!(apply_replacements("bold hello world", &rules, &ReplacementScope::Both), "**hello** world");
+        assert_eq!(apply_replacements("bold hello world", &rules, &ReplacementScope::Both, ""), "**hello** world");
     }
 
     #[test]
     fn replacements_scope_transcripts_skips_dictate_rule() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Dictate)];
-        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Transcripts), "11 dash may");
+        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Transcripts, ""), "11 dash may");
     }
 
     #[test]
     fn replacements_scope_dictate_skips_transcripts_rule() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Transcripts)];
-        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Dictate), "11 dash may");
+        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Dictate, ""), "11 dash may");
     }
 
     #[test]
     fn replacements_both_scope_applies_to_transcripts() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("a dash b", &rules, &ReplacementScope::Transcripts), "a - b");
+        assert_eq!(apply_replacements("a dash b", &rules, &ReplacementScope::Transcripts, ""), "a - b");
     }
 
     #[test]
@@ -1066,7 +1096,7 @@ mod tests {
             simple_rule("todo", "[ ]", ReplacementScope::Both),
         ];
         assert_eq!(
-            apply_replacements("hashtag project todo item", &rules, &ReplacementScope::Both),
+            apply_replacements("hashtag project todo item", &rules, &ReplacementScope::Both, ""),
             "# project [ ] item"
         );
     }
@@ -1074,31 +1104,78 @@ mod tests {
     #[test]
     fn replacements_empty_trigger_skipped() {
         let rules = vec![simple_rule("", "oops", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("hello", &rules, &ReplacementScope::Both), "hello");
+        assert_eq!(apply_replacements("hello", &rules, &ReplacementScope::Both, ""), "hello");
     }
 
+    // Old-format rules (prefix embedded in trigger string) still work with empty prefix.
     #[test]
-    fn float_prefix_trigger_replaces() {
+    fn old_format_rule_with_empty_prefix_matches() {
         let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("11 float dash may", &rules, &ReplacementScope::Both), "11 - may");
+        assert_eq!(apply_replacements("11 float dash may", &rules, &ReplacementScope::Both, ""), "11 - may");
     }
 
     #[test]
-    fn bare_word_does_not_trigger_float_prefixed_rule() {
+    fn old_format_bare_word_does_not_match() {
         let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Both), "11 dash may");
+        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Both, ""), "11 dash may");
     }
 
     #[test]
-    fn float_prefix_newline_rule_replaces() {
+    fn old_format_newline_rule_with_empty_prefix_matches() {
         let rules = vec![newline_rule("float new line")];
-        assert_eq!(apply_replacements("hello float new line world", &rules, &ReplacementScope::Both), "hello\nworld");
+        assert_eq!(apply_replacements("hello float new line world", &rules, &ReplacementScope::Both, ""), "hello\nworld");
     }
 
     #[test]
-    fn bare_new_line_does_not_trigger_float_prefixed_rule() {
+    fn old_format_bare_new_line_does_not_match() {
         let rules = vec![newline_rule("float new line")];
-        assert_eq!(apply_replacements("hello new line world", &rules, &ReplacementScope::Both), "hello new line world");
+        assert_eq!(apply_replacements("hello new line world", &rules, &ReplacementScope::Both, ""), "hello new line world");
+    }
+
+    // ── Global prefix feature ──────────────────────────────────────────────────
+
+    #[test]
+    fn prefix_prepended_to_base_trigger_fires() {
+        // New-format rule: base trigger "dash", prefix "float" → effective "float dash"
+        let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
+        assert_eq!(apply_replacements("eleven float dash may", &rules, &ReplacementScope::Both, "float"), "eleven - may");
+    }
+
+    #[test]
+    fn prefix_base_trigger_alone_does_not_fire() {
+        let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
+        assert_eq!(apply_replacements("eleven dash may", &rules, &ReplacementScope::Both, "float"), "eleven dash may");
+    }
+
+    #[test]
+    fn prefix_not_double_applied_to_old_format_rule() {
+        // Old-format rule already has "float " in trigger; prefix "float" must not produce "float float dash"
+        let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
+        assert_eq!(apply_replacements("eleven float dash may", &rules, &ReplacementScope::Both, "float"), "eleven - may");
+    }
+
+    #[test]
+    fn prefix_double_prefixed_text_does_not_match_old_format() {
+        let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
+        assert_eq!(apply_replacements("eleven float float dash may", &rules, &ReplacementScope::Both, "float"), "eleven float float dash may");
+    }
+
+    #[test]
+    fn empty_prefix_fires_base_trigger_directly() {
+        let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
+        assert_eq!(apply_replacements("eleven dash may", &rules, &ReplacementScope::Both, ""), "eleven - may");
+    }
+
+    #[test]
+    fn prefix_newline_rule_base_trigger() {
+        let rules = vec![newline_rule("new line")];
+        assert_eq!(apply_replacements("hello float new line world", &rules, &ReplacementScope::Both, "float"), "hello\nworld");
+    }
+
+    #[test]
+    fn prefix_newline_bare_trigger_does_not_fire() {
+        let rules = vec![newline_rule("new line")];
+        assert_eq!(apply_replacements("hello new line world", &rules, &ReplacementScope::Both, "float"), "hello new line world");
     }
 
 
@@ -1172,7 +1249,7 @@ mod tests {
             text: "hello world".to_string(),
         }];
 
-        svc.write_transcript(&segments, &[], "Test", "tiny", true, &[], &file)
+        svc.write_transcript(&segments, &[], "Test", "tiny", true, &[], "", &file)
             .expect("write transcript");
 
         let content = std::fs::read_to_string(&file).expect("read transcript");
@@ -1189,7 +1266,7 @@ mod tests {
             text: "hello world".to_string(),
         }];
 
-        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write transcript");
 
         let content = std::fs::read_to_string(&file).expect("read transcript");
@@ -1208,7 +1285,7 @@ mod tests {
             Segment { start_ms: 1_200, end_ms: 3_000, text: "out: Hello there.".to_string() },
             Segment { start_ms: 3_100, end_ms: 4_000, text: "out: How are you?".to_string() },
         ];
-        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write");
         let content = std::fs::read_to_string(&file).expect("read");
         // Speaker change uses a blank line
@@ -1232,7 +1309,7 @@ mod tests {
             Segment { start_ms: 2_000, end_ms: 4_000, text: "out: Thanks for sharing.".to_string() },
             Segment { start_ms: 5_000, end_ms: 6_000, text: "in: Absolutely.".to_string() },
         ];
-        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write");
         let content = std::fs::read_to_string(&file).expect("read");
         // Each speaker change: blank line \n\n
@@ -1249,7 +1326,7 @@ mod tests {
             Segment { start_ms: 0, end_ms: 2_000, text: "First thought.".to_string() },
             Segment { start_ms: 12_000, end_ms: 14_000, text: "Second thought.".to_string() },
         ];
-        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write");
         let content = std::fs::read_to_string(&file).expect("read");
         assert!(
@@ -1266,7 +1343,7 @@ mod tests {
             Segment { start_ms: 0, end_ms: 500, text: "Hello".to_string() },
             Segment { start_ms: 700, end_ms: 1_200, text: "world.".to_string() },
         ];
-        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], &file)
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write");
         let content = std::fs::read_to_string(&file).expect("read");
         assert!(
@@ -1312,7 +1389,7 @@ mod tests {
             recorded_at_ms: 2_000,
         }];
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
-        let md = render_transcript_markdown(&segments, &notes, "My Title", "tiny", true, &rules);
+        let md = render_transcript_markdown(&segments, &notes, "My Title", "tiny", true, &rules, "");
         // word_count counts every whitespace token of the timestamp-free body, including the
         // `in:`/`out:` speaker labels and the substituted `-` (11 tokens). A notes section ends
         // with a blank line (the loop's trailing `\n` plus the document's final `\n`).
@@ -1340,10 +1417,10 @@ model: tiny\n\
             end_ms: 2_000,
             text: "hello world".to_string(),
         }];
-        svc.write_transcript(&segments, &[], "T", "tiny", false, &[], &file)
+        svc.write_transcript(&segments, &[], "T", "tiny", false, &[], "", &file)
             .expect("write");
         let on_disk = std::fs::read_to_string(&file).expect("read");
-        let pure = render_transcript_markdown(&segments, &[], "T", "tiny", false, &[]);
+        let pure = render_transcript_markdown(&segments, &[], "T", "tiny", false, &[], "");
         assert_eq!(on_disk, pure);
     }
 
@@ -1355,7 +1432,7 @@ model: tiny\n\
             text: "hello world".to_string(),
         }];
         // Two real words regardless of timestamp rendering.
-        assert_eq!(count_words(&segments, &[]), 2);
+        assert_eq!(count_words(&segments, &[], ""), 2);
     }
 
     // ── format_ms ────────────────────────────────────────────────────────────

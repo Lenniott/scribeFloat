@@ -696,7 +696,7 @@ impl DictateController {
             return Ok(false);
         }
 
-        let text = self.output.format_dictate_text(&segments, &config.replacement_rules);
+        let text = self.output.format_dictate_text(&segments, &config.replacement_rules, &config.replacement_prefix);
 
         {
             let mut inner = self.lock();

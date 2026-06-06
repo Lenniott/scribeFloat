@@ -59,7 +59,7 @@ impl ModelController {
         }
         tauri::async_runtime::spawn(async move {
             if let Err(e) = self.model.download_model(&model_id, &app).await {
-                eprintln!("model download failed: {e}");
+                tracing::warn!(model_id, error = %e, "model download failed");
                 app.emit("model://download-error", e.to_string()).ok();
             }
         });
@@ -94,7 +94,7 @@ impl ModelController {
     pub fn download_vad_model(self: Arc<Self>, app: AppHandle) -> Result<(), String> {
         tauri::async_runtime::spawn(async move {
             if let Err(e) = self.model.download_vad_model(&app).await {
-                eprintln!("VAD model download failed: {e}");
+                tracing::warn!(error = %e, "VAD model download failed");
                 app.emit("model://download-error", e.to_string()).ok();
             }
         });

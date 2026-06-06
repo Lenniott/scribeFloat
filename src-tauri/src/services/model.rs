@@ -494,9 +494,9 @@ impl ModelService {
             .contains(&path_key);
         let mut ctx_params = WhisperContextParameters::default();
         if !use_gpu {
-            eprintln!(
-                "[model] loading {} on CPU (GPU encode previously failed)",
-                model_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+            tracing::info!(
+                model = model_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                "loading model on CPU (GPU encode previously failed)"
             );
             ctx_params.use_gpu(false);
         }
@@ -505,13 +505,10 @@ impl ModelService {
         let ctx = WhisperContext::new_with_params(path_str, ctx_params)
             .map_err(|e| anyhow!("failed to load model at {path_str}: {e:?}"))?;
         let ctx = Arc::new(ctx);
-        eprintln!(
-            "[model] loaded {} in {} ms",
-            model_path
-                .file_name()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_else(|| path_str.to_string()),
-            load_started.elapsed().as_millis()
+        tracing::debug!(
+            model = model_path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| path_str.to_string()),
+            elapsed_ms = load_started.elapsed().as_millis(),
+            "model loaded"
         );
 
         let mut guard = self.lock_contexts();
@@ -577,7 +574,7 @@ impl ModelService {
         let on_progress = Arc::new(Mutex::new(on_progress));
         match self.run_inference(model_path, pcm, vad_model_path, abort.clone(), Arc::clone(&on_progress)) {
             Err(InferError::Encode(e)) => {
-                eprintln!("[model] GPU encode failed ({e:#}), retrying on CPU");
+                tracing::warn!(error = %format!("{e:#}"), "GPU encode failed, retrying on CPU");
                 self.mark_cpu_fallback(model_path);
                 self.run_inference(model_path, pcm, vad_model_path, abort, on_progress)
                     .map_err(anyhow::Error::from)
@@ -647,16 +644,13 @@ impl ModelService {
         } else {
             f32::INFINITY
         };
-        eprintln!(
-            "[transcribe] model={} audio={:.2}s wall={:.2}s rtf={:.2}x threads={}",
-            model_path
-                .file_name()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "?".to_string()),
-            audio_secs,
-            elapsed.as_secs_f32(),
-            rtf,
-            n_threads,
+        tracing::debug!(
+            model = model_path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "?".to_string()),
+            audio_secs = format!("{audio_secs:.2}"),
+            wall_secs = format!("{:.2}", elapsed.as_secs_f32()),
+            rtf = format!("{rtf:.2}"),
+            threads = n_threads,
+            "transcription complete"
         );
 
         let mut segments = Vec::new();

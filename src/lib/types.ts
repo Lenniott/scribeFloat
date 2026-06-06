@@ -1,3 +1,18 @@
+/** Typed error returned from Tauri IPC commands. Mirrors Rust `types::AppError`. */
+export type AppError =
+    | { code: 'NotFound'; message: string }
+    | { code: 'InvalidInput'; message: string }
+    | { code: 'StateMachine'; message: string }
+    | { code: 'Io'; message: string }
+    | { code: 'Internal'; message: string };
+
+/** Extract a human-readable string from any Tauri IPC rejection value. */
+export function appErrorMessage(e: unknown): string {
+    if (typeof e === 'string') return e;
+    if (e && typeof e === 'object' && 'message' in e) return String((e as AppError).message);
+    return String(e);
+}
+
 export type UpdateCheckResult = {
 	update_available: boolean;
 	latest_version: string;

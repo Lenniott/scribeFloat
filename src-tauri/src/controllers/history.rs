@@ -202,7 +202,7 @@ impl HistoryController {
         } else if let Some(audio) = record.audio_path.as_deref() {
             if let Some(safe) = within_save_folder(audio, &save_folder) {
                 if let Err(e) = self.output.delete_wav(&safe) {
-                    eprintln!("[history] failed to delete audio {}: {e}", safe.display());
+                    tracing::warn!(path = %safe.display(), error = %e, "failed to delete audio file");
                 }
             }
         }
@@ -211,7 +211,7 @@ impl HistoryController {
         if let Some(md) = record.markdown_path.as_deref() {
             if let Some(safe) = within_save_folder(md, &save_folder) {
                 if let Err(e) = self.output.delete_file(&safe) {
-                    eprintln!("[history] failed to delete markdown {}: {e}", safe.display());
+                    tracing::warn!(path = %safe.display(), error = %e, "failed to delete markdown file");
                 }
             }
         }

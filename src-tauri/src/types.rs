@@ -1,5 +1,38 @@
 use serde::{Deserialize, Serialize};
 
+/// Typed error returned at the Tauri IPC boundary.
+/// The `code` tag lets the frontend branch on error kind without string-matching.
+#[derive(Debug, Serialize)]
+#[serde(tag = "code", content = "message")]
+pub enum AppError {
+    NotFound(String),
+    InvalidInput(String),
+    StateMachine(String),
+    Io(String),
+    Internal(String),
+}
+
+impl std::fmt::Display for AppError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound(m) | Self::InvalidInput(m) | Self::StateMachine(m)
+            | Self::Io(m) | Self::Internal(m) => f.write_str(m),
+        }
+    }
+}
+
+impl From<anyhow::Error> for AppError {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Internal(e.to_string())
+    }
+}
+
+impl From<String> for AppError {
+    fn from(s: String) -> Self {
+        Self::Internal(s)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default = "default_save_folder")]

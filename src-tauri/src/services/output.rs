@@ -426,7 +426,7 @@ impl OutputService {
             if crate::services::audio::read_wav_mono_f32(&path).is_ok() {
                 match self.salvage_dictate_wav(save_folder, &path) {
                     Ok(dest) => salvaged.push(dest),
-                    Err(e) => eprintln!("[dictate] failed to salvage temp wav {}: {e}", path.display()),
+                    Err(e) => tracing::warn!(path = %path.display(), error = %e, "failed to salvage dictate temp wav"),
                 }
             } else {
                 let _ = std::fs::remove_file(&path);

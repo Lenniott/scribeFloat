@@ -1,11 +1,11 @@
 use crate::controllers::dictate::DictateController;
-use crate::types::DictateHistoryEntry;
+use crate::types::{AppError, DictateHistoryEntry};
 use std::sync::Arc;
 use tauri::State;
 
 #[tauri::command]
-pub fn dictate_cancel(ctrl: State<'_, Arc<DictateController>>) -> Result<(), String> {
-    ctrl.cancel().map_err(|e| e.to_string())
+pub fn dictate_cancel(ctrl: State<'_, Arc<DictateController>>) -> Result<(), AppError> {
+    ctrl.cancel().map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -16,6 +16,6 @@ pub fn dictate_dismiss(ctrl: State<'_, Arc<DictateController>>) {
 #[tauri::command]
 pub fn dictate_get_history(
     ctrl: State<'_, Arc<DictateController>>,
-) -> Result<Vec<DictateHistoryEntry>, String> {
-    ctrl.get_history()
+) -> Result<Vec<DictateHistoryEntry>, AppError> {
+    ctrl.get_history().map_err(AppError::from)
 }

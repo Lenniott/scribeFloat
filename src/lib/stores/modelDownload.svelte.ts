@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { ModelListItem, ModelProgressPayload } from '$lib/types';
+import { appErrorMessage, type ModelListItem, type ModelProgressPayload } from '$lib/types';
 
 export type { ModelListItem };
 
@@ -60,7 +60,7 @@ export function createModelDownloadStore() {
 		progressByModel = { ...progressByModel, [modelId]: 0 };
 		statusByModel = { ...statusByModel, [modelId]: 'Starting install…' };
 		await invoke('model_download', { modelId }).catch((e) => {
-			error = String(e);
+			error = appErrorMessage(e);
 			downloadingByModel = { ...downloadingByModel, [modelId]: false };
 			statusByModel = { ...statusByModel, [modelId]: 'Install failed' };
 			activeDownloadModelId = null;
@@ -70,7 +70,7 @@ export function createModelDownloadStore() {
 	async function select(modelId: string) {
 		error = '';
 		await invoke('model_select', { modelId }).catch((e) => {
-			error = String(e);
+			error = appErrorMessage(e);
 		});
 		await refresh();
 	}
@@ -78,7 +78,7 @@ export function createModelDownloadStore() {
 	async function remove(modelId: string) {
 		error = '';
 		await invoke('model_remove', { modelId }).catch((e) => {
-			error = String(e);
+			error = appErrorMessage(e);
 		});
 		await refresh();
 	}

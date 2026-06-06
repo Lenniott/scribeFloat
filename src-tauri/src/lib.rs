@@ -27,8 +27,9 @@ fn log_system_info() {
         .map(|b| format!("{:.1} GB", b as f64 / 1_073_741_824.0))
         .unwrap_or_else(|| "?".to_string());
 
-    eprintln!(
-        "[startup] scribefloat v{version} os={os} arch={arch} cpu=\"{cpu_brand}\" cores={physical}p/{logical}l ram={ram_gb}"
+    tracing::info!(
+        version, os, arch, cpu = cpu_brand, cores_physical = physical, cores_logical = logical,
+        ram = ram_gb, "scribefloat startup"
     );
 }
 
@@ -190,22 +191,22 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             OPEN_SCRIBE_MENU_ID => {
                 if let Err(err) = open_scribe_window(app) {
-                    eprintln!("failed to open scribe window: {err}");
+                    tracing::warn!(error = %err, "failed to open scribe window");
                 }
             }
             OPEN_TRANSCRIBE_MENU_ID => {
                 if let Err(err) = open_transcribe_window(app) {
-                    eprintln!("failed to open transcribe window: {err}");
+                    tracing::warn!(error = %err, "failed to open transcribe window");
                 }
             }
             OPEN_HISTORY_MENU_ID => {
                 if let Err(err) = open_history_window(app) {
-                    eprintln!("failed to open history window: {err}");
+                    tracing::warn!(error = %err, "failed to open history window");
                 }
             }
             OPEN_SETTINGS_MENU_ID => {
                 if let Err(err) = open_settings_window(app) {
-                    eprintln!("failed to open settings window: {err}");
+                    tracing::warn!(error = %err, "failed to open settings window");
                 }
             }
             QUIT_MENU_ID => app.exit(0),
@@ -254,7 +255,7 @@ fn prewarm_scribe_window(app: &AppHandle) {
         Ok(())
     })();
     if let Err(err) = result {
-        eprintln!("failed to prewarm scribe window: {err}");
+        tracing::debug!(error = %err, "failed to prewarm scribe window");
     }
 }
 
@@ -272,7 +273,7 @@ fn prewarm_transcribe_window(app: &AppHandle) {
         Ok(())
     })();
     if let Err(err) = result {
-        eprintln!("failed to prewarm transcribe window: {err}");
+        tracing::debug!(error = %err, "failed to prewarm transcribe window");
     }
 }
 
@@ -296,7 +297,7 @@ fn prewarm_dictate_window(app: &AppHandle) {
         Ok(())
     })();
     if let Err(err) = result {
-        eprintln!("failed to prewarm dictate window: {err}");
+        tracing::debug!(error = %err, "failed to prewarm dictate window");
     }
 }
 
@@ -447,6 +448,13 @@ fn open_or_focus_window(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .with_writer(std::io::stderr)
+        .init();
     log_system_info();
 
     let audio = services::audio::AudioService::new();
@@ -493,9 +501,7 @@ pub fn run() {
             if let Some(helper) = platform::resolve_set_default_output_helper() {
                 platform::init_set_default_output_helper(helper);
             } else {
-                eprintln!(
-                    "set-default-output helper missing; speaker capture output restore may fail"
-                );
+                tracing::warn!("set-default-output helper missing; speaker capture output restore may fail");
             }
             let config = services::config::ConfigService::load(data_dir.join("config.json"))?;
             {
@@ -542,7 +548,7 @@ pub fn run() {
                 Arc::clone(&audio),
             );
             if let Err(err) = settings_ctrl.rehydrate_hotkeys() {
-                eprintln!("hotkey rehydration skipped: {err}");
+                tracing::debug!(error = %err, "hotkey rehydration skipped");
             }
 
             let ctrl = controllers::scribe::ScribeController::new(
@@ -605,34 +611,38 @@ pub fn run() {
             platform::window_impl::sync_activation_policy(app.handle());
 
             let save_folder = app.state::<Arc<services::config::ConfigService>>().get().save_folder;
-            // Compact the history store once at startup (drops tombstones/superseded lines).
-            if let Err(e) = history.compact(&save_folder) {
-                eprintln!("[history] startup compaction skipped: {e}");
-            }
-            match output.scan_incomplete_scribe_sessions(&save_folder) {
-                Ok(sessions) => {
-                    for info in &sessions {
-                        eprintln!(
-                            "[recovery] incomplete scribe session at {} (state: {})",
-                            info.session_dir, info.state
-                        );
-                    }
+            // Run compaction and recovery scans in the background so they never block
+            // the Tauri event loop at startup (large histories can take 100-500ms).
+            let history_bg = Arc::clone(&history);
+            let output_bg = Arc::clone(&output);
+            let save_folder_bg = save_folder.clone();
+            let temp_dir_bg = app.path().app_local_data_dir().ok().map(|d| d.join("dictate_temp"));
+            tokio::spawn(async move {
+                if let Err(e) = history_bg.compact(&save_folder_bg) {
+                    tracing::warn!(error = %e, "startup history compaction skipped");
                 }
-                Err(e) => eprintln!("[recovery] scribe session scan failed: {e}"),
-            }
-            if let Ok(temp_dir) = app.path().app_local_data_dir().map(|d| d.join("dictate_temp")) {
-                match output.scan_and_salvage_dictate_temp_wavs(&temp_dir, &save_folder) {
-                    Ok(salvaged) => {
-                        for path in salvaged {
-                            eprintln!(
-                                "[recovery] salvaged dictate wav to {}",
-                                path.display()
+                match output_bg.scan_incomplete_scribe_sessions(&save_folder_bg) {
+                    Ok(sessions) => {
+                        for info in &sessions {
+                            tracing::info!(
+                                session_dir = %info.session_dir, state = %info.state,
+                                "incomplete scribe session found at startup"
                             );
                         }
                     }
-                    Err(e) => eprintln!("[recovery] dictate temp scan failed: {e}"),
+                    Err(e) => tracing::warn!(error = %e, "scribe session scan failed"),
                 }
-            }
+                if let Some(temp_dir) = temp_dir_bg {
+                    match output_bg.scan_and_salvage_dictate_temp_wavs(&temp_dir, &save_folder_bg) {
+                        Ok(salvaged) => {
+                            for path in salvaged {
+                                tracing::info!(path = %path.display(), "salvaged dictate wav");
+                            }
+                        }
+                        Err(e) => tracing::warn!(error = %e, "dictate temp scan failed"),
+                    }
+                }
+            });
 
             Ok(())
         })
@@ -663,7 +673,7 @@ pub fn run() {
 
                 api.prevent_close();
                 if let Err(err) = window.hide() {
-                    eprintln!("failed to hide window {}: {err}", window.label());
+                    tracing::debug!(label = window.label(), error = %err, "failed to hide window");
                 }
                 // Dictate is a HUD overlay — its close should never affect Dock visibility.
                 if window.label() != DICTATE_WINDOW_LABEL {

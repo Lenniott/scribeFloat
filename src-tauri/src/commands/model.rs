@@ -1,5 +1,5 @@
 use crate::controllers::model::ModelController;
-use crate::types::ModelListItem;
+use crate::types::{AppError, ModelListItem};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
@@ -18,18 +18,18 @@ pub fn model_download(
     model_id: String,
     ctrl: State<'_, Arc<ModelController>>,
     app: AppHandle,
-) -> Result<(), String> {
-    Arc::clone(&ctrl).download_model(model_id, app)
+) -> Result<(), AppError> {
+    Arc::clone(&ctrl).download_model(model_id, app).map_err(AppError::from)
 }
 
 #[tauri::command]
-pub fn model_select(model_id: String, ctrl: State<'_, Arc<ModelController>>) -> Result<(), String> {
-    ctrl.select_model(model_id)
+pub fn model_select(model_id: String, ctrl: State<'_, Arc<ModelController>>) -> Result<(), AppError> {
+    ctrl.select_model(model_id).map_err(AppError::from)
 }
 
 #[tauri::command]
-pub fn model_remove(model_id: String, ctrl: State<'_, Arc<ModelController>>) -> Result<(), String> {
-    ctrl.remove_model(model_id)
+pub fn model_remove(model_id: String, ctrl: State<'_, Arc<ModelController>>) -> Result<(), AppError> {
+    ctrl.remove_model(model_id).map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -41,11 +41,11 @@ pub fn model_vad_status(ctrl: State<'_, Arc<ModelController>>) -> bool {
 pub fn model_vad_download(
     ctrl: State<'_, Arc<ModelController>>,
     app: AppHandle,
-) -> Result<(), String> {
-    Arc::clone(&ctrl).download_vad_model(app)
+) -> Result<(), AppError> {
+    Arc::clone(&ctrl).download_vad_model(app).map_err(AppError::from)
 }
 
 #[tauri::command]
-pub fn model_vad_remove(ctrl: State<'_, Arc<ModelController>>) -> Result<(), String> {
-    ctrl.remove_vad_model()
+pub fn model_vad_remove(ctrl: State<'_, Arc<ModelController>>) -> Result<(), AppError> {
+    ctrl.remove_vad_model().map_err(AppError::from)
 }

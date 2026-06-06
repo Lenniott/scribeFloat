@@ -19,7 +19,7 @@ pub fn set_has_visible_windows(app: &tauri::AppHandle, has_visible_window: bool)
     // LSUIElement=true in Info.plist keeps us menu-bar-only by default; this
     // call makes the Dock icon appear/disappear as real windows open/close.
     if let Err(err) = app.set_dock_visibility(has_visible_window) {
-        eprintln!("failed to update macOS Dock visibility: {err}");
+        tracing::debug!(error = %err, "failed to update macOS Dock visibility");
     }
     if has_visible_window {
         refresh_dock_icon(app);

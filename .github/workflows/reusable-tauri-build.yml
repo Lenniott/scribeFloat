@@ -105,6 +105,18 @@ jobs:
           mkdir -p src-tauri/windows-resources
           cp "${OPENBLAS_BIN}/libopenblas.dll" src-tauri/windows-resources/libopenblas.dll
 
+      - name: Check formatting
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Lint
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        working-directory: src-tauri
+        run: cargo test --lib --no-fail-fast
+
       - name: Download bundled base model
         shell: bash
         run: |

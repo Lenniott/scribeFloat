@@ -20,10 +20,9 @@ impl ConfigService {
                     // save: move it aside first so the user can salvage their settings.
                     let backup = path.with_extension("json.corrupt");
                     let _ = std::fs::rename(&path, &backup);
-                    eprintln!(
-                        "[config] failed to parse {}: {err}; backed up to {} and loaded defaults",
-                        path.display(),
-                        backup.display()
+                    tracing::warn!(
+                        path = %path.display(), backup = %backup.display(), error = %err,
+                        "corrupt config; backed up and loaded defaults"
                     );
                     Config::default()
                 }

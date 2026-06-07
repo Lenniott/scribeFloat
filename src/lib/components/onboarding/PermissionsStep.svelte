@@ -31,10 +31,11 @@
 		input_monitoring: "Input Monitoring",
 	};
 
-	const PERMISSION_HINTS: Record<string, string> = {
-		microphone: "Required to record audio.",
-		accessibility: "Required for Dictate to paste text automatically.",
-		input_monitoring: "Required to listen for the Dictate hotkey.",
+	// Shown before the user clicks Grant — explains the benefit, not just the requirement.
+	const PERMISSION_PRIMERS: Record<string, string> = {
+		microphone: "ScribeFloat records audio on your device only. Nothing is uploaded. Grant access so we can hear you.",
+		accessibility: "This lets Dictate paste transcribed text at your cursor. Without it, text goes to your clipboard instead.",
+		input_monitoring: "Required to listen for the Dictate hotkey while another app is in focus.",
 	};
 
 	async function refresh() {
@@ -80,8 +81,9 @@
 									<span class="text-fg-muted ml-1 normal-case font-sans tracking-normal">optional</span>
 								{/if}
 							</p>
-							<p class="text-body-md text-fg-dim mt-0.5">{PERMISSION_HINTS[status.kind] ?? ""}</p>
-							{#if !status.granted && status.hint}
+							{#if !status.granted && status.can_request}
+								<p class="text-body-md text-fg-dim mt-0.5">{PERMISSION_PRIMERS[status.kind] ?? ""}</p>
+							{:else if status.granted && status.hint}
 								<p class="text-label-sm text-fg-dim mt-1">{status.hint}</p>
 							{/if}
 						</div>

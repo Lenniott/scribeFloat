@@ -339,7 +339,7 @@ impl DictateController {
             DictateAction::Stop => {
                 if this.current_state() == DictateState::Recording {
                     if let Err(e) = Self::stop_and_transcribe(Arc::clone(&this)) {
-                        eprintln!("[dictate] failed to stop: {e}");
+                        tracing::warn!(error = %e, "dictate failed to stop");
                     }
                     return;
                 }
@@ -381,7 +381,7 @@ impl DictateController {
             }
             match this.start() {
                 Err(e) => {
-                    eprintln!("[dictate] failed to start mic: {e}");
+                    tracing::error!(error = %e, "dictate failed to start mic (hold)");
                     clear_in_flight();
                 }
                 Ok(()) => {
@@ -396,7 +396,7 @@ impl DictateController {
             Self::spawn_dictate_window_and_start_inner_async(&this).await;
             if this.current_state() == DictateState::Recording {
                 if let Err(e) = Self::stop_and_transcribe(Arc::clone(&this)) {
-                    eprintln!("[dictate] failed to stop after hold-blip: {e}");
+                    tracing::error!(error = %e, "dictate failed to stop after hold-blip");
                 }
             }
         });
@@ -409,7 +409,7 @@ impl DictateController {
             return;
         }
         if let Err(e) = this.start() {
-            eprintln!("[dictate] failed to start mic: {e}");
+            tracing::error!(error = %e, "dictate failed to start mic");
         }
     }
 
@@ -476,7 +476,7 @@ impl DictateController {
         tauri::async_runtime::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
                 if let Err(e) = model.get_or_load_context(&path) {
-                    eprintln!("[dictate] record-start preload failed: {e}");
+                    tracing::debug!(error = %e, "dictate record-start model preload failed");
                 }
             })
             .await;
@@ -526,7 +526,7 @@ impl DictateController {
                 Ok(path) => {
                     let _ = std::fs::remove_file(&path);
                 }
-                Err(e) => eprintln!("[dictate] cancel finalize: {e}"),
+                Err(e) => tracing::debug!(error = %e, "dictate cancel finalize failed"),
             }
         }
         let _ = self.app.emit(DICTATE_AUDIO_LEVEL_EVENT, 0.0_f32);
@@ -561,7 +561,7 @@ impl DictateController {
                 inner.state,
                 DictateState::Transcribing | DictateState::Pasting | DictateState::Done
             ) {
-                eprintln!("[dictate] ignoring duplicate stop — pipeline already running");
+                tracing::debug!("dictate ignoring duplicate stop — pipeline already running");
                 return Ok(());
             }
             if inner.state != DictateState::Recording {
@@ -603,7 +603,7 @@ impl DictateController {
                     this.auto_dismiss();
                 }
                 Err(e) => {
-                    eprintln!("[dictate] transcription panicked: {e}");
+                    tracing::error!(error = %e, "dictate transcription panicked");
                     this.set_error_state("Transcription crashed unexpectedly.".to_string(), None);
                     tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
                     this.auto_dismiss();
@@ -714,7 +714,7 @@ impl DictateController {
         let record = HistoryRecord::from_dictate(&segments, &text, model_name);
         let history_write_failed =
             if let Err(e) = self.history.append(&config.save_folder, record) {
-                eprintln!("[dictate] failed to write history: {e}");
+                tracing::warn!(error = %e, "dictate failed to write history");
                 true
             } else {
                 self.app.emit("history://item-added", ()).ok();
@@ -722,7 +722,7 @@ impl DictateController {
             };
 
         if let Err(e) = self.app.clipboard().write_text(text.clone()) {
-            eprintln!("[dictate] failed to write clipboard: {e}");
+            tracing::error!(error = %e, "dictate failed to write clipboard");
             self.delete_dictate_wav(&wav_path);
             self.set_error_state(
                 format!("Could not write to clipboard — {e}. Transcription: {text}"),
@@ -738,20 +738,20 @@ impl DictateController {
                 .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
                 .is_err()
             {
-                eprintln!("[dictate] skipping duplicate paste in same session");
+                tracing::debug!("dictate skipping duplicate paste in same session");
             } else {
                 match self.paste_on_main_thread(config.dictate_auto_enter, text.clone()) {
                     Ok((paste_res, enter_res)) => {
                         if let Err(e) = paste_res {
-                            eprintln!("[dictate] paste simulation failed: {e}");
+                            tracing::error!(error = %e, "dictate paste simulation failed");
                             paste_failed = true;
                         }
                         if let Err(e) = enter_res {
-                            eprintln!("[dictate] enter simulation failed: {e}");
+                            tracing::error!(error = %e, "dictate enter simulation failed");
                         }
                     }
                     Err(e) => {
-                        eprintln!("[dictate] paste dispatch failed: {e}");
+                        tracing::error!(error = %e, "dictate paste dispatch failed");
                         paste_failed = true;
                     }
                 }
@@ -834,7 +834,7 @@ impl DictateController {
         {
             Ok(dest) => Some(dest),
             Err(e) => {
-                eprintln!("[dictate] failed to salvage wav: {e}");
+                tracing::warn!(error = %e, "dictate failed to salvage wav");
                 self.delete_dictate_wav(path);
                 None
             }
@@ -905,9 +905,7 @@ impl DictateController {
                     if let Err(e) =
                         crate::platform::dictate_focus::activate_pid_for_paste(pid)
                     {
-                        eprintln!(
-                            "[dictate] could not re-activate target app before paste: {e}"
-                        );
+                        tracing::warn!(error = %e, "could not re-activate target app before paste");
                     }
                 }
                 // Give the OS a moment to settle focus after hide + activate.
@@ -920,7 +918,7 @@ impl DictateController {
                 let paste_res = if clipboard_ok {
                     output.paste_text()
                 } else {
-                    eprintln!("[dictate] clipboard was modified before paste — aborting");
+                    tracing::debug!("clipboard was modified before paste — aborting");
                     Err("Clipboard was modified by another process before paste".to_string())
                 };
                 let enter_res = if paste_res.is_ok() && auto_enter {

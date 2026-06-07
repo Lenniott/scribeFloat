@@ -151,7 +151,7 @@ src-tauri/                 Tauri / Rust backend
 context/                   Architecture and design documentation
   architecture.md          C4 model diagrams
   action-flows.md          Step-by-step workflow descriptions
-  componets.md             UI component catalogue
+  components.md            UI component catalogue
   design-skill/            Design system tokens and query tool
 ```
 

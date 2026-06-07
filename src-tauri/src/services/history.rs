@@ -69,7 +69,7 @@ impl HistoryService {
                     // A corrupt *trailing* line is a partial append after a crash — ignore it.
                     // A corrupt middle line is unexpected; log and skip (matches ConfigService).
                     if i != last {
-                        eprintln!("[history] skipping corrupt history.jsonl line {i}: {e}");
+                        tracing::warn!(line = i, error = %e, "skipping corrupt history.jsonl line");
                     }
                 }
             }

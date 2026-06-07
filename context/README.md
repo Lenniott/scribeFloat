@@ -24,7 +24,7 @@ Read in this order before changing behaviour or architecture:
 
 1. **[architecture.md](architecture.md)** — C4 diagrams, layer rules, service ownership, module map
 2. **[action-flows.md](action-flows.md)** — Step-by-step flows (source of truth for *behaviour*)
-3. **[componets.md](componets.md)** — UI component catalogue
+3. **[components.md](components.md)** — UI component catalogue
 4. **[design-skill/SKILL.md](design-skill/SKILL.md)** — Design tokens and UX playbook (query before writing Tailwind)
 5. **[../docs/README.md](../docs/README.md)** — Index of repo docs (History UI guide, backlog)
 6. **[../docs/history-ui-review.md](../docs/history-ui-review.md)** — **Required** before changing History list/detail UI

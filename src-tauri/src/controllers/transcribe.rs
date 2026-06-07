@@ -371,7 +371,7 @@ impl TranscribeController {
                 markdown_path.as_ref().map(|p| p.to_string_lossy().into_owned()),
             );
             if let Err(e) = self.history.append(&save_folder, record) {
-                eprintln!("[transcribe] failed to append history record: {e}");
+                tracing::warn!(error = %e, "failed to append transcribe history record");
             } else {
                 self.app.emit("history://item-added", ()).ok();
             }
@@ -492,4 +492,125 @@ fn overall_progress(items: &[TranscribeQueueItem]) -> f32 {
         })
         .sum();
     (total / items.len() as f32).clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{Config, TranscribeItemStatus, TranscribeQueueItem};
+
+    fn make_queue_item(status: TranscribeItemStatus, progress: f32) -> TranscribeQueueItem {
+        TranscribeQueueItem {
+            id: "test".to_string(),
+            source_path: "".to_string(),
+            display_name: "".to_string(),
+            source_type: crate::types::TranscribeSourceType::SingleAudio,
+            duration_ms: 0,
+            status,
+            progress,
+            transcript_path: None,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn overall_progress_empty_returns_zero() {
+        assert_eq!(overall_progress(&[]), 0.0);
+    }
+
+    #[test]
+    fn overall_progress_all_done() {
+        let items = vec![
+            make_queue_item(TranscribeItemStatus::Done, 1.0),
+            make_queue_item(TranscribeItemStatus::Done, 1.0),
+        ];
+        assert_eq!(overall_progress(&items), 1.0);
+    }
+
+    #[test]
+    fn overall_progress_all_queued() {
+        let items = vec![
+            make_queue_item(TranscribeItemStatus::Queued, 0.0),
+            make_queue_item(TranscribeItemStatus::Queued, 0.0),
+        ];
+        assert_eq!(overall_progress(&items), 0.0);
+    }
+
+    #[test]
+    fn overall_progress_mixed() {
+        let items = vec![
+            make_queue_item(TranscribeItemStatus::Done, 1.0),
+            make_queue_item(TranscribeItemStatus::Queued, 0.0),
+            make_queue_item(TranscribeItemStatus::Processing, 0.5),
+            make_queue_item(TranscribeItemStatus::Error, 1.0),
+        ];
+        // (1.0 + 0.0 + 0.5 + 1.0) / 4 = 0.625
+        let p = overall_progress(&items);
+        assert!((p - 0.625).abs() < 1e-5, "expected 0.625, got {p}");
+    }
+
+    #[test]
+    fn slugify_spaces_become_underscores() {
+        assert_eq!(slugify("hello world"), "hello_world");
+    }
+
+    #[test]
+    fn slugify_strips_extension() {
+        assert_eq!(slugify("audio file.wav"), "audio_file");
+    }
+
+    #[test]
+    fn slugify_replaces_forbidden_chars() {
+        let slug = slugify("a/b\\c:d");
+        assert!(!slug.contains('/') && !slug.contains('\\') && !slug.contains(':'));
+    }
+
+    #[test]
+    fn resolve_model_path_prefers_explicit_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let model_svc = ModelService::new(tmp.path().to_path_buf());
+        let config = Config {
+            selected_model_id: Some("base-en-q5".to_string()),
+            ..Config::default()
+        };
+        // explicit id "tiny-en-q5" — path doesn't exist but model_path_for_id still returns it
+        let path = resolve_model_path(&config, &model_svc, Some("tiny-en-q5"));
+        assert!(path.to_string_lossy().contains("tiny"));
+    }
+
+    #[test]
+    fn resolve_model_path_falls_back_to_selected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let model_svc = ModelService::new(tmp.path().to_path_buf());
+        let config = Config {
+            selected_model_id: Some("base-en-q5".to_string()),
+            ..Config::default()
+        };
+        let path = resolve_model_path(&config, &model_svc, None);
+        assert!(path.to_string_lossy().contains("base"));
+    }
+
+    #[test]
+    fn resolve_output_folder_rejects_relative_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let output_svc = crate::services::output::OutputService::new();
+        let config = Config {
+            save_folder: tmp.path().to_string_lossy().to_string(),
+            ..Config::default()
+        };
+        let result = resolve_output_folder(&output_svc, &config, Some("relative/path"));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("must be absolute"));
+    }
+
+    #[test]
+    fn resolve_output_folder_rejects_empty() {
+        let output_svc = crate::services::output::OutputService::new();
+        let config = Config {
+            save_folder: String::new(),
+            ..Config::default()
+        };
+        let result = resolve_output_folder(&output_svc, &config, None);
+        assert!(result.is_err());
+    }
 }

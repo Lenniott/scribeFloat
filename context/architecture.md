@@ -11,19 +11,23 @@
 Who uses the system and what external systems it touches.
 
 ```mermaid
-graph LR
-    user["User\nMac or Windows\nUses ScribeFloat via GUI and hotkeys"]
-    scribefloat["ScribeFloat (scribefloat)\nLocal-first desktop transcription\nNo cloud. No accounts."]
-    hf["Hugging Face\nPublic model repository\nOne-time download only — no account required"]
-    audio["OS Audio Layer\nmacOS: Core Audio + BlackHole\nWindows: WASAPI loopback"]
-    clipboard["Clipboard and Input\nOS paste mechanism\nDictate output target"]
-    fs["Local File System\nTranscripts, WAV files, models, config\nUser-chosen folders"]
+C4Context
+    title ScribeFloat — System Context
 
-    user -->|"records, transcribes, dictates"| scribefloat
-    scribefloat -->|"downloads model weights once on user request"| hf
-    scribefloat -->|"captures mic and system audio"| audio
-    scribefloat -->|"pastes dictated text"| clipboard
-    scribefloat -->|"saves transcripts, audio, config, models"| fs
+    Person(user, "User", "Mac or Windows. Records, transcribes, and dictates via GUI and hotkeys.")
+
+    System(scribefloat, "ScribeFloat", "Local-first desktop transcription app. No cloud. No accounts.")
+
+    System_Ext(hf, "Hugging Face", "Public model repository. One-time HTTPS download on user request only. No user data is sent.")
+    System_Ext(audio, "OS Audio Layer", "macOS: Core Audio + BlackHole virtual device. Windows: WASAPI loopback.")
+    System_Ext(clipboard, "Clipboard / Input", "OS paste mechanism. Dictate output target only — Scribe and Transcribe do not touch the clipboard.")
+    System_Ext(fs, "Local File System", "Transcripts (.md), WAV files, Whisper models, config. User-chosen save folder.")
+
+    Rel(user, scribefloat, "records, transcribes, dictates")
+    Rel(scribefloat, hf, "downloads model weights once on user request", "HTTPS GET")
+    Rel(scribefloat, audio, "captures mic and system audio")
+    Rel(scribefloat, clipboard, "pastes dictated text")
+    Rel(scribefloat, fs, "saves transcripts, audio, config, models")
 ```
 
 **External system notes:**
@@ -40,136 +44,226 @@ graph LR
 All internal containers and their connections. Shows actual Rust modules and Svelte screens as they exist in the codebase.
 
 ```mermaid
-graph TB
-    user["User"]
+C4Container
+    title ScribeFloat — Containers
 
-    subgraph frontend["Frontend (SvelteKit / TypeScript)"]
-        tray["System Tray\nlib.rs — TrayIconBuilder"]
-        scribe_ui["Scribe Screen\nscribe.svelte\nscribe-processing.svelte"]
-        transcribe_ui["Transcribe Screen\ntranscribe.svelte"]
-        dictate_ui["Dictate HUD\ndictate.svelte"]
-        history_ui["History\nhistory.svelte"]
-        settings_ui["Settings\nsettings.svelte\nsetting_*.svelte"]
-    end
+    Person(user, "User", "Mac or Windows")
 
-    subgraph commands["Commands Layer (Tauri IPC — translation only)"]
-        cmd_scribe["commands/scribe.rs"]
-        cmd_transcribe["commands/transcribe.rs"]
-        cmd_dictate["commands/dictate.rs"]
-        cmd_history["commands/history.rs"]
-        cmd_model["commands/model.rs"]
-        cmd_settings["commands/settings.rs"]
-    end
+    System_Ext(fs, "Local File System", "Transcripts, WAV files, models, config")
+    System_Ext(hf, "Hugging Face", "Whisper model weights (HTTPS, one-time download)")
+    System_Ext(os_audio, "OS Audio Layer", "Core Audio / WASAPI")
+    System_Ext(os_clipboard, "Clipboard / Input", "OS paste target")
+    System_Ext(os_permissions, "OS Permission APIs", "Microphone, Accessibility")
 
-    subgraph controllers["Controllers (state machines, orchestration)"]
-        ctrl_scribe["ScribeController\ncontrollers/scribe.rs"]
-        ctrl_transcribe["TranscribeController\ncontrollers/transcribe.rs"]
-        ctrl_dictate["DictateController\ncontrollers/dictate.rs"]
-        ctrl_history["HistoryController\ncontrollers/history.rs"]
-        ctrl_model["ModelController\ncontrollers/model.rs"]
-        ctrl_settings["SettingsController\ncontrollers/settings.rs"]
-    end
+    Container_Boundary(app, "ScribeFloat Desktop App — Tauri 2.x / Rust + Svelte 5") {
 
-    subgraph services["Services (singletons, created once in lib.rs)"]
-        svc_audio["AudioService\nservices/audio.rs"]
-        svc_model["ModelService\nservices/model.rs"]
-        svc_output["OutputService\nservices/output.rs"]
-        svc_history["HistoryService\nservices/history.rs"]
-        svc_config["ConfigService\nservices/config.rs"]
-        svc_hotkeys["HotkeyService\nservices/hotkeys.rs"]
-        svc_permissions["PermissionsService\nservices/permissions.rs"]
-        svc_transcribe_input["TranscribeInputService\nservices/transcribe_input.rs"]
-    end
+        Container(tray, "System Tray", "Rust / Tauri TrayIconBuilder", "Menu entry point. lib.rs.")
 
-    subgraph platform["Platform Adapters (OS-specific only)"]
-        plat_audio["Audio (BlackHole / WASAPI)\nplatform/mod.rs"]
-        plat_paste["Paste (Accessibility API / SendInput)\nplatform/paste_impl.rs"]
-        plat_permissions["Permissions (macOS / Windows)\nplatform/permissions_impl.rs"]
-        plat_key["Key Listener (CGEventTap / win32)\nplatform/key_listener.rs"]
-        plat_window["Window ops\nplatform/window_impl.rs"]
-    end
+        Container_Boundary(frontend, "Frontend — Svelte 5 / TypeScript") {
+            Container(scribe_ui, "Scribe Screen", "Svelte 5", "scribe.svelte + scribe-processing.svelte")
+            Container(transcribe_ui, "Transcribe Screen", "Svelte 5", "transcribe.svelte")
+            Container(dictate_ui, "Dictate HUD", "Svelte 5", "dictate.svelte — floating, never steals focus")
+            Container(history_ui, "History", "Svelte 5", "history.svelte — list + fullscreen detail")
+            Container(settings_ui, "Settings", "Svelte 5", "settings.svelte + setting_*.svelte")
+        }
 
-    subgraph external["External"]
-        fs["Local File System"]
-        hf["Hugging Face"]
-        os_audio["OS Audio Layer"]
-        os_clipboard["Clipboard and Input"]
-        os_permissions["OS Permission APIs"]
-    end
+        Container_Boundary(commands_layer, "Commands — Tauri IPC (type translation only, no logic)") {
+            Container(cmd_scribe, "scribe commands", "Rust", "commands/scribe.rs")
+            Container(cmd_transcribe, "transcribe commands", "Rust", "commands/transcribe.rs")
+            Container(cmd_dictate, "dictate commands", "Rust", "commands/dictate.rs")
+            Container(cmd_history, "history commands", "Rust", "commands/history.rs")
+            Container(cmd_model, "model commands", "Rust", "commands/model.rs")
+            Container(cmd_settings, "settings commands", "Rust", "commands/settings.rs")
+        }
 
-    user --> tray
-    tray --> scribe_ui
-    tray --> transcribe_ui
-    tray --> dictate_ui
-    tray --> history_ui
-    tray --> settings_ui
+        Container_Boundary(controllers_layer, "Controllers — Tokio async, Arc<Mutex<Inner>> state machines") {
+            Container(ctrl_scribe, "ScribeController", "Rust / Tokio", "controllers/scribe.rs")
+            Container(ctrl_transcribe, "TranscribeController", "Rust / Tokio", "controllers/transcribe.rs")
+            Container(ctrl_dictate, "DictateController", "Rust / Tokio", "controllers/dictate.rs")
+            Container(ctrl_history, "HistoryController", "Rust / Tokio", "controllers/history.rs — read + orchestration, no state machine")
+            Container(ctrl_model, "ModelController", "Rust / Tokio", "controllers/model.rs")
+            Container(ctrl_settings, "SettingsController", "Rust / Tokio", "controllers/settings.rs")
+        }
 
-    scribe_ui -->|"invoke()"| cmd_scribe
-    transcribe_ui -->|"invoke()"| cmd_transcribe
-    dictate_ui -->|"invoke()"| cmd_dictate
-    history_ui -->|"invoke()"| cmd_history
-    history_ui -->|"invoke()"| cmd_settings
-    settings_ui -->|"invoke()"| cmd_model
-    settings_ui -->|"invoke()"| cmd_settings
+        Container_Boundary(services_layer, "Services — singletons created once in lib.rs::run()") {
+            Container(svc_audio, "AudioService", "Rust / cpal", "services/audio.rs — streams WAV to disk, 16 kHz writer thread")
+            Container(svc_model, "ModelService", "Rust / whisper-rs", "services/model.rs — download, load, transcribe, merge")
+            Container(svc_output, "OutputService", "Rust", "services/output.rs — markdown rendering, .md writes, cleanup")
+            Container(svc_history, "HistoryService", "Rust", "services/history.rs — append-only JSONL record store")
+            Container(svc_config, "ConfigService", "Rust", "services/config.rs — atomic JSON config")
+            Container(svc_hotkeys, "HotkeyService", "Rust / Tauri", "services/hotkeys.rs — global shortcut registration")
+            Container(svc_permissions, "PermissionsService", "Rust", "services/permissions.rs — delegates to platform adapter")
+            Container(svc_transcribe_input, "TranscribeInputService", "Rust / Symphonia", "services/transcribe_input.rs — decode WAV/MP3/M4A/FLAC → f32 PCM")
+        }
 
-    cmd_scribe --> ctrl_scribe
-    cmd_transcribe --> ctrl_transcribe
-    cmd_dictate --> ctrl_dictate
-    cmd_history --> ctrl_history
-    cmd_model --> ctrl_model
-    cmd_settings --> ctrl_settings
+        Container_Boundary(platform_layer, "Platform Adapters — #[cfg(target_os)] only here") {
+            Container(plat_audio, "Audio Adapter", "Rust / CoreAudio / WASAPI", "platform/mod.rs — BlackHole (macOS) / WASAPI loopback (Windows)")
+            Container(plat_paste, "Paste Adapter", "Rust / enigo / SendInput", "platform/paste_impl.rs — Accessibility API (macOS) / SendInput (Windows)")
+            Container(plat_permissions, "Permissions Adapter", "Rust / AVCaptureDevice / Registry", "platform/permissions_impl.rs")
+            Container(plat_key, "Key Listener", "Rust / CGEventTap / win32", "platform/key_listener.rs — NO rdev on macOS")
+            Container(plat_window, "Window Ops", "Rust / NSApp", "platform/window_impl.rs — activation policy (macOS only)")
+        }
+    }
 
-    ctrl_scribe --> svc_audio
-    ctrl_scribe --> svc_model
-    ctrl_scribe --> svc_output
-    ctrl_scribe --> svc_history
-    ctrl_scribe --> svc_config
+    Rel(user, tray, "opens panels via menu")
+    Rel(tray, scribe_ui, "shows window")
+    Rel(tray, transcribe_ui, "shows window")
+    Rel(tray, dictate_ui, "shows HUD")
+    Rel(tray, history_ui, "shows window")
+    Rel(tray, settings_ui, "shows window")
 
-    ctrl_transcribe --> svc_model
-    ctrl_transcribe --> svc_output
-    ctrl_transcribe --> svc_history
-    ctrl_transcribe --> svc_config
-    ctrl_transcribe --> svc_transcribe_input
+    Rel(scribe_ui, cmd_scribe, "invoke()", "Tauri IPC")
+    Rel(transcribe_ui, cmd_transcribe, "invoke()", "Tauri IPC")
+    Rel(dictate_ui, cmd_dictate, "invoke()", "Tauri IPC")
+    Rel(history_ui, cmd_history, "invoke()", "Tauri IPC")
+    Rel(history_ui, cmd_settings, "invoke()", "Tauri IPC")
+    Rel(settings_ui, cmd_model, "invoke()", "Tauri IPC")
+    Rel(settings_ui, cmd_settings, "invoke()", "Tauri IPC")
 
-    ctrl_dictate --> svc_audio
-    ctrl_dictate --> svc_model
-    ctrl_dictate --> svc_output
-    ctrl_dictate --> svc_history
-    ctrl_dictate --> svc_config
-    ctrl_dictate --> plat_paste
-    ctrl_dictate --> plat_key
+    Rel(cmd_scribe, ctrl_scribe, "calls")
+    Rel(cmd_transcribe, ctrl_transcribe, "calls")
+    Rel(cmd_dictate, ctrl_dictate, "calls")
+    Rel(cmd_history, ctrl_history, "calls")
+    Rel(cmd_model, ctrl_model, "calls")
+    Rel(cmd_settings, ctrl_settings, "calls")
 
-    ctrl_history --> svc_history
-    ctrl_history --> svc_output
-    ctrl_history --> svc_config
+    Rel(ctrl_scribe, svc_audio, "start/stop session")
+    Rel(ctrl_scribe, svc_model, "transcribe")
+    Rel(ctrl_scribe, svc_output, "render .md, manifest")
+    Rel(ctrl_scribe, svc_history, "append record")
+    Rel(ctrl_scribe, svc_config, "read config")
 
-    ctrl_model --> svc_model
-    ctrl_model --> svc_config
+    Rel(ctrl_transcribe, svc_model, "load + transcribe")
+    Rel(ctrl_transcribe, svc_output, "render .md")
+    Rel(ctrl_transcribe, svc_history, "append record")
+    Rel(ctrl_transcribe, svc_config, "read config")
+    Rel(ctrl_transcribe, svc_transcribe_input, "expand + decode inputs")
 
-    ctrl_settings --> svc_config
-    ctrl_settings --> svc_permissions
+    Rel(ctrl_dictate, svc_audio, "mic stream")
+    Rel(ctrl_dictate, svc_model, "transcribe buffer")
+    Rel(ctrl_dictate, svc_output, "word replacement, salvage")
+    Rel(ctrl_dictate, svc_history, "append record")
+    Rel(ctrl_dictate, svc_config, "read config")
+    Rel(ctrl_dictate, plat_paste, "paste text")
+    Rel(ctrl_dictate, plat_key, "key events")
 
-    svc_hotkeys --> ctrl_dictate
-    svc_hotkeys --> ctrl_scribe
+    Rel(ctrl_history, svc_history, "list, delete")
+    Rel(ctrl_history, svc_output, "render markdown, legacy reads, delete artifacts")
+    Rel(ctrl_history, svc_config, "read config")
 
-    svc_audio --> plat_audio
-    svc_permissions --> plat_permissions
-    plat_paste --> os_clipboard
-    plat_key --> os_clipboard
-    plat_audio --> os_audio
-    plat_permissions --> os_permissions
+    Rel(ctrl_model, svc_model, "list, download, delete")
+    Rel(ctrl_model, svc_config, "read config")
 
-    svc_output --> fs
-    svc_history --> fs
-    svc_config --> fs
-    svc_model --> fs
-    svc_model --> hf
-    svc_transcribe_input --> fs
+    Rel(ctrl_settings, svc_config, "read/write config")
+    Rel(ctrl_settings, svc_permissions, "permission status")
+
+    Rel(svc_hotkeys, ctrl_dictate, "trigger")
+    Rel(svc_hotkeys, ctrl_scribe, "open panel")
+
+    Rel(svc_audio, plat_audio, "open stream")
+    Rel(svc_permissions, plat_permissions, "query OS")
+    Rel(plat_paste, os_clipboard, "write + inject keypress")
+    Rel(plat_key, os_clipboard, "")
+    Rel(plat_audio, os_audio, "CoreAudio / WASAPI")
+    Rel(plat_permissions, os_permissions, "AVCaptureDevice / Registry")
+
+    Rel(svc_output, fs, "read/write .md, manifests")
+    Rel(svc_history, fs, "history.jsonl append + compact")
+    Rel(svc_config, fs, "config.json atomic save")
+    Rel(svc_model, fs, "read/write .bin model files")
+    Rel(svc_model, hf, "download model weights", "HTTPS")
+    Rel(svc_transcribe_input, fs, "read audio files")
+    Rel(svc_audio, fs, "write WAV during recording")
 ```
 
 ---
 
 ## Level 3 — Components
+
+### Frontend Component Map
+
+How Svelte screens compose shared components. A new frontend developer should start here.
+
+```mermaid
+graph TB
+    subgraph screens["Screens — src/lib/screens/"]
+        scribe_s["scribe.svelte\nRecording idle + active state"]
+        scribe_p["scribe-processing.svelte\nTranscribing / Done / No-model / Error"]
+        transcribe_s["transcribe.svelte\nFile import and queue"]
+        dictate_s["dictate.svelte\nFloating HUD near cursor"]
+        history_s["history.svelte\nList mode + fullscreen detail"]
+        settings_s["settings.svelte\nTab shell"]
+        setting_tabs["setting_general.svelte\nsetting_models.svelte\nsetting_replace.svelte\nsetting_permissions.svelte\nsetting_help.svelte\nsetting_webhook.svelte"]
+    end
+
+    subgraph layout["Layout — src/lib/components/layout/"]
+        shell["PanelShell\nOuter frame for all panels"]
+        header["PanelHeader\nTitle bar with close / back"]
+        footer["PanelFooter\nflex shrink-0, below scroll — History detail only"]
+    end
+
+    subgraph audio_comp["Audio — src/lib/components/audio/"]
+        waveform["AudioWaveFormVisualizer\nLive PCM bars — Scribe + Dictate"]
+        dot["RecordingStatusDot\nPulsing red dot"]
+        timer["RecordingTimer\nElapsed display"]
+    end
+
+    subgraph history_comp["History — src/lib/components/history/"]
+        list_card["HistoryListCard\nTitle = button (opens detail)\nAction icons use stopPropagation"]
+        detail_pane["HistoryDetailPane\nFullscreen transcript + metadata"]
+    end
+
+    subgraph notes_comp["Notes — src/lib/components/notes/"]
+        notes_panel["NotesPanel\nContainer"]
+        note_composer["NoteComposer\nInput field"]
+        notes_list["NotesList + NoteCard\nTimestamped note rows"]
+    end
+
+    subgraph transcribe_comp["Transcribe — src/lib/components/transcribe/"]
+        queue_list["TranscribeQueueList\nScroll list of items"]
+        queue_row["TranscribeQueueRow\nPer-item progress + status"]
+    end
+
+    subgraph form_comp["Form — src/lib/components/form/"]
+        device_sel["DeviceSelect"]
+        toggle["ToggleSwitch"]
+        path_sel["PathSelectorField"]
+        option_grp["OptionGroup"]
+    end
+
+    scribe_s --> shell
+    scribe_s --> waveform
+    scribe_s --> dot
+    scribe_s --> timer
+    scribe_s --> notes_panel
+    notes_panel --> note_composer
+    notes_panel --> notes_list
+
+    scribe_p --> shell
+
+    transcribe_s --> shell
+    transcribe_s --> queue_list
+    queue_list --> queue_row
+
+    dictate_s --> waveform
+
+    history_s --> shell
+    history_s --> list_card
+    history_s --> detail_pane
+    detail_pane --> footer
+
+    settings_s --> shell
+    settings_s --> setting_tabs
+    setting_tabs --> form_comp
+```
+
+**Key UI rules for new contributors:**
+- **List vs detail** in `history.svelte` are separate full-height modes — no split pane. Detail opens when a card title or View icon is clicked; list tabs stay hidden until Close is pressed.
+- **`HistoryListCard`**: title is a `<button>` that opens detail. Action icons (`stopPropagation`) are siblings — never nested inside the title button.
+- **`PanelFooter`** (`flex shrink-0`) belongs below the scroll area in History detail. Do not use `FixedFooterBar` there.
+- **`dictate.svelte` HUD** never calls `set_focus()` — the app may be in `.accessory` activation policy at any time.
+
+---
 
 ### Audio Service
 
@@ -407,7 +501,7 @@ graph TB
 
 ### Scribe
 
-Recording starts immediately on panel open. No explicit start button.
+Recording starts when the user presses **Start Recording**. The panel is prewarmed at startup but does NOT auto-start recording.
 
 ```mermaid
 graph TB
@@ -429,7 +523,7 @@ graph TB
     ctrl_transcribe["TranscribeController"]
 
     svc_hotkeys -->|"open panel"| controller
-    panel -->|"stop and save, cancel"| controller
+    panel -->|"start recording, stop and save, cancel"| controller
     panel -->|"change mic, toggle speaker, select models"| controller
     controller --> state
     state -->|"on RECORDING: start audio stream"| svc_audio

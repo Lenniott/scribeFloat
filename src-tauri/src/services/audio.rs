@@ -268,7 +268,7 @@ fn build_input_stream(
     on_level: Option<Arc<dyn Fn(f32) + Send + Sync>>,
     label: &'static str,
 ) -> Result<cpal::Stream> {
-    let err_fn = move |e: cpal::StreamError| eprintln!("{label} stream error: {e}");
+    let err_fn = move |e: cpal::StreamError| tracing::error!(label, error = %e, "audio stream error");
     let stream = match sample_format {
         cpal::SampleFormat::F32 => {
             let tx = sender;

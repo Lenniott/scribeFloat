@@ -156,7 +156,7 @@ impl ScribeController {
                 .filter(|s| !s.is_empty())
             {
                 if let Err(err) = self.audio.set_output_device(target_output) {
-                    eprintln!("failed to switch output route to `{target_output}`: {err}");
+                    tracing::warn!(device = target_output, error = %err, "failed to switch output route");
                 }
             }
             let app = self.app.clone();
@@ -292,7 +292,7 @@ impl ScribeController {
         tauri::async_runtime::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
                 if let Err(e) = model.get_or_load_context(&path) {
-                    eprintln!("[scribe] record-start preload failed: {e}");
+                    tracing::debug!(error = %e, "record-start model preload failed");
                 }
             })
             .await;
@@ -323,7 +323,7 @@ impl ScribeController {
                 session_dir,
                 ..
             } = session;
-            let _ = mic.stop_and_finalize().map_err(|e| eprintln!("scribe: cancel finalize mic: {e}"));
+            let _ = mic.stop_and_finalize().map_err(|e| tracing::debug!(error = %e, "cancel finalize mic"));
             let _ = finalize_speaker_segments(speaker_accum);
             self.restore_output_device(previous_output_device.as_deref());
             self.emit_capture_levels_idle();
@@ -421,7 +421,7 @@ impl ScribeController {
         let prepared = match this.prepare_audio(session) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("prepare_audio after stop: {e}");
+                tracing::error!(error = %e, "prepare_audio after stop failed");
                 this.clear_transcription_tracking();
                 {
                     let mut inner = this.lock();
@@ -465,7 +465,7 @@ impl ScribeController {
             match result {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => {
-                    eprintln!("transcription error: {e}");
+                    tracing::error!(error = %e, "transcription error");
                     this.clear_transcription_tracking();
                     {
                         let mut inner = this.lock();
@@ -483,7 +483,7 @@ impl ScribeController {
                 }
                 Err(e) => {
                     this.clear_transcription_tracking();
-                    eprintln!("transcription task panicked: {e}");
+                    tracing::error!(error = %e, "transcription task panicked");
                     this.lock().state = ScribeState::Error;
                     this.app
                         .emit(
@@ -630,7 +630,7 @@ impl ScribeController {
             if pcm_rms(&assembled) >= SPEAKER_SILENCE_THRESHOLD {
                 Some(assembled)
             } else {
-                eprintln!("speaker channel is silent (RMS < {SPEAKER_SILENCE_THRESHOLD}) — skipping speaker transcription");
+                tracing::info!(threshold = SPEAKER_SILENCE_THRESHOLD, "speaker channel is silent — skipping speaker transcription");
                 None
             }
         } else {
@@ -794,7 +794,7 @@ impl ScribeController {
                 Some(id)
             }
             Err(e) => {
-                eprintln!("[scribe] failed to append history record: {e}");
+                tracing::warn!(error = %e, "failed to append scribe history record");
                 None
             }
         };
@@ -891,7 +891,7 @@ impl ScribeController {
                     }
                 }
                 if let Err(err) = self.audio.set_output_device(target) {
-                    eprintln!("failed to switch output to `{target}`: {err}");
+                    tracing::warn!(device = target, error = %err, "failed to switch output device");
                 }
             }
 
@@ -943,7 +943,7 @@ impl ScribeController {
                 let wav_path = match stream.stop_and_finalize() {
                     Ok(p) => p,
                     Err(e) => {
-                        eprintln!("scribe: speaker segment finalize: {e}");
+                        tracing::debug!(error = %e, "speaker segment finalize failed");
                         return Ok(());
                     }
                 };
@@ -1050,14 +1050,14 @@ impl ScribeController {
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|p| {
-            eprintln!("scribe: recovering from poisoned mutex");
+            tracing::debug!("recovering from poisoned scribe mutex");
             p.into_inner()
         })
     }
 
     fn capture_guard(&self) -> std::sync::MutexGuard<'_, ()> {
         self.capture_sync.lock().unwrap_or_else(|p| {
-            eprintln!("scribe: recovering from poisoned capture mutex");
+            tracing::debug!("recovering from poisoned capture mutex");
             p.into_inner()
         })
     }
@@ -1065,7 +1065,7 @@ impl ScribeController {
     fn restore_output_device(&self, previous: Option<&str>) {
         if let Some(device) = previous {
             if let Err(e) = self.audio.set_output_device(device) {
-                eprintln!("failed to restore output device to `{device}`: {e}");
+                tracing::warn!(device, error = %e, "failed to restore output device");
             }
         }
     }
@@ -1123,7 +1123,7 @@ fn finalize_speaker_segments(mut accum: SpeakerAccumulator) -> Vec<PathBuf> {
             Ok(wav_path) => accum
                 .segments
                 .push(CapturedSpeakerSegment { start_ms, wav_path }),
-            Err(e) => eprintln!("scribe: failed to finalize active speaker stream: {e}"),
+            Err(e) => tracing::debug!(error = %e, "failed to finalize active speaker stream"),
         }
     }
     accum

@@ -478,7 +478,7 @@ mod windows {
         if let Ok(stream) = device.build_input_stream(
             &config,
             |_data: &[f32], _| {},
-            |err| eprintln!("[permissions] mic probe stream error: {err}"),
+            |err| tracing::debug!(error = %err, "mic probe stream error"),
             None,
         ) {
             let _ = stream.play();

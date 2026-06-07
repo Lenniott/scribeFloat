@@ -4,6 +4,7 @@
 	import WelcomeStep from "@lib/components/onboarding/WelcomeStep.svelte";
 	import PermissionsStep from "@lib/components/onboarding/PermissionsStep.svelte";
 	import QuestionsStep from "@lib/components/onboarding/QuestionsStep.svelte";
+	import PersonalizationRevealStep from "@lib/components/onboarding/PersonalizationRevealStep.svelte";
 	import ModelStep from "@lib/components/onboarding/ModelStep.svelte";
 	import ScribePracticeStep from "@lib/components/onboarding/ScribePracticeStep.svelte";
 	import DictatePracticeStep from "@lib/components/onboarding/DictatePracticeStep.svelte";
@@ -22,7 +23,7 @@
 	});
 
 	function next() {
-		currentStep = Math.min(currentStep + 1, 8);
+		currentStep = Math.min(currentStep + 1, 9);
 	}
 
 	function back() {
@@ -54,14 +55,16 @@
 	{:else if currentStep === 3}
 		<QuestionsStep currentStep={3} {answers} onBack={back} onNext={applyUpdates} />
 	{:else if currentStep === 4}
-		<ModelStep currentStep={4} {answers} onBack={back} onNext={applyUpdates} />
+		<PersonalizationRevealStep currentStep={4} {answers} onBack={back} onNext={next} />
 	{:else if currentStep === 5}
-		<ScribePracticeStep currentStep={5} {answers} onBack={back} onNext={next} />
+		<ModelStep currentStep={5} {answers} onBack={back} onNext={applyUpdates} />
 	{:else if currentStep === 6}
-		<DictatePracticeStep currentStep={6} onBack={back} onNext={next} />
+		<ScribePracticeStep currentStep={6} {answers} onBack={back} onNext={next} />
 	{:else if currentStep === 7}
-		<HistoryStep currentStep={7} {answers} onBack={back} onNext={applyUpdates} />
+		<DictatePracticeStep currentStep={7} onBack={back} onNext={next} />
 	{:else if currentStep === 8}
-		<CompleteStep currentStep={8} {answers} onFinish={finish} onOpenSettings={skipToSettings} />
+		<HistoryStep currentStep={8} {answers} onBack={back} onNext={applyUpdates} />
+	{:else if currentStep === 9}
+		<CompleteStep currentStep={9} {answers} onFinish={finish} onOpenSettings={skipToSettings} />
 	{/if}
 </div>

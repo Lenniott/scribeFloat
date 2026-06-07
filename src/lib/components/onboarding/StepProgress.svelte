@@ -1,7 +1,7 @@
 <script lang="ts">
-	// currentStep is 2–8; step 1 (Welcome) shows no progress dots
+	// currentStep is 2–9; step 1 (Welcome) shows no progress dots
 	let { currentStep }: { currentStep: number } = $props();
-	const totalSteps = 7;
+	const totalSteps = 8;
 	const stepIndex = $derived(currentStep - 2); // 0-based
 </script>
 

@@ -11,7 +11,7 @@
 context/README.md          ← Start here. Reading order and behaviour quick reference.
 context/architecture.md    ← Layer rules, call chain, C4 diagrams.
 context/action-flows.md    ← Step-by-step flows for each workflow.
-context/componets.md       ← UI component catalogue.
+context/components.md      ← UI component catalogue.
 docs/README.md             ← Docs index (History UI guide, backlog).
 docs/history-ui-review.md  ← Required before History list/detail UI changes.
 docs/backlog.md            ← Deferred follow-ups.

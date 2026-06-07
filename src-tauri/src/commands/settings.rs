@@ -281,6 +281,13 @@ pub fn settings_get_platform() -> String {
 }
 
 #[tauri::command]
+pub fn settings_open_scribe_window(app: AppHandle) -> Result<(), String> {
+    crate::open_scribe_window(&app)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn settings_get_replacement_rules(
     ctrl: State<'_, Arc<SettingsController>>,
 ) -> Result<Vec<ReplacementRule>, AppError> {

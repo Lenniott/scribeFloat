@@ -765,6 +765,7 @@ pub fn run() {
             commands::settings::settings_show_window,
             commands::settings::settings_show_onboarding_window,
             commands::settings::settings_get_platform,
+            commands::settings::settings_open_scribe_window,
             commands::settings::settings_get_dictate_auto_paste,
             commands::settings::settings_set_dictate_auto_paste,
             commands::settings::settings_get_dictate_auto_enter,

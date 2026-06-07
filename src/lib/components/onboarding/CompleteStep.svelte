@@ -20,8 +20,6 @@
 
 	let modelLabel = $state<string | null>(null);
 
-	const micGranted = true; // user got past PermissionsStep
-
 	onMount(async () => {
 		if (answers.selectedModelId) {
 			const models = await invoke<ModelListItem[]>("model_list").catch(() => []);
@@ -29,6 +27,11 @@
 			modelLabel = m?.label ?? answers.selectedModelId;
 		}
 	});
+
+	async function tryScribeNow() {
+		await invoke("settings_open_scribe_window").catch(() => {});
+		onFinish();
+	}
 </script>
 
 <StepShell {currentStep} title="You're ready!" subtitle="ScribeFloat is set up and ready to use.">
@@ -80,6 +83,7 @@
 
 	{#snippet footer()}
 		<Button variant="ghost" onclick={onOpenSettings}>Open Settings</Button>
+		<Button variant="normal" onclick={tryScribeNow}>Try Scribe now</Button>
 		<Button variant="primary" onclick={onFinish}>Start using ScribeFloat</Button>
 	{/snippet}
 </StepShell>

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import Button from "@lib/components/Button.svelte";
-	import { Mic, AudioLines, History } from "lucide-svelte";
 
 	let {
 		onStart,
@@ -16,29 +15,26 @@
 		<h1 class="font-mono text-display-lg tracking-stamped uppercase font-normal text-fg leading-tight">
 			ScribeFloat
 		</h1>
+		<p class="text-body-lg text-fg max-w-sm font-medium">
+			Your voice, transcribed. Privately, on your device.
+		</p>
 		<p class="text-body-md text-fg-dim max-w-sm">
-			Private, on-device voice transcription. Everything stays on your computer — nothing sent to the cloud.
+			ScribeFloat runs Whisper AI locally — nothing leaves your computer.
 		</p>
 	</div>
 
-	<div class="flex gap-4">
-		<div class="flex flex-col items-center gap-2 w-32">
-			<div class="flex items-center justify-center w-10 h-10 rounded-md bg-card">
-				<Mic class="size-5 text-brand" strokeWidth={1.5} />
-			</div>
-			<span class="text-label-sm font-mono tracking-stamped uppercase text-fg/70">Record & Transcribe</span>
+	<div class="flex flex-col gap-2 w-full max-w-xs text-left">
+		<div class="flex items-start gap-3 rounded-md bg-card border border-fill px-3 py-2.5">
+			<span class="font-mono text-label-sm tracking-stamped uppercase text-brand shrink-0 mt-0.5">Scribe</span>
+			<span class="text-body-md text-fg-dim">Turn meetings and voice memos into searchable transcripts</span>
 		</div>
-		<div class="flex flex-col items-center gap-2 w-32">
-			<div class="flex items-center justify-center w-10 h-10 rounded-md bg-card">
-				<AudioLines class="size-5 text-brand" strokeWidth={1.5} />
-			</div>
-			<span class="text-label-sm font-mono tracking-stamped uppercase text-fg/70">Voice Dictate</span>
+		<div class="flex items-start gap-3 rounded-md bg-card border border-fill px-3 py-2.5">
+			<span class="font-mono text-label-sm tracking-stamped uppercase text-brand shrink-0 mt-0.5">Dictate</span>
+			<span class="text-body-md text-fg-dim">Speak anywhere — text appears at your cursor</span>
 		</div>
-		<div class="flex flex-col items-center gap-2 w-32">
-			<div class="flex items-center justify-center w-10 h-10 rounded-md bg-card">
-				<History class="size-5 text-brand" strokeWidth={1.5} />
-			</div>
-			<span class="text-label-sm font-mono tracking-stamped uppercase text-fg/70">Browse History</span>
+		<div class="flex items-start gap-3 rounded-md bg-card border border-fill px-3 py-2.5">
+			<span class="font-mono text-label-sm tracking-stamped uppercase text-brand shrink-0 mt-0.5">History</span>
+			<span class="text-body-md text-fg-dim">Every transcript saved, searchable, and exportable</span>
 		</div>
 	</div>
 

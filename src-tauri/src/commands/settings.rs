@@ -281,10 +281,10 @@ pub fn settings_get_platform() -> String {
 }
 
 #[tauri::command]
-pub fn settings_open_scribe_window(app: AppHandle) -> Result<(), String> {
+pub fn settings_open_scribe_window(app: AppHandle) -> Result<(), AppError> {
     crate::open_scribe_window(&app)
         .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| AppError::Internal(e.to_string()))
 }
 
 #[tauri::command]

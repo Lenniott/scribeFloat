@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 
 /// Typed error returned at the Tauri IPC boundary.
 /// The `code` tag lets the frontend branch on error kind without string-matching.
+/// Variants not yet used in Rust are kept so the TypeScript union type stays complete.
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 #[serde(tag = "code", content = "message")]
 pub enum AppError {
     NotFound(String),

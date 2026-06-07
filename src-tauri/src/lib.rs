@@ -617,7 +617,7 @@ pub fn run() {
             let output_bg = Arc::clone(&output);
             let save_folder_bg = save_folder.clone();
             let temp_dir_bg = app.path().app_local_data_dir().ok().map(|d| d.join("dictate_temp"));
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 if let Err(e) = history_bg.compact(&save_folder_bg) {
                     tracing::warn!(error = %e, "startup history compaction skipped");
                 }

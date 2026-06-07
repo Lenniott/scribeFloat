@@ -321,10 +321,18 @@
     class="flex min-h-14 items-center justify-between border-b border-rim px-5"
   >
     <h1 class="sf-headline-sm">Transcribe</h1>
+    {#if phase !== "processing" && queue.length === 0}
+      <p class="text-body-md text-fg/70">
+        Queue files, choose output path and model, then start transcription.
+      </p>
+    {/if}
     {#if phase === "processing"}
       <p class="font-mono text-label-sm text-fg/55 uppercase tracking-stamped">
         Processing {progress}%
       </p>
+    {/if}
+    {#if errorMessage}
+      <p class="text-label-sm text-destructive">{errorMessage}</p>
     {/if}
   </header>
 
@@ -418,15 +426,6 @@
       onRemove={removeQueueItem}
       onOpenTranscript={openTranscript}
     />
-
-    {#if phase !== "processing" && queue.length === 0}
-      <p class="text-body-md text-fg/70">
-        Queue files, choose output path and model, then start transcription.
-      </p>
-    {/if}
-    {#if errorMessage}
-      <p class="text-label-sm text-destructive">{errorMessage}</p>
-    {/if}
 
     {#if showProcessingOverlay}
       <div

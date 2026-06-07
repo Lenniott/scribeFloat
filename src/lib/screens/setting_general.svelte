@@ -3,7 +3,7 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { emit } from "@tauri-apps/api/event";
 	import Button from "@lib/components/Button.svelte";
-import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
+	import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 	import OptionGroup from "@lib/components/form/OptionGroup.svelte";
 	import PathSelectorField from "@lib/components/form/PathSelectorField.svelte";
 	import ToggleSwitch from "@lib/components/form/ToggleSwitch.svelte";
@@ -128,28 +128,55 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 
 <section class="space-y-4">
 	<h2 class="sf-headline-sm">General settings</h2>
+
+	<!-- Keyboard shortcuts — moved to top for quick reference -->
+	<div class="flex flex-col gap-2">
+		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">Keyboard shortcuts</span>
+		<div class="rounded-md bg-fill px-3 py-2 flex flex-col gap-0.5">
+			<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/60 uppercase">Open Scribe</span>
+			<p class="text-label-sm text-fg/80">
+				<code class="font-mono bg-card px-1 rounded">{openHotkey}</code> — opens the Scribe panel from anywhere. Fixed; cannot be changed here.
+			</p>
+		</div>
+		<div class="rounded-md bg-fill px-3 py-2 flex flex-col gap-0.5">
+			<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/60 uppercase">Dictate</span>
+			<p class="text-label-sm text-fg/80">
+				Tap left <strong>{dictateModifierLabel}</strong>, release, tap again — hold ≥½s for push-to-talk (release stops), or quick tap–release toggles mic on/off; press again to stop. Fixed; cannot be changed here.
+			</p>
+		</div>
+	</div>
+
 	<OptionGroup name="theme-mode" label="Theme" options={themeOptions} bind:selected={themeMode} />
 	<PathSelectorField label="Default save folder" bind:path={outputPath} />
-	<PathSelectorField
-		label="Open transcripts with"
-		bind:path={openWithApp}
-		directory={false}
-	/>
-	<div class="flex flex-col gap-1">
-		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">Open Scribe hotkey</span>
-		<p class="text-label-sm text-fg/50">
-			<code class="font-mono bg-fill px-1 rounded">{openHotkey}</code> — opens the Scribe panel from anywhere. The hotkey is fixed and cannot be changed here.
-		</p>
+
+	<!-- Save transcripts as Markdown, with dependent option directly below -->
+	<div class="flex flex-col items-start justify-center gap-1">
+		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
+			Save transcripts as Markdown
+		</span>
+		<ToggleSwitch checked={saveTranscriptsAsMarkdown} aria-label="Save transcripts as Markdown" onchange={(next) => (saveTranscriptsAsMarkdown = next)} />
+		<p class="text-label-sm text-fg/50">Off by default — history is always saved; Markdown is an extra export.</p>
 	</div>
-	<div class="flex flex-col gap-1">
-		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">Dictate hotkey</span>
-		<p class="text-label-sm text-fg/50">
-			Tap left <strong>{dictateModifierLabel}</strong>, release, then tap <strong>{dictateModifierLabel}</strong> again — hold ~½s for push-to-talk (release stops), or a quick tap–release toggles mic on/off; press <strong>{dictateModifierLabel}</strong> again to stop. Dictate listens to left {dictateModifierLabel} only here; the dictate hotkey is fixed and cannot be changed.
-		</p>
-	</div>
-	<LabeledTextField label="Input label" bind:value={inputLabel} />
-	<LabeledTextField label="Output label" bind:value={outputLabel} />
+	{#if saveTranscriptsAsMarkdown}
+		<PathSelectorField
+			label="Open transcripts with"
+			bind:path={openWithApp}
+			directory={false}
+		/>
+	{/if}
+
+	<!-- Speaker capture settings — macOS: device name always visible so it can be configured;
+	     labels and toggle only shown once capture is available (BlackHole named on macOS, always on Windows). -->
+	{#if speakerCaptureRequiresDeviceName}
+		<LabeledTextField
+			label="Speaker capture device name"
+			bind:value={preferredSpeakerDevice}
+			placeholder="Type the exact Audio MIDI device name"
+		/>
+	{/if}
 	{#if speakerCaptureAvailable}
+		<LabeledTextField label="Input label" bind:value={inputLabel} />
+		<LabeledTextField label="Output label" bind:value={outputLabel} />
 		<div class="flex flex-col items-start justify-center gap-1 h-10">
 			<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
 				Capture speaker by default
@@ -157,6 +184,7 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 			<ToggleSwitch checked={scribeCaptureSpeaker} aria-label="Toggle default speaker capture" onchange={(next) => (scribeCaptureSpeaker = next)} />
 		</div>
 	{/if}
+
 	<div class="flex flex-col items-start justify-center gap-1 h-10">
 		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
 			Press Enter after dictate
@@ -169,22 +197,7 @@ import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
 		</span>
 		<ToggleSwitch checked={keepWav} aria-label="Keep WAV file after transcription" onchange={(next) => (keepWav = next)} />
 	</div>
-	<div class="flex flex-col items-start justify-center gap-1">
-		<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
-			Save transcripts as Markdown
-		</span>
-		<ToggleSwitch checked={saveTranscriptsAsMarkdown} aria-label="Save transcripts as Markdown" onchange={(next) => (saveTranscriptsAsMarkdown = next)} />
-		<p class="text-label-sm text-fg/50">Off by default — history is always saved; Markdown is an extra export.</p>
-	</div>
-	{#if speakerCaptureRequiresDeviceName}
-		<div class="flex flex-col gap-2">
-			<LabeledTextField
-				label="Speaker capture device name"
-				bind:value={preferredSpeakerDevice}
-				placeholder="Type the exact Audio MIDI device name"
-			/>
-		</div>
-	{/if}
+
 	<div class="flex items-center gap-3">
 		<Button variant="primary" onclick={saveAll}>Save</Button>
 		{#if message}

@@ -109,6 +109,11 @@ pub struct Config {
     #[serde(default = "default_replacement_rules")]
     pub replacement_rules: Vec<ReplacementRule>,
 
+    /// Word spoken before any trigger to gate replacements (e.g. "float").
+    /// Empty string disables the prefix requirement — triggers fire directly.
+    #[serde(default = "default_replacement_prefix")]
+    pub replacement_prefix: String,
+
     /// When true, Scribe and Transcribe also write a derived `.md` next to the canonical
     /// history record. Default OFF — markdown is opt-in; the JSONL store is the source of
     /// truth. Dictate never writes `.md` regardless of this flag.
@@ -138,6 +143,7 @@ impl Default for Config {
             dictate_auto_paste: true,
             dictate_auto_enter: false,
             replacement_rules: default_replacement_rules(),
+            replacement_prefix: default_replacement_prefix(),
             save_transcripts_as_markdown: false,
         }
     }
@@ -215,20 +221,27 @@ pub struct ReplacementRule {
     pub transform: WordTransform,
 }
 
+fn default_replacement_prefix() -> String {
+    "float".to_string()
+}
+
 fn default_replacement_rules() -> Vec<ReplacementRule> {
+    // Triggers are stored WITHOUT the global prefix. The replacement engine
+    // prepends `Config::replacement_prefix` at match time, so these fire on
+    // "float to do", "float dash", etc. by default.
     vec![
         ReplacementRule {
-            trigger: "float to do".to_string(),
-            aliases: vec![],
+            trigger: "to do".to_string(),
+            aliases: vec!["to do.".to_string(), "todo".to_string(), "todo.".to_string()],
             rule_type: ReplacementRuleType::Simple,
-            output: "[ ]".to_string(),
+            output: "\n- [ ] ".to_string(),
             scope: ReplacementScope::Both,
             prefix: String::new(),
             suffix: String::new(),
             transform: WordTransform::None,
         },
         ReplacementRule {
-            trigger: "float open bracket".to_string(),
+            trigger: "open bracket".to_string(),
             aliases: vec![],
             rule_type: ReplacementRuleType::Simple,
             output: "[".to_string(),
@@ -238,8 +251,8 @@ fn default_replacement_rules() -> Vec<ReplacementRule> {
             transform: WordTransform::None,
         },
         ReplacementRule {
-            trigger: "float close bracket".to_string(),
-            aliases: vec!["float closed bracket".to_string()],
+            trigger: "close bracket".to_string(),
+            aliases: vec!["closed bracket".to_string()],
             rule_type: ReplacementRuleType::Simple,
             output: "]".to_string(),
             scope: ReplacementScope::Both,
@@ -248,7 +261,7 @@ fn default_replacement_rules() -> Vec<ReplacementRule> {
             transform: WordTransform::None,
         },
         ReplacementRule {
-            trigger: "float dash".to_string(),
+            trigger: "dash".to_string(),
             aliases: vec![],
             rule_type: ReplacementRuleType::Simple,
             output: "-".to_string(),
@@ -258,8 +271,8 @@ fn default_replacement_rules() -> Vec<ReplacementRule> {
             transform: WordTransform::None,
         },
         ReplacementRule {
-            trigger: "float new line".to_string(),
-            aliases: vec!["float newline".to_string()],
+            trigger: "new line".to_string(),
+            aliases: vec!["newline".to_string()],
             rule_type: ReplacementRuleType::Newline,
             output: String::new(),
             scope: ReplacementScope::Both,
@@ -689,13 +702,14 @@ impl HistoryRecord {
         segments: Vec<Segment>,
         notes: Vec<Note>,
         rules: &[ReplacementRule],
+        prefix: &str,
         speaker_capture: bool,
         dual_source: bool,
         session_dir: Option<String>,
         audio_path: Option<String>,
         markdown_path: Option<String>,
     ) -> Self {
-        let word_count = crate::services::output::count_words(&segments, rules);
+        let word_count = crate::services::output::count_words(&segments, rules, prefix);
         let mut rec = Self::base(HistoryKind::Scribe, title, model, segments, notes, word_count);
         rec.speaker_capture = speaker_capture;
         rec.dual_source = dual_source;
@@ -726,11 +740,12 @@ impl HistoryRecord {
         model: String,
         segments: Vec<Segment>,
         rules: &[ReplacementRule],
+        prefix: &str,
         dual_source: bool,
         source_path: String,
         markdown_path: Option<String>,
     ) -> Self {
-        let word_count = crate::services::output::count_words(&segments, rules);
+        let word_count = crate::services::output::count_words(&segments, rules, prefix);
         let mut rec =
             Self::base(HistoryKind::Transcribe, title, model, segments, Vec::new(), word_count);
         rec.dual_source = dual_source;
@@ -796,23 +811,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_replacement_rules_all_have_float_prefix() {
+    fn default_replacement_rules_have_no_embedded_prefix() {
+        // Triggers should be plain base words (e.g. "dash", "to do").
+        // The global replacement_prefix ("float") is applied at match time by
+        // apply_replacements — it must NOT be stored in the trigger itself.
         let rules = default_replacement_rules();
         for rule in &rules {
             assert!(
-                rule.trigger.starts_with("float "),
-                "trigger {:?} must start with 'float '",
+                !rule.trigger.starts_with("float "),
+                "trigger {:?} must not embed the prefix — use Config::replacement_prefix",
                 rule.trigger
             );
             for alias in &rule.aliases {
                 assert!(
-                    alias.starts_with("float "),
-                    "alias {:?} in rule {:?} must start with 'float '",
+                    !alias.starts_with("float "),
+                    "alias {:?} in rule {:?} must not embed the prefix",
                     alias,
                     rule.trigger
                 );
             }
         }
+    }
+
+    #[test]
+    fn default_replacement_prefix_is_float() {
+        assert_eq!(default_replacement_prefix(), "float");
     }
 
     #[test]
@@ -870,6 +893,7 @@ mod tests {
             segments,
             vec![],
             &[],
+            "",
             true,
             true,
             Some("/save/2026/sess".to_string()),
@@ -898,6 +922,7 @@ mod tests {
             segments,
             vec![],
             &[],
+            "",
             true,
             false,
             None,
@@ -927,6 +952,7 @@ mod tests {
             "tiny".to_string(),
             segments,
             &[],
+            "",
             false,
             "/in/clip.mp3".to_string(),
             None,

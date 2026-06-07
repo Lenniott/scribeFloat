@@ -104,10 +104,11 @@ impl TranscribeController {
         );
 
         let replacement_rules = cfg.replacement_rules.clone();
+        let replacement_prefix = cfg.replacement_prefix.clone();
         tauri::async_runtime::spawn(async move {
             let ctrl = Arc::clone(&this);
             let result = tokio::task::spawn_blocking(move || {
-                ctrl.run_batch(inputs, &model_path, &model_name, &output_folder, include_timestamps, &replacement_rules, &mut queue)
+                ctrl.run_batch(inputs, &model_path, &model_name, &output_folder, include_timestamps, &replacement_rules, &replacement_prefix, &mut queue)
             })
             .await;
 
@@ -172,6 +173,7 @@ impl TranscribeController {
         output_folder: &Path,
         include_timestamps: bool,
         replacement_rules: &[crate::types::ReplacementRule],
+        replacement_prefix: &str,
         queue: &mut [TranscribeQueueItem],
     ) -> Result<Vec<TranscribeQueueItem>, String> {
         // Snapshot once: history records always go to the save folder; `.md` is opt-in (and may
@@ -216,7 +218,7 @@ impl TranscribeController {
             let segments = if let Some(speaker_pcm) = decoded.speaker_pcm_16k.as_ref() {
                 let mic_segments = self
                     .model
-                    .transcribe_pcm_with_progress(model_path, &decoded.mic_pcm_16k, vad, None, {
+                    .transcribe_pcm_with_progress(model_path, &decoded.mic_pcm_16k, vad, None, "transcribe/mic", {
                         let app = self.app.clone();
                         let item_id = queue[index].id.clone();
                         move |p| {
@@ -249,7 +251,7 @@ impl TranscribeController {
 
                 let speaker_segments = self
                     .model
-                    .transcribe_pcm_with_progress(model_path, speaker_pcm, vad, None, {
+                    .transcribe_pcm_with_progress(model_path, speaker_pcm, vad, None, "transcribe/speaker", {
                         let app = self.app.clone();
                         let item_id = queue[index].id.clone();
                         move |p| {
@@ -287,6 +289,7 @@ impl TranscribeController {
                     &decoded.mic_pcm_16k,
                     vad,
                     None,
+                    "transcribe/mic",
                     {
                         let app = self.app.clone();
                         let item_id = queue[index].id.clone();
@@ -339,6 +342,7 @@ impl TranscribeController {
                     model_name,
                     include_timestamps,
                     replacement_rules,
+                    replacement_prefix,
                     &transcript_dest,
                 ) {
                     Ok(path) => Some(path),
@@ -366,6 +370,7 @@ impl TranscribeController {
                 model_name.to_string(),
                 segments.clone(),
                 replacement_rules,
+                replacement_prefix,
                 dual_source,
                 input.source_path.to_string_lossy().into_owned(),
                 markdown_path.as_ref().map(|p| p.to_string_lossy().into_owned()),

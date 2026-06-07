@@ -33,6 +33,7 @@
 
 	let deleteTarget = $state<HistoryListItem | null>(null);
 	let deleting = $state(false);
+	let skipDeleteConfirm = $state(false);
 
 	const filteredItems = $derived(
 		activeTab === 'all'
@@ -123,23 +124,36 @@
 	}
 
 	function requestDelete(item: HistoryListItem) {
-		deleteTarget = item;
+		if (skipDeleteConfirm) {
+			void executeDelete(item);
+		} else {
+			deleteTarget = item;
+		}
 	}
 
 	async function confirmDelete() {
 		if (!deleteTarget) return;
+		const target = deleteTarget;
+		deleteTarget = null;
+		await executeDelete(target);
+	}
+
+	async function executeDelete(item: HistoryListItem) {
+		// Capture index before the list refreshes so we can navigate to an adjacent item.
+		const wasViewing = selectedItem?.id === item.id;
+		const indexBefore = wasViewing ? selectedIndex : -1;
 		deleting = true;
 		try {
-			await deleteHistoryItem(deleteTarget.id);
-			if (selectedItem?.id === deleteTarget.id) {
-				selectedItem = null;
-			}
-			deleteTarget = null;
+			await deleteHistoryItem(item.id);
 			await loadHistory();
+			if (wasViewing) {
+				// After reload the deleted item is gone; the item that was next slides into
+				// indexBefore. Fall back to the previous item if we were at the end.
+				selectedItem = filteredItems[indexBefore] ?? filteredItems[indexBefore - 1] ?? null;
+			}
 			showToast('Deleted', 'success');
 		} catch (e) {
 			showToast('Delete failed: ' + String(e), 'error');
-			deleteTarget = null;
 		} finally {
 			deleting = false;
 		}
@@ -181,6 +195,7 @@
 					onprev={() => navigateDetail(-1)}
 					onnext={() => navigateDetail(1)}
 					onclose={() => (selectedItem = null)}
+					ondelete={() => requestDelete(selectedItem)}
 					onrefresh={() => {
 						void loadHistory().then(() => {
 							if (selectedItem) {
@@ -254,11 +269,17 @@
 	onClose={() => (deleteTarget = null)}
 >
 	{#snippet footer()}
-		<div class="flex gap-3">
-			<Button variant="normal" disabled={deleting} onclick={() => (deleteTarget = null)}>Cancel</Button>
-			<Button variant="destructive" disabled={deleting} onclick={() => void confirmDelete()}>
-				{deleting ? 'Deleting…' : 'Delete'}
-			</Button>
+		<div class="flex w-full items-center gap-4">
+			<label class="flex cursor-pointer items-center gap-2 text-label-sm text-fg/60 mr-auto">
+				<input type="checkbox" bind:checked={skipDeleteConfirm} />
+				Don't ask again this session
+			</label>
+			<div class="flex gap-3">
+				<Button variant="normal" disabled={deleting} onclick={() => (deleteTarget = null)}>Cancel</Button>
+				<Button variant="destructive" disabled={deleting} onclick={() => void confirmDelete()}>
+					{deleting ? 'Deleting…' : 'Delete'}
+				</Button>
+			</div>
 		</div>
 	{/snippet}
 </Modal>

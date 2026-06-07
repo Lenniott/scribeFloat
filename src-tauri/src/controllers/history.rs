@@ -134,6 +134,7 @@ impl HistoryController {
             &record.segments,
             cfg.include_timestamps,
             &cfg.replacement_rules,
+            &cfg.replacement_prefix,
         ))
     }
 
@@ -168,6 +169,7 @@ impl HistoryController {
                 &record.model,
                 cfg.include_timestamps,
                 &cfg.replacement_rules,
+                &cfg.replacement_prefix,
                 &dest,
             )
             .map_err(|e| e.to_string())?;
@@ -300,6 +302,7 @@ mod tests {
             seg("in: hello"),
             Vec::<Note>::new(),
             &[],
+            "",
             true,
             true,
             Some(session_dir.to_string_lossy().into_owned()),
@@ -347,6 +350,7 @@ mod tests {
             seg("hello"),
             Vec::<Note>::new(),
             &[],
+            "",
             false,
             false,
             None,
@@ -371,6 +375,7 @@ mod tests {
             seg("hello world"),
             vec![],
             &[],
+            "",
             false,
             false,
             None,

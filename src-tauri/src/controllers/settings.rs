@@ -381,6 +381,16 @@ impl SettingsController {
             .update(|cfg| { cfg.replacement_rules.remove(index); })
             .map_err(|e| format!("failed to delete replacement rule: {e}"))
     }
+
+    pub fn get_replacement_prefix(&self) -> String {
+        self.config.get().replacement_prefix.clone()
+    }
+
+    pub fn set_replacement_prefix(&self, prefix: String) -> Result<(), String> {
+        self.config
+            .update(|cfg| cfg.replacement_prefix = prefix)
+            .map_err(|e| format!("failed to persist replacement prefix: {e}"))
+    }
 }
 
 fn validate_rule(rule: &ReplacementRule) -> Result<(), String> {

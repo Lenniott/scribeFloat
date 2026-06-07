@@ -9,11 +9,12 @@
   import { openHistoryMarkdown } from "$lib/services/historyActions";
 
   import Button from "@components/Button.svelte";
+  import Modal from "@components/Modal.svelte";
   import StackProgressBar from "@components/form/StackProgressBar.svelte";
   import ScrollablePanel from "@lib/components/accordion/ScrollablePanel.svelte";
   import Toast from "@components/Toast.svelte";
   import type { ToastState } from "@components/Toast.svelte";
-  import { Copy, SquareArrowOutUpRight, X } from "lucide-svelte";
+  import { Copy, SquareArrowOutUpRight } from "lucide-svelte";
   import IconButton from "@lib/components/IconButton.svelte";
 
   type Phase = "transcribing" | "done" | "no_model" | "error";
@@ -58,6 +59,9 @@
   let toastMessage = $state("");
   let toastState = $state<ToastState>("normal");
   let toastTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  let abortConfirmOpen = $state(false);
+  let abortInProgress = $state(false);
 
   function showToast(msg: string, state: ToastState = "normal") {
     if (toastTimeout) clearTimeout(toastTimeout);
@@ -161,7 +165,30 @@
       await invoke("scribe_abort_transcription").catch(() => {});
     }
     await invoke("scribe_cancel").catch(() => {});
+    // Reset parent appScreen so next tray/hotkey open shows the recording screen.
+    if (phase !== "transcribing") {
+      onRecordAgain?.();
+    }
     await invoke("scribe_destroy_window").catch(() => {});
+  }
+
+  // Called by the native-close listener; shows the abort modal when actively transcribing.
+  async function handleCloseRequest(): Promise<void> {
+    if (phase === "transcribing") {
+      abortConfirmOpen = true;
+      return;
+    }
+    await closeScribeWindowCompletely();
+  }
+
+  async function confirmAbort(): Promise<void> {
+    abortInProgress = true;
+    try {
+      abortConfirmOpen = false;
+      await closeScribeWindowCompletely();
+    } finally {
+      abortInProgress = false;
+    }
   }
 
   async function openTranscript() {
@@ -190,9 +217,16 @@
       (event) => handleScribeEvent(event.payload),
     );
     const ulClose = await listen("scribe://native-close-requested", () => {
-      void closeScribeWindowCompletely();
+      void handleCloseRequest();
     });
-    unlisteners = [ulState, ulClose];
+    // When the window is deliberately opened (tray/hotkey) and processing is
+    // already finished, return to the recording screen immediately.
+    const ulOpened = await listen("scribe://opened", () => {
+      if (phase === "done" || phase === "no_model" || phase === "error") {
+        onRecordAgain?.();
+      }
+    });
+    unlisteners = [ulState, ulClose, ulOpened];
     await startProcessing();
   });
 
@@ -220,12 +254,6 @@
           {/if}
         </h1>
       </div>
-      <IconButton
-        variant="normal"
-        aria-label="close panel"
-        onclick={() => void closeScribeWindowCompletely()}
-        icon={X}
-      />
     </header>
 
     <div class="flex min-h-0 flex-1 flex-col px-5 py-4">
@@ -344,5 +372,29 @@
     </footer>
   </section>
 </div>
+
+<Modal
+  open={abortConfirmOpen}
+  title="Abort transcription?"
+  description="Transcription is still running. Your audio file has been saved and can be transcribed later via the Transcribe tab."
+  maxWidthClass="max-w-md"
+  closeDisabled={abortInProgress}
+  onClose={() => (abortConfirmOpen = false)}
+>
+  {#snippet footer()}
+    <div class="flex gap-2">
+      <Button
+        variant="normal"
+        disabled={abortInProgress}
+        onclick={() => (abortConfirmOpen = false)}
+      >Keep Processing</Button>
+      <Button
+        variant="destructive"
+        disabled={abortInProgress}
+        onclick={confirmAbort}
+      >Abort</Button>
+    </div>
+  {/snippet}
+</Modal>
 
 <Toast message={toastMessage} state={toastState} />

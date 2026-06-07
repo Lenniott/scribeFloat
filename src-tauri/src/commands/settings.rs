@@ -299,3 +299,18 @@ pub fn settings_delete_replacement_rule(
 ) -> Result<(), AppError> {
     ctrl.delete_replacement_rule(index).map_err(AppError::from)
 }
+
+#[tauri::command]
+pub fn settings_get_replacement_prefix(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<String, String> {
+    Ok(ctrl.get_replacement_prefix())
+}
+
+#[tauri::command]
+pub fn settings_set_replacement_prefix(
+    ctrl: State<'_, Arc<SettingsController>>,
+    prefix: String,
+) -> Result<(), String> {
+    ctrl.set_replacement_prefix(prefix)
+}

@@ -310,6 +310,9 @@ pub(crate) fn open_scribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow
         SCRIBE_WINDOW_W,
         SCRIBE_WINDOW_H,
     )?;
+    // Tell the frontend the window was deliberately opened (tray or hotkey).
+    // scribe-processing.svelte uses this to return to the recording screen when done.
+    let _ = window.emit("scribe://opened", ());
     Ok(window)
 }
 
@@ -744,6 +747,8 @@ pub fn run() {
             commands::settings::settings_add_replacement_rule,
             commands::settings::settings_update_replacement_rule,
             commands::settings::settings_delete_replacement_rule,
+            commands::settings::settings_get_replacement_prefix,
+            commands::settings::settings_set_replacement_prefix,
             commands::dictate::dictate_cancel,
             commands::dictate::dictate_dismiss,
             commands::dictate::dictate_get_history,

@@ -2,7 +2,7 @@ use crate::services::{
     audio::{AudioService, MicSession, WHISPER_SAMPLE_RATE},
     config::ConfigService,
     history::HistoryService,
-    model::{model_id_preload_eligible, ModelService},
+    model::ModelService,
     output::OutputService,
 };
 use crate::services::audio::read_wav_mono_f32;
@@ -461,14 +461,11 @@ impl DictateController {
         Ok(())
     }
 
-    /// Eagerly load the small models into the shared context cache while recording is in
-    /// progress. Mirrors `ScribeController::spawn_record_start_preload`.
+    /// Eagerly load the configured model into the shared context cache while recording.
+    /// Mirrors `ScribeController::spawn_record_start_preload`.
     fn spawn_record_start_preload(&self) {
         let cfg = self.config.get();
-        let path = match preload_path_for_dictate(&cfg, &self.model) {
-            Some(p) => p,
-            None => return,
-        };
+        let path = preload_path_for_dictate(&cfg, &self.model);
         if !self.model.model_available(&path) {
             return;
         }
@@ -663,6 +660,7 @@ impl DictateController {
             &pcm_16k,
             vad,
             None,
+            "dictate",
             move |p| {
                 app_clone
                     .emit(
@@ -966,18 +964,9 @@ fn resolve_dictate_model_path(config: &Config, model: &ModelService) -> PathBuf 
     }
 }
 
-/// Returns the on-disk path for the configured Dictate model **only when it is in the
-/// preload allowlist**. Dictate has its own `dictate_model_id` that overrides the global
-/// `selected_model_id`; both are checked.
-fn preload_path_for_dictate(config: &Config, model: &ModelService) -> Option<PathBuf> {
-    let model_id = config
-        .dictate_model_id
-        .as_deref()
-        .or(config.selected_model_id.as_deref())?;
-    if !model_id_preload_eligible(model_id) {
-        return None;
-    }
-    model.model_path_for_id(model_id)
+/// Path of the model that Dictate will use on stop — same resolution as transcription.
+fn preload_path_for_dictate(config: &Config, model: &ModelService) -> PathBuf {
+    resolve_dictate_model_path(config, model)
 }
 
 #[cfg(test)]
@@ -1007,7 +996,7 @@ mod tests {
             selected_model_id: Some("small-en-q5".to_string()),
             ..Config::default()
         };
-        let path = preload_path_for_dictate(&config, model.as_ref()).expect("eligible");
+        let path = preload_path_for_dictate(&config, model.as_ref());
         assert!(path
             .file_name()
             .and_then(|s| s.to_str())
@@ -1022,20 +1011,22 @@ mod tests {
             selected_model_id: Some("base-en-q5".to_string()),
             ..Config::default()
         };
-        assert!(preload_path_for_dictate(&config, model.as_ref()).is_some());
+        let path = preload_path_for_dictate(&config, model.as_ref());
+        assert_eq!(path, model.model_path_for_id("base-en-q5").unwrap());
     }
 
     #[test]
-    fn dictate_preload_path_returns_none_for_larger_models() {
+    fn dictate_preload_path_returns_catalog_path_for_larger_models() {
         let model = fake_model_service();
         for id in ["small-en-q5", "medium-en-q5", "large-v3-turbo-q5"] {
             let config = Config {
                 dictate_model_id: Some(id.to_string()),
                 ..Config::default()
             };
-            assert!(
-                preload_path_for_dictate(&config, model.as_ref()).is_none(),
-                "{id} should not be eligible"
+            assert_eq!(
+                preload_path_for_dictate(&config, model.as_ref()),
+                model.model_path_for_id(id).unwrap(),
+                "{id} should preload"
             );
         }
     }

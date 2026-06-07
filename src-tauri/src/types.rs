@@ -232,9 +232,9 @@ fn default_replacement_rules() -> Vec<ReplacementRule> {
     vec![
         ReplacementRule {
             trigger: "to do".to_string(),
-            aliases: vec![],
+            aliases: vec!["to do.".to_string(), "todo".to_string(), "todo.".to_string()],
             rule_type: ReplacementRuleType::Simple,
-            output: "[ ]".to_string(),
+            output: "\n- [ ] ".to_string(),
             scope: ReplacementScope::Both,
             prefix: String::new(),
             suffix: String::new(),

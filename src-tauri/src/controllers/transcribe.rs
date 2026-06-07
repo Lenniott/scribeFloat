@@ -218,7 +218,7 @@ impl TranscribeController {
             let segments = if let Some(speaker_pcm) = decoded.speaker_pcm_16k.as_ref() {
                 let mic_segments = self
                     .model
-                    .transcribe_pcm_with_progress(model_path, &decoded.mic_pcm_16k, vad, None, {
+                    .transcribe_pcm_with_progress(model_path, &decoded.mic_pcm_16k, vad, None, "transcribe/mic", {
                         let app = self.app.clone();
                         let item_id = queue[index].id.clone();
                         move |p| {
@@ -251,7 +251,7 @@ impl TranscribeController {
 
                 let speaker_segments = self
                     .model
-                    .transcribe_pcm_with_progress(model_path, speaker_pcm, vad, None, {
+                    .transcribe_pcm_with_progress(model_path, speaker_pcm, vad, None, "transcribe/speaker", {
                         let app = self.app.clone();
                         let item_id = queue[index].id.clone();
                         move |p| {
@@ -289,6 +289,7 @@ impl TranscribeController {
                     &decoded.mic_pcm_16k,
                     vad,
                     None,
+                    "transcribe/mic",
                     {
                         let app = self.app.clone();
                         let item_id = queue[index].id.clone();

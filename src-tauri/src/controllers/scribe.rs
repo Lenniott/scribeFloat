@@ -2,7 +2,7 @@ use crate::services::{
     audio::{AudioService, MicSession},
     config::ConfigService,
     history::HistoryService,
-    model::{model_id_preload_eligible, ModelService},
+    model::ModelService,
     output::OutputService,
 };
 use crate::services::audio::{read_wav_mono_f32, WHISPER_SAMPLE_RATE};
@@ -277,14 +277,10 @@ impl ScribeController {
         let _ = self.app.emit("scribe://state-changed", ScribeStateEvent::new(ScribeState::Idle));
     }
 
-    /// Eagerly load the small models into the shared context cache while recording is in
-    /// progress, so transcription on stop starts instantly. No-op for larger models — those
-    /// load on demand to avoid pinning hundreds of MB of RAM speculatively.
+    /// Eagerly load the configured model into the shared context cache while recording,
+    /// so transcription on stop skips the cold-load delay (~300 ms tiny → ~2 s large).
     fn spawn_record_start_preload(&self, cfg: &Config) {
-        let path = match preload_path_for_config(cfg, &self.model) {
-            Some(p) => p,
-            None => return,
-        };
+        let path = preload_path_for_config(cfg, &self.model);
         if !self.model.model_available(&path) {
             return;
         }
@@ -678,6 +674,7 @@ impl ScribeController {
                 &prepared.pcm_16k,
                 vad,
                 Some(Arc::clone(abort_flag)),
+                "scribe/mic",
                 move |p| { tx1.send(ProgressMessage::Progress(p * 0.5)).ok(); },
             )?;
             // Skip the second (speaker) pass entirely if the user aborted during the mic pass.
@@ -692,6 +689,7 @@ impl ScribeController {
                 speaker_pcm,
                 vad,
                 Some(Arc::clone(abort_flag)),
+                "scribe/speaker",
                 move |p| { tx2.send(ProgressMessage::Progress(0.5 + p * 0.5)).ok(); },
             )?;
             let speaker_segs = filter_hallucination_phrases(speaker_segs);
@@ -703,6 +701,7 @@ impl ScribeController {
                 &prepared.pcm_16k,
                 vad,
                 Some(Arc::clone(abort_flag)),
+                "scribe/mic",
                 move |p| { tx.send(ProgressMessage::Progress(p)).ok(); },
             )
         };
@@ -1264,18 +1263,9 @@ fn resolve_model_path(config: &Config, model: &ModelService) -> PathBuf {
     }
 }
 
-/// Returns the on-disk path for the configured Scribe model **only when it is in the
-/// preload allowlist**. `scribe_model_path` (a user-supplied custom file) is intentionally
-/// excluded — we can't know its size and don't want to pin arbitrary files in RAM.
-fn preload_path_for_config(config: &Config, model: &ModelService) -> Option<PathBuf> {
-    if config.scribe_model_path.is_some() {
-        return None;
-    }
-    let model_id = config.selected_model_id.as_deref()?;
-    if !model_id_preload_eligible(model_id) {
-        return None;
-    }
-    model.model_path_for_id(model_id)
+/// Path of the model that Scribe will use on stop — same resolution as transcription.
+fn preload_path_for_config(config: &Config, model: &ModelService) -> PathBuf {
+    resolve_model_path(config, model)
 }
 
 #[cfg(test)]
@@ -1358,7 +1348,7 @@ mod tests {
     }
 
     #[test]
-    fn preload_path_returns_none_for_custom_scribe_model_path() {
+    fn preload_path_uses_custom_scribe_model_path() {
         let models_dir =
             std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
         let model = ModelService::new(models_dir);
@@ -1367,39 +1357,31 @@ mod tests {
             selected_model_id: Some("tiny-en-q5".to_string()),
             ..Config::default()
         };
-        assert!(preload_path_for_config(&config, model.as_ref()).is_none());
+        assert_eq!(
+            preload_path_for_config(&config, model.as_ref()),
+            PathBuf::from("/tmp/custom.bin")
+        );
     }
 
     #[test]
-    fn preload_path_returns_none_for_larger_models() {
-        let models_dir =
-            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
-        let model = ModelService::new(models_dir);
-        for id in ["small-en-q5", "medium-en-q5", "large-v3-turbo-q5"] {
-            let config = Config {
-                selected_model_id: Some(id.to_string()),
-                ..Config::default()
-            };
-            assert!(
-                preload_path_for_config(&config, model.as_ref()).is_none(),
-                "{id} should not be eligible for preload"
-            );
-        }
-    }
-
-    #[test]
-    fn preload_path_returns_some_for_tiny_and_base() {
+    fn preload_path_returns_catalog_path_for_all_models() {
         let models_dir =
             std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
         let model = ModelService::new(models_dir.clone());
-        for id in ["tiny-en-q5", "base-en-q5"] {
+        for id in [
+            "tiny-en-q5",
+            "base-en-q5",
+            "small-en-q5",
+            "medium-en-q5",
+            "large-v3-turbo-q5",
+        ] {
             let config = Config {
                 selected_model_id: Some(id.to_string()),
                 ..Config::default()
             };
-            let p = preload_path_for_config(&config, model.as_ref())
-                .unwrap_or_else(|| panic!("{id} should be eligible"));
-            assert!(p.starts_with(&models_dir), "preload path under models dir");
+            let p = preload_path_for_config(&config, model.as_ref());
+            assert_eq!(p, model.model_path_for_id(id).expect("catalog path"));
+            assert!(p.starts_with(&models_dir), "{id} preload path under models dir");
         }
     }
 

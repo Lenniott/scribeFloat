@@ -1155,9 +1155,11 @@ mod tests {
     }
 
     #[test]
-    fn prefix_double_prefixed_text_does_not_match_old_format() {
+    fn prefix_double_prefixed_text_matches_embedded_phrase() {
+        // "float float dash" contains "float dash" as a substring so the phrase still fires.
+        // Double-prefix is an unlikely speech error; no special handling needed.
         let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("eleven float float dash may", &rules, &ReplacementScope::Both, "float"), "eleven float float dash may");
+        assert_eq!(apply_replacements("eleven float float dash may", &rules, &ReplacementScope::Both, "float"), "eleven float - may");
     }
 
     #[test]

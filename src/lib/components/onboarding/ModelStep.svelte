@@ -34,7 +34,7 @@
 
 	let models = $state<ModelListItem[]>([]);
 	let recommendedId = $derived(deriveRecommendedId(answers));
-	let selectedId = $state<string>(recommendedId);
+	let selectedId = $state("base-en-q5");
 	let showAll = $state(false);
 	let progress = $state(0);
 	let downloading = $state(false);

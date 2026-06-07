@@ -18,7 +18,10 @@
 		onNext: (updates: Partial<OnboardingAnswers>) => void;
 	} = $props();
 
-	let saveMd = $state(answers.saveMd);
+	let saveMd = $state(false);
+	$effect(() => {
+		saveMd = answers.saveMd;
+	});
 
 	async function toggleMd(enabled: boolean) {
 		saveMd = enabled;

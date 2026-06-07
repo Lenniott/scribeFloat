@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invoke } from "@tauri-apps/api/core";
-	import { fade, fly } from "svelte/transition";
+	import { fly } from "svelte/transition";
 	import Button from "@lib/components/Button.svelte";
 	import StepShell from "./StepShell.svelte";
 	import { isWindows } from "$lib/platform";
@@ -19,9 +19,15 @@
 	} = $props();
 
 	type MainUse = "meetings" | "notes" | "files";
-	let mainUse = $state<MainUse | null>(answers.mainUse);
-	let preferAccuracy = $state<boolean | null>(answers.mainUse !== null ? answers.preferAccuracy : null);
-	let speakerCapture = $state<boolean | null>(answers.mainUse !== null ? answers.speakerCapture : null);
+	let mainUse = $state<MainUse | null>(null);
+	let preferAccuracy = $state<boolean | null>(null);
+	let speakerCapture = $state<boolean | null>(null);
+
+	$effect(() => {
+		mainUse = answers.mainUse;
+		preferAccuracy = answers.mainUse !== null ? answers.preferAccuracy : null;
+		speakerCapture = answers.mainUse !== null ? answers.speakerCapture : null;
+	});
 
 	// Progressive reveal: unlock each question when the previous is answered
 	const q2Visible = $derived(mainUse !== null);
@@ -68,7 +74,7 @@
 
 			<!-- Q2: appears after Q1 is answered -->
 			{#if q2Visible}
-				<div in:fly={{ y: 8, duration: 200 }} in:fade={{ duration: 150 }}>
+				<div in:fly={{ y: 8, duration: 200 }}>
 					<fieldset class="space-y-2">
 						<legend class="font-mono text-label-sm tracking-stamped uppercase text-fg/80">Transcription priority?</legend>
 						<div class="flex gap-2">
@@ -92,7 +98,7 @@
 
 			<!-- Q3: appears after Q2 is answered -->
 			{#if q3Visible}
-				<div in:fly={{ y: 8, duration: 200 }} in:fade={{ duration: 150 }}>
+				<div in:fly={{ y: 8, duration: 200 }}>
 					<fieldset class="space-y-2">
 						<legend class="font-mono text-label-sm tracking-stamped uppercase text-fg/80">Capture computer audio too?</legend>
 						<div class="flex gap-2">

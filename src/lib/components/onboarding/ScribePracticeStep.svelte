@@ -19,7 +19,10 @@
 		onNext: () => void;
 	} = $props();
 
-	let speakerCapture = $state(answers.speakerCapture);
+	let speakerCapture = $state(false);
+	$effect(() => {
+		speakerCapture = answers.speakerCapture;
+	});
 	let blackholeDetected = $state(false);
 	let requiresDeviceName = $state(false);
 	let saveMd = $state(false);

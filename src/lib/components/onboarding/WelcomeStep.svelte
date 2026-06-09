@@ -30,7 +30,7 @@
 		</div>
 		<div class="flex items-start gap-3 rounded-md bg-card border border-fill px-3 py-2.5">
 			<span class="font-mono text-label-sm tracking-stamped uppercase text-brand shrink-0 mt-0.5">Dictate</span>
-			<span class="text-body-md text-fg-dim">Speak anywhere — text appears at your cursor</span>
+			<span class="text-body-md text-fg-dim">Speak anywhere, text appears at your cursor</span>
 		</div>
 		<div class="flex items-start gap-3 rounded-md bg-card border border-fill px-3 py-2.5">
 			<span class="font-mono text-label-sm tracking-stamped uppercase text-brand shrink-0 mt-0.5">History</span>

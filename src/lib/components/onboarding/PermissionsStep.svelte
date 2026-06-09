@@ -8,11 +8,9 @@
 	import type { PermissionStatus } from "$lib/types";
 
 	let {
-		currentStep,
 		onBack,
 		onNext,
 	}: {
-		currentStep: number;
 		onBack: () => void;
 		onNext: () => void;
 	} = $props();
@@ -66,7 +64,7 @@
 	});
 </script>
 
-<StepShell {currentStep} title="Grant permissions" subtitle="ScribeFloat needs microphone access to record. Accessibility lets Dictate paste text automatically.">
+<StepShell title="Grant permissions" subtitle="ScribeFloat needs microphone access to record. Accessibility lets Dictate paste text automatically.">
 	{#snippet children()}
 		<div class="space-y-2">
 			{#each statuses.filter(s => ["microphone", "accessibility", "input_monitoring"].includes(s.kind)) as status (status.kind)}
@@ -76,7 +74,7 @@
 							<p class="text-label-md font-mono tracking-stamped uppercase text-fg">
 								{PERMISSION_LABELS[status.kind] ?? status.kind}
 								{#if status.kind === "microphone"}
-									<span class="text-destructive ml-1 normal-case font-sans tracking-normal">required</span>
+									<span class="text-fg-muted ml-1 normal-case font-sans tracking-normal">required</span>
 								{:else}
 									<span class="text-fg-muted ml-1 normal-case font-sans tracking-normal">optional</span>
 								{/if}

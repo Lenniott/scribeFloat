@@ -47,13 +47,6 @@ export type PermissionStatus = {
 	hint?: string;
 };
 
-export type OnboardingAnswers = {
-	mainUse: "meetings" | "notes" | "files" | null;
-	preferAccuracy: boolean;
-	speakerCapture: boolean;
-	selectedModelId: string | null;
-	saveMd: boolean;
-};
 
 export function extractErrorMessage(error: unknown, fallback: string): string {
 	if (typeof error === 'string' && error.trim()) return error;

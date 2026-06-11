@@ -8,7 +8,7 @@
 	import SettingHelp from '@lib/screens/setting_help.svelte';
 	import SettingReplace from '@lib/screens/setting_replace.svelte';
 	import { isWindows } from '$lib/platform';
-	import type { PermissionStatus, ModelListItem } from '$lib/types';
+	import { appErrorMessage, type PermissionStatus, type ModelListItem } from '$lib/types';
 
 	type SettingsTab = 'general' | 'permissions' | 'models' | 'replacements' | 'help';
 
@@ -23,6 +23,7 @@
 	let speakerCaptureRequiresDeviceName = $state(false);
 	let blackholeDetected = $state(false);
 	let savedSpeakerDeviceName = $state('');
+	let setupError = $state('');
 
 	const showSpeakerNameWarning = $derived(
 		speakerCaptureRequiresDeviceName &&
@@ -67,8 +68,13 @@
 		const downloaded = list.filter((m) => m.downloaded);
 		const hasSelected = list.some((m) => m.downloaded && m.selected);
 		if (downloaded.length > 0 && !hasSelected) {
-			await invoke('model_select', { modelId: downloaded[0].id }).catch(() => {});
-			modelReady = true;
+			try {
+				await invoke('model_select', { modelId: downloaded[0].id });
+				modelReady = true;
+			} catch (e) {
+				setupError = appErrorMessage(e);
+				modelReady = false;
+			}
 		} else {
 			modelReady = hasSelected;
 		}
@@ -92,6 +98,11 @@
 
 		{#if showSettingsBanner}
 			<div class="flex flex-col gap-1 border-b border-warning bg-warning/15 px-4 py-2">
+				{#if setupError}
+					<p class="text-label-sm text-fg">
+						Could not select an installed model — {setupError}
+					</p>
+				{/if}
 				{#if permissionsKnown && !permissionsReady}
 					<p class="text-label-sm text-fg">
 						Microphone access needed —

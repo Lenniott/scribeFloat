@@ -13,9 +13,10 @@ python3 context/design-skill/query.py ds get tokens.typography.scale
 
 - Hierarchy via **size, case, tracking, and opacity** — not bold (`font-bold` / `font-semibold` banned by `check:ds`).
 - `font-medium` is the strongest emphasis for body text (`sf-body-md-strong`).
-- **Uppercase + `tracking-stamped`** are a single treatment for labels and headlines.
+- **Case (locked):** labels and headers → `capitalize` via `sf-*` roles. Body and meta → **sentence case** (no `uppercase`, no `capitalize`). Never `uppercase` in product UI.
+- **`tracking-stamped`** on labels and headers only — not on body copy.
 - **Geist** for UI text; **Geist Mono** only for instrument-style readouts.
-- **Roles own metrics** (size, weight, tracking, case). **Color stays at call site** (`text-fg`, `text-fg-dim`, `text-destructive`, `text-fg/45`, …).
+- **Roles own metrics** (size, weight, tracking, case). **Color stays at call site** (`text-fg`, `text-fg-dim`, `text-fg-muted`, …).
 
 ## Role class table
 
@@ -47,6 +48,7 @@ Use these instead of composing `text-label-*` / `text-body-*` inline.
 
 | Pattern | Use instead |
 |---------|-------------|
+| `uppercase` | Remove — `sf-headline-sm` / `sf-section-label` / `sf-label-md` / `sf-field-label` use `capitalize` |
 | `text-base`, `text-sm` | `sf-body-md` or `sf-label-sm` |
 | `text-headline-lg`, `text-body-lg` | Not in `@theme` — use `sf-headline-sm` / `sf-body-md` |
 | `tracking-heading` | Not in `@theme` — use `tracking-stamped` |
@@ -65,7 +67,7 @@ Fix these once; screens inherit correct typography:
 | `ConfigField`, `LabeledTextField`, `PathSelectorField`, `HotkeyCaptureField`, `OptionGroup` | `sf-field-label` |
 | `Button` | `sf-label-md` / `sf-label-sm` (or future `sf-btn-*` alignment) |
 | `NavButton` | `sf-label-md` (currently off-scale `text-sm`) |
-| `TabPage` | `sf-label-md` / `sf-label-sm` + stamped uppercase |
+| `TabPage` | `sf-label-md` / `sf-label-sm` (capitalize, no uppercase) |
 | `TimestampLabel`, `RecordingTimer` | `sf-meta-sm` |
 | `Toast` | `sf-body-md` |
 | `AccordionItem` | `sf-section-label` |

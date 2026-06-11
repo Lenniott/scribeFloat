@@ -15,8 +15,19 @@ python3 context/design-skill/query.py ds get rules.colors
 | Meaning | Class | Replaces |
 |---------|-------|----------|
 | Primary | `text-fg` | `text-fg/90`, `text-fg/85`, bare primary body |
-| Secondary | `text-fg-dim` | `text-fg/80`, `/70`, `/75`, `/60`, `/55` |
-| Muted / empty / disabled | `text-fg-muted` | `text-fg/50`, `/45`, `/40` |
+| Secondary (must stay readable) | `text-fg-dim` | `text-fg/80`–`/50`, icons, chevrons, captions, metadata on **any** surface |
+| Recessed copy only | `text-fg-muted` | helper/empty/disabled **prose** on canvas or panel — **not** icons or card-row chrome |
+
+### Contrast rule (do not map opacity mechanically)
+
+Old `text-fg/{opacity}` **blended with the surface**. On dark `bg-card`, `text-fg/50` lands near **L≈0.60** — the same band as `text-fg-dim`, not `text-fg-muted` (L≈0.40, only ~0.12 above card → fails contrast).
+
+| Job | Class | Never use |
+|-----|-------|-----------|
+| Expand/collapse icon, row chevron | `text-fg-dim` | `text-fg-muted` |
+| Secondary label next to primary | `text-fg-dim` | |
+| Fine-print helper under a field | `text-fg-muted` | on `bg-card` without checking |
+| Empty state / "optional" / disabled hint | `text-fg-muted` | on icons or controls |
 
 **Banned in new `.svelte` code:** `text-fg/\d+`, `bg-fg/\d+`, `bg-black/\d+`.
 

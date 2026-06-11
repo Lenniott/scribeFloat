@@ -68,8 +68,10 @@
 | Meaning | Token | Replaces |
 |---------|-------|----------|
 | Primary | `text-fg` | `text-fg`, `text-fg/90`, `text-fg/85` |
-| Secondary | `text-fg-dim` | `text-fg/80`, `/70`, `/75`, `/60`, `/55` |
-| Muted | `text-fg-muted` | `text-fg/50`, `/45`, `/40` |
+| Secondary (readable on any surface) | `text-fg-dim` | `text-fg/80`–`/50`, icons, chevrons, captions on card |
+| Recessed copy only | `text-fg-muted` | helper/empty/disabled **prose** — not icons or card-row controls |
+
+**Contrast trap:** `text-fg/50` on dark `bg-card` blended to ~L 0.60 (≈ `text-fg-dim`). Absolute `text-fg-muted` (L 0.40) is only ~0.12 above card — fails contrast. Do not map `/50` → muted for affordances.
 
 ### State colors
 
@@ -92,10 +94,10 @@
 | `/70` | 36 | `text-fg-dim` |
 | `/55` | 27 | `text-fg-dim` |
 | `/60` | 21 | `text-fg-dim` |
-| `/50` | 20 | `text-fg-muted` |
-| `/45` | 22 | `text-fg-muted` |
+| `/50` | 20 | `text-fg-dim` (icons/controls); `text-fg-muted` only for recessed helper copy |
+| `/45` | 22 | `text-fg-dim` or `text-fg-muted` — check surface contrast |
 | `/90` | 10 | `text-fg` |
-| `/40` | 8 | `text-fg-muted` |
+| `/40` | 8 | `text-fg-muted` (prose only) |
 | `/75` | 8 | `text-fg-dim` |
 | `/85` | 4 | `text-fg` |
 

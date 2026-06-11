@@ -10,7 +10,7 @@
     "afterFileEdit": [
       {
         "command": "node .cursor/hooks/ui-enforcement-check.mjs",
-        "matcher": "Write"
+        "matcher": "Write|StrReplace"
       }
     ],
     "postToolUse": [

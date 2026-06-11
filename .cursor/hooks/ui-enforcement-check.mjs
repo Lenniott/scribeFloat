@@ -2,21 +2,23 @@
 /**
  * Cursor hooks: UI enforcement for frontend files.
  *
- * - preToolUse (Write|StrReplace): deny bad typography before write; agent_message = cheat sheet
- * - afterFileEdit / postToolUse: run check:ds (postToolUse additional_context is best-effort)
+ * - preToolUse: deny if write chunk OR resulting full file has violations
+ * - postToolUse: inject additional_context when edited file still violates (reliable feedback)
+ * - afterFileEdit: full-file scan + check:ds (stderr log; postToolUse carries agent context)
  */
 
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import {
   ROOT,
-  CHEAT_SHEET,
+  auditFileOnDisk,
   denyMessage,
   extractFilePath,
   extractWriteContent,
+  followUpMessage,
   isFrontendPath,
   relPathSync,
+  resultingFileContent,
   scanDeny,
 } from "./ui-enforcement-lib.mjs";
 
@@ -34,9 +36,23 @@ function runCheckDs() {
     return true;
   } catch (err) {
     const out = [err.stdout, err.stderr].filter(Boolean).join("\n").trim();
-    console.error(`[ui-enforcement] check:ds failed:\n${out}`);
+    console.error(`[ui-enforcement] check:ds errors:\n${out}`);
     return false;
   }
+}
+
+function collectHits(tool, toolInput, fileRel) {
+  const chunk = extractWriteContent(tool, toolInput);
+  const chunkHits = chunk ? scanDeny(chunk, fileRel) : [];
+
+  const resulting = resultingFileContent(tool, toolInput, fileRel);
+  const fileHits = resulting ? scanDeny(resulting, fileRel) : [];
+
+  const byId = new Map();
+  for (const hit of [...chunkHits, ...fileHits]) {
+    byId.set(hit.id, hit);
+  }
+  return [...byId.values()];
 }
 
 function handlePreToolUse(input) {
@@ -47,45 +63,39 @@ function handlePreToolUse(input) {
     return;
   }
 
-  const chunk = extractWriteContent(tool, input.tool_input);
-  if (!chunk) {
-    process.stdout.write(JSON.stringify({ permission: "allow" }));
-    return;
-  }
-
   const fileRel = relPathSync(filePath);
-  const hits = scanDeny(chunk, fileRel);
+  const hits = collectHits(tool, input.tool_input, fileRel);
   if (hits.length === 0) {
     process.stdout.write(JSON.stringify({ permission: "allow" }));
     return;
   }
 
+  const scope =
+    extractWriteContent(tool, input.tool_input) && resultingFileContent(tool, input.tool_input, fileRel)
+      ? "Blocked write — chunk or resulting file"
+      : "Blocked write";
+
   process.stdout.write(
     JSON.stringify({
       permission: "deny",
-      agent_message: denyMessage(fileRel, hits),
+      agent_message: denyMessage(fileRel, hits, scope),
     }),
   );
 }
 
 function handleAfterEdit(input) {
-  const filePath = input.file_path;
+  const filePath = input.file_path ?? extractFilePath(input);
   if (!filePath || !isFrontendPath(filePath)) {
     process.stdout.write("{}");
     return;
   }
 
   const fileRel = relPathSync(filePath);
-  try {
-    const content = readFileSync(resolve(ROOT, fileRel), "utf8");
-    const hits = scanDeny(content, fileRel);
-    if (hits.length) {
-      console.error(
-        `[ui-enforcement] ${fileRel}: still has ${hits.map((h) => h.id).join(", ")} — migrate to sf-*`,
-      );
-    }
-  } catch (err) {
-    console.error(`[ui-enforcement] could not read ${fileRel}: ${err.message}`);
+  const hits = auditFileOnDisk(fileRel);
+  if (hits.length) {
+    console.error(
+      `[ui-enforcement] ${fileRel}: ${hits.map((h) => h.id).join(", ")} — migrate to sf-*`,
+    );
   }
 
   runCheckDs();
@@ -100,12 +110,19 @@ function handlePostToolUse(input) {
   }
 
   const fileRel = relPathSync(filePath);
-  const ok = runCheckDs();
-  const reminder = ok
-    ? `UI OK: ${fileRel}. ${CHEAT_SHEET.split("\n")[0]}`
-    : `check:ds failed after editing ${fileRel}. Fix violations before continuing.`;
+  const hits = auditFileOnDisk(fileRel);
+  runCheckDs();
 
-  process.stdout.write(JSON.stringify({ additional_context: reminder }));
+  if (hits.length === 0) {
+    process.stdout.write("{}");
+    return;
+  }
+
+  process.stdout.write(
+    JSON.stringify({
+      additional_context: followUpMessage(fileRel, hits),
+    }),
+  );
 }
 
 function main() {
@@ -126,7 +143,6 @@ function main() {
       break;
   }
 
-  // Shape-based fallback when hook_event_name is omitted
   if (input.file_path && input.edits) {
     handleAfterEdit(input);
   } else if (input.tool_output !== undefined) {

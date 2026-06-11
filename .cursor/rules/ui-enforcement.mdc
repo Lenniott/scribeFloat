@@ -22,7 +22,7 @@ Use **`sf-*` role classes** from `src/app.css`. Color at call site (`text-fg`, `
 | Timestamp / duration | `sf-meta-sm text-fg-dim` |
 | Hero (onboarding) | `sf-display-lg text-fg` |
 
-**Banned:** `text-base`, `text-sm`, `text-headline-lg`, `text-body-lg`, `tracking-heading`, inline `text-label-sm … uppercase` label recipes.
+**Banned:** `uppercase`, `text-base`, `text-sm`, `text-headline-lg`, `text-body-lg`, `tracking-heading`, inline `text-label-sm … uppercase` label recipes.
 
 **Primitives:** `ConfigField`, `LabeledTextField`, `Button`, `TabPage` — fix typography there, not in screens.
 
@@ -33,8 +33,8 @@ Run `npm run check:ds` before finishing. Deep reference: `.cursor/skills/ui-enfo
 | Level | Class |
 |-------|-------|
 | Primary text | `text-fg` |
-| Secondary / captions | `text-fg-dim` |
-| Muted / empty / disabled | `text-fg-muted` |
+| Secondary — captions, icons, chevrons | `text-fg-dim` |
+| Recessed helper/empty copy only (not icons) | `text-fg-muted` |
 
 **Surfaces:** `bg-canvas` (page only) → `bg-panel` → `bg-card` → `bg-fill`; borders `border-rim` / `border-fill`.
 

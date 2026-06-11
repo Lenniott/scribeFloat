@@ -71,10 +71,13 @@ Optimized for **right-first-run** (fewer retry tokens):
 
 | Layer | Path | When | Effect |
 |-------|------|------|--------|
-| **Cursor rule** | `.cursor/rules/ui-enforcement.mdc` | Frontend files in context | Self-contained cheat sheet — **no need to read this skill** |
-| **preToolUse hook** | `.cursor/hooks/ui-enforcement-check.mjs` | Before `Write` / `StrReplace` on frontend | **Denies** banned typography; `agent_message` = cheat sheet |
-| **afterFileEdit hook** | same | After `Write` | `check:ds` + stderr if file still has banned patterns |
-| **postToolUse hook** | same | After write | `check:ds` (additional_context best-effort) |
+| **Cursor rule** | `.cursor/rules/ui-enforcement.mdc` | Frontend files in context | Self-contained cheat sheet |
+| **preToolUse hook** | `.cursor/hooks/ui-enforcement-check.mjs` | Before `Write` / `StrReplace` | **Denies** if write chunk **or resulting full file** violates |
+| **postToolUse hook** | same | After write | **`additional_context`** listing remaining violations in that file (primary feedback) |
+| **afterFileEdit hook** | same | After `Write` / `StrReplace` | Full-file scan + `check:ds` (stderr log) |
+| **Tests** | `.cursor/hooks/ui-enforcement.test.mjs` | `npm run test:ui-enforcement` | Smoke tests for deny + follow-up |
+
+Touching a frontend file requires migrating **the whole file** — partial edits that leave `uppercase`, `text-fg/N`, or inline label recipes are denied or flagged in postToolUse.
 
 Shared cheat sheet: `.cursor/hooks/ui-enforcement-lib.mjs` (`CHEAT_SHEET`).
 

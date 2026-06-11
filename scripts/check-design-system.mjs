@@ -134,6 +134,13 @@ const RULES = [
     fix: "font-extrabold → font-medium at most",
     severity: "error",
   },
+  {
+    id: "no-uppercase",
+    description: "uppercase is banned — labels/headers use sf-* capitalize; body stays sentence case",
+    pattern: /\buppercase\b/g,
+    fix: "Remove uppercase; use sf-headline-sm / sf-section-label / sf-label-md / sf-field-label",
+    severity: "warn",
+  },
 
   // ── Undefined CSS variable references ──────────────────────────────────────
   {

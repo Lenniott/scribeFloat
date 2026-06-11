@@ -12,6 +12,7 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"check:ds": "node scripts/check-design-system.mjs",
+		"test:ui-enforcement": "node .cursor/hooks/ui-enforcement.test.mjs",
 		"bump": "node scripts/bump-version.mjs",
 		"devupdate": "npm update && cargo update --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
 		"tauri": "tauri",

@@ -30,18 +30,6 @@
 
 	const MAX_NOTES = 2;
 
-	const isActive = $derived(
-		dictateState === "RECORDING" || dictateState === "TRANSCRIBING" || dictateState === "PASTING",
-	);
-
-	const statusLabel = $derived(
-		dictateState === "RECORDING"
-			? "Recording…"
-			: dictateState === "TRANSCRIBING" || dictateState === "PASTING"
-				? "Transcribing…"
-				: "",
-	);
-
 	function addNote() {
 		const text = noteDraft.trim();
 		if (!text) return;
@@ -68,10 +56,7 @@
 
 			if (e.payload.state === "DONE") {
 				dictateError = "";
-				if (e.payload.text) {
-					noteDraft = e.payload.text;
-					if (autoEnter) addNote();
-				} else {
+				if (!e.payload.text) {
 					dictateError = "Nothing was heard. Try speaking clearly for at least a second.";
 				}
 			} else if (e.payload.state === "ERROR") {
@@ -127,11 +112,7 @@
 					{#if notes.length === 0}
 						<div class="flex items-center justify-center h-full">
 							<p class="text-label-md text-fg/40 text-center px-3">
-								{#if isActive}
-									<span class="text-brand animate-pulse">{statusLabel}</span>
-								{:else}
-									Dictated notes will appear here
-								{/if}
+								Dictated notes will appear here
 							</p>
 						</div>
 					{/if}
@@ -141,17 +122,8 @@
 					<p class="text-label-sm text-destructive px-1">{dictateError}</p>
 				{/if}
 
-				{#if isActive}
-					<div
-						class="flex items-center gap-2 rounded-md border border-fill bg-fill px-3 py-2 text-label-sm text-fg-dim"
-					>
-						<span class="size-2 rounded-full bg-brand animate-pulse shrink-0"></span>
-						{statusLabel}
-					</div>
-				{/if}
-
 				<!-- Always mounted so manual draft is preserved between dictations -->
-				<div class={isActive ? "hidden" : ""}>
+				<div>
 					<NoteComposer
 						bind:value={noteDraft}
 						placeholder="Click here and test dictate"

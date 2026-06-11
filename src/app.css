@@ -257,6 +257,7 @@ html {
 
   /*
    * Typography role classes — metrics only unless noted.
+   * Case: labels + headers → capitalize (never uppercase). Body + meta → sentence case (no transform).
    * Color (text-fg, text-fg-dim, text-destructive, …) at call site.
    * Agents: .cursor/skills/ui-enforcement/references/typography.md
    */
@@ -282,7 +283,7 @@ html {
     @apply font-sans text-label-sm font-normal tracking-stamped capitalize;
   }
   .sf-field-label {
-    @apply font-sans text-label-sm font-normal tracking-stamped capitalize text-fg-dim;
+    @apply font-sans text-label-sm font-normal tracking-stamped text-fg-dim;
   }
   .sf-meta-sm {
     @apply font-sans text-label-sm font-normal tracking-stamped tabular-nums;
@@ -298,15 +299,15 @@ html {
   .sf-divider { @apply border-t border-card; }
   .sf-scrim   { @apply bg-overlay; }
 
-  /* Button variants */
+  /* Button variants — same metrics as sf-label-md (capitalize, not uppercase) */
   .sf-btn-primary {
-    @apply bg-brand text-on-brand text-label-md tracking-stamped rounded-md px-3 py-1.5;
+    @apply bg-brand text-on-brand font-sans text-label-md font-normal tracking-stamped capitalize rounded-md px-3 py-1.5;
   }
   .sf-btn-ghost {
-    @apply bg-transparent text-fg font-sans text-label-md rounded-md px-3 py-1.5;
+    @apply bg-transparent text-fg font-sans text-label-md font-normal tracking-stamped capitalize rounded-md px-3 py-1.5;
   }
   .sf-btn-destructive {
-    @apply bg-destructive text-on-destructive font-sans text-label-md rounded-md px-3 py-1.5;
+    @apply bg-destructive text-on-destructive font-sans text-label-md font-normal tracking-stamped capitalize rounded-md px-3 py-1.5;
   }
 }
 

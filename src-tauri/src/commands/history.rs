@@ -5,7 +5,9 @@ use tauri::State;
 
 fn validate_id(id: &str) -> Result<(), AppError> {
     if id.trim().is_empty() {
-        return Err(AppError::InvalidInput("history id must not be empty".to_string()));
+        return Err(AppError::InvalidInput(
+            "history id must not be empty".to_string(),
+        ));
     }
     Ok(())
 }
@@ -72,10 +74,7 @@ pub fn history_export_markdown(
 }
 
 #[tauri::command]
-pub fn history_delete(
-    ctrl: State<'_, Arc<HistoryController>>,
-    id: String,
-) -> Result<(), AppError> {
+pub fn history_delete(ctrl: State<'_, Arc<HistoryController>>, id: String) -> Result<(), AppError> {
     validate_id(&id)?;
     ctrl.delete(&id).map_err(AppError::from)
 }

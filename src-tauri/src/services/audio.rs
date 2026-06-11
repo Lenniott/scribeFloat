@@ -219,7 +219,8 @@ fn start_capture(
 
     let (sender, receiver) = mpsc::channel::<Vec<f32>>();
     let stop_signal = Arc::new(AtomicBool::new(false));
-    let writer_handle = spawn_writer_thread(streaming, receiver, sample_rate, Arc::clone(&stop_signal));
+    let writer_handle =
+        spawn_writer_thread(streaming, receiver, sample_rate, Arc::clone(&stop_signal));
 
     let stream_result = build_input_stream(
         &device,
@@ -268,7 +269,8 @@ fn build_input_stream(
     on_level: Option<Arc<dyn Fn(f32) + Send + Sync>>,
     label: &'static str,
 ) -> Result<cpal::Stream> {
-    let err_fn = move |e: cpal::StreamError| tracing::error!(label, error = %e, "audio stream error");
+    let err_fn =
+        move |e: cpal::StreamError| tracing::error!(label, error = %e, "audio stream error");
     let stream = match sample_format {
         cpal::SampleFormat::F32 => {
             let tx = sender;
@@ -318,8 +320,16 @@ struct StreamingWavWriter {
 
 impl StreamingWavWriter {
     fn create(path: PathBuf) -> Result<Self> {
-        crate::services::output::write_streaming_wav_placeholder(&path, WHISPER_SAMPLE_RATE, 1, 16)?;
-        let file = OpenOptions::new().append(true).open(&path).context("open wav for append")?;
+        crate::services::output::write_streaming_wav_placeholder(
+            &path,
+            WHISPER_SAMPLE_RATE,
+            1,
+            16,
+        )?;
+        let file = OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .context("open wav for append")?;
         Ok(Self {
             file: BufWriter::new(file),
             path,
@@ -419,10 +429,7 @@ pub fn read_wav_mono_f32(path: &Path) -> Result<Vec<f32>> {
     let mut reader = hound::WavReader::open(path).context("open WAV")?;
     let spec = reader.spec();
     if spec.channels != 1 {
-        return Err(anyhow!(
-            "expected mono WAV, got {} channels",
-            spec.channels
-        ));
+        return Err(anyhow!("expected mono WAV, got {} channels", spec.channels));
     }
     if spec.sample_rate != WHISPER_SAMPLE_RATE {
         return Err(anyhow!(
@@ -524,7 +531,10 @@ mod tests {
     }
 
     fn temp_wav() -> PathBuf {
-        std::env::temp_dir().join(format!("scribefloat-audio-tests-{}.wav", uuid::Uuid::new_v4()))
+        std::env::temp_dir().join(format!(
+            "scribefloat-audio-tests-{}.wav",
+            uuid::Uuid::new_v4()
+        ))
     }
 
     #[test]
@@ -542,7 +552,10 @@ mod tests {
         let round = read_wav_mono_f32(&path).expect("read");
         assert_eq!(round.len(), pcm.len());
         for (a, b) in round.iter().zip(pcm.iter()) {
-            assert!((a - b).abs() < 1e-3, "roundtrip drift > 0.001 at {a} vs {b}");
+            assert!(
+                (a - b).abs() < 1e-3,
+                "roundtrip drift > 0.001 at {a} vs {b}"
+            );
         }
 
         let _ = std::fs::remove_file(&path);

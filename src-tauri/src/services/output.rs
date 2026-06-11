@@ -55,9 +55,7 @@ fn transcript_filename_base(model_path: &Path, title: &str) -> String {
         })
         .collect();
     let slug = if slug.is_empty() {
-        chrono::Local::now()
-            .format("%Y-%m-%d_%H-%M-%S")
-            .to_string()
+        chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string()
     } else {
         slug
     };
@@ -138,7 +136,8 @@ impl OutputService {
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
             .join(" ");
-        let deduped = dedup_repeated_block(&dedup_consecutive_phrases(&dedup_exact_halves(&joined)));
+        let deduped =
+            dedup_repeated_block(&dedup_consecutive_phrases(&dedup_exact_halves(&joined)));
         apply_replacements(&deduped, rules, &ReplacementScope::Dictate, prefix)
     }
 
@@ -157,8 +156,15 @@ impl OutputService {
         prefix: &str,
         dest: &Path,
     ) -> Result<PathBuf> {
-        let md =
-            render_transcript_markdown(segments, notes, title, model_name, include_timestamps, rules, prefix);
+        let md = render_transcript_markdown(
+            segments,
+            notes,
+            title,
+            model_name,
+            include_timestamps,
+            rules,
+            prefix,
+        );
         std::fs::write(dest, &md).context("failed to write transcript")?;
         if std::fs::metadata(dest)?.len() == 0 {
             return Err(anyhow::anyhow!("transcript was written empty"));
@@ -254,8 +260,7 @@ impl OutputService {
             .context("read save folder")?
             .filter_map(|e| e.ok())
             .filter(|e| {
-                e.path().extension().and_then(|x| x.to_str()) == Some("md")
-                    && e.path().is_file()
+                e.path().extension().and_then(|x| x.to_str()) == Some("md") && e.path().is_file()
             })
             .filter_map(|e| {
                 let path = e.path();
@@ -266,8 +271,7 @@ impl OutputService {
                     .and_then(|s| s.to_str())
                     .unwrap_or("")
                     .to_string();
-                let title =
-                    parse_front_matter_field(&prefix, "title").unwrap_or(fallback_title);
+                let title = parse_front_matter_field(&prefix, "title").unwrap_or(fallback_title);
                 let model = parse_front_matter_field(&prefix, "model").unwrap_or_default();
                 let mtime = std::fs::metadata(&path).ok()?.modified().ok()?;
                 let modified_at: chrono::DateTime<chrono::Utc> = mtime.into();
@@ -313,11 +317,7 @@ impl OutputService {
     /// After a successful Scribe transcription: drop `session.json` (and `notes.json`).
     /// When `keep_wav` is false, delete staging WAVs and remove the session directory
     /// (the transcript `.md` lives at the save-folder root, not inside this folder).
-    pub fn finalize_scribe_session(
-        &self,
-        session_dir: &Path,
-        keep_wav: bool,
-    ) -> Result<()> {
+    pub fn finalize_scribe_session(&self, session_dir: &Path, keep_wav: bool) -> Result<()> {
         if !session_dir.is_dir() {
             return Ok(());
         }
@@ -338,7 +338,11 @@ impl OutputService {
     }
 
     /// Write or replace `{session_dir}/session.json` for Scribe lifecycle tracking.
-    pub fn write_session_manifest(&self, session_dir: &Path, manifest: &SessionManifest) -> Result<()> {
+    pub fn write_session_manifest(
+        &self,
+        session_dir: &Path,
+        manifest: &SessionManifest,
+    ) -> Result<()> {
         let dest = session_dir.join("session.json");
         let json = serde_json::to_string_pretty(manifest).context("serialize session.json")?;
         std::fs::write(&dest, json).context("write session.json")?;
@@ -362,7 +366,10 @@ impl OutputService {
     }
 
     /// Scan `save_folder` for Scribe sessions that did not reach `complete` and repair WAV headers.
-    pub fn scan_incomplete_scribe_sessions(&self, save_folder: &str) -> Result<Vec<RecoverySessionInfo>> {
+    pub fn scan_incomplete_scribe_sessions(
+        &self,
+        save_folder: &str,
+    ) -> Result<Vec<RecoverySessionInfo>> {
         let root = PathBuf::from(save_folder);
         if !root.is_dir() {
             return Ok(Vec::new());
@@ -384,16 +391,15 @@ impl OutputService {
                 continue;
             }
             let raw = std::fs::read_to_string(&manifest_path).context("read session.json")?;
-            let manifest: SessionManifest =
-                serde_json::from_str(&raw).unwrap_or(SessionManifest {
-                    format_version: 1,
-                    state: SessionManifestState::Recording,
-                    started_at: String::new(),
-                    mic_wav: "mic.wav".to_string(),
-                    speaker_wavs: vec![],
-                    transcript_path: None,
-                    title: None,
-                });
+            let manifest: SessionManifest = serde_json::from_str(&raw).unwrap_or(SessionManifest {
+                format_version: 1,
+                state: SessionManifestState::Recording,
+                started_at: String::new(),
+                mic_wav: "mic.wav".to_string(),
+                speaker_wavs: vec![],
+                transcript_path: None,
+                title: None,
+            });
             if matches!(manifest.state, SessionManifestState::Complete) {
                 continue;
             }
@@ -432,7 +438,9 @@ impl OutputService {
             if crate::services::audio::read_wav_mono_f32(&path).is_ok() {
                 match self.salvage_dictate_wav(save_folder, &path) {
                     Ok(dest) => salvaged.push(dest),
-                    Err(e) => tracing::warn!(path = %path.display(), error = %e, "failed to salvage dictate temp wav"),
+                    Err(e) => {
+                        tracing::warn!(path = %path.display(), error = %e, "failed to salvage dictate temp wav")
+                    }
                 }
             } else {
                 let _ = std::fs::remove_file(&path);
@@ -563,7 +571,6 @@ pub fn render_transcript_markdown(
     md
 }
 
-
 /// Write a placeholder 16-bit PCM WAV header for streaming capture.
 pub fn write_streaming_wav_placeholder(
     path: &Path,
@@ -632,7 +639,13 @@ pub fn repair_wav_header_from_file_size(path: &Path) -> Result<u64> {
         return Err(anyhow!("wav file too small to repair"));
     }
     let sample_count = (len - 44) / 2;
-    sync_wav_header(path, crate::services::audio::WHISPER_SAMPLE_RATE, 1, 16, sample_count)?;
+    sync_wav_header(
+        path,
+        crate::services::audio::WHISPER_SAMPLE_RATE,
+        1,
+        16,
+        sample_count,
+    )?;
     Ok(sample_count)
 }
 
@@ -789,9 +802,13 @@ fn apply_replacements(
                     }
                 }
                 ReplacementRuleType::Newline => replace_newline(&result, trigger),
-                ReplacementRuleType::Wrap => {
-                    wrap_next_word(&result, trigger, &rule.prefix, &rule.suffix, &rule.transform)
-                }
+                ReplacementRuleType::Wrap => wrap_next_word(
+                    &result,
+                    trigger,
+                    &rule.prefix,
+                    &rule.suffix,
+                    &rule.transform,
+                ),
             };
         }
     }
@@ -825,25 +842,36 @@ fn replace_newline(text: &str, trigger: &str) -> String {
         format!(r"(?i)[ ]?\b{}\b([.,!?;:]+)?[ ]*", escaped)
     };
     match Regex::new(&pattern) {
-        Ok(re) => re.replace_all(text, |caps: &regex::Captures| {
-            let punct = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            format!("{}\n", punct)
-        }).into_owned(),
+        Ok(re) => re
+            .replace_all(text, |caps: &regex::Captures| {
+                let punct = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                format!("{}\n", punct)
+            })
+            .into_owned(),
         Err(_) => text.to_string(),
     }
 }
 
-fn wrap_next_word(text: &str, trigger: &str, prefix: &str, suffix: &str, transform: &WordTransform) -> String {
+fn wrap_next_word(
+    text: &str,
+    trigger: &str,
+    prefix: &str,
+    suffix: &str,
+    transform: &WordTransform,
+) -> String {
     // Match: whole-word trigger + whitespace + next non-whitespace word
     let pattern = format!(r"(?i)\b{}\s+(\S+)", regex::escape(trigger));
     match Regex::new(&pattern) {
-        Ok(re) => re.replace_all(text, |caps: &regex::Captures| {
-            // Strip leading non-alphanumeric chars Whisper may have already inserted
-            // (e.g. "hashtag #word" → Whisper pre-pended "#", avoid "##word")
-            let raw = caps[1].trim_start_matches(|c: char| !c.is_alphanumeric());
-            let word = apply_word_transform(if raw.is_empty() { &caps[1] } else { raw }, transform);
-            format!("{}{}{}", prefix, word, suffix)
-        }).into_owned(),
+        Ok(re) => re
+            .replace_all(text, |caps: &regex::Captures| {
+                // Strip leading non-alphanumeric chars Whisper may have already inserted
+                // (e.g. "hashtag #word" → Whisper pre-pended "#", avoid "##word")
+                let raw = caps[1].trim_start_matches(|c: char| !c.is_alphanumeric());
+                let word =
+                    apply_word_transform(if raw.is_empty() { &caps[1] } else { raw }, transform);
+                format!("{}{}{}", prefix, word, suffix)
+            })
+            .into_owned(),
         Err(_) => text.to_string(),
     }
 }
@@ -867,9 +895,13 @@ fn apply_word_transform(word: &str, transform: &WordTransform) -> String {
 /// Returns "in", "out", or "" depending on the speaker label at the start of a segment.
 /// Used by write_transcript to prevent merging across speaker sources.
 fn speaker_source_prefix(text: &str) -> &'static str {
-    if text.starts_with("in: ") { "in" }
-    else if text.starts_with("out: ") { "out" }
-    else { "" }
+    if text.starts_with("in: ") {
+        "in"
+    } else if text.starts_with("out: ") {
+        "out"
+    } else {
+        ""
+    }
 }
 
 fn format_ms(ms: i64) -> String {
@@ -885,7 +917,9 @@ fn format_ms(ms: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Note, ReplacementRule, ReplacementRuleType, ReplacementScope, WordTransform};
+    use crate::types::{
+        Note, ReplacementRule, ReplacementRuleType, ReplacementScope, WordTransform,
+    };
 
     fn simple_rule(trigger: &str, output: &str, scope: ReplacementScope) -> ReplacementRule {
         ReplacementRule {
@@ -900,7 +934,12 @@ mod tests {
         }
     }
 
-    fn wrap_rule(trigger: &str, prefix: &str, suffix: &str, transform: WordTransform) -> ReplacementRule {
+    fn wrap_rule(
+        trigger: &str,
+        prefix: &str,
+        suffix: &str,
+        transform: WordTransform,
+    ) -> ReplacementRule {
         ReplacementRule {
             trigger: trigger.to_string(),
             aliases: vec![],
@@ -934,7 +973,6 @@ mod tests {
         assert_eq!(cleanup_text("#cakenewline"), "#cake newline");
     }
 
-
     #[test]
     fn cleanup_strips_silence_annotation() {
         assert_eq!(cleanup_text("[SILENCE] hello"), "hello");
@@ -947,7 +985,10 @@ mod tests {
 
     #[test]
     fn cleanup_strips_general_bracket_annotation() {
-        assert_eq!(cleanup_text("[MUSIC] welcome back [APPLAUSE]"), "welcome back");
+        assert_eq!(
+            cleanup_text("[MUSIC] welcome back [APPLAUSE]"),
+            "welcome back"
+        );
     }
 
     #[test]
@@ -981,23 +1022,35 @@ mod tests {
 
     #[test]
     fn dedup_removes_consecutive_duplicate_words() {
-        assert_eq!(dedup_consecutive_phrases("hello world world next"), "hello world next");
+        assert_eq!(
+            dedup_consecutive_phrases("hello world world next"),
+            "hello world next"
+        );
     }
 
     #[test]
     fn dedup_case_insensitive() {
-        assert_eq!(dedup_consecutive_phrases("Hello hello world"), "Hello world");
+        assert_eq!(
+            dedup_consecutive_phrases("Hello hello world"),
+            "Hello world"
+        );
     }
 
     #[test]
     fn dedup_does_not_remove_non_consecutive_duplicates() {
-        assert_eq!(dedup_consecutive_phrases("hello world hello"), "hello world hello");
+        assert_eq!(
+            dedup_consecutive_phrases("hello world hello"),
+            "hello world hello"
+        );
     }
 
     #[test]
     fn dedup_handles_punctuation_at_word_boundary() {
         // "world." and "world" are considered duplicates (strip trailing punct for compare)
-        assert_eq!(dedup_consecutive_phrases("hello world. world next"), "hello world. next");
+        assert_eq!(
+            dedup_consecutive_phrases("hello world. world next"),
+            "hello world. next"
+        );
     }
 
     // ── apply_replacements ──────────────────────────────────────────────────
@@ -1005,31 +1058,46 @@ mod tests {
     #[test]
     fn replacements_simple_whole_word() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Both, ""), "11 - may");
+        assert_eq!(
+            apply_replacements("11 dash may", &rules, &ReplacementScope::Both, ""),
+            "11 - may"
+        );
     }
 
     #[test]
     fn replacements_case_insensitive() {
         let rules = vec![simple_rule("hashtag", "#", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("HASHTAG project", &rules, &ReplacementScope::Both, ""), "# project");
+        assert_eq!(
+            apply_replacements("HASHTAG project", &rules, &ReplacementScope::Both, ""),
+            "# project"
+        );
     }
 
     #[test]
     fn replacements_whole_word_not_substring() {
         let rules = vec![simple_rule("hash", "#", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("hashtag project", &rules, &ReplacementScope::Both, ""), "hashtag project");
+        assert_eq!(
+            apply_replacements("hashtag project", &rules, &ReplacementScope::Both, ""),
+            "hashtag project"
+        );
     }
 
     #[test]
     fn replacements_phrase_trigger() {
         let rules = vec![simple_rule("to do", "[ ]", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("add to do item", &rules, &ReplacementScope::Both, ""), "add [ ] item");
+        assert_eq!(
+            apply_replacements("add to do item", &rules, &ReplacementScope::Both, ""),
+            "add [ ] item"
+        );
     }
 
     #[test]
     fn replacements_newline_type() {
         let rules = vec![newline_rule("new line")];
-        assert_eq!(apply_replacements("hello new line world", &rules, &ReplacementScope::Both, ""), "hello\nworld");
+        assert_eq!(
+            apply_replacements("hello new line world", &rules, &ReplacementScope::Both, ""),
+            "hello\nworld"
+        );
     }
 
     #[test]
@@ -1062,31 +1130,46 @@ mod tests {
     #[test]
     fn replacements_wrap_with_lower_transform() {
         let rules = vec![wrap_rule("hashtag", "#", "", WordTransform::Lower)];
-        assert_eq!(apply_replacements("hashtag Monday", &rules, &ReplacementScope::Both, ""), "#monday");
+        assert_eq!(
+            apply_replacements("hashtag Monday", &rules, &ReplacementScope::Both, ""),
+            "#monday"
+        );
     }
 
     #[test]
     fn replacements_wrap_leaves_rest_unchanged() {
         let rules = vec![wrap_rule("bold", "**", "**", WordTransform::None)];
-        assert_eq!(apply_replacements("bold hello world", &rules, &ReplacementScope::Both, ""), "**hello** world");
+        assert_eq!(
+            apply_replacements("bold hello world", &rules, &ReplacementScope::Both, ""),
+            "**hello** world"
+        );
     }
 
     #[test]
     fn replacements_scope_transcripts_skips_dictate_rule() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Dictate)];
-        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Transcripts, ""), "11 dash may");
+        assert_eq!(
+            apply_replacements("11 dash may", &rules, &ReplacementScope::Transcripts, ""),
+            "11 dash may"
+        );
     }
 
     #[test]
     fn replacements_scope_dictate_skips_transcripts_rule() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Transcripts)];
-        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Dictate, ""), "11 dash may");
+        assert_eq!(
+            apply_replacements("11 dash may", &rules, &ReplacementScope::Dictate, ""),
+            "11 dash may"
+        );
     }
 
     #[test]
     fn replacements_both_scope_applies_to_transcripts() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("a dash b", &rules, &ReplacementScope::Transcripts, ""), "a - b");
+        assert_eq!(
+            apply_replacements("a dash b", &rules, &ReplacementScope::Transcripts, ""),
+            "a - b"
+        );
     }
 
     #[test]
@@ -1096,7 +1179,12 @@ mod tests {
             simple_rule("todo", "[ ]", ReplacementScope::Both),
         ];
         assert_eq!(
-            apply_replacements("hashtag project todo item", &rules, &ReplacementScope::Both, ""),
+            apply_replacements(
+                "hashtag project todo item",
+                &rules,
+                &ReplacementScope::Both,
+                ""
+            ),
             "# project [ ] item"
         );
     }
@@ -1104,32 +1192,52 @@ mod tests {
     #[test]
     fn replacements_empty_trigger_skipped() {
         let rules = vec![simple_rule("", "oops", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("hello", &rules, &ReplacementScope::Both, ""), "hello");
+        assert_eq!(
+            apply_replacements("hello", &rules, &ReplacementScope::Both, ""),
+            "hello"
+        );
     }
 
     // Old-format rules (prefix embedded in trigger string) still work with empty prefix.
     #[test]
     fn old_format_rule_with_empty_prefix_matches() {
         let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("11 float dash may", &rules, &ReplacementScope::Both, ""), "11 - may");
+        assert_eq!(
+            apply_replacements("11 float dash may", &rules, &ReplacementScope::Both, ""),
+            "11 - may"
+        );
     }
 
     #[test]
     fn old_format_bare_word_does_not_match() {
         let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("11 dash may", &rules, &ReplacementScope::Both, ""), "11 dash may");
+        assert_eq!(
+            apply_replacements("11 dash may", &rules, &ReplacementScope::Both, ""),
+            "11 dash may"
+        );
     }
 
     #[test]
     fn old_format_newline_rule_with_empty_prefix_matches() {
         let rules = vec![newline_rule("float new line")];
-        assert_eq!(apply_replacements("hello float new line world", &rules, &ReplacementScope::Both, ""), "hello\nworld");
+        assert_eq!(
+            apply_replacements(
+                "hello float new line world",
+                &rules,
+                &ReplacementScope::Both,
+                ""
+            ),
+            "hello\nworld"
+        );
     }
 
     #[test]
     fn old_format_bare_new_line_does_not_match() {
         let rules = vec![newline_rule("float new line")];
-        assert_eq!(apply_replacements("hello new line world", &rules, &ReplacementScope::Both, ""), "hello new line world");
+        assert_eq!(
+            apply_replacements("hello new line world", &rules, &ReplacementScope::Both, ""),
+            "hello new line world"
+        );
     }
 
     // ── Global prefix feature ──────────────────────────────────────────────────
@@ -1138,20 +1246,39 @@ mod tests {
     fn prefix_prepended_to_base_trigger_fires() {
         // New-format rule: base trigger "dash", prefix "float" → effective "float dash"
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("eleven float dash may", &rules, &ReplacementScope::Both, "float"), "eleven - may");
+        assert_eq!(
+            apply_replacements(
+                "eleven float dash may",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
+            "eleven - may"
+        );
     }
 
     #[test]
     fn prefix_base_trigger_alone_does_not_fire() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("eleven dash may", &rules, &ReplacementScope::Both, "float"), "eleven dash may");
+        assert_eq!(
+            apply_replacements("eleven dash may", &rules, &ReplacementScope::Both, "float"),
+            "eleven dash may"
+        );
     }
 
     #[test]
     fn prefix_not_double_applied_to_old_format_rule() {
         // Old-format rule already has "float " in trigger; prefix "float" must not produce "float float dash"
         let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("eleven float dash may", &rules, &ReplacementScope::Both, "float"), "eleven - may");
+        assert_eq!(
+            apply_replacements(
+                "eleven float dash may",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
+            "eleven - may"
+        );
     }
 
     #[test]
@@ -1159,27 +1286,53 @@ mod tests {
         // "float float dash" contains "float dash" as a substring so the phrase still fires.
         // Double-prefix is an unlikely speech error; no special handling needed.
         let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("eleven float float dash may", &rules, &ReplacementScope::Both, "float"), "eleven float - may");
+        assert_eq!(
+            apply_replacements(
+                "eleven float float dash may",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
+            "eleven float - may"
+        );
     }
 
     #[test]
     fn empty_prefix_fires_base_trigger_directly() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
-        assert_eq!(apply_replacements("eleven dash may", &rules, &ReplacementScope::Both, ""), "eleven - may");
+        assert_eq!(
+            apply_replacements("eleven dash may", &rules, &ReplacementScope::Both, ""),
+            "eleven - may"
+        );
     }
 
     #[test]
     fn prefix_newline_rule_base_trigger() {
         let rules = vec![newline_rule("new line")];
-        assert_eq!(apply_replacements("hello float new line world", &rules, &ReplacementScope::Both, "float"), "hello\nworld");
+        assert_eq!(
+            apply_replacements(
+                "hello float new line world",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
+            "hello\nworld"
+        );
     }
 
     #[test]
     fn prefix_newline_bare_trigger_does_not_fire() {
         let rules = vec![newline_rule("new line")];
-        assert_eq!(apply_replacements("hello new line world", &rules, &ReplacementScope::Both, "float"), "hello new line world");
+        assert_eq!(
+            apply_replacements(
+                "hello new line world",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
+            "hello new line world"
+        );
     }
-
 
     fn temp_file(name: &str) -> PathBuf {
         let dir =
@@ -1199,14 +1352,17 @@ mod tests {
     fn list_transcripts_empty_folder() {
         let dir = temp_dir();
         let svc = OutputService;
-        let result = svc.list_transcripts(dir.to_str().unwrap()).expect("list transcripts");
+        let result = svc
+            .list_transcripts(dir.to_str().unwrap())
+            .expect("list transcripts");
         assert!(result.is_empty());
     }
 
     #[test]
     fn list_transcript_metadata_reads_title_from_prefix_only() {
         let dir = temp_dir();
-        let mut content = String::from("---\ntitle: 'Huge Doc'\nmodel: small\n---\n\n## Transcript\n\n");
+        let mut content =
+            String::from("---\ntitle: 'Huge Doc'\nmodel: small\n---\n\n## Transcript\n\n");
         content.push_str(&"x".repeat(50_000));
         std::fs::write(dir.join("huge.md"), content).unwrap();
         let entries =
@@ -1222,7 +1378,9 @@ mod tests {
         let content = "---\ntitle: 'My Meeting'\nduration_seconds: 30.0\nword_count: 50\ntoken_estimate: 65\nmodel: tiny\n---\n\n## Transcript\n\nHello world.\n";
         std::fs::write(dir.join("my_meeting_tiny.md"), content).unwrap();
         let svc = OutputService;
-        let entries = svc.list_transcripts(dir.to_str().unwrap()).expect("list transcripts");
+        let entries = svc
+            .list_transcripts(dir.to_str().unwrap())
+            .expect("list transcripts");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].title, "My Meeting");
         assert_eq!(entries[0].model, "tiny");
@@ -1231,11 +1389,15 @@ mod tests {
     #[test]
     fn list_transcripts_returns_all_md_files_sorted_desc() {
         let dir = temp_dir();
-        let content = |title: &str| format!("---\ntitle: '{title}'\nmodel: tiny\n---\n\n## Transcript\n\nText.\n");
+        let content = |title: &str| {
+            format!("---\ntitle: '{title}'\nmodel: tiny\n---\n\n## Transcript\n\nText.\n")
+        };
         std::fs::write(dir.join("a.md"), content("Alpha")).unwrap();
         std::fs::write(dir.join("b.md"), content("Beta")).unwrap();
         let svc = OutputService;
-        let entries = svc.list_transcripts(dir.to_str().unwrap()).expect("list transcripts");
+        let entries = svc
+            .list_transcripts(dir.to_str().unwrap())
+            .expect("list transcripts");
         assert_eq!(entries.len(), 2);
         // entries are sorted descending; verify the invariant holds
         assert!(entries[0].modified_at >= entries[1].modified_at);
@@ -1283,9 +1445,21 @@ mod tests {
         let svc = OutputService;
         let file = temp_file("dual-source-newlines.md");
         let segments = vec![
-            Segment { start_ms: 0, end_ms: 1_000, text: "in: yeah".to_string() },
-            Segment { start_ms: 1_200, end_ms: 3_000, text: "out: Hello there.".to_string() },
-            Segment { start_ms: 3_100, end_ms: 4_000, text: "out: How are you?".to_string() },
+            Segment {
+                start_ms: 0,
+                end_ms: 1_000,
+                text: "in: yeah".to_string(),
+            },
+            Segment {
+                start_ms: 1_200,
+                end_ms: 3_000,
+                text: "out: Hello there.".to_string(),
+            },
+            Segment {
+                start_ms: 3_100,
+                end_ms: 4_000,
+                text: "out: How are you?".to_string(),
+            },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write");
@@ -1307,16 +1481,34 @@ mod tests {
         let svc = OutputService;
         let file = temp_file("dual-source-compact.md");
         let segments = vec![
-            Segment { start_ms: 0, end_ms: 1_000, text: "in: yeah".to_string() },
-            Segment { start_ms: 2_000, end_ms: 4_000, text: "out: Thanks for sharing.".to_string() },
-            Segment { start_ms: 5_000, end_ms: 6_000, text: "in: Absolutely.".to_string() },
+            Segment {
+                start_ms: 0,
+                end_ms: 1_000,
+                text: "in: yeah".to_string(),
+            },
+            Segment {
+                start_ms: 2_000,
+                end_ms: 4_000,
+                text: "out: Thanks for sharing.".to_string(),
+            },
+            Segment {
+                start_ms: 5_000,
+                end_ms: 6_000,
+                text: "in: Absolutely.".to_string(),
+            },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write");
         let content = std::fs::read_to_string(&file).expect("read");
         // Each speaker change: blank line \n\n
-        assert!(content.contains("in: yeah\n\nout:"), "in→out should be \\n\\n, got:\n{content}");
-        assert!(content.contains("out: Thanks for sharing.\n\nin:"), "out→in should be \\n\\n, got:\n{content}");
+        assert!(
+            content.contains("in: yeah\n\nout:"),
+            "in→out should be \\n\\n, got:\n{content}"
+        );
+        assert!(
+            content.contains("out: Thanks for sharing.\n\nin:"),
+            "out→in should be \\n\\n, got:\n{content}"
+        );
     }
 
     #[test]
@@ -1325,8 +1517,16 @@ mod tests {
         let file = temp_file("single-source-separator.md");
         // Two segments with a gap > 8 s so they stay separate paragraphs
         let segments = vec![
-            Segment { start_ms: 0, end_ms: 2_000, text: "First thought.".to_string() },
-            Segment { start_ms: 12_000, end_ms: 14_000, text: "Second thought.".to_string() },
+            Segment {
+                start_ms: 0,
+                end_ms: 2_000,
+                text: "First thought.".to_string(),
+            },
+            Segment {
+                start_ms: 12_000,
+                end_ms: 14_000,
+                text: "Second thought.".to_string(),
+            },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write");
@@ -1342,8 +1542,16 @@ mod tests {
         let svc = OutputService;
         let file = temp_file("single-source-merge.md");
         let segments = vec![
-            Segment { start_ms: 0, end_ms: 500, text: "Hello".to_string() },
-            Segment { start_ms: 700, end_ms: 1_200, text: "world.".to_string() },
+            Segment {
+                start_ms: 0,
+                end_ms: 500,
+                text: "Hello".to_string(),
+            },
+            Segment {
+                start_ms: 700,
+                end_ms: 1_200,
+                text: "world.".to_string(),
+            },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write");
@@ -1381,9 +1589,21 @@ mod tests {
         // Locks the exact byte output of the extracted renderer: dual-source grouping,
         // a replacement rule, timestamps on, and a notes section.
         let segments = vec![
-            Segment { start_ms: 0, end_ms: 1_000, text: "in: hello dash world".to_string() },
-            Segment { start_ms: 1_200, end_ms: 3_000, text: "out: How are you?".to_string() },
-            Segment { start_ms: 3_100, end_ms: 4_000, text: "out: I am well.".to_string() },
+            Segment {
+                start_ms: 0,
+                end_ms: 1_000,
+                text: "in: hello dash world".to_string(),
+            },
+            Segment {
+                start_ms: 1_200,
+                end_ms: 3_000,
+                text: "out: How are you?".to_string(),
+            },
+            Segment {
+                start_ms: 3_100,
+                end_ms: 4_000,
+                text: "out: I am well.".to_string(),
+            },
         ];
         let notes = vec![Note {
             id: "n1".to_string(),
@@ -1391,7 +1611,8 @@ mod tests {
             recorded_at_ms: 2_000,
         }];
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
-        let md = render_transcript_markdown(&segments, &notes, "My Title", "tiny", true, &rules, "");
+        let md =
+            render_transcript_markdown(&segments, &notes, "My Title", "tiny", true, &rules, "");
         // word_count counts every whitespace token of the timestamp-free body, including the
         // `in:`/`out:` speaker labels and the substituted `-` (11 tokens). A notes section ends
         // with a blank line (the loop's trailing `\n` plus the document's final `\n`).
@@ -1493,7 +1714,10 @@ model: tiny\n\
         let model = std::path::Path::new("/models/ggml-small.en-q5_1.bin");
         let path = svc.transcript_path(Path::new(&dir), model, "Standup");
         assert_eq!(path.parent().unwrap(), Path::new(&dir));
-        assert_eq!(path.file_name().unwrap().to_string_lossy(), "Standup_ggml-small.en-q5_1.md");
+        assert_eq!(
+            path.file_name().unwrap().to_string_lossy(),
+            "Standup_ggml-small.en-q5_1.md"
+        );
     }
 
     #[test]
@@ -1522,8 +1746,8 @@ model: tiny\n\
     // ── write_dictate_history_entry / read_dictate_history ───────────────────
 
     fn temp_save_folder() -> String {
-        let dir = std::env::temp_dir()
-            .join(format!("liscribe-dictate-tests-{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("liscribe-dictate-tests-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         dir.to_string_lossy().to_string()
     }
@@ -1571,7 +1795,10 @@ model: tiny\n\
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("partial.wav");
         write_streaming_wav_placeholder(&path, 16_000, 1, 16).unwrap();
-        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
         f.write_all(&vec![0u8; 3200]).unwrap();
         sync_wav_header(&path, 16_000, 1, 16, 1600).unwrap();
         let pcm = crate::services::audio::read_wav_mono_f32(&path).expect("read checkpointed wav");
@@ -1586,7 +1813,10 @@ model: tiny\n\
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("truncated.wav");
         write_streaming_wav_placeholder(&path, 16_000, 1, 16).unwrap();
-        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
         f.write_all(&vec![0u8; 6400]).unwrap();
         repair_wav_header_from_file_size(&path).expect("repair");
         let pcm = crate::services::audio::read_wav_mono_f32(&path).expect("read repaired wav");
@@ -1621,7 +1851,8 @@ model: tiny\n\
         let svc = OutputService;
         let save_folder = temp_save_folder();
         let temp_wav = PathBuf::from(&save_folder).join("temp_capture.wav");
-        svc.write_wav(&[0.0; 1600], 16_000, &temp_wav).expect("write temp wav");
+        svc.write_wav(&[0.0; 1600], 16_000, &temp_wav)
+            .expect("write temp wav");
         assert!(temp_wav.is_file());
 
         let dest = svc
@@ -1669,7 +1900,8 @@ model: tiny\n\
         let dir = std::env::temp_dir().join(format!("remove-session-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("session.json"), b"{}").unwrap();
-        svc.write_wav(&[0.0; 400], 16_000, &dir.join("mic.wav")).expect("write mic");
+        svc.write_wav(&[0.0; 400], 16_000, &dir.join("mic.wav"))
+            .expect("write mic");
 
         svc.remove_session_dir(&dir);
         assert!(!dir.exists());
@@ -1687,7 +1919,8 @@ model: tiny\n\
         let transcript = PathBuf::from(&save_folder).join("note_tiny.md");
         std::fs::write(&transcript, b"# test").unwrap();
 
-        svc.finalize_scribe_session(&session_dir, false).expect("finalize");
+        svc.finalize_scribe_session(&session_dir, false)
+            .expect("finalize");
 
         assert!(transcript.is_file());
         assert!(!session_dir.exists());
@@ -1704,7 +1937,8 @@ model: tiny\n\
         svc.write_wav(&[0.0; 400], 16_000, &session_dir.join("mic.wav"))
             .expect("write mic");
 
-        svc.finalize_scribe_session(&session_dir, true).expect("finalize");
+        svc.finalize_scribe_session(&session_dir, true)
+            .expect("finalize");
 
         assert!(session_dir.is_dir());
         assert!(session_dir.join("mic.wav").is_file());

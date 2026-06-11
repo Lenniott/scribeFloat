@@ -37,7 +37,9 @@ pub fn transcribe_open_output(
 ) -> Result<(), AppError> {
     let path = file_path.trim();
     if path.is_empty() {
-        return Err(AppError::InvalidInput("file_path cannot be empty".to_string()));
+        return Err(AppError::InvalidInput(
+            "file_path cannot be empty".to_string(),
+        ));
     }
     ctrl.open_output_path(path).map_err(AppError::from)
 }
@@ -51,11 +53,15 @@ pub fn transcribe_show_window(app: AppHandle) -> Result<(), AppError> {
 
 fn validate_input_paths(paths: &[String]) -> Result<(), AppError> {
     if paths.is_empty() {
-        return Err(AppError::InvalidInput("at least one input path is required".to_string()));
+        return Err(AppError::InvalidInput(
+            "at least one input path is required".to_string(),
+        ));
     }
     for path in paths {
         if path.trim().is_empty() {
-            return Err(AppError::InvalidInput("input path cannot be empty".to_string()));
+            return Err(AppError::InvalidInput(
+                "input path cannot be empty".to_string(),
+            ));
         }
     }
     Ok(())

@@ -12,24 +12,32 @@ const MACOS_KEYCODE_ANSI_V: u16 = 0x09;
 #[cfg(target_os = "macos")]
 pub fn paste_text() -> Result<(), String> {
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-    enigo.key(Key::Meta, Direction::Press).map_err(|e| e.to_string())?;
+    enigo
+        .key(Key::Meta, Direction::Press)
+        .map_err(|e| e.to_string())?;
     // Use layout-independent keycode + enigo's tracked Command flag (not Unicode),
     // so paste is a real shortcut rather than typing "v".
     enigo
         .raw(MACOS_KEYCODE_ANSI_V, Direction::Click)
         .map_err(|e| e.to_string())?;
-    enigo.key(Key::Meta, Direction::Release).map_err(|e| e.to_string())?;
+    enigo
+        .key(Key::Meta, Direction::Release)
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[cfg(target_os = "windows")]
 pub fn paste_text() -> Result<(), String> {
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-    enigo.key(Key::Control, Direction::Press).map_err(|e| e.to_string())?;
+    enigo
+        .key(Key::Control, Direction::Press)
+        .map_err(|e| e.to_string())?;
     enigo
         .key(Key::Unicode('v'), Direction::Click)
         .map_err(|e| e.to_string())?;
-    enigo.key(Key::Control, Direction::Release).map_err(|e| e.to_string())?;
+    enigo
+        .key(Key::Control, Direction::Release)
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 

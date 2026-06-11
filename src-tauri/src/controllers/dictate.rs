@@ -1,3 +1,4 @@
+use crate::services::audio::read_wav_mono_f32;
 use crate::services::{
     audio::{AudioService, MicSession, WHISPER_SAMPLE_RATE},
     config::ConfigService,
@@ -5,8 +6,9 @@ use crate::services::{
     model::ModelService,
     output::OutputService,
 };
-use crate::services::audio::read_wav_mono_f32;
-use crate::types::{Config, DictateProcessingStage, DictateState, DictateStateEvent, HistoryRecord};
+use crate::types::{
+    Config, DictateProcessingStage, DictateState, DictateStateEvent, HistoryRecord,
+};
 use anyhow::{anyhow, Result};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -52,15 +54,23 @@ const DONE_DISMISS_MS: u64 = 2500;
 enum DictateKeyState {
     Idle,
     /// First press is down; waiting to see if it's a tap or a modifier hold.
-    FirstPressed { down_at: Instant },
+    FirstPressed {
+        down_at: Instant,
+    },
     /// First press was a short tap; waiting for the second press.
-    AwaitingSecondTap { up_at: Instant },
+    AwaitingSecondTap {
+        up_at: Instant,
+    },
     /// Second press is down — wait for HOLD_THRESHOLD_MS before Start (mic not open yet).
-    SecondHeldArming { down_at: Instant },
+    SecondHeldArming {
+        down_at: Instant,
+    },
     /// Hold threshold crossed; Start(Hold) already dispatched — release Ctrl → Stop.
     HoldRecordingAwaitingRelease,
     /// Second released early; toggle mode — mic opens on Start(Toggle).
-    ToggleRecording { started_at: Instant },
+    ToggleRecording {
+        started_at: Instant,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,7 +96,9 @@ struct DictateKeyTracker {
 
 impl DictateKeyTracker {
     fn new() -> Self {
-        Self { state: DictateKeyState::Idle }
+        Self {
+            state: DictateKeyState::Idle,
+        }
     }
 
     fn on_key_down(&mut self, now: Instant) -> DictateAction {
@@ -274,9 +286,10 @@ impl DictateController {
             {
                 let _ = store.lock().map(|mut g| *g = Some(pid));
             }
-            *open_clone.lock().unwrap_or_else(|p| p.into_inner()) = crate::open_dictate_window(&app_open)
-                .map(|_| ())
-                .map_err(|e| e.to_string());
+            *open_clone.lock().unwrap_or_else(|p| p.into_inner()) =
+                crate::open_dictate_window(&app_open)
+                    .map(|_| ())
+                    .map_err(|e| e.to_string());
         });
         open_result
     }
@@ -370,7 +383,12 @@ impl DictateController {
                 this.hide_window();
                 return;
             }
-            if open_result.lock().unwrap_or_else(|p| p.into_inner()).as_ref().is_err() {
+            if open_result
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .as_ref()
+                .is_err()
+            {
                 clear_in_flight();
                 return;
             }
@@ -438,7 +456,10 @@ impl DictateController {
                 let now = Instant::now();
                 let emit = match *gate {
                     None => true,
-                    Some(t) => now.duration_since(t).as_millis() >= DICTATE_AUDIO_LEVEL_EMIT_MIN_INTERVAL_MS,
+                    Some(t) => {
+                        now.duration_since(t).as_millis()
+                            >= DICTATE_AUDIO_LEVEL_EMIT_MIN_INTERVAL_MS
+                    }
                 };
                 if !emit {
                     return;
@@ -451,7 +472,9 @@ impl DictateController {
 
         let mut inner = self.lock();
         if inner.state != DictateState::Idle {
-            return Err(anyhow!("cannot start dictate: state changed during mic setup"));
+            return Err(anyhow!(
+                "cannot start dictate: state changed during mic setup"
+            ));
         }
         inner.state = DictateState::Recording;
         inner.session = Some(DictateMicSession { mic });
@@ -626,10 +649,7 @@ impl DictateController {
             Ok(pcm) => pcm,
             Err(e) => {
                 let salvaged = self.salvage_dictate_wav(&wav_path);
-                self.set_error_state(
-                    format!("Could not read recording — {e}"),
-                    salvaged,
-                );
+                self.set_error_state(format!("Could not read recording — {e}"), salvaged);
                 return Ok(false);
             }
         };
@@ -653,7 +673,10 @@ impl DictateController {
         }
 
         let vad_path = self.model.vad_model_path();
-        let vad = self.model.model_available(&vad_path).then_some(vad_path.as_path());
+        let vad = self
+            .model
+            .model_available(&vad_path)
+            .then_some(vad_path.as_path());
         let app_clone = self.app.clone();
         let segments = match self.model.transcribe_pcm_with_progress(
             &model_path,
@@ -694,14 +717,21 @@ impl DictateController {
             return Ok(false);
         }
 
-        let text = self.output.format_dictate_text(&segments, &config.replacement_rules, &config.replacement_prefix);
+        let text = self.output.format_dictate_text(
+            &segments,
+            &config.replacement_rules,
+            &config.replacement_prefix,
+        );
 
         {
             let mut inner = self.lock();
             inner.state = DictateState::Pasting;
             inner.transcription_abort = None;
             self.app
-                .emit(DICTATE_STATE_EVENT, DictateStateEvent::new(DictateState::Pasting))
+                .emit(
+                    DICTATE_STATE_EVENT,
+                    DictateStateEvent::new(DictateState::Pasting),
+                )
                 .ok();
         }
 
@@ -710,14 +740,14 @@ impl DictateController {
             .map(|s| s.to_string_lossy().replace("ggml-", ""))
             .unwrap_or_else(|| "model".to_string());
         let record = HistoryRecord::from_dictate(&segments, &text, model_name);
-        let history_write_failed =
-            if let Err(e) = self.history.append(&config.save_folder, record) {
-                tracing::warn!(error = %e, "dictate failed to write history");
-                true
-            } else {
-                self.app.emit("history://item-added", ()).ok();
-                false
-            };
+        let history_write_failed = if let Err(e) = self.history.append(&config.save_folder, record)
+        {
+            tracing::warn!(error = %e, "dictate failed to write history");
+            true
+        } else {
+            self.app.emit("history://item-added", ()).ok();
+            false
+        };
 
         if let Err(e) = self.app.clipboard().write_text(text.clone()) {
             tracing::error!(error = %e, "dictate failed to write clipboard");
@@ -784,7 +814,9 @@ impl DictateController {
 
     pub fn get_history(&self) -> Result<Vec<crate::types::DictateHistoryEntry>, String> {
         let save_folder = self.config.get().save_folder;
-        self.output.read_dictate_history(&save_folder).map_err(|e| e.to_string())
+        self.output
+            .read_dictate_history(&save_folder)
+            .map_err(|e| e.to_string())
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────
@@ -810,8 +842,7 @@ impl DictateController {
                 DICTATE_STATE_EVENT,
                 DictateStateEvent {
                     error: Some(msg),
-                    salvaged_wav_path: salvaged_wav_path
-                        .map(|p| p.to_string_lossy().into_owned()),
+                    salvaged_wav_path: salvaged_wav_path.map(|p| p.to_string_lossy().into_owned()),
                     ..DictateStateEvent::new(DictateState::Error)
                 },
             )
@@ -888,8 +919,7 @@ impl DictateController {
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .take();
-        let (tx, rx) =
-            std::sync::mpsc::channel::<(Result<(), String>, Result<(), String>)>();
+        let (tx, rx) = std::sync::mpsc::channel::<(Result<(), String>, Result<(), String>)>();
         let output = Arc::clone(&self.output);
         let app = self.app.clone();
         self.app
@@ -900,9 +930,7 @@ impl DictateController {
                 }
                 #[cfg(target_os = "macos")]
                 if let Some(pid) = restore_pid {
-                    if let Err(e) =
-                        crate::platform::dictate_focus::activate_pid_for_paste(pid)
-                    {
+                    if let Err(e) = crate::platform::dictate_focus::activate_pid_for_paste(pid) {
                         tracing::warn!(error = %e, "could not re-activate target app before paste");
                     }
                 }
@@ -910,7 +938,9 @@ impl DictateController {
                 std::thread::sleep(std::time::Duration::from_millis(150));
                 // Guard against clipboard hijacking: verify our text is still there
                 // before firing the keypress.
-                let clipboard_ok = app.clipboard().read_text()
+                let clipboard_ok = app
+                    .clipboard()
+                    .read_text()
                     .map(|current| current == expected_text)
                     .unwrap_or(false);
                 let paste_res = if clipboard_ok {
@@ -932,7 +962,10 @@ impl DictateController {
 
     fn emit_state_event(&self, inner: &Inner) {
         self.app
-            .emit(DICTATE_STATE_EVENT, DictateStateEvent::new(inner.state.clone()))
+            .emit(
+                DICTATE_STATE_EVENT,
+                DictateStateEvent::new(inner.state.clone()),
+            )
             .ok();
     }
 
@@ -956,12 +989,29 @@ fn dictate_temp_wav_path(app: &AppHandle) -> Result<PathBuf> {
 
 fn resolve_dictate_model_path(config: &Config, model: &ModelService) -> PathBuf {
     if let Some(id) = &config.dictate_model_id {
-        model.model_path_for_id(id).unwrap_or_else(|| model.default_model_path())
-    } else if let Some(id) = &config.selected_model_id {
-        model.model_path_for_id(id).unwrap_or_else(|| model.default_model_path())
-    } else {
-        model.default_model_path()
+        if let Some(path) = model.model_path_for_id(id) {
+            if model.model_available(&path) {
+                return path;
+            }
+        }
     }
+
+    if let Some(id) = &config.selected_model_id {
+        if let Some(path) = model.model_path_for_id(id) {
+            if model.model_available(&path) {
+                return path;
+            }
+        }
+    }
+
+    if let Some(path) = &config.scribe_model_path {
+        let path = PathBuf::from(path);
+        if model.model_available(&path) {
+            return path;
+        }
+    }
+
+    model.default_model_path()
 }
 
 /// Path of the model that Dictate will use on stop — same resolution as transcription.
@@ -983,14 +1033,23 @@ mod tests {
     // ── Preload eligibility ──────────────────────────────────────────────────
 
     fn fake_model_service() -> Arc<ModelService> {
-        ModelService::new(
-            std::env::temp_dir().join(format!("liscribe-dictate-test-{}", uuid::Uuid::new_v4())),
-        )
+        let dir =
+            std::env::temp_dir().join(format!("liscribe-dictate-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create model dir");
+        ModelService::new(dir)
+    }
+
+    fn write_fake_model(model: &ModelService, id: &str) -> PathBuf {
+        let path = model.model_path_for_id(id).unwrap();
+        std::fs::write(&path, [1, 2, 3]).expect("write model");
+        path
     }
 
     #[test]
     fn dictate_preload_path_prefers_dictate_model_id_over_global() {
         let model = fake_model_service();
+        write_fake_model(model.as_ref(), "tiny-en-q5");
+        write_fake_model(model.as_ref(), "small-en-q5");
         let config = Config {
             dictate_model_id: Some("tiny-en-q5".to_string()),
             selected_model_id: Some("small-en-q5".to_string()),
@@ -1007,28 +1066,59 @@ mod tests {
     #[test]
     fn dictate_preload_path_falls_back_to_selected_when_no_dictate_override() {
         let model = fake_model_service();
+        let base_path = write_fake_model(model.as_ref(), "base-en-q5");
         let config = Config {
             selected_model_id: Some("base-en-q5".to_string()),
             ..Config::default()
         };
         let path = preload_path_for_dictate(&config, model.as_ref());
-        assert_eq!(path, model.model_path_for_id("base-en-q5").unwrap());
+        assert_eq!(path, base_path);
     }
 
     #[test]
     fn dictate_preload_path_returns_catalog_path_for_larger_models() {
         let model = fake_model_service();
         for id in ["small-en-q5", "medium-en-q5", "large-v3-turbo-q5"] {
+            let expected = write_fake_model(model.as_ref(), id);
             let config = Config {
                 dictate_model_id: Some(id.to_string()),
                 ..Config::default()
             };
             assert_eq!(
                 preload_path_for_dictate(&config, model.as_ref()),
-                model.model_path_for_id(id).unwrap(),
+                expected,
                 "{id} should preload"
             );
         }
+    }
+
+    #[test]
+    fn dictate_preload_path_falls_back_to_scribe_model_path() {
+        let model = fake_model_service();
+        let tiny_path = write_fake_model(model.as_ref(), "tiny-en-q5");
+        let config = Config {
+            scribe_model_path: Some(tiny_path.to_string_lossy().to_string()),
+            ..Config::default()
+        };
+
+        let path = preload_path_for_dictate(&config, model.as_ref());
+
+        assert_eq!(path, tiny_path);
+    }
+
+    #[test]
+    fn dictate_preload_path_ignores_missing_dictate_override() {
+        let model = fake_model_service();
+        let base_path = write_fake_model(model.as_ref(), "base-en-q5");
+        let config = Config {
+            dictate_model_id: Some("tiny-en-q5".to_string()),
+            selected_model_id: Some("base-en-q5".to_string()),
+            ..Config::default()
+        };
+
+        let path = preload_path_for_dictate(&config, model.as_ref());
+
+        assert_eq!(path, base_path);
     }
 
     // ── First press behaviour ────────────────────────────────────────────────
@@ -1074,10 +1164,7 @@ mod tests {
         let first_up = ms_ago(DOUBLE_TAP_WINDOW_MS as u64 - 50);
         t.state = DictateKeyState::AwaitingSecondTap { up_at: first_up };
         assert_eq!(t.on_key_down(Instant::now()), DictateAction::None);
-        assert!(matches!(
-            t.state,
-            DictateKeyState::SecondHeldArming { .. }
-        ));
+        assert!(matches!(t.state, DictateKeyState::SecondHeldArming { .. }));
     }
 
     #[test]
@@ -1116,11 +1203,12 @@ mod tests {
     }
 
     #[test]
-    fn second_held_past_threshold_via_keyup_before_tick_emits_hold_immediate_stop()
-    {
+    fn second_held_past_threshold_via_keyup_before_tick_emits_hold_immediate_stop() {
         let mut t = DictateKeyTracker::new();
         let second_down = ms_ago(HOLD_THRESHOLD_MS as u64 + 15);
-        t.state = DictateKeyState::SecondHeldArming { down_at: second_down };
+        t.state = DictateKeyState::SecondHeldArming {
+            down_at: second_down,
+        };
         assert_eq!(
             t.on_key_up(Instant::now()),
             DictateAction::Start(DictateStartSource::HoldImmediateStop)
@@ -1132,15 +1220,14 @@ mod tests {
     fn short_second_press_keyup_emits_start_toggle() {
         let mut t = DictateKeyTracker::new();
         let second_down = ms_ago(HOLD_THRESHOLD_MS as u64 - 100);
-        t.state = DictateKeyState::SecondHeldArming { down_at: second_down };
+        t.state = DictateKeyState::SecondHeldArming {
+            down_at: second_down,
+        };
         assert_eq!(
             t.on_key_up(Instant::now()),
             DictateAction::Start(DictateStartSource::Toggle)
         );
-        assert!(matches!(
-            t.state,
-            DictateKeyState::ToggleRecording { .. }
-        ));
+        assert!(matches!(t.state, DictateKeyState::ToggleRecording { .. }));
     }
 
     // ── Toggle mode ──────────────────────────────────────────────────────────
@@ -1149,7 +1236,9 @@ mod tests {
     fn third_press_after_cooldown_returns_stop_and_goes_idle() {
         let mut t = DictateKeyTracker::new();
         let started = ms_ago(TOGGLE_STOP_COOLDOWN_MS as u64 + 10);
-        t.state = DictateKeyState::ToggleRecording { started_at: started };
+        t.state = DictateKeyState::ToggleRecording {
+            started_at: started,
+        };
         assert_eq!(t.on_key_down(Instant::now()), DictateAction::Stop);
         assert!(matches!(t.state, DictateKeyState::Idle));
     }
@@ -1158,24 +1247,21 @@ mod tests {
     fn third_press_within_cooldown_is_ignored() {
         let mut t = DictateKeyTracker::new();
         let started = ms_ago(TOGGLE_STOP_COOLDOWN_MS as u64 - 200);
-        t.state = DictateKeyState::ToggleRecording { started_at: started };
+        t.state = DictateKeyState::ToggleRecording {
+            started_at: started,
+        };
         assert_eq!(t.on_key_down(Instant::now()), DictateAction::None);
-        assert!(matches!(
-            t.state,
-            DictateKeyState::ToggleRecording { .. }
-        ));
+        assert!(matches!(t.state, DictateKeyState::ToggleRecording { .. }));
     }
 
     #[test]
     fn keyup_in_toggle_mode_is_ignored() {
         let mut t = DictateKeyTracker::new();
-        t.state =
-            DictateKeyState::ToggleRecording { started_at: Instant::now() };
+        t.state = DictateKeyState::ToggleRecording {
+            started_at: Instant::now(),
+        };
         assert_eq!(t.on_key_up(Instant::now()), DictateAction::None);
-        assert!(matches!(
-            t.state,
-            DictateKeyState::ToggleRecording { .. }
-        ));
+        assert!(matches!(t.state, DictateKeyState::ToggleRecording { .. }));
     }
 
     // ── Timeout / check_timeout ──────────────────────────────────────────────
@@ -1210,13 +1296,11 @@ mod tests {
     #[test]
     fn timeout_does_not_affect_armed_hold_or_toggle() {
         let mut t = DictateKeyTracker::new();
-        t.state =
-            DictateKeyState::SecondHeldArming { down_at: ms_ago(100) };
+        t.state = DictateKeyState::SecondHeldArming {
+            down_at: ms_ago(100),
+        };
         assert_eq!(t.check_timeout(Instant::now()), DictateAction::None);
-        assert!(matches!(
-            t.state,
-            DictateKeyState::SecondHeldArming { .. }
-        ));
+        assert!(matches!(t.state, DictateKeyState::SecondHeldArming { .. }));
 
         t.state = DictateKeyState::HoldRecordingAwaitingRelease;
         assert_eq!(t.check_timeout(Instant::now()), DictateAction::None);
@@ -1225,12 +1309,11 @@ mod tests {
             DictateKeyState::HoldRecordingAwaitingRelease
         ));
 
-        t.state = DictateKeyState::ToggleRecording { started_at: ms_ago(9999) };
+        t.state = DictateKeyState::ToggleRecording {
+            started_at: ms_ago(9999),
+        };
         assert_eq!(t.check_timeout(Instant::now()), DictateAction::None);
-        assert!(matches!(
-            t.state,
-            DictateKeyState::ToggleRecording { .. }
-        ));
+        assert!(matches!(t.state, DictateKeyState::ToggleRecording { .. }));
     }
 
     // ── Full flows ───────────────────────────────────────────────────────────
@@ -1249,13 +1332,9 @@ mod tests {
 
         // Second press (within window): mic arms only after hold threshold crossing.
         let second_down = t0 + Duration::from_millis(200);
-        assert_eq!(
-            t.on_key_down(second_down),
-            DictateAction::None
-        );
+        assert_eq!(t.on_key_down(second_down), DictateAction::None);
 
-        let arm_moment =
-            second_down + Duration::from_millis(HOLD_THRESHOLD_MS as u64 + 10);
+        let arm_moment = second_down + Duration::from_millis(HOLD_THRESHOLD_MS as u64 + 10);
         assert_eq!(
             t.check_timeout(arm_moment),
             DictateAction::Start(DictateStartSource::HoldWhileHeld)
@@ -1288,14 +1367,10 @@ mod tests {
             t.on_key_up(second_up),
             DictateAction::Start(DictateStartSource::Toggle)
         );
-        assert!(matches!(
-            t.state,
-            DictateKeyState::ToggleRecording { .. }
-        ));
+        assert!(matches!(t.state, DictateKeyState::ToggleRecording { .. }));
 
         // Third press after cooldown → Stop.
-        let third =
-            second_up + Duration::from_millis(TOGGLE_STOP_COOLDOWN_MS as u64 + 10);
+        let third = second_up + Duration::from_millis(TOGGLE_STOP_COOLDOWN_MS as u64 + 10);
         assert_eq!(t.on_key_down(third), DictateAction::Stop);
         assert!(matches!(t.state, DictateKeyState::Idle));
     }

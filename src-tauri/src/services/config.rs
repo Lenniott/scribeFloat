@@ -112,6 +112,7 @@ mod tests {
         assert!(cfg.include_timestamps);
         assert!(!cfg.onboarding_complete);
         assert!(!cfg.keep_wav);
+        assert!(!cfg.dictate_auto_enter);
         assert!(cfg.save_folder.contains("transcripts_scribefloat"));
     }
 
@@ -129,6 +130,7 @@ mod tests {
         assert_eq!(cfg.open_scribe_hotkey, "CmdOrCtrl+Shift+L");
         assert_eq!(cfg.input_label, "Mic");
         assert_eq!(cfg.output_label, "Speaker");
+        assert!(!cfg.dictate_auto_enter, "should default to false");
         assert_eq!(cfg.theme_mode, crate::types::ThemeMode::System);
     }
 

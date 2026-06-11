@@ -466,6 +466,16 @@ impl ModelService {
         MODEL_CATALOG.iter().find(|m| m.id == model_id).copied()
     }
 
+    /// Drop all cached WhisperContexts before app exit so Metal GPU resources are
+    /// freed while the Rust runtime is still live — prevents the ggml-metal assertion
+    /// `[rsets->data count] == 0` that fires when contexts are dropped during
+    /// NSApplication teardown after Metal state has already been partially cleaned up.
+    pub fn release_contexts(&self) {
+        if let Ok(mut guard) = self.loaded_contexts.lock() {
+            guard.clear();
+        }
+    }
+
     /// Load a Whisper context for `model_path`, or return the cached one. Loads block on
     /// disk I/O and model parsing, so callers should invoke this from `spawn_blocking` (or
     /// off the async runtime). Subsequent calls for the same path are O(hash lookup).

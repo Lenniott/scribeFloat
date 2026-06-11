@@ -23,9 +23,24 @@
 	let unlisteners: (() => void)[] = [];
 
 	type DictateState = "IDLE" | "RECORDING" | "TRANSCRIBING" | "PASTING" | "DONE" | "ERROR";
-	type DictateStateEvent = { state: DictateState; text?: string };
+	type DictateStateEvent = { state: DictateState; text?: string; error?: string };
+
+	let dictateState = $state<DictateState>("IDLE");
+	let dictateError = $state("");
 
 	const MAX_NOTES = 2;
+
+	const isActive = $derived(
+		dictateState === "RECORDING" || dictateState === "TRANSCRIBING" || dictateState === "PASTING",
+	);
+
+	const statusLabel = $derived(
+		dictateState === "RECORDING"
+			? "Recording…"
+			: dictateState === "TRANSCRIBING" || dictateState === "PASTING"
+				? "Transcribing…"
+				: "",
+	);
 
 	function addNote() {
 		const text = noteDraft.trim();
@@ -36,6 +51,7 @@
 		].slice(0, MAX_NOTES);
 		notes = next;
 		noteDraft = "";
+		dictateError = "";
 	}
 
 	async function toggleEnter(enabled: boolean) {
@@ -47,10 +63,23 @@
 		autoEnter = await invoke<boolean>("settings_get_dictate_auto_enter").catch(() => false);
 
 		const ul = await listen<DictateStateEvent>("dictate://state-changed", (e) => {
-			if (e.payload.state === "DONE" && e.payload.text) {
-				noteDraft = e.payload.text;
-				if (autoEnter) {
-					addNote();
+			const prev = dictateState;
+			dictateState = e.payload.state;
+
+			if (e.payload.state === "DONE") {
+				dictateError = "";
+				if (e.payload.text) {
+					noteDraft = e.payload.text;
+					if (autoEnter) addNote();
+				} else {
+					dictateError = "Nothing was heard. Try speaking clearly for at least a second.";
+				}
+			} else if (e.payload.state === "ERROR") {
+				dictateError = e.payload.error ?? "Dictation failed. Check that a model is installed.";
+			} else if (e.payload.state === "IDLE" && prev === "TRANSCRIBING") {
+				// empty segments path — controller went TRANSCRIBING → IDLE without DONE
+				if (!noteDraft) {
+					dictateError = "Nothing was heard. Try speaking clearly for at least a second.";
 				}
 			}
 		});
@@ -62,7 +91,7 @@
 
 <StepShell
 	title="Try Dictate"
-	subtitle="Double-tap {dictateModifierLabel}, speak, then release. If text input is focused, text will appear at your cursor. Text is saved to history and copied to clipboard."
+	subtitle="Double-tap {dictateModifierLabel}, speak, then release. Text is saved to history and copied to clipboard."
 >
 	{#snippet children()}
 		<div class="flex gap-3 h-full min-h-0">
@@ -71,9 +100,9 @@
 				<div class="rounded-md bg-card border border-fill px-3 py-3 space-y-2">
 					<p class="text-label-sm font-mono tracking-stamped uppercase text-fg/70">How to use</p>
 					<ol class="space-y-1.5 text-body-md text-fg-dim list-decimal list-inside">
-						<li>Click the text area</li>
+						<li>Click the text area on the right</li>
 						<li>Double-tap <strong class="text-fg">{dictateModifierLabel}</strong></li>
-						<li>Hold and speak, or tap again to toggle</li>
+						<li>Speak clearly for 2+ seconds</li>
 						<li>Release (or tap) to stop</li>
 					</ol>
 				</div>
@@ -89,7 +118,7 @@
 
 			<!-- Right: note cards + composer -->
 			<div class="flex flex-col flex-1 min-h-0 gap-2">
-				<div class="flex-1 min-h-0">
+				<div class="flex-1 min-h-0 relative">
 					<div class="overflow-y-auto space-y-2">
 						{#each notes as note (note.id)}
 							<NoteCard {note} />
@@ -98,16 +127,38 @@
 					{#if notes.length === 0}
 						<div class="flex items-center justify-center h-full">
 							<p class="text-label-md text-fg/40 text-center px-3">
-								Dictated notes will appear here
+								{#if isActive}
+									<span class="text-brand animate-pulse">{statusLabel}</span>
+								{:else}
+									Dictated notes will appear here
+								{/if}
 							</p>
 						</div>
 					{/if}
 				</div>
-				<NoteComposer
-					bind:value={noteDraft}
-					placeholder="Click here and test dictate"
-					onSubmit={addNote}
-				/>
+
+				{#if dictateError}
+					<p class="text-label-sm text-destructive px-1">{dictateError}</p>
+				{/if}
+
+				{#if isActive}
+					<div
+						class="flex items-center gap-2 rounded-md border border-fill bg-fill px-3 py-2 text-label-sm text-fg-dim"
+					>
+						<span class="size-2 rounded-full bg-brand animate-pulse shrink-0"></span>
+						{statusLabel}
+					</div>
+				{/if}
+
+				<!-- Always mounted so manual draft is preserved between dictations -->
+				<div class={isActive ? "hidden" : ""}>
+					<NoteComposer
+						bind:value={noteDraft}
+						placeholder="Click here and test dictate"
+						focusOnMount={true}
+						onSubmit={addNote}
+					/>
+				</div>
 			</div>
 		</div>
 	{/snippet}

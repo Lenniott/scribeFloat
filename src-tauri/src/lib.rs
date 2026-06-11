@@ -673,17 +673,25 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if window.label() == SCRIBE_WINDOW_LABEL && matches!(event, WindowEvent::Destroyed) {
-                // Release mic/speaker streams if the webview is torn down before invoke(`scribe_cancel`)
-                // completes (crash or exceptional teardown — normal close uses hide, not destroy).
-                if let Some(ctrl) = window
-                    .app_handle()
-                    .try_state::<Arc<controllers::scribe::ScribeController>>()
-                {
-                    let _ = ctrl.cancel();
+            if matches!(event, WindowEvent::Destroyed) {
+                if window.label() == SCRIBE_WINDOW_LABEL {
+                    // Release mic/speaker streams if the webview is torn down before invoke(`scribe_cancel`)
+                    // completes (crash or exceptional teardown — normal close uses hide, not destroy).
+                    if let Some(ctrl) = window
+                        .app_handle()
+                        .try_state::<Arc<controllers::scribe::ScribeController>>()
+                    {
+                        let _ = ctrl.cancel();
+                    }
+                    platform::window_impl::sync_activation_policy(window.app_handle());
+                    return;
                 }
-                platform::window_impl::sync_activation_policy(window.app_handle());
-                return;
+                // Sync dock visibility after onboarding is fully destroyed (not on CloseRequested,
+                // where is_visible() still returns true for the closing window).
+                if window.label() == ONBOARDING_WINDOW_LABEL {
+                    platform::window_impl::sync_activation_policy(window.app_handle());
+                    return;
+                }
             }
 
             if let WindowEvent::CloseRequested { api, .. } = event {
@@ -700,7 +708,6 @@ pub fn run() {
                 // The onboarding window is a one-time wizard: let it destroy normally.
                 // The frontend calls settings_complete_onboarding before closing.
                 if window.label() == ONBOARDING_WINDOW_LABEL {
-                    platform::window_impl::sync_activation_policy(window.app_handle());
                     return;
                 }
 
@@ -801,6 +808,14 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if let RunEvent::ExitRequested { code, api, .. } = event {
+                // Drop WhisperContext instances before audio teardown so Metal GPU
+                // resources are freed while the Rust runtime is still fully live.
+                // Without this, ggml-metal asserts during NSApplication terminate.
+                if let Some(svc) =
+                    app_handle.try_state::<Arc<services::model::ModelService>>()
+                {
+                    svc.release_contexts();
+                }
                 if let Some(ctrl) =
                     app_handle.try_state::<Arc<controllers::scribe::ScribeController>>()
                 {

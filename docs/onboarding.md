@@ -2,22 +2,21 @@
 
 ## Purpose
 
-First-run setup wizard that guides new users through permissions, model installation, and configuration without exposing technical choices. Replaces the previous behavior of opening Settings and immediately marking onboarding complete.
+First-run setup wizard that gets new users functional in five designer-approved steps: install a model, grant permissions, and try Dictate before the main UI is shown. The flow intentionally does not collect setup-personalisation answers; detailed configuration lives in Settings. Can be restarted from Settings → Help → Restart Setup Wizard.
 
 ## Step Map
 
 | # | Step | Purpose |
 |---|------|---------|
 | 1 | Welcome | Brand moment; escape hatch to Settings |
-| 2 | Permissions | Grant mic (required) and accessibility (optional) |
-| 3 | Quick Setup | 3 guided questions auto-configure speaker capture and model choice |
-| 4 | Install Model | Download recommended Whisper model with progress |
-| 5 | Scribe Setup | Speaker capture configuration, save folder info |
-| 6 | Dictate Setup | Hotkey, auto-paste, auto-enter toggles |
-| 7 | History & Output | Markdown export toggle, History explanation |
-| 8 | Complete | Summary chips, quick-start tips |
+| 2 | Model Download | Download a Whisper model (skipped if one is already installed) |
+| 3 | Permissions | Grant mic (required) and accessibility / input monitoring (optional) |
+| 4 | Dictate Practice | Live dictation test with NoteComposer; auto-enter toggle |
+| 5 | Feature Tour | Stylised menu-bar graphic; four feature callouts; login-item instructions |
 
-Steps 2–8 show a 7-dot progress indicator. Step 1 (Welcome) has no dots.
+Steps 2–5 show a 4-dot progress indicator. Step 1 (Welcome) has no dots.
+
+Step 2 is skipped automatically if any model is already downloaded (`skipModelStep` flag set in `onboarding.svelte` `onMount`). When skipped, `onboarding.svelte` auto-selects the first downloaded model so Dictate has a model ready.
 
 ## Architecture
 
@@ -26,60 +25,64 @@ Steps 2–8 show a 7-dot progress indicator. Step 1 (Welcome) has no dots.
 - Label: `onboarding`
 - Size: 680 × 560, non-resizable, centered
 - URL: `/?view=onboarding`
+- Listed in `capabilities/default.json` — required for all IPC calls from this window
 - Close behavior: destroys the window (unlike other windows which hide). The frontend calls `settings_complete_onboarding` before closing.
 
 ### State
 
 `onboarding_complete: bool` in `Config` (defaults `false`). Owned by `ConfigService`, accessed via `SettingsController`. Three commands: `settings_onboarding_status`, `settings_complete_onboarding`, `settings_reset_onboarding`.
 
+`onboarding.svelte` owns step state (`currentStep`, `skipModelStep`). No `OnboardingAnswers` — the 5-step flow collects no personalization answers.
+
 ### First-run logic
 
-`lib.rs` checks `!settings_ctrl.is_onboarding_complete()` at startup and calls `open_onboarding_window`. The window is not created if onboarding is already complete (return users see only the tray).
+`lib.rs` checks `!settings_ctrl.is_onboarding_complete()` at startup and calls `open_onboarding_window`. The window is not created if onboarding is already complete.
 
-### Answers state
+### Dock icon
 
-`OnboardingAnswers` (in `src/lib/types.ts`) is owned by `onboarding.svelte` and passed down to steps. Each step that modifies answers calls `onNext(updates: Partial<OnboardingAnswers>)`. The orchestrator merges updates and advances the step counter.
+The tray-only app hides the Dock icon via `sync_activation_policy`. This must be called in `WindowEvent::Destroyed` for the onboarding window (not `CloseRequested`, where `is_visible()` still returns `true`). See `lib.rs::on_window_event`.
 
-## Speaker Capture Platform Matrix
+## Model Download Step (Step 2)
 
-| Platform | Mechanism | Setup required | Onboarding UX |
-|----------|-----------|----------------|---------------|
-| macOS | BlackHole virtual device | Install BlackHole 2ch | ScribePracticeStep detects via `settings_blackhole_detected`; shows warning with install guidance if absent |
-| Windows | WASAPI loopback | None | "Works automatically" confirmation copy |
+- Lists all models from `model_list` with size and download button
+- Progress tracked via `model://download-progress` events (direct `listen`, not `createModelDownloadStore`)
+- Polls `model_list` every 2 s as a fallback
+- Continue button appears once any model is `downloaded`; calls `model_select` on the first downloaded model before advancing
+- `model_select` failure surfaces in the UI error slot (does not silently advance)
+- Skip button hidden while a download is active
 
-Detection gate: `settings_speaker_capture_requires_device_name()` returns `true` on macOS only. Windows takes the auto path.
+## Permissions Step (Step 3)
 
-## Model Recommendations
+- Polls `settings_permissions_status` every 5 s and on window focus
+- Grant buttons visible when `can_request` is true
+- Mic is required; Accessibility and Input Monitoring are optional
+- Continue is disabled until mic permission is granted; optional permission state does not block progress
 
-Based on answers from QuestionsStep:
+## Dictate Practice Step (Step 4)
 
-| preferAccuracy | Recommended |
-|----------------|-------------|
-| true           | `small-en-q5` (~460 MB) |
-| false          | `base-en-q5` (~145 MB) |
+- NoteComposer auto-focused on mount (correct paste target for `dictate_auto_paste`)
+- Listens to all `dictate://state-changed` events; tracks `dictateState` for live feedback
+- Status indicator (pulsing dot + label) shown during RECORDING / TRANSCRIBING / PASTING
+- NoteComposer kept mounted behind `hidden` class during active state — preserves manual draft text
+- DONE: sets `noteDraft`; if `autoEnter` on, immediately calls `addNote()`
+- ERROR: surfaces `e.payload.error` inline
+- TRANSCRIBING → IDLE (empty segments): shows "Nothing was heard" hint
 
-The recommendation is derived in `ModelStep` from `answers.mainUse` and `answers.preferAccuracy`. Users can override by expanding "Choose a different model".
+## Feature Tour Step (Step 5)
 
-## Skipping Onboarding
+- Rendered macOS / Windows menu bar with live time, Wifi icon, app icon (`/icon.ico` on macOS, `/favicon.png` on Windows)
+- Four feature rows: Scribe, Transcribe, History, Settings
+- Platform-conditional login-item instructions (macOS: System Settings → General → Login Items; Windows: Settings → Apps → Startup)
+- Single Done button → `settings_complete_onboarding` + `getCurrentWindow().close()`
 
-Two paths to skip:
-1. **Welcome step** — "Skip to Settings": calls `settings_complete_onboarding`, opens Settings window, closes onboarding.
-2. **Complete step** — "Open Settings": same flow.
+## Skip and Restart
 
-Both mark onboarding complete so the wizard doesn't re-appear.
+**Skip to Settings (Welcome step):** `settings_complete_onboarding` → `settings_show_window` → close.
 
-## Restarting Onboarding
+**Restart:** Settings → Help → Restart Setup Wizard → `settings_reset_onboarding` → `settings_show_onboarding_window`.
 
-Settings → Help → "Restart Setup Wizard":
-1. Calls `settings_reset_onboarding` (sets flag to `false`)
-2. Calls `settings_show_onboarding_window`
+## Design Tokens Used
 
-The next app launch will also show onboarding since `onboarding_complete` is `false`.
+`bg-panel` (window), `bg-card` (instruction cards), `bg-fill` (status indicator), `bg-brand` / `animate-pulse` (recording dot and step progress), `text-success` (downloaded checkmark), `text-destructive` (errors).
 
-## Design System
-
-Container uses `surfaces.onboarding` spec: `flex flex-col items-center justify-center h-full p-6 gap-0 bg-panel`.
-
-Colors from design tokens: `bg-card` for content cards, `bg-brand` for progress dots, `text-success` for check icons, `text-warning` for alerts.
-
-Typography: `sf-headline-sm` for step titles, `text-body-md` for body, `font-mono text-label-sm tracking-stamped uppercase` for section labels.
+Typography: `sf-headline-sm` (step titles), `text-body-md` (body), `font-mono text-label-sm tracking-stamped uppercase` (section labels).

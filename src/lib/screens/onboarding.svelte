@@ -39,7 +39,19 @@
 
 	onMount(async () => {
 		const models = await invoke<ModelListItem[]>("model_list").catch(() => [] as ModelListItem[]);
-		skipModelStep = models.some((m) => m.downloaded);
+		const anyDownloaded = models.some((m) => m.downloaded);
+		skipModelStep = anyDownloaded;
+
+		// If a model is downloaded but none are selected, auto-select the first downloaded one.
+		// This handles re-runs of onboarding (step 2 gets skipped) and fresh config after app update.
+		if (anyDownloaded && !models.some((m) => m.selected)) {
+			const first = models.find((m) => m.downloaded);
+			if (first) {
+				await invoke("model_select", { modelId: first.id }).catch((e: unknown) => {
+					console.warn("onboarding: auto-select model failed:", e);
+				});
+			}
+		}
 	});
 </script>
 

@@ -132,7 +132,9 @@ mod macos {
                 user_info,
             );
             if tap.is_null() {
-                tracing::warn!("CGEventTapCreate failed — Input Monitoring permission may not be granted");
+                tracing::warn!(
+                    "CGEventTapCreate failed — Input Monitoring permission may not be granted"
+                );
                 return;
             }
             let source = CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);

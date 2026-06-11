@@ -7,6 +7,7 @@ Short-lived notes and UI specs live here. **Behaviour and architecture** stay in
 | [../context/README.md](../context/README.md) | First — reading order + behaviour quick reference |
 | [../CLAUDE.md](../CLAUDE.md) | Build, layers, do-not-regress (Scribe start, History UI), debugging table |
 | [../context/action-flows.md](../context/action-flows.md) | Step-by-step user flows (source of truth) |
+| [onboarding.md](onboarding.md) | Current 5-step onboarding implementation notes |
 | [history-ui-review.md](history-ui-review.md) | Any History list/detail/card/footer work |
 | [backlog.md](backlog.md) | Deferred / follow-up items |
 

@@ -111,17 +111,14 @@ impl ModelController {
             .model
             .model_path_for_id(id)
             .ok_or_else(|| format!("unknown model id: {id}"))?;
-        let normalized = resolved
-            .canonicalize()
-            .unwrap_or_else(|_| resolved.clone());
+        let normalized = resolved.canonicalize().unwrap_or_else(|_| resolved.clone());
 
         let cfg_snap = self.config.get();
-        let matches_config =
-            cfg_snap.selected_model_id.as_deref() == Some(id)
-                || cfg_snap.scribe_model_path.as_ref().is_some_and(|stored| {
-                    let p = Path::new(stored);
-                    p == resolved.as_path() || p == normalized.as_path()
-                });
+        let matches_config = cfg_snap.selected_model_id.as_deref() == Some(id)
+            || cfg_snap.scribe_model_path.as_ref().is_some_and(|stored| {
+                let p = Path::new(stored);
+                p == resolved.as_path() || p == normalized.as_path()
+            });
 
         self.model.delete_downloaded_model(id)?;
 
@@ -130,6 +127,14 @@ impl ModelController {
                 .update(|cfg| {
                     cfg.selected_model_id = None;
                     cfg.scribe_model_path = None;
+                })
+                .map_err(|e| e.to_string())?;
+        }
+
+        if cfg_snap.dictate_model_id.as_deref() == Some(id) {
+            self.config
+                .update(|cfg| {
+                    cfg.dictate_model_id = None;
                 })
                 .map_err(|e| e.to_string())?;
         }
@@ -217,5 +222,26 @@ mod tests {
         let cfg = config.get();
         assert!(cfg.selected_model_id.is_none());
         assert!(cfg.scribe_model_path.is_none());
+    }
+
+    #[test]
+    fn remove_clears_dictate_override_when_it_points_to_removed_model() {
+        let models_dir = temp_dir("liscribe-model-remove-dictate-models");
+        let config_path = temp_dir("liscribe-model-remove-dictate-config").join("config.json");
+        let tiny_path = models_dir.join("ggml-tiny.en-q5_1.bin");
+        std::fs::write(&tiny_path, [7, 7, 7]).expect("write model file");
+
+        let model = ModelService::new(models_dir);
+        let config = ConfigService::load(config_path).expect("load config");
+        config
+            .update(|cfg| {
+                cfg.dictate_model_id = Some("tiny-en-q5".to_string());
+            })
+            .expect("set dictate override");
+        let ctrl = ModelController::new(model, Arc::clone(&config));
+
+        ctrl.remove_model("tiny-en-q5".to_string()).expect("remove");
+
+        assert!(config.get().dictate_model_id.is_none());
     }
 }

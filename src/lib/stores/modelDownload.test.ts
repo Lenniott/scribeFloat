@@ -6,7 +6,8 @@ const mockedInvoke = vi.mocked(invoke);
 
 describe('createModelDownloadStore', () => {
     beforeEach(() => {
-        vi.clearAllMocks();
+        mockedInvoke.mockReset();
+        mockedInvoke.mockResolvedValue(undefined);
     });
 
     it('exposes an empty model list initially', () => {
@@ -36,14 +37,60 @@ describe('createModelDownloadStore', () => {
     });
 
     it('sets error from AppError object on select failure', async () => {
-        // first invoke (refresh → model_list) succeeds with empty list
-        mockedInvoke.mockResolvedValueOnce([]);
-        // second invoke (model_select) fails
         mockedInvoke.mockRejectedValueOnce({ code: 'NotFound', message: 'model not found' });
-        // third invoke (refresh after select) succeeds
         mockedInvoke.mockResolvedValueOnce([]);
         const store = createModelDownloadStore();
         await store.select('tiny-en-q5');
         expect(store.error).toBe('model not found');
+    });
+
+    it('surfaces auto-select failure during refresh', async () => {
+        mockedInvoke.mockResolvedValueOnce([
+            {
+                id: 'tiny-en-q5',
+                label: 'Tiny',
+                file_name: 'ggml-tiny.en-q5_1.bin',
+                downloaded: true,
+                selected: false,
+                size_mb: 31,
+                wer: 5.66,
+                rtfx: 348,
+            },
+        ]);
+        mockedInvoke.mockRejectedValueOnce({ code: 'Internal', message: 'cannot persist model' });
+        const store = createModelDownloadStore();
+        await store.refresh();
+        expect(store.error).toBe('cannot persist model');
+    });
+
+    it('refreshes after successful auto-select', async () => {
+        mockedInvoke.mockResolvedValueOnce([
+            {
+                id: 'tiny-en-q5',
+                label: 'Tiny',
+                file_name: 'ggml-tiny.en-q5_1.bin',
+                downloaded: true,
+                selected: false,
+                size_mb: 31,
+                wer: 5.66,
+                rtfx: 348,
+            },
+        ]);
+        mockedInvoke.mockResolvedValueOnce(undefined);
+        mockedInvoke.mockResolvedValueOnce([
+            {
+                id: 'tiny-en-q5',
+                label: 'Tiny',
+                file_name: 'ggml-tiny.en-q5_1.bin',
+                downloaded: true,
+                selected: true,
+                size_mb: 31,
+                wer: 5.66,
+                rtfx: 348,
+            },
+        ]);
+        const store = createModelDownloadStore();
+        await store.refresh();
+        expect(store.models[0].selected).toBe(true);
     });
 });

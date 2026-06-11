@@ -5,8 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
-const RELEASES_URL: &str =
-    "https://api.github.com/repos/Lenniott/scribefloat/releases/latest";
+const RELEASES_URL: &str = "https://api.github.com/repos/Lenniott/scribefloat/releases/latest";
 
 #[derive(Deserialize)]
 struct GithubRelease {

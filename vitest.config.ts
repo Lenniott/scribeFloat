@@ -5,8 +5,12 @@ import { resolve } from 'path';
 export default defineConfig({
     plugins: [svelte({ hot: false })],
     resolve: {
+        conditions: ['browser'],
         alias: {
             $lib: resolve('./src/lib'),
+            '@lib': resolve('./src/lib'),
+            '@components': resolve('./src/lib/components'),
+            '@utils': resolve('./src/lib/utils'),
         },
     },
     test: {

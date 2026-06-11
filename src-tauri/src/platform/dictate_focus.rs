@@ -82,8 +82,7 @@ mod macos {
             if ra_class.is_null() {
                 return Err("NSRunningApplication unavailable".to_string());
             }
-            let sel_running =
-                sel_lit(b"runningApplicationWithProcessIdentifier:\0");
+            let sel_running = sel_lit(b"runningApplicationWithProcessIdentifier:\0");
             let sel_activate = sel_lit(b"activateWithOptions:\0");
             if sel_running.is_null() || sel_activate.is_null() {
                 return Err("Objective-C selectors unavailable".to_string());
@@ -100,9 +99,7 @@ mod macos {
             if ok {
                 Ok(())
             } else {
-                Err(format!(
-                    "activateWithOptions returned false for pid {pid}"
-                ))
+                Err(format!("activateWithOptions returned false for pid {pid}"))
             }
         }
     }

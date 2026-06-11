@@ -6,13 +6,25 @@
         value = $bindable(""),
         placeholder = "Add a note…",
         disabled = false,
+        focusOnMount = false,
         onSubmit,
     }: {
         value?: string;
         placeholder?: string;
         disabled?: boolean;
+        focusOnMount?: boolean;
         onSubmit?: () => void;
     } = $props();
+
+    let textareaEl = $state<HTMLTextAreaElement | undefined>();
+    let _focused = false;
+
+    $effect(() => {
+        if (focusOnMount && textareaEl && !_focused) {
+            _focused = true;
+            textareaEl.focus();
+        }
+    });
 
     function submit() {
         const t = value.trim();
@@ -38,6 +50,7 @@
            "
 >
     <textarea
+        bind:this={textareaEl}
         bind:value
         {placeholder}
         {disabled}

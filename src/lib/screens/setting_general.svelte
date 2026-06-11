@@ -9,6 +9,7 @@
 	import ToggleSwitch from "@lib/components/form/ToggleSwitch.svelte";
 	import { applyThemeMode, type ThemeMode } from "$lib/theme";
 	import { dictateModifierLabel } from "$lib/platform";
+	import { appErrorMessage } from "$lib/types";
 
 	let {
 		savedSpeakerDeviceName = "",
@@ -36,6 +37,7 @@
 	let themeMode = $state<ThemeMode>("system");
 	let openWithApp = $state("");
 	let message = $state("");
+	let loadError = $state("");
 	let messageClearId: ReturnType<typeof setTimeout> | undefined;
 
 	const speakerCaptureAvailable = $derived(
@@ -55,29 +57,48 @@
 	];
 
 	async function refresh() {
-		outputPath = await invoke<string>("settings_get_output_path").catch(() => "");
-		const [open, dictate] = await invoke<[string, string]>("settings_get_hotkeys").catch(() => ["", ""]);
-		openHotkey = open;
-		dictateHotkey = dictate;
-		const [inLabel, outLabel] = await invoke<[string, string]>("settings_get_input_labels").catch(() => [
-			"Mic",
-			"Speaker",
-		]);
-		inputLabel = inLabel;
-		outputLabel = outLabel;
-		themeMode = await invoke<ThemeMode>("settings_get_theme_mode").catch(() => "system");
-		openWithApp = (await invoke<string | null>("settings_get_open_with_app_path").catch(() => null)) ?? "";
-		const [preferredInput, preferredSpeaker] = await invoke<[string | null, string | null]>(
-			"settings_get_preferred_audio_devices",
-		).catch(() => [null, null]);
-		preferredInputDevice = preferredInput ?? "";
-		preferredSpeakerDevice = preferredSpeaker ?? "";
-		scribeCaptureSpeaker = await invoke<boolean>("settings_get_scribe_capture_speaker").catch(
-			() => false,
-		);
-		dictateAutoEnter = await invoke<boolean>("settings_get_dictate_auto_enter").catch(() => false);
-		keepWav = await invoke<boolean>("settings_get_keep_wav").catch(() => false);
-		saveTranscriptsAsMarkdown = await invoke<boolean>("settings_get_save_transcripts_as_markdown").catch(() => false);
+		loadError = "";
+		try {
+			const [
+				nextOutputPath,
+				[open, dictate],
+				[inLabel, outLabel],
+				nextThemeMode,
+				nextOpenWithApp,
+				[preferredInput, preferredSpeaker],
+				nextScribeCaptureSpeaker,
+				nextDictateAutoEnter,
+				nextKeepWav,
+				nextSaveTranscriptsAsMarkdown,
+			] = await Promise.all([
+				invoke<string>("settings_get_output_path"),
+				invoke<[string, string]>("settings_get_hotkeys"),
+				invoke<[string, string]>("settings_get_input_labels"),
+				invoke<ThemeMode>("settings_get_theme_mode"),
+				invoke<string | null>("settings_get_open_with_app_path"),
+				invoke<[string | null, string | null]>("settings_get_preferred_audio_devices"),
+				invoke<boolean>("settings_get_scribe_capture_speaker"),
+				invoke<boolean>("settings_get_dictate_auto_enter"),
+				invoke<boolean>("settings_get_keep_wav"),
+				invoke<boolean>("settings_get_save_transcripts_as_markdown"),
+			]);
+
+			outputPath = nextOutputPath;
+			openHotkey = open;
+			dictateHotkey = dictate;
+			inputLabel = inLabel;
+			outputLabel = outLabel;
+			themeMode = nextThemeMode;
+			openWithApp = nextOpenWithApp ?? "";
+			preferredInputDevice = preferredInput ?? "";
+			preferredSpeakerDevice = preferredSpeaker ?? "";
+			scribeCaptureSpeaker = nextScribeCaptureSpeaker;
+			dictateAutoEnter = nextDictateAutoEnter;
+			keepWav = nextKeepWav;
+			saveTranscriptsAsMarkdown = nextSaveTranscriptsAsMarkdown;
+		} catch (e) {
+			loadError = `Could not load settings: ${appErrorMessage(e)}`;
+		}
 	}
 
 	async function saveAll() {
@@ -87,26 +108,29 @@
 		}
 		message = "";
 		try {
-			await invoke("settings_set_output_path", { path: outputPath });
-			await invoke("settings_set_hotkeys", { openScribe: openHotkey, dictate: dictateHotkey });
-			await invoke("settings_set_input_labels", { inputLabel, outputLabel });
 			const trimmedSpeaker = preferredSpeakerDevice.trim();
-			await invoke("settings_set_preferred_audio_devices", {
-				preferredInputDevice: preferredInputDevice.trim() || null,
-				preferredSpeakerDevice: trimmedSpeaker || null,
-			});
 			const captureAvailableAfterSave =
-				!speakerCaptureRequiresDeviceName ||
-				(blackholeDetected && trimmedSpeaker.length > 0);
-			const captureDefault =
-				captureAvailableAfterSave && scribeCaptureSpeaker ? scribeCaptureSpeaker : false;
-			await invoke("settings_set_scribe_capture_speaker", { enabled: captureDefault });
+				!speakerCaptureRequiresDeviceName || (blackholeDetected && trimmedSpeaker.length > 0);
+			const captureDefault = captureAvailableAfterSave && scribeCaptureSpeaker;
+			await invoke("settings_save_general", {
+				payload: {
+					outputPath,
+					openHotkey,
+					dictateHotkey,
+					inputLabel,
+					outputLabel,
+					preferredInputDevice: preferredInputDevice.trim() || null,
+					preferredSpeakerDevice: trimmedSpeaker || null,
+					scribeCaptureSpeaker,
+					speakerCaptureAvailable: captureAvailableAfterSave,
+					dictateAutoEnter,
+					keepWav,
+					saveTranscriptsAsMarkdown,
+					themeMode,
+					openWithAppPath: openWithApp.trim() || null,
+				},
+			});
 			scribeCaptureSpeaker = captureDefault;
-		await invoke("settings_set_dictate_auto_enter", { enabled: dictateAutoEnter });
-			await invoke("settings_set_keep_wav", { enabled: keepWav });
-			await invoke("settings_set_save_transcripts_as_markdown", { enabled: saveTranscriptsAsMarkdown });
-			await invoke("settings_set_theme_mode", { themeMode });
-			await invoke("settings_set_open_with_app_path", { path: openWithApp.trim() || null });
 			preferredSpeakerDevice = trimmedSpeaker;
 			onSpeakerConfigSaved?.(trimmedSpeaker);
 			await emit("settings://speaker-capture-saved");
@@ -116,7 +140,7 @@
 				messageClearId = undefined;
 			}, 3000);
 		} catch (e) {
-			message = "Failed to save: " + String(e);
+			message = `Failed to save: ${appErrorMessage(e)}`;
 		}
 	}
 
@@ -128,6 +152,12 @@
 
 <section class="space-y-4">
 	<h2 class="sf-headline-sm">General settings</h2>
+
+	{#if loadError}
+		<p class="rounded-md border border-destructive/40 bg-fill px-3 py-2 text-label-sm text-destructive">
+			{loadError}
+		</p>
+	{/if}
 
 	<!-- Keyboard shortcuts — moved to top for quick reference -->
 	<div class="flex flex-col gap-2">

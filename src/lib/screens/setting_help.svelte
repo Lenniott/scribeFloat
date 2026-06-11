@@ -13,6 +13,14 @@
 	let updateError = $state('');
 	let openScribeHotkey = $state('CmdOrCtrl+Shift+L');
 	let speakerCaptureRequiresDeviceName = $state(false);
+	let restartingOnboarding = $state(false);
+
+	async function restartOnboarding() {
+		restartingOnboarding = true;
+		await invoke('settings_reset_onboarding').catch(() => {});
+		await invoke('settings_show_onboarding_window').catch(() => {});
+		restartingOnboarding = false;
+	}
 
 	async function checkForUpdates() {
 		updateState = 'checking';
@@ -45,6 +53,19 @@
 	<div>
 		<h2 class="sf-headline-sm">Help</h2>
 		<p class="mt-1 text-base text-fg-dim">How to use ScribeFloat and what every setting does.</p>
+	</div>
+
+	<!-- Setup Wizard -->
+	<div class="space-y-3">
+		<h3 class="font-mono text-base font-normal tracking-stamped text-fg/80 uppercase">Setup</h3>
+		<p class="text-base text-fg-dim">Re-run the first-time setup to reconfigure permissions, your model, and key settings.</p>
+		<Button
+			variant="normal"
+			onclick={restartOnboarding}
+			disabled={restartingOnboarding}
+		>
+			{restartingOnboarding ? 'Opening…' : 'Restart Setup Wizard'}
+		</Button>
 	</div>
 
 	<!-- Updates -->

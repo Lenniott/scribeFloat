@@ -86,7 +86,8 @@ const MODEL_CATALOG: [ModelCatalogItem; 5] = [
         id: "large-v3-turbo-q5",
         label: "Large Turbo",
         file_name: "ggml-large-v3-turbo-q5_0.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+        url:
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
         size_mb: 547,
         wer: 2.10,
         rtfx: Some(200),
@@ -466,6 +467,16 @@ impl ModelService {
         MODEL_CATALOG.iter().find(|m| m.id == model_id).copied()
     }
 
+    /// Drop all cached WhisperContexts before app exit so Metal GPU resources are
+    /// freed while the Rust runtime is still live — prevents the ggml-metal assertion
+    /// `[rsets->data count] == 0` that fires when contexts are dropped during
+    /// NSApplication teardown after Metal state has already been partially cleaned up.
+    pub fn release_contexts(&self) {
+        if let Ok(mut guard) = self.loaded_contexts.lock() {
+            guard.clear();
+        }
+    }
+
     /// Load a Whisper context for `model_path`, or return the cached one. Loads block on
     /// disk I/O and model parsing, so callers should invoke this from `spawn_blocking` (or
     /// off the async runtime). Subsequent calls for the same path are O(hash lookup).
@@ -476,9 +487,7 @@ impl ModelService {
 
         let path_key = model_path.to_path_buf();
         let load_lock = self.load_lock_for(&path_key);
-        let _in_flight = load_lock
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _in_flight = load_lock.lock().unwrap_or_else(|p| p.into_inner());
 
         if let Some(ctx) = self.cached_context(model_path) {
             return Ok(ctx);
@@ -496,7 +505,10 @@ impl ModelService {
         let mut ctx_params = WhisperContextParameters::default();
         if !use_gpu {
             tracing::info!(
-                model = model_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                model = model_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
                 "loading model on CPU (GPU encode previously failed)"
             );
             ctx_params.use_gpu(false);
@@ -507,16 +519,17 @@ impl ModelService {
             .map_err(|e| anyhow!("failed to load model at {path_str}: {e:?}"))?;
         let ctx = Arc::new(ctx);
         tracing::debug!(
-            model = model_path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| path_str.to_string()),
+            model = model_path
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path_str.to_string()),
             elapsed_ms = load_started.elapsed().as_millis(),
             "model loaded"
         );
 
         let mut guard = self.lock_contexts();
         Ok(Arc::clone(
-            guard
-                .entry(path_key)
-                .or_insert_with(|| Arc::clone(&ctx)),
+            guard.entry(path_key).or_insert_with(|| Arc::clone(&ctx)),
         ))
     }
 
@@ -526,10 +539,7 @@ impl ModelService {
     }
 
     fn load_lock_for(&self, path_key: &Path) -> Arc<Mutex<()>> {
-        let mut locks = self
-            .loading_locks
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let mut locks = self.loading_locks.lock().unwrap_or_else(|p| p.into_inner());
         locks
             .entry(path_key.to_path_buf())
             .or_insert_with(|| Arc::new(Mutex::new(())))
@@ -647,13 +657,7 @@ impl ModelService {
                     .unwrap_or_default(),
                 "whisper encode failed with VAD enabled, retrying without VAD"
             );
-            result = self.run_inference(
-                model_path,
-                pcm,
-                None,
-                abort,
-                Arc::clone(&on_progress),
-            );
+            result = self.run_inference(model_path, pcm, None, abort, Arc::clone(&on_progress));
             if result.is_ok() {
                 tracing::info!(
                     source,
@@ -770,7 +774,9 @@ impl ModelService {
         F: FnMut(f32) + Send + 'static,
     {
         let total_ms = ((pcm.len() as f32 / 16_000.0) * 1_000.0).max(1.0);
-        let ctx = self.get_or_load_context(model_path).map_err(InferError::Other)?;
+        let ctx = self
+            .get_or_load_context(model_path)
+            .map_err(InferError::Other)?;
         let mut state = ctx
             .create_state()
             .map_err(|e| InferError::Other(anyhow!("failed to create whisper state: {e:?}")))?;
@@ -806,10 +812,14 @@ impl ModelService {
         match state.full(params, pcm) {
             Ok(()) => {}
             Err(e @ (WhisperError::FailedToEncode | WhisperError::GenericError(_))) => {
-                return Err(InferError::Encode(anyhow!("whisper inference failed: {e:?}")));
+                return Err(InferError::Encode(anyhow!(
+                    "whisper inference failed: {e:?}"
+                )));
             }
             Err(e) => {
-                return Err(InferError::Other(anyhow!("whisper inference failed: {e:?}")));
+                return Err(InferError::Other(anyhow!(
+                    "whisper inference failed: {e:?}"
+                )));
             }
         }
         let elapsed = infer_started.elapsed();
@@ -820,7 +830,10 @@ impl ModelService {
             f32::INFINITY
         };
         tracing::debug!(
-            model = model_path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "?".to_string()),
+            model = model_path
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "?".to_string()),
             audio_secs = format!("{audio_secs:.2}"),
             wall_secs = format!("{:.2}", elapsed.as_secs_f32()),
             rtf = format!("{rtf:.2}"),
@@ -857,7 +870,8 @@ impl ModelService {
             is_speaker: bool,
         }
 
-        let mut merged: Vec<Tagged> = Vec::with_capacity(mic_segments.len() + speaker_segments.len());
+        let mut merged: Vec<Tagged> =
+            Vec::with_capacity(mic_segments.len() + speaker_segments.len());
         merged.extend(mic_segments.iter().cloned().map(|seg| Tagged {
             seg,
             is_speaker: false,
@@ -1095,7 +1109,10 @@ mod tests {
         let models_dir = temp_models_dir().join("models");
         assert_eq!(
             transcription_failure_log_path(&models_dir),
-            models_dir.parent().unwrap().join("transcription-failures.jsonl")
+            models_dir
+                .parent()
+                .unwrap()
+                .join("transcription-failures.jsonl")
         );
     }
 

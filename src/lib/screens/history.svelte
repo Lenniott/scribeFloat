@@ -195,7 +195,7 @@
 					onprev={() => navigateDetail(-1)}
 					onnext={() => navigateDetail(1)}
 					onclose={() => (selectedItem = null)}
-					ondelete={() => requestDelete(selectedItem)}
+					ondelete={() => selectedItem && requestDelete(selectedItem)}
 					onrefresh={() => {
 						void loadHistory().then(() => {
 							if (selectedItem) {

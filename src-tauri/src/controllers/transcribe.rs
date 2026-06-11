@@ -54,7 +54,10 @@ impl TranscribeController {
         })
     }
 
-    pub fn inspect_inputs(&self, input_paths: Vec<String>) -> Result<Vec<TranscribeQueueItem>, String> {
+    pub fn inspect_inputs(
+        &self,
+        input_paths: Vec<String>,
+    ) -> Result<Vec<TranscribeQueueItem>, String> {
         let items = self.input.expand_inputs(&input_paths)?;
         Ok(items
             .into_iter()
@@ -108,14 +111,29 @@ impl TranscribeController {
         tauri::async_runtime::spawn(async move {
             let ctrl = Arc::clone(&this);
             let result = tokio::task::spawn_blocking(move || {
-                ctrl.run_batch(inputs, &model_path, &model_name, &output_folder, include_timestamps, &replacement_rules, &replacement_prefix, &mut queue)
+                ctrl.run_batch(
+                    inputs,
+                    &model_path,
+                    &model_name,
+                    &output_folder,
+                    include_timestamps,
+                    &replacement_rules,
+                    &replacement_prefix,
+                    &mut queue,
+                )
             })
             .await;
 
             match result {
                 Ok(Ok(final_queue)) => {
                     this.lock().state = TranscribeState::Done;
-                    this.emit_queue_state(TranscribeState::Done, final_queue, Some(1.0), None, None);
+                    this.emit_queue_state(
+                        TranscribeState::Done,
+                        final_queue,
+                        Some(1.0),
+                        None,
+                        None,
+                    );
                 }
                 Ok(Err(err)) => {
                     this.lock().state = TranscribeState::Error;
@@ -214,23 +232,33 @@ impl TranscribeController {
             };
 
             let vad_path = self.model.vad_model_path();
-            let vad = self.model.model_available(&vad_path).then_some(vad_path.as_path());
+            let vad = self
+                .model
+                .model_available(&vad_path)
+                .then_some(vad_path.as_path());
             let segments = if let Some(speaker_pcm) = decoded.speaker_pcm_16k.as_ref() {
                 let mic_segments = self
                     .model
-                    .transcribe_pcm_with_progress(model_path, &decoded.mic_pcm_16k, vad, None, "transcribe/mic", {
-                        let app = self.app.clone();
-                        let item_id = queue[index].id.clone();
-                        move |p| {
-                            let _ = app.emit(
-                                "transcribe://item-progress",
-                                serde_json::json!({
-                                    "item_id": item_id,
-                                    "progress": p * 0.5
-                                }),
-                            );
-                        }
-                    })
+                    .transcribe_pcm_with_progress(
+                        model_path,
+                        &decoded.mic_pcm_16k,
+                        vad,
+                        None,
+                        "transcribe/mic",
+                        {
+                            let app = self.app.clone();
+                            let item_id = queue[index].id.clone();
+                            move |p| {
+                                let _ = app.emit(
+                                    "transcribe://item-progress",
+                                    serde_json::json!({
+                                        "item_id": item_id,
+                                        "progress": p * 0.5
+                                    }),
+                                );
+                            }
+                        },
+                    )
                     .map_err(|e| e.to_string());
                 let mic_segments = match mic_segments {
                     Ok(segments) => segments,
@@ -251,19 +279,26 @@ impl TranscribeController {
 
                 let speaker_segments = self
                     .model
-                    .transcribe_pcm_with_progress(model_path, speaker_pcm, vad, None, "transcribe/speaker", {
-                        let app = self.app.clone();
-                        let item_id = queue[index].id.clone();
-                        move |p| {
-                            let _ = app.emit(
-                                "transcribe://item-progress",
-                                serde_json::json!({
-                                    "item_id": item_id,
-                                    "progress": 0.5 + p * 0.5
-                                }),
-                            );
-                        }
-                    })
+                    .transcribe_pcm_with_progress(
+                        model_path,
+                        speaker_pcm,
+                        vad,
+                        None,
+                        "transcribe/speaker",
+                        {
+                            let app = self.app.clone();
+                            let item_id = queue[index].id.clone();
+                            move |p| {
+                                let _ = app.emit(
+                                    "transcribe://item-progress",
+                                    serde_json::json!({
+                                        "item_id": item_id,
+                                        "progress": 0.5 + p * 0.5
+                                    }),
+                                );
+                            }
+                        },
+                    )
                     .map_err(|e| e.to_string());
                 let speaker_segments = match speaker_segments {
                     Ok(segments) => segments,
@@ -282,7 +317,8 @@ impl TranscribeController {
                     }
                 };
 
-                self.model.merge_dual_source(&mic_segments, &speaker_segments)
+                self.model
+                    .merge_dual_source(&mic_segments, &speaker_segments)
             } else {
                 match self.model.transcribe_pcm_with_progress(
                     model_path,
@@ -373,7 +409,9 @@ impl TranscribeController {
                 replacement_prefix,
                 dual_source,
                 input.source_path.to_string_lossy().into_owned(),
-                markdown_path.as_ref().map(|p| p.to_string_lossy().into_owned()),
+                markdown_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().into_owned()),
             );
             if let Err(e) = self.history.append(&save_folder, record) {
                 tracing::warn!(error = %e, "failed to append transcribe history record");
@@ -451,7 +489,11 @@ fn resolve_output_folder(
     output.ensure_output_dir(path).map_err(|e| e.to_string())
 }
 
-fn resolve_model_path(config: &Config, model: &ModelService, explicit_model_id: Option<&str>) -> PathBuf {
+fn resolve_model_path(
+    config: &Config,
+    model: &ModelService,
+    explicit_model_id: Option<&str>,
+) -> PathBuf {
     if let Some(model_id) = explicit_model_id {
         if let Some(path) = model.model_path_for_id(model_id.trim()) {
             return path;

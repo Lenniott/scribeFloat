@@ -1,9 +1,7 @@
 use crate::services::config::ConfigService;
 use crate::services::history::HistoryService;
 use crate::services::output::{self, OutputService};
-use crate::types::{
-    HistoryItemSource, HistoryKind, HistoryListItem, HistoryRecord,
-};
+use crate::types::{HistoryItemSource, HistoryKind, HistoryListItem, HistoryRecord};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -235,7 +233,11 @@ fn is_legacy(id: &str) -> bool {
 
 /// Derive a short display title from free text (first few words).
 fn short_title(text: &str) -> String {
-    let joined = text.split_whitespace().take(8).collect::<Vec<_>>().join(" ");
+    let joined = text
+        .split_whitespace()
+        .take(8)
+        .collect::<Vec<_>>()
+        .join(" ");
     let trimmed = joined.trim_end_matches(|c: char| !c.is_alphanumeric());
     if trimmed.is_empty() {
         "Dictation".to_string()
@@ -279,11 +281,19 @@ mod tests {
         let history = HistoryService::new();
         let output = OutputService::new();
         let ctrl = HistoryController::new(Arc::clone(&history), output, Arc::clone(&config));
-        Fixture { save_folder, ctrl, history }
+        Fixture {
+            save_folder,
+            ctrl,
+            history,
+        }
     }
 
     fn seg(text: &str) -> Vec<Segment> {
-        vec![Segment { start_ms: 0, end_ms: 1_000, text: text.to_string() }]
+        vec![Segment {
+            start_ms: 0,
+            end_ms: 1_000,
+            text: text.to_string(),
+        }]
     }
 
     #[test]
@@ -294,7 +304,11 @@ mod tests {
         std::fs::create_dir_all(&session_dir).unwrap();
         std::fs::write(session_dir.join("mic.wav"), b"RIFFfake").unwrap();
         let md = PathBuf::from(&f.save_folder).join("Meeting_tiny.md");
-        std::fs::write(&md, b"---\ntitle: 'Meeting'\nmodel: tiny\n---\n\n## Transcript\n\nhi\n").unwrap();
+        std::fs::write(
+            &md,
+            b"---\ntitle: 'Meeting'\nmodel: tiny\n---\n\n## Transcript\n\nhi\n",
+        )
+        .unwrap();
 
         let record = HistoryRecord::from_scribe(
             "Meeting".to_string(),
@@ -315,7 +329,10 @@ mod tests {
 
         assert!(!md.exists(), "markdown should be deleted");
         assert!(!session_dir.exists(), "session dir should be removed");
-        assert!(f.history.list(&f.save_folder).unwrap().is_empty(), "record tombstoned");
+        assert!(
+            f.history.list(&f.save_folder).unwrap().is_empty(),
+            "record tombstoned"
+        );
         // Idempotent.
         f.ctrl.delete(&id).unwrap();
     }
@@ -343,7 +360,11 @@ mod tests {
         let f = fixture();
         // A real .md on disk that the store also references via markdown_path.
         let md = PathBuf::from(&f.save_folder).join("Dupe_tiny.md");
-        std::fs::write(&md, b"---\ntitle: 'Dupe'\nmodel: tiny\n---\n\n## Transcript\n\nhi\n").unwrap();
+        std::fs::write(
+            &md,
+            b"---\ntitle: 'Dupe'\nmodel: tiny\n---\n\n## Transcript\n\nhi\n",
+        )
+        .unwrap();
         let record = HistoryRecord::from_scribe(
             "Dupe".to_string(),
             "tiny".to_string(),
@@ -385,8 +406,14 @@ mod tests {
         let id = f.history.append(&f.save_folder, rec).unwrap();
         let text = f.ctrl.render_markdown(&id).unwrap();
         assert!(!text.contains("---"), "must not contain YAML front matter");
-        assert!(!text.contains("## Transcript"), "must not contain section heading");
-        assert!(text.contains("hello world"), "must contain the segment text");
+        assert!(
+            !text.contains("## Transcript"),
+            "must not contain section heading"
+        );
+        assert!(
+            text.contains("hello world"),
+            "must contain the segment text"
+        );
     }
 
     #[test]
@@ -403,8 +430,13 @@ mod tests {
     #[test]
     fn list_includes_legacy_dictate_entries() {
         let f = fixture();
-        let json = r#"[{"id":"d1","timestamp":"2026-01-01T00:00:00Z","text":"legacy dictation here"}]"#;
-        std::fs::write(PathBuf::from(&f.save_folder).join("dictate_history.json"), json).unwrap();
+        let json =
+            r#"[{"id":"d1","timestamp":"2026-01-01T00:00:00Z","text":"legacy dictation here"}]"#;
+        std::fs::write(
+            PathBuf::from(&f.save_folder).join("dictate_history.json"),
+            json,
+        )
+        .unwrap();
 
         let items = f.ctrl.list().unwrap();
         let legacy: Vec<_> = items

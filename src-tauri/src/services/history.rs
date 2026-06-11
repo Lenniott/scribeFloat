@@ -156,8 +156,12 @@ impl HistoryService {
     pub fn list(&self, save_folder: &str) -> Result<Vec<HistoryRecord>> {
         let mut inner = self.inner.lock().unwrap();
         self.ensure_loaded(&mut inner, save_folder)?;
-        let mut out: Vec<HistoryRecord> =
-            inner.records.iter().filter(|r| !r.deleted).cloned().collect();
+        let mut out: Vec<HistoryRecord> = inner
+            .records
+            .iter()
+            .filter(|r| !r.deleted)
+            .cloned()
+            .collect();
         out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         Ok(out)
     }
@@ -223,13 +227,18 @@ mod tests {
     use crate::types::{HistoryKind, Segment};
 
     fn temp_folder() -> String {
-        let dir = std::env::temp_dir().join(format!("scribefloat-history-{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("scribefloat-history-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         dir.to_string_lossy().to_string()
     }
 
     fn record(text: &str) -> HistoryRecord {
-        let segs = vec![Segment { start_ms: 0, end_ms: 1_000, text: text.to_string() }];
+        let segs = vec![Segment {
+            start_ms: 0,
+            end_ms: 1_000,
+            text: text.to_string(),
+        }];
         HistoryRecord::from_dictate(&segs, text, "tiny".to_string())
     }
 
@@ -290,7 +299,8 @@ mod tests {
         let folder = temp_folder();
         let svc = HistoryService::new();
         let id = svc.append(&folder, record("note")).unwrap();
-        svc.set_markdown_path(&folder, &id, "/save/note.md").unwrap();
+        svc.set_markdown_path(&folder, &id, "/save/note.md")
+            .unwrap();
 
         let fresh = HistoryService::new();
         let got = fresh.get(&folder, &id).unwrap().expect("present");
@@ -340,7 +350,8 @@ mod tests {
         let svc = HistoryService::new();
         let keep = svc.append(&folder, record("keep")).unwrap();
         let drop_id = svc.append(&folder, record("drop")).unwrap();
-        svc.set_markdown_path(&folder, &keep, "/save/keep.md").unwrap();
+        svc.set_markdown_path(&folder, &keep, "/save/keep.md")
+            .unwrap();
         svc.delete(&folder, &drop_id).unwrap();
 
         svc.compact(&folder).unwrap();

@@ -240,14 +240,18 @@ mod save_folder_tests {
     fn legacy_unix_tmp_path_migration_flag() {
         #[cfg(target_os = "windows")]
         {
-            assert!(windows_save_folder_needs_migration("/tmp/transcripts_scribefloat"));
+            assert!(windows_save_folder_needs_migration(
+                "/tmp/transcripts_scribefloat"
+            ));
             assert!(!windows_save_folder_needs_migration(
                 r"C:\Users\me\Documents\transcripts_scribefloat"
             ));
         }
         #[cfg(not(target_os = "windows"))]
         {
-            assert!(!windows_save_folder_needs_migration("/tmp/transcripts_scribefloat"));
+            assert!(!windows_save_folder_needs_migration(
+                "/tmp/transcripts_scribefloat"
+            ));
         }
     }
 }

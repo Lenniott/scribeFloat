@@ -6,12 +6,14 @@
 	import DictateScreen from "@lib/screens/dictate.svelte";
 	import HistoryScreen from "@lib/screens/history.svelte";
 	import TranscribeScreen from "@lib/screens/transcribe.svelte";
+	import OnboardingScreen from "@lib/screens/onboarding.svelte";
 
 	const viewParam = browser ? new URLSearchParams(window.location.search).get("view") : null;
 	const standaloneSettings = viewParam === "settings";
 	const standaloneDictate = viewParam === "dictate";
 	const standaloneHistory = viewParam === "history";
 	const standaloneTranscribe = viewParam === "transcribe";
+	const standaloneOnboarding = viewParam === "onboarding";
 
 	type AppScreen = "recording" | "processing";
 
@@ -28,7 +30,9 @@
 	}
 </script>
 
-{#if standaloneSettings}
+{#if standaloneOnboarding}
+	<OnboardingScreen />
+{:else if standaloneSettings}
 	<SettingsScreen standalone />
 {:else if standaloneDictate}
 	<DictateScreen />

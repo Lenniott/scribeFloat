@@ -182,7 +182,7 @@
 
 <div class="flex h-screen flex-col overflow-hidden bg-panel">
 	<header class="shrink-0 border-b border-card px-4 py-3">
-		<p class="font-mono text-label-md tracking-stamped text-fg/80 uppercase">History</p>
+		<p class="sf-headline-sm text-fg">History</p>
 	</header>
 
 	<div class="flex min-h-0 flex-1 overflow-hidden">
@@ -219,9 +219,9 @@
 							role="tab"
 							aria-selected={activeTab === tab.id}
 							aria-controls="history-list"
-							class="border-0 border-b-2 px-3 py-1.5 text-label-sm font-normal tracking-stamped whitespace-nowrap uppercase transition-colors {activeTab === tab.id
-								? 'border-active bg-active/15'
-								: 'border-transparent text-fg/70 hover:bg-fill hover:text-fg'}"
+							class="sf-label-sm border-0 border-b-2 px-3 py-1.5 whitespace-nowrap transition-colors {activeTab === tab.id
+								? 'border-active bg-active/15 text-fg'
+								: 'border-transparent text-fg-dim hover:bg-fill hover:text-fg'}"
 							onclick={() => (activeTab = tab.id)}
 						>
 							{tab.label}
@@ -231,9 +231,9 @@
 
 				<div id="history-list" class="flex-1 overflow-y-auto p-3" role="tabpanel">
 					{#if loading}
-						<p class="py-6 text-left text-label-md text-fg/45">Loading…</p>
+						<p class="py-6 text-left sf-body-md text-fg-muted">Loading…</p>
 					{:else if filteredItems.length === 0}
-						<p class="py-6 text-left text-label-md text-fg/45">{emptyMessage(activeTab)}</p>
+						<p class="py-6 text-left sf-body-md text-fg-muted">{emptyMessage(activeTab)}</p>
 					{:else}
 						<div class="flex flex-col gap-2" role="list">
 							{#each filteredItems as item (item.id)}
@@ -270,7 +270,7 @@
 >
 	{#snippet footer()}
 		<div class="flex w-full items-center gap-4">
-			<label class="flex cursor-pointer items-center gap-2 text-label-sm text-fg/60 mr-auto">
+			<label class="flex cursor-pointer items-center gap-2 sf-label-sm text-fg-dim mr-auto">
 				<input type="checkbox" bind:checked={skipDeleteConfirm} />
 				Don't ask again this session
 			</label>

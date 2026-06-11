@@ -446,9 +446,7 @@
           onclick={openSettingsWindow}
         />
         {#if modelStore.activeDownloadModelId}
-          <span
-            class="font-mono text-label-sm text-fg/60 uppercase tracking-stamped"
-          >
+          <span class="sf-meta-sm text-fg-dim">
             Model {Math.round(
               (modelStore.progressByModel[modelStore.activeDownloadModelId] ??
                 0) * 100,
@@ -459,22 +457,22 @@
     </header>
 
     {#if recoverySessions.length > 0 && phase === "idle"}
-      <div class="border-b border-warning bg-warning/15 px-5 py-2 text-label-sm text-fg">
+      <div class="border-b border-warning bg-warning/15 px-5 py-2 sf-body-md text-fg">
         <p>
           {recoverySessions.length === 1
             ? "An interrupted recording was found."
             : `${recoverySessions.length} interrupted recordings were found.`}
           Open <strong>Transcribe</strong> from the menu bar and drop the session folder
-          (contains <code class="font-mono bg-fill px-1 rounded">mic.wav</code>) to recover it.
+          (contains <code class="rounded bg-fill px-1 sf-label-sm">mic.wav</code>) to recover it.
         </p>
         {#if saveFolder}
-          <p class="mt-1 truncate text-fg/60" title={saveFolder}>
+          <p class="mt-1 truncate sf-body-md text-fg-dim" title={saveFolder}>
             Scanned folder: {saveFolder}
           </p>
         {/if}
         <button
           type="button"
-          class="mt-1 underline cursor-pointer text-fg/80"
+          class="mt-1 cursor-pointer underline sf-label-sm text-fg-dim"
           onclick={() => void loadRecoverySessions()}
         >
           Dismiss
@@ -498,12 +496,7 @@
             <AccordionItem id="basic" title="Basic">
               <div class="space-y-4">
                 <div class="flex flex-col gap-1.5 text-left">
-                  <label
-                    for="mic-select"
-                    class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase"
-                  >
-                    Selected mic
-                  </label>
+                  <label class="sf-field-label" for="mic-select">Selected mic</label>
                   <select
                     id="mic-select"
                     bind:value={selectedMic}
@@ -525,7 +518,7 @@
                         await startRecording();
                       }
                     }}
-                    class="h-8 rounded-md border-0 border-b border-transparent bg-panel py-2 pr-8 pl-2 text-body-md text-fg"
+                    class="h-8 rounded-md border-0 border-b border-transparent bg-panel py-2 pr-8 pl-2 sf-body-md text-fg"
                   >
                     {#each micOptions as opt (opt.value)}
                       <option value={opt.value}>{opt.label}</option>
@@ -534,12 +527,7 @@
                 </div>
                 {#if downloadedModelOptions.length > 0}
                   <div class="flex flex-col gap-1.5 text-left">
-                    <label
-                      for="model-select"
-                      class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase"
-                    >
-                      Model
-                    </label>
+                    <label class="sf-field-label" for="model-select">Model</label>
                     <select
                       id="model-select"
                       value={selectedModelId}
@@ -548,7 +536,7 @@
                         selectedModelId = id;
                         await modelStore.select(id);
                       }}
-                      class="h-8 rounded-md border-0 border-b border-transparent bg-panel py-2 pr-8 pl-2 text-body-md text-fg"
+                      class="h-8 rounded-md border-0 border-b border-transparent bg-panel py-2 pr-8 pl-2 sf-body-md text-fg"
                     >
                       {#each downloadedModelOptions as opt (opt.value)}
                         <option value={opt.value}>{opt.label}</option>
@@ -557,12 +545,8 @@
                   </div>
                 {/if}
                 {#if speakerCaptureAvailable}
-                <div class="flex items-center justify-between">
-                  <span
-                    class="font-mono text-label-sm font-normal tracking-stamped uppercase"
-                  >
-                    Capture speaker
-                  </span>
+                <div class="flex items-center justify-between gap-3">
+                  <span class="sf-field-label">Capture speaker</span>
                   <ToggleSwitch
                     bind:checked={captureSpeaker}
                     aria-label="Toggle speaker capture"
@@ -587,12 +571,8 @@
                   />
                 </div>
                 {/if}
-                <div class="flex items-center justify-between">
-                  <span
-                    class="font-mono text-label-sm font-normal tracking-stamped uppercase"
-                  >
-                    Transcript timestamps
-                  </span>
+                <div class="flex items-center justify-between gap-3">
+                  <span class="sf-field-label">Transcript timestamps</span>
                   <ToggleSwitch
                     checked={includeTimestamps}
                     aria-label="Toggle transcript timestamps"
@@ -615,10 +595,10 @@
         <!-- Footer -->
         <footer class="flex flex-col gap-2 py-3">
           {#if speakerWarning}
-            <p class="text-label-sm text-fg/60">{speakerWarning}</p>
+            <p class="sf-label-sm text-fg-dim">{speakerWarning}</p>
           {/if}
           {#if saveFolder}
-            <p class="truncate text-label-sm text-fg/40" title={saveFolder}>
+            <p class="truncate sf-label-sm text-fg-muted" title={saveFolder}>
               Saving to {saveFolder}
             </p>
           {/if}
@@ -646,7 +626,7 @@
               </div>
             {:else if phase === "no_model"}
               <div class="flex flex-col gap-2">
-                <p class="text-label-sm text-fg/80">
+                <p class="sf-body-md text-fg-dim">
                   No transcription model selected. Install and select one in
                   Settings → Models.
                 </p>
@@ -656,7 +636,7 @@
               </div>
             {:else if phase === "error"}
               <div class="flex flex-col gap-2">
-                <p class="text-label-sm text-destructive">{errorMessage}</p>
+                <p class="sf-body-md text-destructive">{errorMessage}</p>
                 <div class="flex flex-wrap gap-2">
                   {#if errorMessage.includes("Microphone")}
                     <Button variant="normal" onclick={openSettingsWindow}
@@ -675,11 +655,7 @@
 
       <!-- Right: notes -->
       <div class="flex min-h-0 flex-col border-l border-l-rim bg-panel p-3">
-        <p
-          class="mb-2 font-mono text-label-md tracking-stamped text-fg/80 uppercase"
-        >
-          add notes
-        </p>
+        <p class="sf-section-label mb-2 text-fg-dim">Add notes</p>
         <div class="min-h-0 flex-1 overflow-y-auto">
           <div class="h-full rounded-md">
             <NotesList {notes} bind:selectedId={selectedNoteId} />

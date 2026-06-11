@@ -1,0 +1,45 @@
+---
+description: UI enforcement — sf-* typography roles (self-contained cheat sheet)
+globs: src/**/*.svelte,src/app.css,src/**/*.css
+alwaysApply: false
+---
+
+# UI enforcement (frontend)
+
+Use **`sf-*` role classes** from `src/app.css`. Color at call site (`text-fg`, `text-fg-dim`, `text-destructive`). Extend primitives — don't copy class strings.
+
+## Typography cheat sheet
+
+| Element | Class |
+|---------|-------|
+| Page title `h1`/`h2` | `sf-headline-sm text-fg` |
+| Section header | `sf-section-label text-fg-dim` |
+| Body / description | `sf-body-md text-fg` or `text-fg-dim` |
+| Emphasized body | `sf-body-md-strong text-fg` |
+| Form `<label>` / `<legend>` | `sf-field-label` |
+| Tab / button / chip | `sf-label-md text-fg` |
+| Column header / badge | `sf-label-sm text-fg-dim` |
+| Timestamp / duration | `sf-meta-sm text-fg-dim` |
+| Hero (onboarding) | `sf-display-lg text-fg` |
+
+**Banned:** `text-base`, `text-sm`, `text-headline-lg`, `text-body-lg`, `tracking-heading`, inline `text-label-sm … uppercase` label recipes.
+
+**Primitives:** `ConfigField`, `LabeledTextField`, `Button`, `TabPage` — fix typography there, not in screens.
+
+Run `npm run check:ds` before finishing. Deep reference: `.cursor/skills/ui-enforcement/references/typography.md` (only if unsure).
+
+## Color cheat sheet
+
+| Level | Class |
+|-------|-------|
+| Primary text | `text-fg` |
+| Secondary / captions | `text-fg-dim` |
+| Muted / empty / disabled | `text-fg-muted` |
+
+**Surfaces:** `bg-canvas` (page only) → `bg-panel` → `bg-card` → `bg-fill`; borders `border-rim` / `border-fill`.
+
+**State (meaning only):** `brand`+`on-brand` CTA · `active` selection · `destructive` danger/errors · `warning` caution · `success` confirmed.
+
+**Banned:** `text-fg/40`–`text-fg/90`, `bg-black/50` — use semantic fg levels + `sf-scrim` / `bg-overlay`.
+
+Recipes: `docs/color-audit.md` · `.cursor/skills/ui-enforcement/references/color.md`

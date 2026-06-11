@@ -144,6 +144,29 @@ const RULES = [
     severity: "error",
   },
 
+  // ── Foreground: semantic tokens only (Option A — warn during migration) ─────
+  {
+    id: "no-text-fg-opacity",
+    description: "text-fg/{opacity} is retired — use text-fg, text-fg-dim, or text-fg-muted",
+    pattern: /\btext-fg\/\d+\b/g,
+    fix: "Primary → text-fg; secondary/captions → text-fg-dim; muted/empty/disabled → text-fg-muted",
+    severity: "warn",
+  },
+  {
+    id: "no-bg-fg-opacity",
+    description: "bg-fg/{opacity} is retired — use bg-fg-muted or a surface token",
+    pattern: /\bbg-fg\/\d+\b/g,
+    fix: "bg-fg-muted or bg-fill / bg-rim",
+    severity: "warn",
+  },
+  {
+    id: "no-bg-black-scrim",
+    description: "bg-black/{opacity} is retired — use sf-scrim or bg-overlay",
+    pattern: /\bbg-black\/\d+\b/g,
+    fix: "fixed inset-0 sf-scrim or bg-overlay",
+    severity: "warn",
+  },
+
   // ── Hardcoded hex colors (warn — may be intentional in rare edge cases) ─────
   {
     id: "no-hardcoded-hex",
@@ -175,9 +198,11 @@ let totalWarnings = 0;
 const findings = [];
 
 for (const file of walkSvelte(ROOT)) {
+  const rel = relative(process.cwd(), file);
+  if (rel.includes("routes/design-system/")) continue;
+
   const src = readFileSync(file, "utf8");
   const lines = src.split("\n");
-  const rel = relative(process.cwd(), file);
 
   for (const rule of RULES) {
     rule.pattern.lastIndex = 0;

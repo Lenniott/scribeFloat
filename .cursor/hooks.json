@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "node .cursor/hooks/ui-enforcement-check.mjs",
+        "matcher": "Write|StrReplace"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "node .cursor/hooks/ui-enforcement-check.mjs",
+        "matcher": "Write"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "node .cursor/hooks/ui-enforcement-check.mjs",
+        "matcher": "Write|StrReplace"
+      }
+    ]
+  }
+}

@@ -85,4 +85,4 @@ The tray-only app hides the Dock icon via `sync_activation_policy`. This must be
 
 `bg-panel` (window), `bg-card` (instruction cards), `bg-fill` (status indicator), `bg-brand` / `animate-pulse` (recording dot and step progress), `text-success` (downloaded checkmark), `text-destructive` (errors).
 
-Typography: `sf-headline-sm` (step titles), `text-body-md` (body), `font-mono text-label-sm tracking-stamped uppercase` (section labels).
+Typography: `sf-headline-sm` (step titles), `text-body-md` (body), `text-label-sm tracking-stamped uppercase` (section labels).

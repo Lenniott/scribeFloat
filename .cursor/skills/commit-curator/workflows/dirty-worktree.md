@@ -2,28 +2,34 @@
 
 Use when the user has uncommitted changes and wants useful commits.
 
-## Procedure
+**Read `references/approval-gate.md` first.** Do not skip Turn 1.
 
-1. Confirm current branch, current `HEAD`, and dirty files.
-2. Create an exact backup snapshot of the current worktree, including untracked files.
-3. Inspect the diff and group changes by behavior, not by file type.
-4. Present a commit plan before mutation:
+## Turn 1 — Plan only
+
+1. Confirm current branch, current `HEAD`, and dirty files (read-only git).
+2. Inspect the diff and group changes by **behavior**, not by file type.
+3. Present a commit plan **before any mutation**:
    - commit title
    - files/hunks included
    - rationale
-   - commit message
-5. After user approval, stage one group at a time.
-6. Commit each group.
-7. Verify final tree equals the backup snapshot tree.
+   - full commit message (subject + body)
+4. State the backup strategy you will use on approval (ref name, snapshot method).
+5. End with the **Awaiting approval** block from `references/approval-gate.md`.
+6. **Stop.** Do not create backup refs or commits in this turn.
 
-## Plan Output
+## Turn 2 — Execute (after user approval)
 
-Use this shape:
+1. Create an exact backup snapshot of the current worktree, including untracked files.
+2. Stage one approved group at a time.
+3. Commit each group with the **approved** messages (do not rewrite messages without asking).
+4. Verify final tree equals the backup snapshot tree.
+
+## Plan Output Shape
 
 ```md
-Backup:
-- branch/snapshot:
-- base:
+Backup (on approval):
+- branch/snapshot: backup/<name>-<timestamp>
+- base: <current HEAD sha>
 
 Commit 1: type(scope): subject
 Files:
@@ -31,7 +37,11 @@ Files:
 Rationale:
 - why these changes belong together
 Message:
-- subject + body
+subject line
+
+body when needed
+
+Commit 2: ...
 ```
 
 ## Execution Rules
@@ -41,4 +51,4 @@ Message:
 - Before each commit, inspect `git diff --cached --stat`.
 - After each commit, run `git status --short`.
 - If a file contains inseparable behavior plus formatting churn, say so in the plan.
-
+- If the approved plan must change mid-execution, stop and ask before continuing.

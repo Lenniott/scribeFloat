@@ -46,9 +46,11 @@ export function createModelDownloadStore() {
 			const hasSelected = list.some((m) => m.downloaded && m.selected);
 			if (downloaded.length > 0 && !hasSelected) {
 				autoSelectInFlight = true;
-				await invoke('model_select', { modelId: downloaded[0].id }).catch(() => {});
+				await invoke('model_select', { modelId: downloaded[0].id }).catch((e) => {
+					error = appErrorMessage(e);
+				});
 				autoSelectInFlight = false;
-				await refresh();
+				if (!error) await refresh();
 			}
 		}
 	}

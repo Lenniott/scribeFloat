@@ -1,5 +1,5 @@
 use crate::controllers::settings::SettingsController;
-use crate::types::{AppError, PermissionStatus, ReplacementRule, ThemeMode};
+use crate::types::{AppError, GeneralSettingsUpdate, PermissionStatus, ReplacementRule, ThemeMode};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
@@ -31,7 +31,8 @@ pub fn settings_set_hotkeys(
     open_scribe: String,
     dictate: String,
 ) -> Result<(), AppError> {
-    ctrl.set_hotkeys(open_scribe, dictate).map_err(AppError::from)
+    ctrl.set_hotkeys(open_scribe, dictate)
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -47,7 +48,8 @@ pub fn settings_set_input_labels(
     input_label: String,
     output_label: String,
 ) -> Result<(), AppError> {
-    ctrl.set_input_labels(input_label, output_label).map_err(AppError::from)
+    ctrl.set_input_labels(input_label, output_label)
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -96,7 +98,8 @@ pub fn settings_set_scribe_capture_speaker(
     ctrl: State<'_, Arc<SettingsController>>,
     enabled: bool,
 ) -> Result<(), AppError> {
-    ctrl.set_scribe_capture_speaker(enabled).map_err(AppError::from)
+    ctrl.set_scribe_capture_speaker(enabled)
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -135,6 +138,14 @@ pub fn settings_set_theme_mode(
     theme_mode: String,
 ) -> Result<(), AppError> {
     ctrl.set_theme_mode(theme_mode).map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn settings_save_general(
+    ctrl: State<'_, Arc<SettingsController>>,
+    payload: GeneralSettingsUpdate,
+) -> Result<(), AppError> {
+    ctrl.save_general_settings(payload).map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -217,9 +228,7 @@ pub fn settings_set_dictate_auto_enter(
 }
 
 #[tauri::command]
-pub fn settings_get_keep_wav(
-    ctrl: State<'_, Arc<SettingsController>>,
-) -> Result<bool, AppError> {
+pub fn settings_get_keep_wav(ctrl: State<'_, Arc<SettingsController>>) -> Result<bool, AppError> {
     Ok(ctrl.get_keep_wav())
 }
 
@@ -243,7 +252,8 @@ pub fn settings_set_save_transcripts_as_markdown(
     ctrl: State<'_, Arc<SettingsController>>,
     enabled: bool,
 ) -> Result<(), AppError> {
-    ctrl.set_save_transcripts_as_markdown(enabled).map_err(AppError::from)
+    ctrl.set_save_transcripts_as_markdown(enabled)
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -308,7 +318,8 @@ pub fn settings_update_replacement_rule(
     index: usize,
     rule: ReplacementRule,
 ) -> Result<(), AppError> {
-    ctrl.update_replacement_rule(index, rule).map_err(AppError::from)
+    ctrl.update_replacement_rule(index, rule)
+        .map_err(AppError::from)
 }
 
 #[tauri::command]

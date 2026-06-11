@@ -28,8 +28,14 @@ fn log_system_info() {
         .unwrap_or_else(|| "?".to_string());
 
     tracing::info!(
-        version, os, arch, cpu = cpu_brand, cores_physical = physical, cores_logical = logical,
-        ram = ram_gb, "scribefloat startup"
+        version,
+        os,
+        arch,
+        cpu = cpu_brand,
+        cores_physical = physical,
+        cores_logical = logical,
+        ram = ram_gb,
+        "scribefloat startup"
     );
 }
 
@@ -48,7 +54,15 @@ fn sysctl_string(name: &std::ffi::CStr) -> Option<String> {
     let mut len: libc::size_t = 0;
     // First call: ask for the length.
     // SAFETY: passing null buffer to sysctlbyname is the documented way to query length.
-    let rc = unsafe { libc::sysctlbyname(name.as_ptr(), std::ptr::null_mut(), &mut len, std::ptr::null_mut(), 0) };
+    let rc = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            std::ptr::null_mut(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
     if rc != 0 || len == 0 {
         return None;
     }
@@ -159,8 +173,7 @@ fn load_icon(app: &tauri::AppHandle, file_name: &str) -> Option<Image<'static>> 
 }
 
 fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
-    let open_scribe =
-        MenuItem::with_id(app, OPEN_SCRIBE_MENU_ID, "Scribe", true, None::<&str>)?;
+    let open_scribe = MenuItem::with_id(app, OPEN_SCRIBE_MENU_ID, "Scribe", true, None::<&str>)?;
     let open_transcribe = MenuItem::with_id(
         app,
         OPEN_TRANSCRIBE_MENU_ID,
@@ -168,24 +181,19 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
-    let open_history = MenuItem::with_id(
-        app,
-        OPEN_HISTORY_MENU_ID,
-        "History",
-        true,
-        None::<&str>,
-    )?;
-    let open_settings = MenuItem::with_id(
-        app,
-        OPEN_SETTINGS_MENU_ID,
-        "Settings",
-        true,
-        None::<&str>,
-    )?;
+    let open_history = MenuItem::with_id(app, OPEN_HISTORY_MENU_ID, "History", true, None::<&str>)?;
+    let open_settings =
+        MenuItem::with_id(app, OPEN_SETTINGS_MENU_ID, "Settings", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, QUIT_MENU_ID, "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
-        &[&open_scribe, &open_transcribe, &open_history, &open_settings, &quit],
+        &[
+            &open_scribe,
+            &open_transcribe,
+            &open_history,
+            &open_settings,
+            &quit,
+        ],
     )?;
 
     let mut tray = TrayIconBuilder::with_id("main")
@@ -219,8 +227,8 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
     #[cfg(not(target_os = "macos"))]
     {
         let preferred_tray_icon = "sf_Transparent_tray_32x32.png";
-        if let Some(icon) =
-            load_icon(app.handle(), preferred_tray_icon).or_else(|| app.default_window_icon().cloned())
+        if let Some(icon) = load_icon(app.handle(), preferred_tray_icon)
+            .or_else(|| app.default_window_icon().cloned())
         {
             tray = tray.icon(icon.clone());
         }
@@ -418,7 +426,6 @@ fn primary_monitor_dictate_position(app: &AppHandle) -> (f64, f64) {
     (x, y)
 }
 
-
 /// Show, restore, and focus. On Windows, `show()` applies visibility asynchronously; a deferred
 /// `set_focus` runs after so Tao sees `VISIBLE` and can call `SetForegroundWindow`.
 fn raise_webview_window(app: &AppHandle, window: &WebviewWindow) -> tauri::Result<()> {
@@ -501,8 +508,7 @@ pub fn run() {
                     if event.state != ShortcutState::Pressed {
                         return;
                     }
-                    let Some(config) =
-                        app.try_state::<Arc<services::config::ConfigService>>()
+                    let Some(config) = app.try_state::<Arc<services::config::ConfigService>>()
                     else {
                         return;
                     };
@@ -530,7 +536,9 @@ pub fn run() {
             if let Some(helper) = platform::resolve_set_default_output_helper() {
                 platform::init_set_default_output_helper(helper);
             } else {
-                tracing::warn!("set-default-output helper missing; speaker capture output restore may fail");
+                tracing::warn!(
+                    "set-default-output helper missing; speaker capture output restore may fail"
+                );
             }
             let config = services::config::ConfigService::load(data_dir.join("config.json"))?;
             {
@@ -636,13 +644,20 @@ pub fn run() {
             // is not sufficient on its own).
             platform::window_impl::sync_activation_policy(app.handle());
 
-            let save_folder = app.state::<Arc<services::config::ConfigService>>().get().save_folder;
+            let save_folder = app
+                .state::<Arc<services::config::ConfigService>>()
+                .get()
+                .save_folder;
             // Run compaction and recovery scans in the background so they never block
             // the Tauri event loop at startup (large histories can take 100-500ms).
             let history_bg = Arc::clone(&history);
             let output_bg = Arc::clone(&output);
             let save_folder_bg = save_folder.clone();
-            let temp_dir_bg = app.path().app_local_data_dir().ok().map(|d| d.join("dictate_temp"));
+            let temp_dir_bg = app
+                .path()
+                .app_local_data_dir()
+                .ok()
+                .map(|d| d.join("dictate_temp"));
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = history_bg.compact(&save_folder_bg) {
                     tracing::warn!(error = %e, "startup history compaction skipped");
@@ -697,10 +712,7 @@ pub fn run() {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == SCRIBE_WINDOW_LABEL {
                     api.prevent_close();
-                    let _ = window.emit(
-                        "scribe://native-close-requested",
-                        serde_json::json!({}),
-                    );
+                    let _ = window.emit("scribe://native-close-requested", serde_json::json!({}));
                     platform::window_impl::sync_activation_policy(window.app_handle());
                     return;
                 }
@@ -763,6 +775,7 @@ pub fn run() {
             commands::settings::settings_open_transcript,
             commands::settings::settings_get_theme_mode,
             commands::settings::settings_set_theme_mode,
+            commands::settings::settings_save_general,
             commands::settings::settings_permissions_status,
             commands::settings::settings_permissions_open,
             commands::settings::settings_permissions_request,
@@ -811,9 +824,7 @@ pub fn run() {
                 // Drop WhisperContext instances before audio teardown so Metal GPU
                 // resources are freed while the Rust runtime is still fully live.
                 // Without this, ggml-metal asserts during NSApplication terminate.
-                if let Some(svc) =
-                    app_handle.try_state::<Arc<services::model::ModelService>>()
-                {
+                if let Some(svc) = app_handle.try_state::<Arc<services::model::ModelService>>() {
                     svc.release_contexts();
                 }
                 if let Some(ctrl) =

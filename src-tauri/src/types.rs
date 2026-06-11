@@ -17,8 +17,11 @@ pub enum AppError {
 impl std::fmt::Display for AppError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NotFound(m) | Self::InvalidInput(m) | Self::StateMachine(m)
-            | Self::Io(m) | Self::Internal(m) => f.write_str(m),
+            Self::NotFound(m)
+            | Self::InvalidInput(m)
+            | Self::StateMachine(m)
+            | Self::Io(m)
+            | Self::Internal(m) => f.write_str(m),
         }
     }
 }
@@ -119,6 +122,25 @@ pub struct Config {
     /// truth. Dictate never writes `.md` regardless of this flag.
     #[serde(default)]
     pub save_transcripts_as_markdown: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneralSettingsUpdate {
+    pub output_path: String,
+    pub open_hotkey: String,
+    pub dictate_hotkey: String,
+    pub input_label: String,
+    pub output_label: String,
+    pub preferred_input_device: Option<String>,
+    pub preferred_speaker_device: Option<String>,
+    pub scribe_capture_speaker: bool,
+    pub speaker_capture_available: bool,
+    pub dictate_auto_enter: bool,
+    pub keep_wav: bool,
+    pub save_transcripts_as_markdown: bool,
+    pub theme_mode: String,
+    pub open_with_app_path: Option<String>,
 }
 
 impl Default for Config {
@@ -232,7 +254,11 @@ fn default_replacement_rules() -> Vec<ReplacementRule> {
     vec![
         ReplacementRule {
             trigger: "to do".to_string(),
-            aliases: vec!["to do.".to_string(), "todo".to_string(), "todo.".to_string()],
+            aliases: vec![
+                "to do.".to_string(),
+                "todo".to_string(),
+                "todo.".to_string(),
+            ],
             rule_type: ReplacementRuleType::Simple,
             output: "\n- [ ] ".to_string(),
             scope: ReplacementScope::Both,
@@ -710,7 +736,14 @@ impl HistoryRecord {
         markdown_path: Option<String>,
     ) -> Self {
         let word_count = crate::services::output::count_words(&segments, rules, prefix);
-        let mut rec = Self::base(HistoryKind::Scribe, title, model, segments, notes, word_count);
+        let mut rec = Self::base(
+            HistoryKind::Scribe,
+            title,
+            model,
+            segments,
+            notes,
+            word_count,
+        );
         rec.speaker_capture = speaker_capture;
         rec.dual_source = dual_source;
         rec.session_dir = session_dir;
@@ -730,7 +763,14 @@ impl HistoryRecord {
             end_ms: duration_ms,
             text: text.to_string(),
         }];
-        Self::base(HistoryKind::Dictate, title, model, stored, Vec::new(), word_count)
+        Self::base(
+            HistoryKind::Dictate,
+            title,
+            model,
+            stored,
+            Vec::new(),
+            word_count,
+        )
     }
 
     /// Build a Transcribe record from an imported audio file.
@@ -746,8 +786,14 @@ impl HistoryRecord {
         markdown_path: Option<String>,
     ) -> Self {
         let word_count = crate::services::output::count_words(&segments, rules, prefix);
-        let mut rec =
-            Self::base(HistoryKind::Transcribe, title, model, segments, Vec::new(), word_count);
+        let mut rec = Self::base(
+            HistoryKind::Transcribe,
+            title,
+            model,
+            segments,
+            Vec::new(),
+            word_count,
+        );
         rec.dual_source = dual_source;
         rec.source_path = Some(source_path);
         rec.markdown_path = markdown_path;
@@ -884,8 +930,16 @@ mod tests {
     #[test]
     fn from_scribe_sets_dual_source_duration_and_kept_audio() {
         let segments = vec![
-            Segment { start_ms: 0, end_ms: 1_000, text: "in: hi".to_string() },
-            Segment { start_ms: 1_200, end_ms: 5_000, text: "out: hello there".to_string() },
+            Segment {
+                start_ms: 0,
+                end_ms: 1_000,
+                text: "in: hi".to_string(),
+            },
+            Segment {
+                start_ms: 1_200,
+                end_ms: 5_000,
+                text: "out: hello there".to_string(),
+            },
         ];
         let rec = HistoryRecord::from_scribe(
             "Meeting".to_string(),
@@ -935,7 +989,11 @@ mod tests {
 
     #[test]
     fn from_dictate_word_count_matches_text() {
-        let segments = vec![Segment { start_ms: 0, end_ms: 2_000, text: "raw".to_string() }];
+        let segments = vec![Segment {
+            start_ms: 0,
+            end_ms: 2_000,
+            text: "raw".to_string(),
+        }];
         let rec = HistoryRecord::from_dictate(&segments, "hello there friend", "tiny".to_string());
         assert_eq!(rec.kind, HistoryKind::Dictate);
         assert_eq!(rec.word_count, 3);
@@ -946,7 +1004,11 @@ mod tests {
 
     #[test]
     fn from_transcribe_sets_source_path() {
-        let segments = vec![Segment { start_ms: 0, end_ms: 3_000, text: "one two".to_string() }];
+        let segments = vec![Segment {
+            start_ms: 0,
+            end_ms: 3_000,
+            text: "one two".to_string(),
+        }];
         let rec = HistoryRecord::from_transcribe(
             "clip".to_string(),
             "tiny".to_string(),

@@ -106,9 +106,7 @@
       <span class="bar-scan pointer-events-none absolute inset-0" aria-hidden="true"></span>
     {/if}
     {#if variantConfig.showPercent && !indeterminate}
-      <p
-        class="absolute -bottom-6 left-0 font-mono text-label-sm tracking-stamped text-fg/55"
-      >
+      <p class="sf-meta-sm text-fg-dim absolute -bottom-6 left-0">
         {Math.round(safeProgress)}%
       </p>
     {/if}
@@ -118,7 +116,7 @@
       {#each sequence as step (step.label)}
         <div class="flex min-w-0 flex-1 items-center gap-2">
           <span
-            class={`grid size-5 shrink-0 place-items-center rounded border text-label-sm font-normal ${
+            class={`grid size-5 shrink-0 place-items-center rounded border sf-label-sm ${
               step.complete
                 ? "border-brand bg-brand text-on-brand"
                 : "border-rim text-transparent"
@@ -128,7 +126,7 @@
             ✓
           </span>
           <span
-            class={`truncate text-label-md ${step.complete ? "text-fg" : "text-fg/55"}`}
+            class={`truncate sf-label-md ${step.complete ? "text-fg" : "text-fg-dim"}`}
           >
             {step.label}
           </span>
@@ -137,7 +135,7 @@
     </div>
   {/if}
   {#if variantConfig.showCurrentStep && currentStep}
-  <p class="m-0 ml-auto truncate text-label-md font-normal text-fg">
+  <p class="sf-label-md m-0 ml-auto truncate text-fg">
 	{currentStep.label}
   </p>
 {/if}

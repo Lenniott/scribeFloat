@@ -36,14 +36,14 @@
 		bind:value
 		type="text"
 		{placeholder}
-		class="h-10 px-2 bg-panel rounded-sm text-headline-sm w-full max-w-md tracking-tight text-fg outline-none border border-rim"
+		class="sf-headline-sm h-10 w-full max-w-md rounded-sm border border-rim bg-panel px-2 text-fg outline-none"
 		onblur={commit}
 		{onkeydown}
 	/>
 {:else}
 	<button
 		type="button"
-		class="h-10 px-2 bg-panel rounded-sm text-headline-sm w-full max-w-full cursor-text truncate tracking-tight text-left text-fg"
+		class="sf-headline-sm h-10 w-full max-w-full cursor-text truncate rounded-sm bg-panel px-2 text-left text-fg"
 		onclick={beginEdit}
 	>
 		{value || placeholder}

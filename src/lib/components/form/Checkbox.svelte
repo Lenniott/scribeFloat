@@ -38,9 +38,9 @@
 		aria-hidden="true"
 		class="relative inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-rim bg-panel text-transparent transition-colors peer-checked:border-brand peer-checked:bg-brand peer-checked:text-on-brand peer-focus:ring-2 peer-focus:ring-warning peer-focus:ring-offset-2 peer-focus:ring-offset-panel peer-focus:rounded-sm"
 	>
-		<span class="text-label-md leading-none font-normal">✓</span>
+		<span class="sf-label-sm leading-none">✓</span>
 	</span>
 	{#if label}
-		<span class="text-body-md tracking-[0.01em]">{label}</span>
+		<span class="sf-body-md">{label}</span>
 	{/if}
 </label>

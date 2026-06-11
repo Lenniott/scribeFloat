@@ -1,0 +1,3 @@
+display_name: Commit Curator
+short_description: Split, rewrite, or review git commits safely.
+default_prompt: Curate my current git changes into reviewable commits.

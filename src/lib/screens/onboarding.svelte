@@ -8,11 +8,12 @@
 	import DictatePracticeStep from "@lib/components/onboarding/DictatePracticeStep.svelte";
 	import FeatureTourStep from "@lib/components/onboarding/FeatureTourStep.svelte";
 	import StepProgress from "@lib/components/onboarding/StepProgress.svelte";
-	import type { ModelListItem } from "$lib/types";
+	import { appErrorMessage, type ModelListItem } from "$lib/types";
 
 	// Steps: 1=Welcome, 2=ModelDownload, 3=Permissions, 4=DictatePractice, 5=FeatureTour
 	let currentStep = $state(1);
 	let skipModelStep = $state(false);
+	let error = $state("");
 
 	function next() {
 		let n = currentStep + 1;
@@ -27,14 +28,24 @@
 	}
 
 	async function finish() {
-		await invoke("settings_complete_onboarding").catch(() => {});
-		await getCurrentWindow().close();
+		error = "";
+		try {
+			await invoke("settings_complete_onboarding");
+			await getCurrentWindow().close();
+		} catch (e) {
+			error = `Could not finish setup: ${appErrorMessage(e)}`;
+		}
 	}
 
 	async function skipToSettings() {
-		await invoke("settings_complete_onboarding").catch(() => {});
-		await invoke("settings_show_window").catch(() => {});
-		await getCurrentWindow().close();
+		error = "";
+		try {
+			await invoke("settings_complete_onboarding");
+			await invoke("settings_show_window");
+			await getCurrentWindow().close();
+		} catch (e) {
+			error = `Could not open Settings: ${appErrorMessage(e)}`;
+		}
 	}
 
 	onMount(async () => {
@@ -48,7 +59,7 @@
 			const first = models.find((m) => m.downloaded);
 			if (first) {
 				await invoke("model_select", { modelId: first.id }).catch((e: unknown) => {
-					console.warn("onboarding: auto-select model failed:", e);
+					error = `Could not activate installed model: ${appErrorMessage(e)}`;
 				});
 			}
 		}
@@ -64,6 +75,12 @@
 	{/if}
 
 	<div class="flex-1 min-h-0">
+		{#if error}
+			<p class="mb-3 rounded-md border border-destructive/40 bg-fill px-3 py-2 text-label-sm text-destructive">
+				{error}
+			</p>
+		{/if}
+
 		{#if currentStep === 1}
 			<WelcomeStep onStart={next} onSkip={skipToSettings} />
 		{:else if currentStep === 2}

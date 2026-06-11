@@ -70,7 +70,7 @@
       <div class="rounded-md overflow-hidden border border-fill">
         <!-- Bar row -->
         <div
-          class="bg-[#1a1a1a] flex items-center justify-between px-3 py-1.5 gap-2"
+          class="bg-canvas flex items-center justify-between px-3 py-1.5 gap-2"
         >
           {#if isWindows}
             <!-- Windows taskbar: app icon left, system icons right -->
@@ -86,9 +86,9 @@
                 />
               </div>
             </div>
-            <div class="flex items-center gap-2 text-white/70">
+            <div class="flex items-center gap-2 text-fg-dim">
               <Wifi class="size-3.5" />
-              <span class="text-[11px] tabular-nums leading-none"
+              <span class="text-label-sm tabular-nums leading-none"
                 >{timeStr}</span
               >
             </div>
@@ -96,10 +96,10 @@
             <!-- macOS menu bar: system icons + clock right, app icon highlighted -->
             <div class="flex items-center gap-0.5">
               <!-- dim dot decorations for left side of menu bar -->
-              <div class="w-1.5 h-1.5 rounded-full bg-white/15"></div>
-              <div class="w-1.5 h-1.5 rounded-full bg-white/15 ml-1.5"></div>
+              <div class="w-1.5 h-1.5 rounded-full bg-rim/40"></div>
+              <div class="w-1.5 h-1.5 rounded-full bg-rim/40 ml-1.5"></div>
             </div>
-            <div class="flex items-center gap-2.5 text-white/70">
+            <div class="flex items-center gap-2.5 text-fg-dim">
               <!-- App icon in tray, highlighted -->
               <div
                 class="w-6 h-6 rounded flex items-center justify-center ring-1 ring-brand/50 bg-brand/15"
@@ -112,7 +112,7 @@
                 />
               </div>
               <Wifi class="size-3.5" />
-              <div class="text-[11px] tabular-nums leading-none text-white/80">
+              <div class="text-label-sm tabular-nums leading-none text-fg-dim">
                 {dateStr}
                 {timeStr}
               </div>

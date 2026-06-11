@@ -5,7 +5,7 @@
     ACCORDION_KEY,
     type AccordionContextState,
   } from "./accordion-context.js";
-  import { Minimize, Minus, Plus } from "lucide-svelte";
+  import { Minus, Plus } from "lucide-svelte";
 
   let {
     id,
@@ -29,14 +29,14 @@
   <h3 class="bg-card border-0">
     <button
       type="button"
-      class="font-mono text-label-md flex w-full items-center justify-between px-3 py-2.5 text-left font-normal tracking-stamped text-fg uppercase hover:bg-rim"
+      class="sf-section-label text-fg flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-rim"
       aria-expanded={isOpen}
       aria-controls={`panel-${id}`}
       id={`header-${id}`}
       onclick={() => ctx.toggle(id)}
     >
       {title}
-      <span class="text-fg/50" aria-hidden="true"
+      <span class="text-fg-dim" aria-hidden="true"
         >{#if isOpen}
           <Minus class="size-4" />
         {:else}<Plus class="size-4" />

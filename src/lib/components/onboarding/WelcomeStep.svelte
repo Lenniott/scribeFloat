@@ -12,29 +12,29 @@
 
 <div class="flex flex-col items-center justify-center h-full gap-8 text-center">
 	<div class="flex flex-col items-center gap-3">
-		<h1 class="font-mono text-display-lg tracking-stamped uppercase font-normal text-fg leading-tight">
+		<h1 class="sf-display-lg text-fg leading-tight">
 			ScribeFloat
 		</h1>
-		<p class="text-body-lg text-fg max-w-sm font-medium">
+		<p class="sf-body-md-strong text-fg max-w-sm">
 			Your voice, transcribed. Privately, on your device.
 		</p>
-		<p class="text-body-md text-fg-dim max-w-sm">
-			ScribeFloat runs Whisper AI locally — nothing leaves your computer.
+		<p class="sf-body-md text-fg-dim max-w-sm">
+			Runs Whisper AI locally.
 		</p>
 	</div>
 
-	<div class="flex flex-col gap-2 w-full max-w-xs text-left">
+	<div class="flex flex-col gap-2 w-full max-w-sm text-left">
 		<div class="flex items-start gap-3 rounded-md bg-card border border-fill px-3 py-2.5">
-			<span class="font-mono text-label-sm tracking-stamped uppercase text-brand shrink-0 mt-0.5">Scribe</span>
-			<span class="text-body-md text-fg-dim">Turn meetings and voice memos into searchable transcripts</span>
+			<span class="sf-label-sm text-fg-dim shrink-0 mt-0.5">Scribe</span>
+			<span class="sf-body-md text-fg-dim">Long form transcription with notes</span>
 		</div>
 		<div class="flex items-start gap-3 rounded-md bg-card border border-fill px-3 py-2.5">
-			<span class="font-mono text-label-sm tracking-stamped uppercase text-brand shrink-0 mt-0.5">Dictate</span>
-			<span class="text-body-md text-fg-dim">Speak anywhere, text appears at your cursor</span>
+			<span class="sf-label-sm text-fg-dim shrink-0 mt-0.5">Dictate</span>
+			<span class="sf-body-md text-fg-dim">Short form transcription that pastes at cursor</span>
 		</div>
 		<div class="flex items-start gap-3 rounded-md bg-card border border-fill px-3 py-2.5">
-			<span class="font-mono text-label-sm tracking-stamped uppercase text-brand shrink-0 mt-0.5">History</span>
-			<span class="text-body-md text-fg-dim">Every transcript saved, searchable, and exportable</span>
+			<span class="sf-label-sm text-fg-dim shrink-0 mt-0.5">History</span>
+			<span class="sf-body-md text-fg-dim">View past transcripts from scribe and dictate</span>
 		</div>
 	</div>
 
@@ -42,7 +42,7 @@
 		<Button variant="primary" onclick={onStart}>Get started</Button>
 		<button
 			type="button"
-			class="text-label-md text-fg-dim hover:text-fg transition-colors"
+			class="sf-label-md text-fg-dim hover:text-fg transition-colors"
 			onclick={onSkip}
 		>
 			Skip to Settings

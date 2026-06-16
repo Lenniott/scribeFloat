@@ -18,4 +18,4 @@
 	let text = $derived(format(at));
 </script>
 
-<span class="font-mono text-label-sm font-normal tabular-nums tracking-stamped text-fg/55 {className}">{text}</span>
+<span class="sf-meta-sm text-fg-dim {className}">{text}</span>

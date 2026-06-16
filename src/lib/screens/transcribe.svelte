@@ -320,19 +320,19 @@
   <header
     class="flex min-h-14 items-center justify-between border-b border-rim px-5"
   >
-    <h1 class="sf-headline-sm">Transcribe</h1>
+    <h1 class="sf-headline-sm text-fg">Transcribe</h1>
     {#if phase !== "processing" && queue.length === 0}
-      <p class="text-body-md text-fg/70">
+      <p class="sf-body-md text-fg-dim">
         Queue files, choose output path and model, then start transcription.
       </p>
     {/if}
     {#if phase === "processing"}
-      <p class="font-mono text-label-sm text-fg/55 uppercase tracking-stamped">
+      <p class="sf-label-sm text-fg-dim">
         Processing {progress}%
       </p>
     {/if}
     {#if errorMessage}
-      <p class="text-label-sm text-destructive">{errorMessage}</p>
+      <p class="sf-label-sm text-destructive">{errorMessage}</p>
     {/if}
   </header>
 
@@ -349,16 +349,13 @@
         />
 
         <div class="flex flex-col gap-1.5">
-          <label
-            for="transcribe-model"
-            class="font-mono text-label-sm text-fg/80 uppercase tracking-stamped"
-          >
+          <label for="transcribe-model" class="sf-field-label">
             Transcription model
           </label>
           <select
             id="transcribe-model"
             bind:value={selectedModelId}
-            class="h-10 rounded-md border border-rim bg-panel px-2 text-body-md text-fg"
+            class="sf-body-md h-10 rounded-md border border-rim bg-panel px-2 text-fg"
           >
             <option value="">Select model</option>
             {#each downloadedModelOptions as option (option.value)}
@@ -367,17 +364,13 @@
           </select>
         </div>
 
-        <div class="flex flex-col gap-1.5">
-          <span
-            class="font-mono text-label-sm text-fg/80 uppercase tracking-stamped"
-          >
-            Timestamps
-          </span>
-          <ToggleSwitch
-            checked={includeTimestamps}
-            onchange={(next) => (includeTimestamps = next)}
-          />
-        </div>
+        <ToggleSwitch
+          label="Timestamps"
+          labelFirst
+          class="flex-col gap-1.5 items-start"
+          checked={includeTimestamps}
+          onchange={(next) => (includeTimestamps = next)}
+        />
       </div>
       <div class="flex gap-1 max-w-xl mt-5">
         <div
@@ -391,12 +384,12 @@
           ondragover={handleDragOver}
           ondragleave={handleDragLeave}
         >
-          <p class="text-body-md text-fg/75 w-full">
+          <p class="sf-body-md text-fg-dim w-full">
             {isDraggingOverDropZone
               ? "Release to add to queue."
               : "Drag and drop audio files, or use Add files / Add folder."}
           </p>
-          <p class="text-label-sm text-fg/55 w-full">
+          <p class="sf-label-sm text-fg-dim w-full">
             {isDraggingOverDropZone
               ? "Files and folders will be inspected before transcription."
               : "Supported: mp3, m4a, wav, ogg, flac."}
@@ -432,9 +425,7 @@
         class="absolute inset-0 z-10 flex items-center justify-center bg-canvas/70 backdrop-blur-[1px]"
       >
         <div class="w-full max-w-2xl rounded-md border border-rim bg-panel p-4">
-          <p
-            class="mb-3 font-mono text-label-sm text-fg/70 uppercase tracking-stamped"
-          >
+          <p class="mb-3 sf-label-sm text-fg-dim">
             Processing {progress}%
           </p>
           <StackProgressBar

@@ -27,7 +27,7 @@
 </script>
 
 {#if open}
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+	<div class="sf-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
 		<div
 			role="dialog"
 			aria-modal="true"
@@ -38,7 +38,7 @@
 				<div>
 					<h2 class="sf-headline-sm text-fg">{title}</h2>
 					{#if description}
-						<p class="text-body-md text-fg/70">{description}</p>
+						<p class="sf-body-md text-fg-dim">{description}</p>
 					{/if}
 				</div>
 				{#if showCloseButton}

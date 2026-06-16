@@ -165,14 +165,12 @@
       await invoke("scribe_abort_transcription").catch(() => {});
     }
     await invoke("scribe_cancel").catch(() => {});
-    // Reset parent appScreen so next tray/hotkey open shows the recording screen.
     if (phase !== "transcribing") {
       onRecordAgain?.();
     }
     await invoke("scribe_destroy_window").catch(() => {});
   }
 
-  // Called by the native-close listener; shows the abort modal when actively transcribing.
   async function handleCloseRequest(): Promise<void> {
     if (phase === "transcribing") {
       abortConfirmOpen = true;
@@ -219,8 +217,6 @@
     const ulClose = await listen("scribe://native-close-requested", () => {
       void handleCloseRequest();
     });
-    // When the window is deliberately opened (tray/hotkey) and processing is
-    // already finished, return to the recording screen immediately.
     const ulOpened = await listen("scribe://opened", () => {
       if (phase === "done" || phase === "no_model" || phase === "error") {
         onRecordAgain?.();
@@ -239,10 +235,10 @@
   <section class="flex h-screen flex-col overflow-hidden bg-panel">
     <header class="flex min-h-14 items-end justify-between border-b border-card px-5 py-2 shrink-0">
       <div class="flex min-w-0 flex-1 flex-col gap-1">
-        <p class="font-mono text-label-sm tracking-stamped text-fg/55 uppercase">
+        <p class="sf-section-label text-fg-dim">
           {title || "Recording"}
         </p>
-        <h1 class="sf-headline-sm">
+        <h1 class="sf-headline-sm text-fg">
           {#if phase === "transcribing"}
             Processing...
           {:else if phase === "done"}
@@ -268,7 +264,7 @@
       {:else if phase === "done"}
         <div class="flex min-h-0 flex-1 flex-col gap-3">
           <div class="flex shrink-0 items-center justify-between gap-2">
-            <p class="text-body-md text-fg/80">Transcript saved.</p>
+            <p class="sf-body-md text-fg">Transcript saved.</p>
             <div class="flex gap-2">
               {#if canCopy}
                 <IconButton
@@ -289,17 +285,17 @@
             </div>
           </div>
           {#if !recordId && !transcriptPath}
-            <p class="text-label-md text-destructive">
+            <p class="sf-label-md text-destructive">
               Transcript could not be saved to history.
             </p>
           {:else if loadingPreview}
-            <p class="text-label-md text-fg/45">Loading…</p>
+            <p class="sf-label-md text-fg-muted">Loading…</p>
           {:else if previewError}
-            <p class="text-label-md text-destructive">Could not load transcript.</p>
-            <p class="text-label-sm text-fg/45">{previewError}</p>
+            <p class="sf-label-md text-destructive">Could not load transcript.</p>
+            <p class="sf-label-sm text-fg-muted">{previewError}</p>
           {:else if bodyText}
             <ScrollablePanel class="flex-1 min-h-0 px-0 py-0">
-              <p class="text-body-md whitespace-pre-wrap wrap-break-word text-fg/90">
+              <p class="sf-body-md whitespace-pre-wrap wrap-break-word text-fg">
                 {bodyText}
               </p>
             </ScrollablePanel>
@@ -310,20 +306,20 @@
               onclick={openTranscript}
             >
               <p
-                class="truncate font-mono text-body-md text-fg underline decoration-fg-muted group-hover:underline-offset-2"
+                class="truncate sf-body-md text-fg underline decoration-fg-muted group-hover:underline-offset-2"
                 title={transcriptPath}
               >
                 {transcriptPath}
               </p>
             </button>
           {:else}
-            <p class="text-label-md text-fg/45">No content available.</p>
+            <p class="sf-label-md text-fg-muted">No content available.</p>
           {/if}
         </div>
       {:else}
         <div class="flex flex-1 flex-col justify-center gap-4">
           {#if phase === "no_model"}
-            <p class="text-body-md text-fg/80">
+            <p class="sf-body-md text-fg-dim">
               No transcription model is installed. Your recording was saved as
               a WAV file and can be transcribed once a model is downloaded.
             </p>
@@ -334,7 +330,7 @@
               Open Settings
             </Button>
           {:else}
-            <p class="text-body-md text-destructive">{errorMessage}</p>
+            <p class="sf-body-md text-destructive">{errorMessage}</p>
           {/if}
 
           {#if displayPath}
@@ -345,7 +341,7 @@
                 transcriptPath ? openTranscript() : undefined}
             >
               <p
-                class="truncate font-mono text-body-md text-fg underline decoration-fg-muted group-hover:underline-offset-2"
+                class="truncate sf-body-md text-fg underline decoration-fg-muted group-hover:underline-offset-2"
                 title={displayPath}
               >
                 {displayPath}

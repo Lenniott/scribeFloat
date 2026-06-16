@@ -34,7 +34,7 @@
 		<p
 			in:fly={{ y: 12, duration: 160 }}
 			out:fade={{ duration: 140 }}
-			class={`rounded-md border p-2 text-body-md shadow-ambient min-w-2xs ${variantClass[state]}`}
+			class={`sf-body-md rounded-md border p-2 shadow-ambient min-w-2xs ${variantClass[state]}`}
 		>
 			{message}
 		</p>

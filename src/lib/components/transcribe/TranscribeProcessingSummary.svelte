@@ -15,7 +15,7 @@
 </script>
 
 <div class="space-y-3">
-  <div class="flex items-center gap-4 text-body-md text-fg/75">
+  <div class="flex items-center gap-4 sf-body-md text-fg-dim">
     <span>{completed.length} completed</span>
     <span>{failed.length} failed</span>
   </div>
@@ -24,7 +24,7 @@
     <div class="space-y-2">
       {#each completed as item (item.id)}
         <div class="flex items-center justify-between gap-3 rounded-md border border-rim px-3 py-2">
-          <p class="min-w-0 truncate text-body-md text-fg" title={item.transcript_path || item.display_name}>
+          <p class="min-w-0 truncate sf-body-md text-fg" title={item.transcript_path || item.display_name}>
             {item.display_name}
           </p>
           {#if item.transcript_path}
@@ -41,8 +41,8 @@
     <div class="space-y-2">
       {#each failed as item (item.id)}
         <div class="rounded-md border border-rim px-3 py-2">
-          <p class="text-body-md text-fg">{item.display_name}</p>
-          <p class="text-label-sm text-destructive">{item.error || "Failed to transcribe this item."}</p>
+          <p class="sf-body-md text-fg">{item.display_name}</p>
+          <p class="sf-label-sm text-destructive">{item.error || "Failed to transcribe this item."}</p>
         </div>
       {/each}
     </div>

@@ -18,15 +18,15 @@
 
 <div class="rounded-md border border-rim bg-panel min-h-52">
   <div class="grid grid-cols-[2rem_minmax(0,1fr)_8.5rem_8rem_2.5rem] items-center gap-2 border-b border-rim px-2 py-2">
-    <span class="font-mono text-label-sm text-fg/55 uppercase tracking-stamped">#</span>
-    <span class="font-mono text-label-sm text-fg/55 uppercase tracking-stamped">File</span>
-    <span class="justify-self-end font-mono text-label-sm text-fg/55 uppercase tracking-stamped">Duration</span>
-    <span class="justify-self-end font-mono text-label-sm text-fg/55 uppercase tracking-stamped">Status</span>
+    <span class="sf-label-sm text-fg-dim">#</span>
+    <span class="sf-label-sm text-fg-dim">File</span>
+    <span class="justify-self-end sf-label-sm text-fg-dim">Duration</span>
+    <span class="justify-self-end sf-label-sm text-fg-dim">Status</span>
     <span></span>
   </div>
 
   {#if items.length === 0}
-    <p class="px-3 py-5 text-body-md text-fg/60">
+    <p class="px-3 py-5 sf-body-md text-fg-dim">
       Add audio files or folders to build a transcription queue.
     </p>
   {:else}

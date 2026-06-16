@@ -51,18 +51,18 @@
 	{#snippet children()}
 		<div class="space-y-3">
 			{#if modelStore.error}
-				<p class="text-label-sm text-destructive px-1">{modelStore.error}</p>
+				<p class="sf-label-sm text-destructive px-1">{modelStore.error}</p>
 			{/if}
 
 			{#if modelStore.models.length === 0}
-				<p class="text-label-sm text-fg-dim">Loading…</p>
+				<p class="sf-label-sm text-fg-dim">Loading…</p>
 			{:else}
 				<div class="divide-y divide-fill overflow-hidden rounded-md border border-fill bg-panel">
 					{#each modelStore.models as model (model.id)}
 						<div class="flex items-center gap-3 px-3 py-2.5">
 							<div class="min-w-0 flex-1">
 								<div class="flex items-baseline gap-2 flex-wrap">
-									<span class={model.downloaded ? "text-body-md text-fg font-medium" : "text-body-md text-fg-dim"}>
+									<span class={model.downloaded ? "sf-body-md-strong text-fg" : "sf-body-md text-fg-dim"}>
 										{model.label}
 									</span>
 									{#if modelStore.downloadingByModel[model.id] || ((modelStore.progressByModel[model.id] ?? 0) > 0 && !model.downloaded)}
@@ -74,7 +74,7 @@
 													style={`width:${p}%`}
 												></div>
 											</div>
-											<span class="font-mono text-label-sm text-fg-dim tabular-nums">
+											<span class="sf-meta-sm text-fg-dim">
 												{p < 100 ? `${p}%` : "Finalising…"}
 											</span>
 										</div>
@@ -86,7 +86,7 @@
 							</div>
 
 							<div class="flex shrink-0 items-center gap-3">
-								<span class="font-mono text-label-sm text-fg-dim tabular-nums w-16 text-right">
+								<span class="sf-meta-sm text-fg-dim w-16 text-right">
 									{model.size_mb} MB
 								</span>
 								<div class="w-7 flex justify-end">
@@ -106,7 +106,7 @@
 				</div>
 			{/if}
 
-			<p class="text-label-sm text-fg-dim px-0.5">
+			<p class="sf-label-sm text-fg-dim px-0.5">
 				You can manage and switch models any time in Settings.
 			</p>
 		</div>

@@ -76,7 +76,7 @@
 
 	<div class="flex-1 min-h-0">
 		{#if error}
-			<p class="mb-3 rounded-md border border-destructive/40 bg-fill px-3 py-2 text-label-sm text-destructive">
+			<p class="mb-3 rounded-md border border-destructive/40 bg-fill px-3 py-2 sf-label-sm text-destructive">
 				{error}
 			</p>
 		{/if}

@@ -90,33 +90,33 @@
 	];
 </script>
 
-<div class={standalone ? 'min-h-screen bg-card' : 'fixed inset-0 z-50 bg-black/50 p-4'}>
-	<div class="mx-auto flex h-screen max-w-5xl flex-col bg-panel">
+<div class={standalone ? 'min-h-screen bg-card' : 'sf-scrim fixed inset-0 z-50 p-4'}>
+	<div class={standalone ? 'mx-auto flex min-h-screen max-w-5xl flex-col bg-panel' : 'mx-auto flex h-full max-w-5xl flex-col bg-panel'}>
 		<header class="border-b border-card px-4 py-3">
-			<h2 class="sf-headline-sm">Settings</h2>
+			<h2 class="sf-headline-sm text-fg">Settings</h2>
 		</header>
 
 		{#if showSettingsBanner}
 			<div class="flex flex-col gap-1 border-b border-warning bg-warning/15 px-4 py-2">
 				{#if setupError}
-					<p class="text-label-sm text-fg">
+					<p class="sf-label-sm text-fg">
 						Could not select an installed model — {setupError}
 					</p>
 				{/if}
 				{#if permissionsKnown && !permissionsReady}
-					<p class="text-label-sm text-fg">
+					<p class="sf-label-sm text-fg">
 						Microphone access needed —
 						<button class="underline cursor-pointer" onclick={() => (activeTab = 'permissions')}>go to Permissions</button>.
 					</p>
 				{/if}
 				{#if modelKnown && !modelReady}
-					<p class="text-label-sm text-fg">
+					<p class="sf-label-sm text-fg">
 						No transcription model installed —
 						<button class="underline cursor-pointer" onclick={() => (activeTab = 'models')}>go to Models</button>.
 					</p>
 				{/if}
 				{#if speakerCaptureKnown && showSpeakerNameWarning}
-					<p class="text-label-sm text-fg">
+					<p class="sf-label-sm text-fg">
 						BlackHole is installed, but no speaker capture device name is set — enter your
 						<strong>Multi-Output Device</strong> name from Audio MIDI Setup in
 						<button class="underline cursor-pointer" onclick={() => (activeTab = 'general')}>General</button>.

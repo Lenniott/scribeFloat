@@ -4,7 +4,11 @@
 	import Button from "@lib/components/Button.svelte";
 	import Chip from "@lib/components/Chip.svelte";
 	import IconButton from "@lib/components/IconButton.svelte";
+	import ConfigField from "@lib/components/form/ConfigField.svelte";
 	import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
+	import SettingsList from "@lib/components/settings/SettingsList.svelte";
+	import SettingsRow from "@lib/components/settings/SettingsRow.svelte";
+	import SettingsSection from "@lib/components/settings/SettingsSection.svelte";
 	import { Pencil, Trash2 } from "lucide-svelte";
 
 	type RuleType = "simple" | "newline" | "wrap";
@@ -129,50 +133,140 @@
 		return `→ ${rule.prefix}word${rule.suffix}${rule.transform !== "none" ? ` (${rule.transform})` : ""}`;
 	}
 
-	const selectClass =
-		"h-10 rounded-md border border-rim bg-panel px-2 text-body-md text-fg font-sans cursor-pointer focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 focus:ring-offset-canvas";
+	const ruleTypeOptions = [
+		{ value: "simple", label: "Replace" },
+		{ value: "newline", label: "New line" },
+		{ value: "wrap", label: "Wrap" },
+	];
+	const scopeOptions = [
+		{ value: "both", label: "Both" },
+		{ value: "transcripts", label: "Transcripts" },
+		{ value: "dictate", label: "Dictate" },
+	];
+	const transformOptions = [
+		{ value: "none", label: "None" },
+		{ value: "lower", label: "lowercase" },
+		{ value: "upper", label: "UPPERCASE" },
+		{ value: "sentence", label: "Sentence" },
+	];
 </script>
 
-<section class="flex flex-col gap-4">
-	<div class="flex flex-col gap-2 border-b border-rim/30 pb-4">
-		<div class="flex flex-col gap-1">
-			<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
-				Trigger prefix
-			</span>
-			<p class="text-body-md text-fg/50">
-				Say this word before any trigger (e.g. "float dash → -"). Leave empty to match triggers directly.
-			</p>
-		</div>
-		<div class="flex items-end gap-2">
-			<LabeledTextField label="" bind:value={globalPrefix} placeholder="e.g. float" />
-			<Button variant="normal" size="small" onclick={savePrefix}>Save</Button>
-		</div>
-		{#if prefixMessage}
-			<span class="text-label-sm text-fg/70">{prefixMessage}</span>
-		{/if}
-	</div>
+<section class="flex flex-col gap-5">
+	<SettingsSection title="Trigger prefix">
+		<SettingsList>
+			<SettingsRow
+				title="Trigger prefix"
+				description={`Triggers replacements (e.g. "float dash → -").\nLeave empty for no trigger prefix.`}
+			>
+				{#snippet control()}
+					<div class="flex w-full items-end gap-2 sm:w-72">
+						<div class="min-w-0 flex-1">
+							<LabeledTextField
+								label="Trigger prefix"
+								labelHidden={true}
+								bind:value={globalPrefix}
+								placeholder="e.g. float"
+							/>
+						</div>
+						<Button variant="normal" onclick={savePrefix}>Save</Button>
+					</div>
+				{/snippet}
+				{#if prefixMessage}
+					<span class="sf-label-sm text-fg-dim">{prefixMessage}</span>
+				{/if}
+			</SettingsRow>
+		</SettingsList>
+	</SettingsSection>
 
-	<div class="flex items-start justify-between gap-4">
-		<div class="flex flex-col gap-1">
-			<span class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase">
-				Word replacements
-			</span>
-			<p class="text-body-md text-fg/50">
-				Spoken trigger words are substituted in transcripts and dictated text. Matching is case-insensitive and whole-word only.
-			</p>
-		</div>
-		{#if !showAddForm}
-			<Button variant="normal" size="small" onclick={startAdd}>Add rule</Button>
-		{/if}
-	</div>
+	<SettingsSection
+		title="Word replacements"
+		description="Spoken trigger words are substituted in transcripts (case-insensitive)."
+	>
+		{#snippet action()}
+			{#if !showAddForm}
+				<Button variant="normal" onclick={startAdd}>Add rule</Button>
+			{/if}
+		{/snippet}
+	</SettingsSection>
+	{#if showAddForm}
+		<SettingsSection title={editingIndex !== null ? "Edit rule" : "Add rule"}>
+			<SettingsList>
+				<SettingsRow title="Trigger word or phrase">
+					<div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_10rem] sm:items-end">
+						<LabeledTextField
+							label="Trigger word or phrase"
+							labelHidden={true}
+							bind:value={form.trigger}
+							placeholder="e.g. close bracket"
+						/>
+						<ConfigField
+							label="Type"
+							value={form.type}
+							options={ruleTypeOptions}
+							onchange={(value) => (form.type = value as RuleType)}
+						/>
+						<ConfigField
+							label="Apply to"
+							value={form.scope}
+							options={scopeOptions}
+							onchange={(value) => (form.scope = value as Scope)}
+						/>
+					</div>
+				</SettingsRow>
 
+				<SettingsRow title="Also matches">
+					<LabeledTextField
+						label="Also matches (comma-separated)"
+						labelHidden={true}
+						bind:value={aliasesText}
+						placeholder="e.g. closed bracket, shut bracket"
+					/>
+				</SettingsRow>
+
+				{#if form.type === "simple"}
+					<SettingsRow title="Replace with">
+						<LabeledTextField
+							label="Replace with"
+							labelHidden={true}
+							bind:value={form.output}
+							placeholder="e.g. ]"
+							multiline={true}
+						/>
+					</SettingsRow>
+				{:else if form.type === "wrap"}
+					<SettingsRow title="Wrap output">
+						<div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_10rem] sm:items-end">
+							<LabeledTextField label="Prefix" bind:value={form.prefix} placeholder="e.g. #" />
+							<LabeledTextField label="Suffix" bind:value={form.suffix} placeholder="" />
+							<ConfigField
+								label="Transform"
+								value={form.transform}
+								options={transformOptions}
+								onchange={(value) => (form.transform = value as Transform)}
+							/>
+						</div>
+					</SettingsRow>
+				{/if}
+			</SettingsList>
+
+			<div class="flex items-center gap-2">
+				<Button variant="primary" size="small" onclick={saveForm}>
+					{editingIndex !== null ? "Update" : "Add rule"}
+				</Button>
+				<Button variant="ghost" size="small" onclick={cancelForm}>Cancel</Button>
+				{#if message}
+					<span class="sf-label-sm text-fg-dim">{message}</span>
+				{/if}
+			</div>
+		</SettingsSection>
+	{/if}
 	{#if rules.length > 0}
-		<div class="flex flex-col divide-y divide-rim/40 rounded-md border border-rim/40 overflow-hidden">
+		<SettingsList>
 			{#each rules as rule, i (i)}
-				<div class="flex items-center gap-2 px-3 py-2 bg-card">
-					<span class="font-mono text-label-md text-fg min-w-0 truncate">{globalPrefix ? `${globalPrefix} ` : ""}{rule.trigger}</span>
-					<span class="text-label-sm text-fg/50 shrink-0">{ruleDescription(rule)}</span>
-					<div class="flex items-center gap-1 ml-auto shrink-0">
+				<div class="flex items-center gap-2 px-3 py-2.5">
+					<span class="sf-label-md text-fg min-w-0 truncate">{globalPrefix ? `${globalPrefix} ` : ""}{rule.trigger}</span>
+					<span class="sf-label-sm text-fg-dim shrink-0">{ruleDescription(rule)}</span>
+					<div class="flex items-center gap-2 ml-auto shrink-0">
 						{#if rule.scope === "both" || rule.scope === "transcripts"}
 							<Chip variant="brand">transcripts</Chip>
 						{/if}
@@ -184,75 +278,10 @@
 					<IconButton icon={Trash2} size="small" variant="destructive" aria-label="Delete rule" onclick={() => deleteRule(i)} />
 				</div>
 			{/each}
-		</div>
+		</SettingsList>
 	{:else if !showAddForm}
-		<p class="text-body-md text-fg/40">No replacement rules yet.</p>
+		<p class="sf-body-md text-fg-muted">No replacement rules yet.</p>
 	{/if}
 
-	{#if showAddForm}
-		<div class="flex flex-col gap-3 border-t border-rim/30 pt-3 mt-1">
-			<div class="grid grid-cols-[1fr_auto_auto] gap-2 items-end">
-				<LabeledTextField
-					label="Trigger word or phrase"
-					bind:value={form.trigger}
-					placeholder="e.g. close bracket"
-				/>
-				<div class="flex flex-col gap-1">
-					<span class="text-label-sm text-fg/80">Type</span>
-					<select class={selectClass} bind:value={form.type}>
-						<option value="simple">Replace</option>
-						<option value="newline">New line</option>
-						<option value="wrap">Wrap</option>
-					</select>
-				</div>
-				<div class="flex flex-col gap-1">
-					<span class="text-label-sm text-fg/80">Apply to</span>
-					<select class={selectClass} bind:value={form.scope}>
-						<option value="both">Both</option>
-						<option value="transcripts">Transcripts</option>
-						<option value="dictate">Dictate</option>
-					</select>
-				</div>
-			</div>
 
-			<LabeledTextField
-				label="Also matches (comma-separated)"
-				bind:value={aliasesText}
-				placeholder="e.g. closed bracket, shut bracket"
-			/>
-
-			{#if form.type === "simple"}
-				<LabeledTextField
-					label="Replace with"
-					bind:value={form.output}
-					placeholder="e.g. ]"
-					multiline={true}
-				/>
-			{:else if form.type === "wrap"}
-				<div class="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
-					<LabeledTextField label="Prefix" bind:value={form.prefix} placeholder="e.g. #" />
-					<LabeledTextField label="Suffix" bind:value={form.suffix} placeholder="" />
-					<div class="flex flex-col gap-1">
-						<span class="text-label-sm text-fg/80">Transform</span>
-						<select class={selectClass} bind:value={form.transform}>
-							<option value="none">None</option>
-							<option value="lower">lowercase</option>
-							<option value="upper">UPPERCASE</option>
-							<option value="sentence">Sentence</option>
-						</select>
-					</div>
-				</div>
-			{/if}
-
-			<div class="flex items-center gap-2">
-				<Button variant="primary" size="small" onclick={saveForm}>
-					{editingIndex !== null ? "Update" : "Add rule"}
-				</Button>
-				<Button variant="ghost" size="small" onclick={cancelForm}>Cancel</Button>
-				{#if message}
-					<span class="text-label-sm text-fg/70">{message}</span>
-				{/if}
-			</div>
-		</div>
-	{/if}
 </section>

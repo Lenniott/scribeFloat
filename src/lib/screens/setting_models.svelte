@@ -7,6 +7,9 @@
   import ConfigField from "@lib/components/form/ConfigField.svelte";
   import IconButton from "@lib/components/IconButton.svelte";
   import Chip from "@lib/components/Chip.svelte";
+  import SettingsList from "@lib/components/settings/SettingsList.svelte";
+  import SettingsRow from "@lib/components/settings/SettingsRow.svelte";
+  import SettingsSection from "@lib/components/settings/SettingsSection.svelte";
   import { Download, Trash2 } from "lucide-svelte";
 
   let {
@@ -31,7 +34,6 @@
   let unlisteners: (() => void)[] = [];
   let toast = $state<ToastConfig>({ ...emptyToast });
   let toastTimeout: ReturnType<typeof setTimeout> | null = null;
-  /** Avoid pushing `ready=false` while the store list is still empty before first refresh. */
   let readyHydrated = $state(false);
 
   const selectedModel = $derived(modelStore.models.find((m) => m.selected));
@@ -43,7 +45,6 @@
     modelStore.models.some((m) => m.selected && m.downloaded),
   );
 
-  /** `null` means "follow Scribe default"; non-null means an explicit override. */
   let dictateModelId = $state<string | null>(null);
 
   let vadDownloaded = $state(false);
@@ -151,62 +152,73 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-1 flex-col">
-  <h2 class="sf-headline-sm shrink-0 p-4">Whisper models</h2>
+  <h2 class="sf-headline-sm shrink-0 p-4 text-fg">Whisper models</h2>
 
   {#if modelStore.error}
     <p
-      class="rounded-md border border-fill px-3 py-2 sf-body-md text-destructive mx-4 mt-3"
+      class="mx-4 rounded-md border border-destructive/40 bg-fill px-3 py-2 sf-body-md text-destructive"
     >
       {modelStore.error}
     </p>
   {/if}
-  <div class="overflow-y-scroll">
-    <!-- Transcription defaults — Scribe + Dictate -->
-    <div class="shrink-0 border-b border-card bg-panel px-4 py-3">
-      <h3 class="sf-label-sm text-fg-dim">Default models</h3>
-      <div class="mt-2 flex flex-col gap-2">
-        <ConfigField
-          label="Default Scribe transcription model"
-          layout="horizontal"
-          id="scribe-model-select"
-          options={downloadedModels.map((m) => ({ value: m.id, label: m.label }))}
-          emptyOption={!selectedId && downloadedModels.length > 0
-            ? { label: 'Choose model…', disabled: true }
-            : undefined}
-          value={selectedId}
-          onchange={(v: string) => { if (v) selectModel(v); }}
+
+  <div class="min-h-0 flex-1 space-y-5 overflow-y-scroll px-4 pb-4">
+    <SettingsSection title="Default models">
+      <SettingsList>
+        <SettingsRow
+          title="Default Scribe transcription model"
+          description="Used for recordings created in Scribe."
           disabled={downloadedModels.length === 0}
         >
-          {#snippet labelContent()}<Chip variant="brand">Scribe</Chip>{/snippet}
-        </ConfigField>
+          {#snippet control()}
+            <div class="w-full sm:w-56">
+              <ConfigField
+                label="Default Scribe transcription model"
+                labelHidden={true}
+                id="scribe-model-select"
+                options={downloadedModels.map((m) => ({ value: m.id, label: m.label }))}
+                emptyOption={!selectedId && downloadedModels.length > 0
+                  ? { label: 'Choose model…', disabled: true }
+                  : undefined}
+                value={selectedId}
+                onchange={(v: string) => { if (v) selectModel(v); }}
+                disabled={downloadedModels.length === 0}
+              />
+            </div>
+          {/snippet}
+        </SettingsRow>
 
-        <ConfigField
-          label="Dictate transcription model override"
-          layout="horizontal"
-          id="dictate-model-select"
-          options={downloadedModels.map((m) => ({ value: m.id, label: m.label }))}
-          emptyOption={{ label: 'Same as Scribe' }}
-          value={dictateModelId ?? ''}
-          onchange={onDictateModelChange}
+        <SettingsRow
+          title="Dictate transcription model override"
+          description="Leave as Scribe unless Dictate should use a separate model."
           disabled={downloadedModels.length === 0}
         >
-          {#snippet labelContent()}<Chip variant="focus">Dictate</Chip>{/snippet}
-        </ConfigField>
-      </div>
-    </div>
+          {#snippet control()}
+            <div class="w-full sm:w-56">
+              <ConfigField
+                label="Dictate transcription model override"
+                labelHidden={true}
+                id="dictate-model-select"
+                options={downloadedModels.map((m) => ({ value: m.id, label: m.label }))}
+                emptyOption={{ label: 'Same as Scribe' }}
+                value={dictateModelId ?? ''}
+                onchange={onDictateModelChange}
+                disabled={downloadedModels.length === 0}
+              />
+            </div>
+          {/snippet}
+        </SettingsRow>
+      </SettingsList>
+    </SettingsSection>
 
-    <!-- Voice Activity Detection -->
-    <div class="shrink-0 border-b border-card bg-panel px-4 py-3">
-      <div class="flex items-center justify-between gap-4">
-        <div class="min-w-0">
-          <p class="sf-body-md text-fg">Voice activity detection · 2 MB</p>
-          <p class="text-label-sm text-fg-dim">
-            Skips silence mid-recording. Reduces hallucinations.
-          </p>
-        </div>
-        <div class="shrink-0">
-          {#if vadDownloaded}
-            <div class="flex items-center gap-2">
+    <SettingsSection title="Voice activity detection">
+      <SettingsList>
+        <SettingsRow
+          title="Silero VAD · 2 MB"
+          description="Skips silence mid-recording. Reduces hallucinations."
+        >
+          {#snippet control()}
+            {#if vadDownloaded}
               <IconButton
                 icon={Trash2}
                 variant="destructive"
@@ -214,105 +226,75 @@
                 aria-label="Remove Silero VAD model"
                 onclick={() => void removeVad()}
               />
-            </div>
-          {:else}
-            {@const vadPct = Math.round(
-              (modelStore.progressByModel["vad"] ?? 0) * 100,
-            )}
-            {#if vadDownloading && vadPct > 0 && vadPct < 100}
-              <div class="flex items-center gap-2">
-                <div class="h-0.5 w-20 overflow-hidden rounded-sm bg-fill">
+            {:else}
+              {@const vadPct = Math.round(
+                (modelStore.progressByModel["vad"] ?? 0) * 100,
+              )}
+              {#if vadDownloading && vadPct > 0 && vadPct < 100}
+                <div class="flex items-center gap-2">
+                  <div class="h-0.5 w-20 overflow-hidden rounded-sm bg-fill">
+                    <div
+                      class="h-full rounded-sm bg-active transition-[width]"
+                      style={`width:${vadPct}%`}
+                    ></div>
+                  </div>
+                  <p class="sf-meta-sm text-fg-dim">
+                    {vadPct}%
+                  </p>
+                </div>
+              {:else if vadDownloading}
+                <p class="sf-label-sm text-fg-dim">Starting…</p>
+              {:else}
+                <IconButton
+                  icon={Download}
+                  variant="normal"
+                  size="small"
+                  aria-label="Install Silero VAD model"
+                  onclick={() => void downloadVad()}
+                />
+              {/if}
+            {/if}
+          {/snippet}
+        </SettingsRow>
+      </SettingsList>
+    </SettingsSection>
+
+    <SettingsSection title="Installed models">
+
+      <SettingsList>
+        {#each modelStore.models as model (model.id)}
+          <SettingsRow title={model.label} direction="horizontal">
+            {#if !model.downloaded && (rowDownloading(model.id) || (modelStore.progressByModel[model.id] ?? 0) > 0)}
+              {@const pct = progressPct(model.id)}
+              <div class="flex w-full items-center gap-1">
+                <div class="h-0.5 min-w-24 flex-1 overflow-hidden rounded-sm bg-fill">
                   <div
                     class="h-full rounded-sm bg-active transition-[width]"
-                    style={`width:${vadPct}%`}
+                    style={`width:${pct}%`}
                   ></div>
                 </div>
-                <p
-                  class="font-mono text-label-md font-normal leading-snug text-active"
-                >
-                  {vadPct}%
-                </p>
+                {#if pct < 100}
+                  <p class="sf-meta-sm text-fg-dim">
+                    {pct}%
+                  </p>
+                {:else}
+                  <p class="sf-label-sm text-fg-dim">
+                    Finalising…
+                  </p>
+                {/if}
               </div>
-            {:else if vadDownloading}
-              <p class="text-sm text-fg-dim">Starting…</p>
-            {:else}
-              <IconButton
-                icon={Download}
-                variant="normal"
-                size="small"
-                aria-label="Install Silero VAD model"
-                onclick={() => void downloadVad()}
-              />
             {/if}
-          {/if}
-        </div>
-      </div>
-    </div>
-
-    <!-- Library -->
-    <div class="min-h-0 flex-1 px-4 py-3">
-      <!-- Column headers -->
-      <div class="mt-2 flex items-center gap-3 px-3 pb-1">
-        <div class="min-w-0 flex-1">
-          <span class="sf-label-sm text-fg-dim">Model</span>
-        </div>
-        <div class="flex shrink-0 items-center gap-4">
-          <span class="sf-label-sm w-14 text-left text-fg-dim">Size</span>
-          <div class="w-8"></div>
-        </div>
-      </div>
-
-      <div
-        class="divide-y divide-fill overflow-hidden rounded-md border border-fill bg-panel"
-      >
-        {#each modelStore.models as model (model.id)}
-          <div class="flex items-center justify-between gap-3 px-3 py-2.5">
-            <div class="min-w-0 flex-1 items-center">
-              <div class="flex min-w-0 items-baseline gap-x-2 gap-y-0.5">
-                <span
-                  class={model.downloaded
-                    ? "sf-label-md text-fg"
-                    : "text-label-md font-sans font-normal text-fg-dim"}
-                  >{model.label}</span
-                >
-
-                {#if !model.downloaded && (rowDownloading(model.id) || (modelStore.progressByModel[model.id] ?? 0) > 0)}
-                  {@const pct = progressPct(model.id)}
-                  <div class="h-full w-full flex items-center gap-1">
-                    <div
-                      class="h-0.5 w-full overflow-hidden rounded-sm bg-fill"
-                    >
-                      <div
-                        class="h-full rounded-sm bg-active transition-[width]"
-                        style={`width:${pct}%`}
-                      ></div>
-                    </div>
-                    {#if pct < 100}
-                      <p
-                        class="font-mono text-label-md font-normal leading-snug text-active"
-                      >
-                        {pct}%
-                      </p>
-                    {:else}
-                      <p
-                        class="font-mono text-label-md font-normal leading-snug text-active"
-                      >
-                        Finalising…
-                      </p>
-                    {/if}
-                  </div>
-                {/if}
-                {#if model.selected && model.downloaded}
-                  <Chip variant="brand">scribe</Chip>
-                {/if}
-                {#if model.downloaded && (model.id === dictateModelId || (dictateModelId === null && model.selected))}
-                  <Chip variant="focus">dictate</Chip>
-                {/if}
-              </div>
+            <div class="flex items-center gap-2">
+              {#if model.selected && model.downloaded}
+                <Chip variant="brand">scribe</Chip>
+              {/if}
+              {#if model.downloaded && (model.id === dictateModelId || (dictateModelId === null && model.selected))}
+                <Chip variant="focus">dictate</Chip>
+              {/if}
             </div>
 
-            <div class="flex shrink-0 items-center gap-4">
-              <span class="sf-label-sm w-14 text-left font-mono text-fg-dim"
+            {#snippet control()}
+              <span class="sf-meta-sm w-14 text-left text-fg-dim"
                 >{model.size_mb} MB</span
               >
               <div class="w-8 flex items-start justify-end pt-0.5">
@@ -337,11 +319,11 @@
                   />
                 {/if}
               </div>
-            </div>
-          </div>
+            {/snippet}
+          </SettingsRow>
         {/each}
-      </div>
-    </div>
+      </SettingsList>
+    </SettingsSection>
   </div>
 </div>
 

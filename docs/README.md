@@ -15,5 +15,6 @@ Short-lived notes and UI specs live here. **Behaviour and architecture** stay in
 | [../.cursor/rules/ui-enforcement.mdc](../.cursor/rules/ui-enforcement.mdc) | Auto-attached Cursor rule for `src/**/*.svelte` and `src/app.css` |
 | [../.cursor/hooks.json](../.cursor/hooks.json) | Agent hooks — `check:ds` + typography warnings after frontend edits |
 | [backlog.md](backlog.md) | Deferred / follow-up items |
+| [design-brain-prd.md](design-brain-prd.md) | Proposal: local-LLM enrichment engine (Schema/Step/Flow) — pre-spike, nothing built yet |
 
 If `context/` and code disagree, fix the doc or confirm the code change was intentional.

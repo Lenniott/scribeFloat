@@ -221,6 +221,12 @@ C4Container
 - Re-run semantics: if a flow is manually re-run on a session whose vocabulary has since grown, do new results merge with or replace the existing ones?
 - Combined-vs-separate model calls per chunk when a flow has multiple steps — test both for latency before deciding.
 
+**Already-decided UI change (independent of this spike, mentioned here so it isn't lost):**
+
+Reviewing the existing History detail-pane header (`HistoryDetailPane.svelte`) against "does this answer a question a designer asks when recalling a past decision" surfaced that most of today's chips don't — `model`, `dual source` / `speaker capture` describe *how capture happened*, not *what was decided*. Decision: drop those from default prominent display in the header; duration/word count can stay as a quiet secondary detail rather than a chip. No data changes — `model`, `dual_source`, `speaker_capture`, etc. stay in `history.jsonl` exactly as today, this is purely a UI surfacing change, and it frees the header's chip slot for new Schema-derived data (tags, keywords, ...) once the engine ships.
+
+This is a UI decision only — it does **not** imply or depend on the object/taxonomy naming above (Schema/Item/Step/Flow/Log, or candidate renames like Layer), which remains unresolved. Implementation must still go through `docs/history-ui-review.md`'s layout-contract review per `CLAUDE.md`, same as any other History detail UI change.
+
 ---
 
 ## 8. Reference: where this connects to existing code

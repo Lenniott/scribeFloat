@@ -1,6 +1,7 @@
-
-- [x] onboarding flow:
-    - [x] Download small by default (user chooses from catalog; auto-selected on Continue)
-    - [x] show permissions
-    - [x] practice dictate in a small message screen with NoteComposer + auto-enter toggle
-    - [x] feature tour: menu-bar graphic pointing to tray icon with Scribe / Transcribe / History / Settings callouts + login-item instructions per platform
+- [x] setitngs tabs are a mess
+- [ ] scribe screen is gross
+- [x] history viewer controls are annoying, put nav buttons in top with header and remove actions form bottom the distance between all actions is too big.
+- [ ] add text reader (small local tts model).
+- [ ]  reorder component library to make more sense
+- [x] ensure consistent use of components
+- [ ] make a rule for padding and surfacees colors and add to the skill so its part of iniciation

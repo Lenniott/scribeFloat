@@ -6,6 +6,8 @@
 		placeholder = "",
 		disabled = false,
 		multiline = false,
+		labelHidden = false,
+		description,
 	}: {
 		label: string;
 		value?: string;
@@ -13,13 +15,18 @@
 		placeholder?: string;
 		disabled?: boolean;
 		multiline?: boolean;
+		labelHidden?: boolean;
+		description?: string;
 	} = $props();
 
 	const fieldId = $derived(id ?? `field-${label.toLowerCase().replace(/\s+/g, "-")}`);
 </script>
 
 <div class="flex flex-col gap-1.5 text-left">
-	<label class="sf-field-label" for={fieldId}>{label}</label>
+	<label class={labelHidden ? "sr-only" : "sf-field-label"} for={fieldId}>{label}</label>
+	{#if description}
+		<p class="sf-label-sm text-fg-muted">{description}</p>
+	{/if}
 	{#if multiline}
 		<textarea
 			id={fieldId}

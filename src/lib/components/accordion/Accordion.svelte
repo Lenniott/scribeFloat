@@ -13,11 +13,17 @@
 
 	// svelte-ignore state_referenced_locally
 	const initialOpenId = defaultOpenId;
+	let defaultOpenClaimed = false;
 
 	const ctx = $state<AccordionContextState>({
 		openId: initialOpenId,
 		toggle(id: string) {
 			ctx.openId = ctx.openId === id ? null : id;
+		},
+		claimDefaultOpen(id: string) {
+			if (initialOpenId !== null || defaultOpenClaimed) return;
+			ctx.openId = id;
+			defaultOpenClaimed = true;
 		},
 	});
 

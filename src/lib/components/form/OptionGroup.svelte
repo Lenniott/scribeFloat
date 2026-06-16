@@ -6,16 +6,23 @@
 		options,
 		selected = $bindable(""),
 		name,
+		labelHidden = false,
+		description,
 	}: {
 		label: string;
 		options: Option[];
 		selected?: string;
 		name: string;
+		labelHidden?: boolean;
+		description?: string;
 	} = $props();
 </script>
 
 <fieldset class="flex flex-col gap-2 text-left">
-	<legend class="sf-field-label mb-1.5">{label}</legend>
+	<legend class={labelHidden ? "sr-only" : "sf-field-label mb-1.5"}>{label}</legend>
+	{#if description}
+		<p class="sf-label-sm text-fg-muted">{description}</p>
+	{/if}
 	<div
 		class="inline-flex max-w-full rounded-md gap-1"
 		role="radiogroup"

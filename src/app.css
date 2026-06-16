@@ -295,7 +295,7 @@ html {
    */
   .sf-panel   { @apply bg-panel rounded-md; }
   .sf-card    { @apply bg-card rounded-md; }
-  .sf-input   { @apply bg-panel border border-fill rounded-md text-fg font-sans text-label-md; }
+  .sf-input   { @apply bg-card border border-fill rounded-md text-fg font-sans text-label-md; }
   .sf-divider { @apply border-t border-card; }
   .sf-scrim   { @apply bg-overlay; }
 

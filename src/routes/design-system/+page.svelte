@@ -369,11 +369,7 @@
         placeholder="Placeholder"
       />
       <div class="flex items-center justify-between gap-4">
-        <span
-          class="font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase"
-          >ToggleSwitch</span
-        >
-        <ToggleSwitch aria-label="Demo toggle" bind:checked={toggleA} />
+        <ToggleSwitch label="Demo toggle" bind:checked={toggleA} />
       </div>
       <div class="flex items-center justify-between gap-4">
         <span

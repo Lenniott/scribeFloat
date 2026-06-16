@@ -10,16 +10,28 @@
   let {
     id,
     title,
+    defaultOpen = false,
     children,
   }: {
     id: string;
     title: string;
+    /** When true, this item opens on first render (unless Accordion sets defaultOpenId). */
+    defaultOpen?: boolean;
     children?: Snippet;
   } = $props();
 
   const ctx = getContext<AccordionContextState>(ACCORDION_KEY);
   if (!ctx) {
     throw new Error("AccordionItem must be used inside Accordion");
+  }
+
+  // svelte-ignore state_referenced_locally
+  const initialDefaultOpen = defaultOpen;
+  // svelte-ignore state_referenced_locally
+  const itemId = id;
+
+  if (initialDefaultOpen) {
+    ctx.claimDefaultOpen(itemId);
   }
 
   const isOpen = $derived(ctx.openId === id);

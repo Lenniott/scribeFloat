@@ -6,12 +6,9 @@
     Copy,
     SquareArrowOutUpRight,
     FileDown,
-    ChevronLeft,
-    ChevronRight,
     Trash2,
   } from "lucide-svelte";
   import PanelHeader from "@lib/components/layout/PanelHeader.svelte";
-  import PanelFooter from "@lib/components/layout/PanelFooter.svelte";
   import ScrollablePanel from "@lib/components/accordion/ScrollablePanel.svelte";
   import IconButton from "@lib/components/IconButton.svelte";
   import Chip from "@lib/components/Chip.svelte";
@@ -177,27 +174,52 @@
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
   <PanelHeader>
     {#snippet left()}
-      <p class="truncate sf-headline-sm text-fg">
+      <p class="min-w-0 truncate sf-headline-sm text-fg">
         {item.title || "Detail"}
       </p>
     {/snippet}
     {#snippet right()}
       <div class="flex items-center gap-1">
+        {#if item.source === "store"}
+          <IconButton
+            aria-label="Delete"
+            icon={Trash2}
+            size="small"
+            variant="destructive"
+            onclick={() => ondelete?.()}
+          />
+        {/if}
+        {#if showExport}
+          <IconButton
+            aria-label="Export to Markdown"
+            icon={FileDown}
+            size="small"
+            variant="normal"
+            onclick={exportMarkdown}
+          />
+        {/if}
+        {#if showOpenMd}
+          <IconButton
+            aria-label="Open Markdown file"
+            icon={SquareArrowOutUpRight}
+            size="small"
+            variant="normal"
+            onclick={openMarkdown}
+          />
+        {/if}
         <IconButton
-          aria-label="Previous item"
-          icon={ChevronLeft}
+          aria-label="Copy transcript"
+          icon={Copy}
           size="small"
           variant="normal"
-          disabled={!canGoPrev}
-          onclick={() => onprev?.()}
+          onclick={copyContent}
         />
         <IconButton
-          aria-label="Next item"
-          icon={ChevronRight}
+          aria-label="Close detail"
+          icon={X}
           size="small"
           variant="normal"
-          disabled={!canGoNext}
-          onclick={() => onnext?.()}
+          onclick={onclose}
         />
       </div>
     {/snippet}
@@ -256,53 +278,6 @@
       </div>
     {/if}
   </ScrollablePanel>
-
-  <PanelFooter>
-    <!-- Fixed-width slots so Copy/Close stay put when Export/Open vary per item -->
-    <div class="flex w-full">
-	{#if item.source === "store"}
-      <IconButton
-        aria-label="Delete"
-        icon={Trash2}
-        size="small"
-        variant="destructive"
-        onclick={() => ondelete?.()}
-      />
-    {/if}
-	</div>
-    {#if showExport}
-      <IconButton
-        aria-label="Export to Markdown"
-        icon={FileDown}
-        size="small"
-        variant="normal"
-        onclick={exportMarkdown}
-      />
-    {/if}
-    {#if showOpenMd}
-      <IconButton
-        aria-label="Open Markdown file"
-        icon={SquareArrowOutUpRight}
-        size="small"
-        variant="normal"
-        onclick={openMarkdown}
-      />
-    {/if}
-    <IconButton
-      aria-label="Copy transcript"
-      icon={Copy}
-      size="small"
-      variant="normal"
-      onclick={copyContent}
-    />
-    <IconButton
-      aria-label="Close detail"
-      icon={X}
-      size="small"
-      variant="normal"
-      onclick={onclose}
-    />
-  </PanelFooter>
 </div>
 
 <Toast message={toastMessage} state={toastState} position="bottom-center" />

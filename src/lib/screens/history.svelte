@@ -4,8 +4,10 @@
 	import { listen } from '@tauri-apps/api/event';
 	import Toast from '@lib/components/Toast.svelte';
 	import type { ToastState } from '@lib/components/Toast.svelte';
+	import { ChevronLeft, ChevronRight } from 'lucide-svelte';
 	import HistoryDetailPane from '@lib/components/history/HistoryDetailPane.svelte';
 	import HistoryListCard from '@lib/components/history/HistoryListCard.svelte';
+	import IconButton from '@lib/components/IconButton.svelte';
 	import Button from '@lib/components/Button.svelte';
 	import Modal from '@lib/components/Modal.svelte';
 	import {
@@ -181,8 +183,28 @@
 </script>
 
 <div class="flex h-screen flex-col overflow-hidden bg-panel">
-	<header class="shrink-0 border-b border-card px-4 py-3">
+	<header class="flex shrink-0 items-center justify-between gap-4 border-b border-card px-4 py-3">
 		<p class="sf-headline-sm text-fg">History</p>
+		{#if selectedItem}
+			<div class="flex items-center gap-1">
+				<IconButton
+					aria-label="Previous item"
+					icon={ChevronLeft}
+					size="small"
+					variant="normal"
+					disabled={!canGoPrev}
+					onclick={() => navigateDetail(-1)}
+				/>
+				<IconButton
+					aria-label="Next item"
+					icon={ChevronRight}
+					size="small"
+					variant="normal"
+					disabled={!canGoNext}
+					onclick={() => navigateDetail(1)}
+				/>
+			</div>
+		{/if}
 	</header>
 
 	<div class="flex min-h-0 flex-1 overflow-hidden">

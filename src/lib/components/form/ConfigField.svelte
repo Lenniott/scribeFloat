@@ -18,6 +18,8 @@
 		buttonLabel?: string;
 		placeholder?: string;
 		disabled?: boolean;
+		labelHidden?: boolean;
+		description?: string;
 		/** Replaces the visible label with custom content (e.g. a Chip). The label text is still used for a11y. */
 		labelContent?: Snippet;
 		onchange?: (value: string) => void;
@@ -35,6 +37,8 @@
 		buttonLabel = 'Change',
 		placeholder = '—',
 		disabled = false,
+		labelHidden = false,
+		description,
 		labelContent,
 		onchange,
 		onButtonClick,
@@ -42,20 +46,24 @@
 
 	const fieldId = $derived(id ?? `field-${label.toLowerCase().replace(/\s+/g, '-')}`);
 
-	const labelClass = 'font-mono text-label-sm font-normal tracking-stamped text-fg/80 uppercase';
 	const selectClass =
-		'h-10 cursor-pointer rounded-md border border-rim bg-panel py-2 pr-8 pl-2 text-body-md text-fg disabled:cursor-not-allowed disabled:opacity-40';
+		'h-10 cursor-pointer rounded-md border border-rim bg-card py-2 pr-8 pl-2 sf-body-md text-fg disabled:cursor-not-allowed disabled:opacity-40';
 
 </script>
 
 {#if layout === 'horizontal'}
 	<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-		<div class="flex min-w-0 items-center gap-2">
+		<div class="flex min-w-0 flex-col items-start gap-1">
+			<div class="flex min-w-0 items-center gap-2">
 			{#if labelContent}
 				<label class="sr-only" for={fieldId}>{label}</label>
 				{@render labelContent()}
 			{:else}
-				<label class={labelClass} for={fieldId}>{label}</label>
+				<label class={labelHidden ? "sr-only" : "sf-field-label"} for={fieldId}>{label}</label>
+			{/if}
+			</div>
+			{#if description}
+				<p class="sf-label-sm text-fg-muted">{description}</p>
 			{/if}
 		</div>
 		{#if mode === 'select'}
@@ -77,7 +85,7 @@
 			<div class="flex min-w-0 max-w-full items-center gap-2 sm:max-w-md">
 				<code
 					id={fieldId}
-					class="flex h-10 min-w-0 flex-1 items-center truncate rounded-md bg-panel px-2 py-2 font-mono text-label-md tracking-stamped text-fg/90"
+					class="flex h-10 min-w-0 flex-1 items-center truncate rounded-md bg-panel px-2 py-2 sf-label-md text-fg"
 					title={value}
 				>
 					{value || placeholder}
@@ -92,7 +100,10 @@
 			<label class="sr-only" for={fieldId}>{label}</label>
 			{@render labelContent()}
 		{:else}
-			<label class={labelClass} for={fieldId}>{label}</label>
+			<label class={labelHidden ? "sr-only" : "sf-field-label"} for={fieldId}>{label}</label>
+		{/if}
+		{#if description}
+			<p class="sf-label-sm text-fg-muted">{description}</p>
 		{/if}
 		{#if mode === 'select'}
 			<select
@@ -113,7 +124,7 @@
 			<div class="flex min-w-0 items-center gap-2">
 				<code
 					id={fieldId}
-					class="h-10 flex items-center font-mono text-label-md min-w-0 flex-1 truncate rounded-md bg-panel px-2 py-2 tracking-stamped text-fg/90"
+					class="flex h-10 min-w-0 flex-1 items-center truncate rounded-md bg-panel px-2 py-2 sf-label-md text-fg"
 					title={value}
 				>
 					{value || placeholder}

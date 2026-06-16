@@ -66,14 +66,11 @@
 >
   {#snippet children()}
     <div class="space-y-3">
-      <!-- Stylized system bar -->
       <div class="rounded-md overflow-hidden border border-fill">
-        <!-- Bar row -->
         <div
           class="bg-canvas flex items-center justify-between px-3 py-1.5 gap-2"
         >
           {#if isWindows}
-            <!-- Windows taskbar: app icon left, system icons right -->
             <div class="flex items-center gap-1.5">
               <div
                 class="w-6 h-6 rounded flex items-center justify-center ring-1 ring-brand/40 bg-brand/10"
@@ -88,19 +85,16 @@
             </div>
             <div class="flex items-center gap-2 text-fg-dim">
               <Wifi class="size-3.5" />
-              <span class="text-label-sm tabular-nums leading-none"
+              <span class="sf-meta-sm leading-none"
                 >{timeStr}</span
               >
             </div>
           {:else}
-            <!-- macOS menu bar: system icons + clock right, app icon highlighted -->
             <div class="flex items-center gap-0.5">
-              <!-- dim dot decorations for left side of menu bar -->
               <div class="w-1.5 h-1.5 rounded-full bg-rim/40"></div>
               <div class="w-1.5 h-1.5 rounded-full bg-rim/40 ml-1.5"></div>
             </div>
             <div class="flex items-center gap-2.5 text-fg-dim">
-              <!-- App icon in tray, highlighted -->
               <div
                 class="w-6 h-6 rounded flex items-center justify-center ring-1 ring-brand/50 bg-brand/15"
                 title="ScribeFloat"
@@ -112,7 +106,7 @@
                 />
               </div>
               <Wifi class="size-3.5" />
-              <div class="text-label-sm tabular-nums leading-none text-fg-dim">
+              <div class="sf-meta-sm leading-none text-fg-dim">
                 {dateStr}
                 {timeStr}
               </div>
@@ -120,7 +114,6 @@
           {/if}
         </div>
 
-        <!-- Feature list inside card -->
         <div class="bg-card px-3 py-2 space-y-0.5">
           {#each features as { label, description, Icon } (label)}
             <div class="flex items-center gap-3 px-1 py-1.5">
@@ -130,8 +123,8 @@
                 <Icon class="size-3.5 text-fg-dim" />
               </div>
               <div>
-                <span class="text-body-md text-fg font-medium">{label}</span>
-                <span class="text-body-md text-fg-dim ml-1.5"
+                <span class="sf-body-md-strong text-fg">{label}</span>
+                <span class="sf-body-md text-fg-dim ml-1.5"
                   >{description}</span
                 >
               </div>
@@ -140,20 +133,17 @@
         </div>
       </div>
 
-      <!-- Start on login -->
       <div class="rounded-md bg-card border border-fill px-3 py-3 space-y-1">
-        <p
-          class="text-label-sm font-mono tracking-stamped uppercase text-fg/70"
-        >
+        <p class="sf-section-label text-fg-dim">
           Start on login
         </p>
         {#if isWindows}
-          <p class="text-body-md text-fg-dim">
+          <p class="sf-body-md text-fg-dim">
             Go to <strong class="text-fg">Settings → Apps → Startup</strong> and
             enable ScribeFloat.
           </p>
         {:else}
-          <p class="text-body-md text-fg-dim">
+          <p class="sf-body-md text-fg-dim">
             Go to <strong class="text-fg"
               >System Settings → General → Login Items</strong
             > and add ScribeFloat.

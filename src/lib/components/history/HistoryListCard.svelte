@@ -40,15 +40,11 @@
 		<div class="flex w-full justify-between items-center gap-2">
 			<div class="flex min-w-0 items-center gap-4">
 				<Chip variant={chip.variant}>{chip.label}</Chip>
-				<span
-					class="font-mono text-label-sm font-normal tabular-nums tracking-stamped text-fg/55 shrink-0"
-				>
+				<span class="sf-meta-sm text-fg-dim shrink-0">
 					{timestampLabel}
 				</span>
 				{#if isLegacy}
-					<span class="font-mono text-label-sm tracking-stamped text-fg/45 uppercase shrink-0"
-						>Legacy</span
-					>
+					<span class="sf-label-sm text-fg-muted shrink-0">Legacy</span>
 				{/if}
 			</div>
 			<div class="flex shrink-0 items-center gap-0.5">
@@ -114,14 +110,14 @@
 				onclick={() => onselect()}
 			>
 				<p
-					class="truncate text-body-md text-fg/85 underline-offset-2 transition-colors group-hover:text-fg hover:text-fg hover:underline"
+					class="truncate sf-body-md text-fg underline-offset-2 transition-colors group-hover:text-fg hover:text-fg hover:underline"
 					title={item.title || item.id}
 				>
 					{item.title || item.id}
 				</p>
 			</button>
 		{:else}
-			<p class="truncate text-body-md text-fg/85 px-1" title={item.title || item.id}>
+			<p class="truncate sf-body-md text-fg px-1" title={item.title || item.id}>
 				{item.title || item.id}
 			</p>
 		{/if}

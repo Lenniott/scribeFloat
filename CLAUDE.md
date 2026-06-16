@@ -40,6 +40,8 @@ python3 context/design-skill/query.py search "waveform"   # search both files
 
 Always pull the relevant token/component spec before writing Tailwind classes. The design system owns colour, spacing, radius, and typography — do not guess or hardcode values.
 
+**UI enforcement skill** (typography and future aspects): `.cursor/skills/ui-enforcement/SKILL.md` — load the relevant reference chapter, use `sf-*` role classes from `src/app.css`, run `npm run check:ds`. Typography migration inventory: `docs/typography-audit.md`.
+
 ---
 
 ## Build and test

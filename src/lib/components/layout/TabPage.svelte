@@ -55,8 +55,8 @@
 			"flex items-center gap-1 overflow-x-auto border-b border-card/60 bg-panel/70 p-1.5",
 	};
 	const tabButtonClass: Record<Mode, string> = {
-		panel: "px-3 py-2 text-label-md",
-		section: "px-2.5 py-1.5 text-label-sm",
+		panel: "px-3 py-2 sf-label-md",
+		section: "px-2.5 py-1.5 sf-label-sm",
 	};
 	const contentClass: Record<Mode, string> = {
 		panel: "p-4",
@@ -73,9 +73,9 @@
 				aria-selected={activeId === tab.id}
 				aria-controls={`tab-panel-${tab.id}`}
 				disabled={tab.disabled}
-				class="{tabButtonClass[mode]} font-normal tracking-stamped whitespace-nowrap uppercase transition-colors disabled:opacity-40 {activeId === tab.id
-					? 'border-0 border-b-2 border-active bg-active/15'
-					: 'border-0 border-b-2 border-transparent text-fg/70 hover:bg-fill hover:text-fg'}"
+				class="{tabButtonClass[mode]} whitespace-nowrap transition-colors disabled:opacity-40 {activeId === tab.id
+					? 'border-0 border-b-2 border-active bg-active/15 text-fg'
+					: 'border-0 border-b-2 border-transparent text-fg-dim hover:bg-fill hover:text-fg'}"
 				onclick={() => (activeId = tab.id)}
 			>
 				{tab.label}

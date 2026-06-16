@@ -42,20 +42,21 @@
   --color-success:            var(--sf-success);
   --color-on-success:         var(--sf-on-success);
   --color-focus:              var(--sf-focus);
+  --color-overlay:            var(--sf-overlay);
   /* ── Type scale (size + paired line-height) ────────────────────────────── */
-  --text-display-lg:              2.5rem;
+  --text-display-lg:              1.26rem;
   --text-display-lg--line-height:  1.1;
 
-  --text-headline-sm:              1.5rem;
-  --text-headline-sm--line-height: 1.2;
+  --text-headline-sm:              1.05rem;
+  --text-headline-sm--line-height: 1.4;
 
   --text-body-md:                 0.875rem;
-  --text-body-md--line-height:    1.5;
+  --text-body-md--line-height:    1.4;
 
-  --text-label-md:                0.75rem;
+  --text-label-md:                0.875rem;
   --text-label-md--line-height:   1.4;
 
-  --text-label-sm:                0.6875rem;
+  --text-label-sm:                0.729rem;
   --text-label-sm--line-height:   1.4;
 
   /* ── Letter spacing ────────────────────────────────────────────────────── */
@@ -124,6 +125,7 @@
   --sf-on-success:     oklch(0.20 0 0);
 
   --sf-shadow-ambient: 0 4px 32px oklch(0 0 0 / 0.5);
+  --sf-overlay:          oklch(0 0 0 / 0.5);
 }
 
 /* Explicit dark */
@@ -160,6 +162,7 @@
   --sf-on-success:     oklch(0.20 0 0);
 
   --sf-shadow-ambient: 0 4px 32px oklch(0 0 0 / 0.5);
+  --sf-overlay:          oklch(0 0 0 / 0.5);
 }
 
 /* Explicit light */
@@ -195,6 +198,7 @@
   --sf-on-success:     oklch(0.98 0 0);
 
   --sf-shadow-ambient: 0 4px 32px oklch(0 0 0 / 0.12);
+  --sf-overlay:          oklch(0 0 0 / 0.35);
 }
 
 /* System preference fallback (no explicit data-theme set) */
@@ -235,6 +239,7 @@
     --sf-on-success:     oklch(0.98 0 0);
 
     --sf-shadow-ambient: 0 4px 32px oklch(0 0 0 / 0.12);
+    --sf-overlay:          oklch(0 0 0 / 0.35);
   }
 }
 
@@ -250,42 +255,59 @@ html {
    ───────────────────────────────────────────────────────────────────────────── */
 @layer components {
 
-  /* Typography role classes */
+  /*
+   * Typography role classes — metrics only unless noted.
+   * Case: labels + headers → capitalize (never uppercase). Body + meta → sentence case (no transform).
+   * Color (text-fg, text-fg-dim, text-destructive, …) at call site.
+   * Agents: .cursor/skills/ui-enforcement/references/typography.md
+   */
   .sf-display-lg {
-    @apply font-mono text-display-lg font-normal tracking-normal;
+    @apply font-sans text-display-lg font-normal tracking-stamped capitalize;
   }
   .sf-headline-sm {
-    @apply font-mono text-headline-sm tracking-stamped uppercase font-normal;
+    @apply font-sans text-headline-sm font-normal tracking-stamped capitalize;
+  }
+  .sf-section-label {
+    @apply font-sans text-label-md font-normal tracking-stamped capitalize;
   }
   .sf-body-md {
-    @apply font-sans text-body-md font-normal;
+    @apply font-sans text-body-md font-light;
+  }
+  .sf-body-md-strong {
+    @apply font-sans text-body-md font-medium;
   }
   .sf-label-md {
-    @apply font-sans text-label-md font-medium;
+    @apply font-sans text-label-md font-normal tracking-stamped capitalize;
   }
   .sf-label-sm {
-    @apply font-sans text-label-sm tracking-stamped uppercase;
-    font-weight: 500;
+    @apply font-sans text-label-sm font-normal tracking-stamped capitalize;
   }
-  .sf-label-sm-mono {
-    @apply font-mono text-label-sm tracking-stamped uppercase font-normal;
+  .sf-field-label {
+    @apply font-sans text-label-sm font-normal tracking-stamped text-fg-dim;
+  }
+  .sf-meta-sm {
+    @apply font-sans text-label-sm font-normal tracking-stamped tabular-nums;
   }
 
-  /* Surface shortcuts */
+  /*
+   * Surface & overlay shortcuts
+   * Agents: .cursor/skills/ui-enforcement/references/color.md
+   */
   .sf-panel   { @apply bg-panel rounded-md; }
   .sf-card    { @apply bg-card rounded-md; }
-  .sf-input   { @apply bg-panel border border-fill rounded-md text-fg font-sans text-label-md; }
+  .sf-input   { @apply bg-card border border-fill rounded-md text-fg font-sans text-label-md; }
   .sf-divider { @apply border-t border-card; }
+  .sf-scrim   { @apply bg-overlay; }
 
-  /* Button variants */
+  /* Button variants — same metrics as sf-label-md (capitalize, not uppercase) */
   .sf-btn-primary {
-    @apply bg-brand text-on-brand font-mono text-label-md tracking-stamped rounded-md px-3 py-1.5;
+    @apply bg-brand text-on-brand font-sans text-label-md font-normal tracking-stamped capitalize rounded-md px-3 py-1.5;
   }
   .sf-btn-ghost {
-    @apply bg-transparent text-fg font-sans text-label-md rounded-md px-3 py-1.5;
+    @apply bg-transparent text-fg font-sans text-label-md font-normal tracking-stamped capitalize rounded-md px-3 py-1.5;
   }
   .sf-btn-destructive {
-    @apply bg-destructive text-on-destructive font-sans text-label-md rounded-md px-3 py-1.5;
+    @apply bg-destructive text-on-destructive font-sans text-label-md font-normal tracking-stamped capitalize rounded-md px-3 py-1.5;
   }
 }
 

@@ -42,7 +42,7 @@
 
 <div
     aria-disabled={disabled}
-    class="group relative flex gap-2 rounded-md border-b border-fill bg-fill px-2 py-2 text-body-md text-fg transition
+    class="group relative flex gap-2 rounded-md border-b border-fill bg-fill px-2 py-2 sf-body-md text-fg transition
            aria-disabled:opacity-40
            aria-disabled:pointer-events-none
            aria-disabled:cursor-not-allowed

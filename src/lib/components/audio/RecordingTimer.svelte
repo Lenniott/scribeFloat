@@ -18,7 +18,7 @@
 </script>
 
 <time
-	class="font-mono text-label-sm tabular-nums tracking-stamped text-fg {className}"
+	class="sf-meta-sm text-fg {className}"
 	datetime={`PT${Math.floor(elapsedSeconds)}S`}
 >
 	{text}

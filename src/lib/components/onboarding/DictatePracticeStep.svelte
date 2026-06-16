@@ -62,7 +62,6 @@
 			} else if (e.payload.state === "ERROR") {
 				dictateError = e.payload.error ?? "Dictation failed. Check that a model is installed.";
 			} else if (e.payload.state === "IDLE" && prev === "TRANSCRIBING") {
-				// empty segments path — controller went TRANSCRIBING → IDLE without DONE
 				if (!noteDraft) {
 					dictateError = "Nothing was heard. Try speaking clearly for at least a second.";
 				}
@@ -80,11 +79,10 @@
 >
 	{#snippet children()}
 		<div class="flex gap-3 h-full min-h-0">
-			<!-- Left: instructions + toggle -->
 			<div class="flex flex-col gap-3 w-72 shrink-0 justify-between">
 				<div class="rounded-md bg-card border border-fill px-3 py-3 space-y-2">
-					<p class="text-label-sm font-mono tracking-stamped uppercase text-fg/70">How to use</p>
-					<ol class="space-y-1.5 text-body-md text-fg-dim list-decimal list-inside">
+					<p class="sf-section-label text-fg-dim">How to use</p>
+					<ol class="space-y-1.5 sf-body-md text-fg-dim list-decimal list-inside">
 						<li>Click the text area on the right</li>
 						<li>Double-tap <strong class="text-fg">{dictateModifierLabel}</strong></li>
 						<li>Speak clearly for 2+ seconds</li>
@@ -94,14 +92,13 @@
 
 				<div class="rounded-md px-3 py-3 h-22 flex items-center justify-between">
 					<div class="flex flex-col">
-						<p class="text-body-md text-fg font-medium">Auto enter</p>
-						<p class="text-label-sm text-fg-dim">Manage in Settings.</p>
+						<p class="sf-body-md-strong text-fg">Auto enter</p>
+						<p class="sf-label-sm text-fg-dim">Manage in Settings.</p>
 					</div>
 					<ToggleSwitch checked={autoEnter} onchange={toggleEnter} aria-label="Auto enter after dictate" />
 				</div>
 			</div>
 
-			<!-- Right: note cards + composer -->
 			<div class="flex flex-col flex-1 min-h-0 gap-2">
 				<div class="flex-1 min-h-0 relative">
 					<div class="overflow-y-auto space-y-2">
@@ -111,7 +108,7 @@
 					</div>
 					{#if notes.length === 0}
 						<div class="flex items-center justify-center h-full">
-							<p class="text-label-md text-fg/40 text-center px-3">
+							<p class="sf-label-md text-fg-muted text-center px-3">
 								Dictated notes will appear here
 							</p>
 						</div>
@@ -119,10 +116,9 @@
 				</div>
 
 				{#if dictateError}
-					<p class="text-label-sm text-destructive px-1">{dictateError}</p>
+					<p class="sf-label-sm text-destructive px-1">{dictateError}</p>
 				{/if}
 
-				<!-- Always mounted so manual draft is preserved between dictations -->
 				<div>
 					<NoteComposer
 						bind:value={noteDraft}

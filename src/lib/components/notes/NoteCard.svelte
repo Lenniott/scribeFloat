@@ -40,9 +40,7 @@
         <Chip variant={chip.variant}>{chip.label}</Chip>
       {/if}
       {#if timestampLabel}
-        <span
-          class="font-mono text-label-sm font-normal tabular-nums tracking-stamped text-fg/55"
-        >
+        <span class="sf-meta-sm text-fg-dim">
           {timestampLabel}
         </span>
       {:else}
@@ -86,7 +84,7 @@
   {#if hasActions}
     <div class="flex flex-col items-start gap-2">
       {@render header()}
-      <p class="text-body-md whitespace-pre-wrap wrap-break-word text-fg">
+      <p class="sf-body-md whitespace-pre-wrap wrap-break-word text-fg">
         {note.text}
       </p>
     </div>
@@ -97,7 +95,7 @@
       onclick={() => onselect?.(note.id)}
     >
       {@render header()}
-      <p class="text-body-md whitespace-pre-wrap text-fg">{note.text}</p>
+      <p class="sf-body-md whitespace-pre-wrap text-fg">{note.text}</p>
     </button>
   {/if}
 </article>

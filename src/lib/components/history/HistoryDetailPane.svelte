@@ -6,12 +6,9 @@
     Copy,
     SquareArrowOutUpRight,
     FileDown,
-    ChevronLeft,
-    ChevronRight,
     Trash2,
   } from "lucide-svelte";
   import PanelHeader from "@lib/components/layout/PanelHeader.svelte";
-  import PanelFooter from "@lib/components/layout/PanelFooter.svelte";
   import ScrollablePanel from "@lib/components/accordion/ScrollablePanel.svelte";
   import IconButton from "@lib/components/IconButton.svelte";
   import Chip from "@lib/components/Chip.svelte";
@@ -177,29 +174,52 @@
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
   <PanelHeader>
     {#snippet left()}
-      <p
-        class="truncate font-mono text-label-md tracking-stamped text-fg/80 uppercase"
-      >
+      <p class="min-w-0 truncate sf-headline-sm text-fg">
         {item.title || "Detail"}
       </p>
     {/snippet}
     {#snippet right()}
       <div class="flex items-center gap-1">
+        {#if item.source === "store"}
+          <IconButton
+            aria-label="Delete"
+            icon={Trash2}
+            size="small"
+            variant="destructive"
+            onclick={() => ondelete?.()}
+          />
+        {/if}
+        {#if showExport}
+          <IconButton
+            aria-label="Export to Markdown"
+            icon={FileDown}
+            size="small"
+            variant="normal"
+            onclick={exportMarkdown}
+          />
+        {/if}
+        {#if showOpenMd}
+          <IconButton
+            aria-label="Open Markdown file"
+            icon={SquareArrowOutUpRight}
+            size="small"
+            variant="normal"
+            onclick={openMarkdown}
+          />
+        {/if}
         <IconButton
-          aria-label="Previous item"
-          icon={ChevronLeft}
+          aria-label="Copy transcript"
+          icon={Copy}
           size="small"
           variant="normal"
-          disabled={!canGoPrev}
-          onclick={() => onprev?.()}
+          onclick={copyContent}
         />
         <IconButton
-          aria-label="Next item"
-          icon={ChevronRight}
+          aria-label="Close detail"
+          icon={X}
           size="small"
           variant="normal"
-          disabled={!canGoNext}
-          onclick={() => onnext?.()}
+          onclick={onclose}
         />
       </div>
     {/snippet}
@@ -223,21 +243,18 @@
       <Chip variant="muted">Speaker capture</Chip>
     {/if}
     {#if item.source !== "store"}
-      <span
-        class="font-mono text-label-sm tracking-stamped text-fg/45 uppercase"
-        >Legacy</span
-      >
+      <span class="sf-label-sm text-fg-muted">Legacy</span>
     {/if}
   </div>
 
   <ScrollablePanel class="min-h-0 flex-1 px-4 py-3">
     {#if loadingBody}
-      <p class="text-label-md text-fg/45">Loading…</p>
+      <p class="sf-body-md text-fg-muted">Loading…</p>
     {:else if loadError}
-      <p class="text-label-md text-destructive">Could not load transcript.</p>
-      <p class="mt-1 text-label-sm text-fg/45">{loadError}</p>
+      <p class="sf-body-md text-destructive">Could not load transcript.</p>
+      <p class="mt-1 sf-label-sm text-fg-muted">{loadError}</p>
     {:else if bodyText}
-      <div class="flex flex-col gap-3 text-body-md text-fg/90">
+      <div class="flex flex-col gap-3 sf-body-md text-fg">
         {#each bodyText.split('\n\n') as para, i (i)}
           <p class="wrap-break-word">
             {#each para.split('\n') as line, j (j)}{#if j > 0}<br />{/if}{line}{/each}
@@ -245,17 +262,14 @@
         {/each}
       </div>
     {:else}
-      <p class="text-label-md text-fg/45">No content available.</p>
+      <p class="sf-body-md text-fg-muted">No content available.</p>
     {/if}
     {#if detail?.notes?.length}
       <div class="mt-4 flex flex-col gap-1.5 border-t border-rim/30 pt-3">
-        <span
-          class="font-mono text-label-sm tracking-stamped text-fg/50 uppercase"
-          >Notes</span
-        >
+        <span class="sf-label-sm text-fg-dim">Notes</span>
         {#each detail.notes as note (note.id)}
-          <div class="flex gap-2 text-body-md text-fg/80">
-            <span class="shrink-0 pt-0.5 font-mono text-label-sm text-fg/40">
+          <div class="flex gap-2 sf-body-md text-fg-dim">
+            <span class="sf-meta-sm text-fg-muted shrink-0 pt-0.5">
               {formatDuration(note.recorded_at_ms)}
             </span>
             <span class="wrap-break-word">{note.text}</span>
@@ -264,53 +278,6 @@
       </div>
     {/if}
   </ScrollablePanel>
-
-  <PanelFooter>
-    <!-- Fixed-width slots so Copy/Close stay put when Export/Open vary per item -->
-    <div class="flex w-full">
-	{#if item.source === "store"}
-      <IconButton
-        aria-label="Delete"
-        icon={Trash2}
-        size="small"
-        variant="destructive"
-        onclick={() => ondelete?.()}
-      />
-    {/if}
-	</div>
-    {#if showExport}
-      <IconButton
-        aria-label="Export to Markdown"
-        icon={FileDown}
-        size="small"
-        variant="normal"
-        onclick={exportMarkdown}
-      />
-    {/if}
-    {#if showOpenMd}
-      <IconButton
-        aria-label="Open Markdown file"
-        icon={SquareArrowOutUpRight}
-        size="small"
-        variant="normal"
-        onclick={openMarkdown}
-      />
-    {/if}
-    <IconButton
-      aria-label="Copy transcript"
-      icon={Copy}
-      size="small"
-      variant="normal"
-      onclick={copyContent}
-    />
-    <IconButton
-      aria-label="Close detail"
-      icon={X}
-      size="small"
-      variant="normal"
-      onclick={onclose}
-    />
-  </PanelFooter>
 </div>
 
 <Toast message={toastMessage} state={toastState} position="bottom-center" />

@@ -152,30 +152,30 @@
 			<div class="flex min-w-0 items-center gap-2">
 				<span class="inline-block h-2 w-2 shrink-0 rounded-full bg-success"></span>
 				{#if pasteFailed}
-					<span class="truncate text-label-md font-sans font-medium text-fg"
+					<span class="truncate sf-body-md-strong text-fg"
 						>Copied to clipboard</span
 					>
 				{:else}
-					<span class="truncate text-label-md font-sans font-medium text-fg">{resultText}</span>
+					<span class="truncate sf-body-md-strong text-fg">{resultText}</span>
 				{/if}
 			</div>
 			{#if pasteFailed && resultText.trim()}
-				<p class="line-clamp-2 pl-4 text-label-sm font-sans text-fg-dim">{resultText}</p>
+				<p class="line-clamp-2 pl-4 sf-label-sm text-fg-dim">{resultText}</p>
 			{/if}
 			{#if historyWriteFailed}
-				<p class="pl-4 text-label-sm font-sans text-fg-muted">History entry could not be saved — check save folder.</p>
+				<p class="pl-4 sf-label-sm text-fg-muted">History entry could not be saved — check save folder.</p>
 			{/if}
 		</div>
 	{:else if dictateState === "ERROR"}
 		<div class="flex min-w-0 flex-1 items-center gap-2">
 			<RecordingStatusDot status="error" />
-			<span class="truncate text-label-md font-sans font-medium text-destructive"
+			<span class="truncate sf-body-md-strong text-destructive"
 				>{errorText}</span
 			>
 		</div>
 	{:else if isProcessing}
 		<div class="flex min-w-0 flex-1 items-center gap-2">
-			<span class="text-label-sm font-sans uppercase tracking-stamped text-fg-dim">
+			<span class="sf-label-sm text-fg-dim">
 				{dictateState === "PASTING" ? "Pasting…" : "Transcribing…"}
 			</span>
 		</div>

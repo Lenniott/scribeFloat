@@ -19,7 +19,7 @@
     <div class="flex flex-col gap-1 mb-5">
       <h1 class="sf-headline-sm text-fg">{title}</h1>
       {#if subtitle}
-        <p class="text-body-md text-fg-dim">{subtitle}</p>
+        <p class="sf-body-md text-fg-dim">{subtitle}</p>
       {/if}
     </div>
   </div>

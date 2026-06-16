@@ -9,6 +9,11 @@ Short-lived notes and UI specs live here. **Behaviour and architecture** stay in
 | [../context/action-flows.md](../context/action-flows.md) | Step-by-step user flows (source of truth) |
 | [onboarding.md](onboarding.md) | Current 5-step onboarding implementation notes |
 | [history-ui-review.md](history-ui-review.md) | Any History list/detail/card/footer work |
+| [typography-audit.md](typography-audit.md) | Typography consistency pass — inline vs `sf-*` role classes |
+| [color-audit.md](color-audit.md) | Color consistency pass — fg opacity ladder vs semantic tokens |
+| [../.cursor/skills/ui-enforcement/SKILL.md](../.cursor/skills/ui-enforcement/SKILL.md) | UI enforcement skill (typography + future aspects) |
+| [../.cursor/rules/ui-enforcement.mdc](../.cursor/rules/ui-enforcement.mdc) | Auto-attached Cursor rule for `src/**/*.svelte` and `src/app.css` |
+| [../.cursor/hooks.json](../.cursor/hooks.json) | Agent hooks — `check:ds` + typography warnings after frontend edits |
 | [backlog.md](backlog.md) | Deferred / follow-up items |
 
 If `context/` and code disagree, fix the doc or confirm the code change was intentional.

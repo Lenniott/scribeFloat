@@ -60,13 +60,13 @@
 </script>
 
 <div class="grid grid-cols-[2rem_minmax(0,1fr)_8.5rem_8rem_2.5rem] items-center gap-2 border-b border-rim px-2 py-2">
-  <span class="font-mono text-label-sm text-fg/70">{index + 1}</span>
+  <span class="sf-meta-sm text-fg-dim">{index + 1}</span>
   <div class="min-w-0">
-    <p class="truncate text-body-md text-fg" title={item.source_path}>{item.display_name}</p>
-    <p class="truncate text-label-sm text-fg/55">{sourceTypeLabel}</p>
+    <p class="truncate sf-body-md text-fg" title={item.source_path}>{item.display_name}</p>
+    <p class="truncate sf-label-sm text-fg-dim">{sourceTypeLabel}</p>
   </div>
-  <span class="justify-self-end text-label-sm text-fg/75">{durationLabel}</span>
-  <span class="justify-self-end text-label-sm text-fg/75">{statusLabel}</span>
+  <span class="justify-self-end sf-meta-sm text-fg-dim">{durationLabel}</span>
+  <span class="justify-self-end sf-meta-sm text-fg-dim">{statusLabel}</span>
   <div class="justify-self-end">
     {#if canOpenTranscript}
       <IconButton
@@ -90,5 +90,5 @@
 </div>
 
 {#if item.error}
-  <p class="px-2 pb-2 text-label-sm text-destructive">{item.error}</p>
+  <p class="px-2 pb-2 sf-label-sm text-destructive">{item.error}</p>
 {/if}

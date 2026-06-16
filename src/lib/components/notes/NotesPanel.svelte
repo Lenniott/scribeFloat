@@ -31,7 +31,7 @@
 		{#if header}
 			{@render header()}
 		{:else}
-			<h2 class="font-mono text-label-sm tracking-stamped text-fg/60 uppercase">Notes</h2>
+			<h2 class="sf-section-label text-fg-dim">Notes</h2>
 		{/if}
 	</div>
 	<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4">

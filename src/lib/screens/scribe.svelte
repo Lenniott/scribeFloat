@@ -109,11 +109,22 @@
     state: string;
   };
   let recoverySessions = $state<RecoverySessionInfo[]>([]);
+  let dismissedRecoveryDirs = $state<string[]>([]);
 
   async function loadRecoverySessions() {
-    recoverySessions = await invoke<RecoverySessionInfo[]>(
+    const sessions = await invoke<RecoverySessionInfo[]>(
       "scribe_list_recovery_sessions",
     ).catch(() => []);
+    const dismissed = new Set(dismissedRecoveryDirs);
+    recoverySessions = sessions.filter((s) => !dismissed.has(s.session_dir));
+  }
+
+  function dismissRecoveryBanner() {
+    dismissedRecoveryDirs = [
+      ...dismissedRecoveryDirs,
+      ...recoverySessions.map((s) => s.session_dir),
+    ];
+    recoverySessions = [];
   }
 
   /** Enumerate input devices if mic permission is currently granted.
@@ -470,13 +481,9 @@
             Scanned folder: {saveFolder}
           </p>
         {/if}
-        <button
-          type="button"
-          class="mt-1 cursor-pointer underline sf-label-sm text-fg-dim"
-          onclick={() => void loadRecoverySessions()}
-        >
+        <Button variant="ghost" size="small" class="mt-1" onclick={dismissRecoveryBanner}>
           Dismiss
-        </button>
+        </Button>
       </div>
     {/if}
 
@@ -492,7 +499,7 @@
         />
 
         <div class="min-h-0 flex-1 overflow-y-auto">
-          <Accordion defaultOpenId="basic">
+          <Accordion>
             <AccordionItem id="basic" title="Basic">
               <div class="space-y-4">
                 <div class="flex flex-col gap-1.5 text-left">
@@ -545,12 +552,12 @@
                   </div>
                 {/if}
                 {#if speakerCaptureAvailable}
-                <div class="flex items-center justify-between gap-3">
-                  <span class="sf-field-label">Capture speaker</span>
-                  <ToggleSwitch
-                    bind:checked={captureSpeaker}
-                    aria-label="Toggle speaker capture"
-                    onchange={async (next) => {
+                <ToggleSwitch
+                  label="Capture speaker"
+                  labelFirst
+                  class="w-full justify-between gap-3"
+                  bind:checked={captureSpeaker}
+                  onchange={async (next) => {
                       if (phase === "recording") {
                         // Session-only: does not change the persistent default.
                         // The toggle resets to the saved default when the session ends.
@@ -569,14 +576,13 @@
                       }
                     }}
                   />
-                </div>
                 {/if}
-                <div class="flex items-center justify-between gap-3">
-                  <span class="sf-field-label">Transcript timestamps</span>
-                  <ToggleSwitch
-                    checked={includeTimestamps}
-                    aria-label="Toggle transcript timestamps"
-                    onchange={async (next) => {
+                <ToggleSwitch
+                  label="Transcript timestamps"
+                  labelFirst
+                  class="w-full justify-between gap-3"
+                  checked={includeTimestamps}
+                  onchange={async (next) => {
                       const prev = includeTimestamps;
                       includeTimestamps = next;
                       await invoke("scribe_set_include_timestamps", {
@@ -586,7 +592,6 @@
                       });
                     }}
                   />
-                </div>
               </div>
             </AccordionItem>
           </Accordion>

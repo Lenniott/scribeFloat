@@ -198,8 +198,11 @@
 		variant="normal"
 		size="small"
 		icon={Close}
-		aria-label={dictateState === "DONE" ? "Dismiss" : "Cancel dictation"}
+		aria-label={
+			dictateState === "DONE" || dictateState === "ERROR"
+				? "Dismiss"
+				: "Cancel dictation"
+		}
 		onclick={handleClose}
-		disabled={isProcessing}
 	/>
 </div>

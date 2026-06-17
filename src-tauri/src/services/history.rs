@@ -1,4 +1,4 @@
-use crate::types::{HistoryListItem, HistoryRecord};
+use crate::types::{FlowResult, HistoryListItem, HistoryRecord};
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::io::Write;
@@ -189,6 +189,28 @@ impl HistoryService {
             .get(id)
             .map(|&idx| inner.records[idx].clone())
             .filter(|r| !r.deleted))
+    }
+
+    /// Merge enrichment results into a record (log-structured update).
+    /// Existing layer results are replaced; other enrichment keys are preserved.
+    pub fn update_enrichment(
+        &self,
+        save_folder: &str,
+        id: &str,
+        results: std::collections::HashMap<String, FlowResult>,
+    ) -> Result<()> {
+        let mut inner = self.inner.lock().unwrap();
+        self.ensure_loaded(&mut inner, save_folder)?;
+        let Some(&idx) = inner.index.get(id) else {
+            return Ok(());
+        };
+        let mut updated = inner.records[idx].clone();
+        for (k, v) in results {
+            updated.enrichment.insert(k, v);
+        }
+        Self::append_line(save_folder, &updated)?;
+        inner.records[idx] = updated;
+        Ok(())
     }
 
     /// Rewrite `history.jsonl` to just the live set (drops tombstones and superseded lines).

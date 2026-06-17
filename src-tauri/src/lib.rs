@@ -621,6 +621,17 @@ pub fn run() {
 
             let update = services::update::UpdateService::new();
 
+            let llm = services::llm::LocalLLMService::new(models_dir.clone());
+            let layer_registry = services::layers::LayerRegistry::load_or_seed(
+                data_dir.join("enrichment-config.json"),
+            )?;
+            let enrichment_queue = services::enrichment::EnrichmentQueue::new(
+                app.handle().clone(),
+                Arc::clone(&llm),
+                Arc::clone(&layer_registry),
+                Arc::clone(&history),
+            );
+
             app.manage(model); // shared model service
             app.manage(config); // shared config service
             app.manage(model_ctrl); // model command orchestration
@@ -630,6 +641,9 @@ pub fn run() {
             app.manage(Arc::clone(&transcribe_ctrl)); // for transcribe commands
             app.manage(history_ctrl); // for history commands
             app.manage(update);
+            app.manage(llm);
+            app.manage(layer_registry);
+            app.manage(enrichment_queue);
 
             dictate_ctrl.start_key_listener();
 
@@ -816,6 +830,12 @@ pub fn run() {
             commands::transcribe::transcribe_open_output,
             commands::transcribe::transcribe_show_window,
             commands::update::update_check,
+            commands::enrichment::get_enrichment_config,
+            commands::enrichment::upsert_layer,
+            commands::enrichment::upsert_step,
+            commands::enrichment::upsert_flow,
+            commands::enrichment::enqueue_flow_run,
+            commands::enrichment::update_flow_result,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

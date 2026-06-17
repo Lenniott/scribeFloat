@@ -657,6 +657,9 @@ pub struct HistoryRecord {
     /// Tombstone: a later line with `deleted = true` removes the record from the live view.
     #[serde(default)]
     pub deleted: bool,
+    /// Enrichment results keyed by flow_id. Additive — never replaces core fields.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub enrichment: std::collections::HashMap<String, FlowResult>,
 }
 
 /// Where a history list item originated. Legacy sources are read-only.
@@ -1023,4 +1026,134 @@ mod tests {
         assert_eq!(rec.source_path.as_deref(), Some("/in/clip.mp3"));
         assert_eq!(rec.word_count, 2);
     }
+}
+
+// ── Enrichment engine types ──────────────────────────────────────────────────
+
+/// Review status for a flow's result on a specific transcript.
+/// Status lives at the transcript × flow level, not per item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ResultStatus {
+    #[default]
+    Draft,
+    Edited,
+    Approved,
+}
+
+/// How a Layer's items are displayed in the History UI.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RenderType {
+    #[default]
+    ChipList,
+    PlainList,
+    ItemDescription,
+    TaskList,
+}
+
+/// A single extracted item assigned to a transcript by a flow run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssignedItem {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// The enrichment result for one layer on one transcript, produced by a flow run.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FlowResult {
+    pub layer_id: String,
+    pub items: Vec<AssignedItem>,
+    #[serde(default)]
+    pub status: ResultStatus,
+}
+
+/// A named extraction type: defines what to extract, how to store it, and how to render it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnrichmentLayer {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Whether this layer maintains a shared vocabulary (unique list) across all transcripts.
+    #[serde(default)]
+    pub unique_list: bool,
+    /// Whether extracted items carry a one-line description.
+    #[serde(default)]
+    pub per_item_description: bool,
+    pub render_type: RenderType,
+    /// The shared vocabulary — starts empty, grows on Approve.
+    #[serde(default)]
+    pub vocabulary: Vec<AssignedItem>,
+}
+
+/// Chunking strategy for a step — how the transcript is split before passing to the LLM.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ChunkStrategy {
+    /// Split on natural Segment boundaries (speaker turn / pause gap).
+    #[default]
+    Chunk,
+    /// Pass the full transcript text in one call.
+    Full,
+}
+
+/// One extraction instruction: a target layer, a prompt, and a chunking strategy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnrichmentStep {
+    pub id: String,
+    pub name: String,
+    pub layer_id: String,
+    pub prompt: String,
+    #[serde(default)]
+    pub chunk_strategy: ChunkStrategy,
+}
+
+/// Flow trigger: when the flow runs automatically, or only on manual request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FlowTrigger {
+    OnCreation,
+    #[default]
+    Manual,
+}
+
+/// An ordered sequence of steps with a trigger setting.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnrichmentFlow {
+    pub id: String,
+    pub name: String,
+    /// Ordered step IDs.
+    pub steps: Vec<String>,
+    #[serde(default)]
+    pub trigger: FlowTrigger,
+}
+
+/// The persisted enrichment config — layers, steps, flows, stored as one JSON file.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct EnrichmentConfig {
+    pub layers: Vec<EnrichmentLayer>,
+    pub steps: Vec<EnrichmentStep>,
+    pub flows: Vec<EnrichmentFlow>,
+}
+
+/// Event emitted to the frontend when an enrichment job status changes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnrichmentStatusEvent {
+    pub record_id: String,
+    pub flow_id: String,
+    pub status: EnrichmentJobStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum EnrichmentJobStatus {
+    Queued,
+    Running,
+    Done,
+    Error,
+}
 }

@@ -1,7 +1,11 @@
 pub mod audio;
+pub mod chunker;
 pub mod config;
+pub mod enrichment;
 pub mod history;
 pub mod hotkeys;
+pub mod layers;
+pub mod llm;
 pub mod model;
 pub mod output;
 pub mod permissions;

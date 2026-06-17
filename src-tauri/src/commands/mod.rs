@@ -1,4 +1,5 @@
 pub mod dictate;
+pub mod enrichment;
 pub mod history;
 pub mod model;
 pub mod scribe;

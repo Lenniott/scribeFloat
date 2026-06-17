@@ -42,6 +42,7 @@ reqwest = { version = "0.12", default-features = false, features = ["stream", "r
 rdev = "0.5"
 enigo = "0.6"
 symphonia = { version = "0.5", features = ["aac", "flac", "isomp4", "mp3", "ogg", "pcm", "vorbis", "wav"] }
+llama-cpp-2 = { version = "0.1", default-features = false, features = ["openmp", "sampler", "common"] }
 regex = "1"
 sha2 = "0.10"
 
@@ -52,6 +53,7 @@ libc = "0.2"
 
 [target.'cfg(all(target_arch = "aarch64", target_os = "macos"))'.dependencies]
 whisper-rs = { version = "0.16", features = ["metal"] }
+llama-cpp-2 = { version = "0.1", default-features = false, features = ["metal", "sampler", "common"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 whisper-rs = { version = "0.16", features = ["openblas", "openmp"] }

@@ -13,11 +13,19 @@ Use when the user has uncommitted changes and wants useful commits.
    - files/hunks included
    - rationale
    - full commit message (subject + body)
-4. State the backup strategy you will use on approval (ref name, snapshot method).
+4. State backup strategy on approval — snapshot ref **or** "skipped (same-session commit)".
 5. End with the **Awaiting approval** block from `references/approval-gate.md`.
 6. **Stop.** Do not create backup refs or commits in this turn.
 
 ## Turn 2 — Execute (after user approval)
+
+**Same-session fast path** (you authored the changes this conversation; simple dirty worktree):
+
+1. Stage one approved group at a time.
+2. Commit with the **approved** messages.
+3. Confirm clean worktree.
+
+**Full path** (rewrite, mixed/unfamiliar worktree, or plan said backup required):
 
 1. Create an exact backup snapshot of the current worktree, including untracked files.
 2. Stage one approved group at a time.
@@ -28,6 +36,7 @@ Use when the user has uncommitted changes and wants useful commits.
 
 ```md
 Backup (on approval):
+- skipped (same-session commit) — OR —
 - branch/snapshot: backup/<name>-<timestamp>
 - base: <current HEAD sha>
 

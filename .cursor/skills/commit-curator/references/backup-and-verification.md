@@ -1,8 +1,28 @@
 # Backup and Verification
 
-The backup must preserve the exact value the user wants curated.
+The backup must preserve the exact value the user wants curated — **when a backup is required**.
 
-## Dirty Worktree Backup
+## When backup is required
+
+| Scenario | Backup |
+|----------|--------|
+| Branch rewrite / rebase / cherry-pick curation | **Required** — branch at original tip |
+| Mixed or unfamiliar dirty worktree (not authored this session) | **Required** — snapshot commit |
+| Multi-commit surgery with risk of losing hunks | **Required** |
+| Same-session commit: you just implemented the changes, simple dirty worktree | **Skip** — stage and commit directly |
+
+## Same-session fast path (no backup)
+
+When skipping backup, Turn 2 verification is:
+
+```bash
+git status --short   # must be clean after last commit
+git log --oneline -n <N>
+```
+
+No `backup/*` ref. No tree-hash comparison.
+
+## Dirty Worktree Backup (when required)
 
 A plain branch at `HEAD` is insufficient when the worktree is dirty. Create a snapshot commit or stash-like reference that includes:
 
@@ -33,7 +53,7 @@ git rev-parse backup/<name>-<timestamp>^{tree}
 
 ## Final Verification
 
-After curation:
+**With backup:**
 
 ```bash
 git status --short
@@ -44,10 +64,12 @@ git rev-parse HEAD^{tree}
 
 The final two tree hashes must match. If they do not, stop and report the mismatch.
 
+**Without backup (same-session fast path):** clean `git status` after commits is sufficient.
+
 ## Safety Rules
 
 - Do not push.
-- Do not delete backups.
+- Do not delete backups unless the user asks.
 - Do not use `git reset --hard` except for an explicit user-approved rollback.
 - Do not hide verification failures.
 

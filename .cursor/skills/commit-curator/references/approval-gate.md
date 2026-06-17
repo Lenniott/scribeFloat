@@ -16,7 +16,7 @@ Agents skip this gate when the user says "commit" — that wording means *how* t
 
 **Deliver:**
 
-1. Backup *strategy* (ref name you will use — do not create it yet unless user already approved a prior plan in this thread)
+1. Backup *strategy* — snapshot ref name **or** "skipped (same-session commit)" when the fast path applies
 2. Full commit plan using the shape in `workflows/dirty-worktree.md`
 3. Explicit question: *"Proceed with these N commits as written, or change anything first?"*
 
@@ -41,9 +41,9 @@ User revision phrases (back to Turn 1):
 
 **Then, in order:**
 
-1. Create backup snapshot (see `references/backup-and-verification.md`)
+1. Create backup snapshot **only if** not using the same-session fast path (see `references/backup-and-verification.md`)
 2. Stage and commit one group at a time per the approved plan
-3. Verify final tree equals backup snapshot tree
+3. Verify: tree match against backup **if** backup was used; otherwise confirm clean worktree
 4. Report commit SHAs and `git log --oneline` for the new commits
 
 ## Ambiguous requests
@@ -54,6 +54,7 @@ User revision phrases (back to Turn 1):
 | "commit" (after plan was shown, user replied proceed) | Turn 2 execute |
 | "commit" (no plan in thread yet) | Turn 1 plan only |
 | "just commit everything" / "one commit is fine" | Turn 1 plan with single commit; still wait for approval |
+| Agent just built the changes; user says `/commit-curator` | Turn 1 plan; **backup skipped** on Turn 2 unless rewrite/mixed worktree |
 | "review map" / "explain the commits" | `workflows/review-map.md` — no commits |
 
 ## Common failure mode

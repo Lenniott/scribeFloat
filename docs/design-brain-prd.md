@@ -40,17 +40,51 @@ That reframe surfaces problems the current flat-list History UI doesn't solve:
 
 ## 3. The bet
 
-**Build one general engine, not a list of point features.** The MVP use cases are deliberately narrow — Tags and Keywords — but the mechanism underneath (Schema → Step → Flow) has to be general enough that Decisions, Actions, Stakeholders, Risks, and Projects are *configuration added later*, not re-architecture. If a small on-device model can reliably do bounded, single-purpose extraction (tag a transcript, pull keywords) inside this engine, the same engine is the path to the harder, higher-value jobs (decision logs, stakeholder artifacts) that actually deliver on the "design brain" promise — without ever touching the pipeline code again.
+**Build one general engine, not a list of point features.** The MVP use cases are deliberately narrow — Tags and Keywords — but the mechanism underneath (Layer → Step → Flow) has to be general enough that Decisions, Actions, Stakeholders, Risks, and Projects are *configuration added later*, not re-architecture. If a small on-device model can reliably do bounded, single-purpose extraction (tag a transcript, pull keywords) inside this engine, the same engine is the path to the harder, higher-value jobs (decision logs, stakeholder artifacts) that actually deliver on the "design brain" promise — without ever touching the pipeline code again.
 
 Three constraints carry through every layer of the design, because they're what make the bet safe to make incrementally:
 
 - **Always async, always decoupled.** Enrichment runs after `DONE`, never inside the Scribe/Dictate/Transcribe state machine. The core capture flow must never feel slower because this exists.
 - **Concurrency = 1.** One global queue, one flow-run in flight at a time, matching the proven `inference_gate` pattern. This turns "how do we schedule this" into a non-problem.
-- **Every AI-derived fact carries a status, not just a value.** `suggested → confirmed / corrected / rejected`. Seen is not verified — opening a session is not the same as confirming the AI got it right. Artifact generation (later) must be able to filter to confirmed-only by default.
+- **Every AI-derived result carries a status at the transcript level.** When a Flow runs on a Transcript the result is `draft`. The user can edit individual items (flips to `edited`) and explicitly approve the whole result (`approved`). On approve, new items are auto-promoted into the Layer's shared vocabulary. Artifact generation (later) must be able to filter to approved-only by default.
 
 ---
 
-## 4. User stories
+## 4. Object model
+
+Five hardcoded types. Tags, Keywords, Decisions, etc. are **not** types — they are default seed-data instances of Layer (+ their Step + Flow membership). The engine ships two seed Layers; everything else is user-created configuration.
+
+| Object | What it is |
+|---|---|
+| **Transcript** | Existing `HistoryRecord`. Enrichment results are additive metadata on this record — nothing is replaced. |
+| **Layer** | A named extraction type. Defines: name, optional description, unique list on/off, per-item description on/off, render type (chip-list / plain-list / item+description / task-list). The Layer's vocabulary (unique list) starts empty and grows over time. |
+| **Item** | A vocabulary entry belonging to a Layer. Name + optional one-line description. Shared across all Transcripts for that Layer. In the UI, the user edits items as plain text (`name\|description` per line); the same format is trivially LLM-parseable. |
+| **Step** | A single extraction instruction: target Layer, step-specific prompt, chunk strategy (segment-boundary chunks or full transcript). Reusable across Flows. |
+| **Flow** | An ordered sequence of Steps with a trigger: `on-creation` (exclusive — only one Flow may hold this) or `manual`. Running a Flow on a Transcript produces a result with a status. |
+
+### Status model
+
+Status lives at the **transcript × flow result** level, not per item:
+
+| Status | Meaning |
+|---|---|
+| `draft` | Flow ran, LLM produced the result, user hasn't touched it |
+| `edited` | User has made changes but hasn't approved |
+| `approved` | User explicitly signed off — triggers auto-promotion of new items into the Layer's vocabulary |
+
+**On Approve:** any items in the result that don't yet exist in the Layer's unique list are added automatically. This is the only point at which new vocabulary enters the shared list.
+
+### Creation model
+
+Layer and Step can be created two ways — neither is primary:
+- **Describe it** — plain language input → the local LLM scaffolds the object → user confirms or edits
+- **Build it** — fill the form directly
+
+Flow is always assembled manually (pick existing Steps, set trigger, order them).
+
+---
+
+## 5. User stories
 
 **Capture & organize**
 - As a designer, I want tags and keywords to appear on a session without doing anything, so that organization doesn't cost me extra effort on top of recording.
@@ -62,8 +96,8 @@ Three constraints carry through every layer of the design, because they're what 
 - As a designer, I want AI-suggested items that I never revisit to still surface somewhere, so nothing silently goes unreviewed forever.
 
 **Customize & extend**
-- As a power user, I want to define a new schema (e.g. "Risks") with my own prompt and output shape, so the engine grows with my needs without waiting on a release.
-- As a power user, I want to choose how a new schema's data renders (chip list, task list, etc.) from existing templates, so I don't have to design new UI just to add a category.
+- As a power user, I want to define a new Layer (e.g. "Risks") by describing what I want in plain language, so the engine grows with my needs without filling out a form.
+- As a power user, I want to choose how a new Layer's data renders (chip list, task list, etc.) from existing templates, so I don't have to design new UI just to add a category.
 - As a power user, I want exactly one flow to run automatically on every new session, and everything else to be a deliberate manual action, so I always know what's consuming compute and when.
 
 **Recall (future, not MVP)**
@@ -72,9 +106,9 @@ Three constraints carry through every layer of the design, because they're what 
 
 ---
 
-## 5. User workflows
+## 6. User workflows
 
-### 5.1 Automatic enrichment after a Scribe/Dictate/Transcribe session
+### 6.1 Automatic enrichment after a Scribe/Dictate/Transcribe session
 
 ```mermaid
 flowchart TD
@@ -86,14 +120,14 @@ flowchart TD
     E --> F[Queue worker picks up run\nconcurrency = 1, app-wide]
     F --> G[Step 1: chunk transcript on segment boundaries\nrun Tags step against Gemma E2B]
     G --> H[Step 2: run Keywords step against Gemma E2B]
-    H --> I[Write results to record metadata,\nstatus = suggested]
+    H --> I[Write results to record metadata,\nstatus = draft]
     I --> J[History card status chip flips\nfrom Analyzing… to showing tags/keywords]
-    J --> K[User opens transcript or list view,\nconfirms/corrects individual items]
+    J --> K[User opens transcript, reviews draft result,\nedits items as needed, approves]
 ```
 
 Key property: **C and J are the only two points the user perceives.** Everything between them is invisible background work — the user already has their transcript at C; F–I can take however long it takes without affecting felt latency.
 
-### 5.2 Manual flow run + review
+### 6.2 Manual flow run + review
 
 ```mermaid
 sequenceDiagram
@@ -107,26 +141,32 @@ sequenceDiagram
     TV->>Q: Enqueue flow-run
     Q->>FE: Dequeue when free (concurrency 1)
     loop each step in flow, in order
-        FE->>LLM: chunk + system prompt + step prompt + schema (+ unique list if any)
-        LLM-->>FE: structured JSON matching schema
+        FE->>LLM: chunk + system prompt + step prompt + layer def (+ unique list if any)
+        LLM-->>FE: structured JSON matching layer schema
     end
-    FE->>TV: Write items as status=suggested, emit status event
+    FE->>TV: Write items as status=draft, emit status event
     TV-->>User: Status chip updates queued→running→done
-    User->>TV: Review each suggested item, confirm or correct
-    TV->>TV: Item status flips to confirmed/corrected
+    User->>TV: Review draft items, edit as needed, approve
+    TV->>TV: Result status → edited (on any change) or approved;\non approve, new items promoted to Layer vocabulary
 ```
 
-### 5.3 Authoring: Schema → Step → Flow
+### 6.3 Authoring: Layer → Step → Flow
 
 ```mermaid
 flowchart LR
-    subgraph Schema creation
-        S1[Name + description] --> S2[Unique list? on/off]
+    subgraph Layer creation
+        S0{Describe it or\nbuild it?}
+        S0 -- describe --> S0a[Plain language input\nLLM scaffolds the Layer\nUser confirms or edits]
+        S0 -- build --> S1[Name + description]
+        S1 --> S2[Unique list? on/off]
         S2 --> S3[Per-item description? on/off]
         S3 --> S4[Pick render type:\nchip-list / plain-list /\nitem+description / task-list]
     end
     subgraph Step creation
-        T1[Name] --> T2[Pick target schema\n1 step → 1 schema]
+        T0{Describe it or\nbuild it?}
+        T0 -- describe --> T0a[Plain language input\nLLM scaffolds the Step\nUser confirms or edits]
+        T0 -- build --> T1[Name]
+        T1 --> T2[Pick target layer\n1 step → 1 layer]
         T2 --> T3[Chunk or full]
         T3 --> T4[Step-specific prompt\nsystem prompt is engine-level, inherited]
     end
@@ -136,27 +176,27 @@ flowchart LR
         F3 -- on-creation --> F4["Only one flow may hold this —\nclaiming it prompts to replace the current one"]
         F3 -- manual --> F5[Available as an explicit action\non any past or future session]
     end
-    Schema creation --> Step creation --> Flow creation
+    Layer creation --> Step creation --> Flow creation
 ```
 
-### 5.4 Browsing organized data (list-level view)
+### 6.4 Browsing organized data (list-level view)
 
 ```mermaid
 flowchart TD
-    A[User opens a schema's list view\ne.g. Tags] --> B[See every distinct item\nin that schema's unique list]
+    A[User opens a layer's list view\ne.g. Tags] --> B[See every distinct item\nin that layer's unique list]
     B --> C[Select an item, e.g. 'onboarding']
     C --> D[See every transcript linked to it]
     D --> E[Jump to transcript-level view]
-    note1[This view is generic over schema —\nbuilt once, works for Tags, Keywords,\nand later Projects with zero extra UI work]
+    note1[This view is generic over layer —\nbuilt once, works for Tags, Keywords,\nand later Projects with zero extra UI work]
 ```
 
 ---
 
-## 6. Architecture (C4)
+## 7. Architecture (C4)
 
 These extend `context/architecture.md` Level 1/2 — additive, not a replacement. Everything new stays inside the existing `Container_Boundary(app, ...)`; no new external systems beyond an optional one-time Gemma weight download mirroring the existing Hugging Face / Whisper pattern.
 
-### 6.1 Level 1 — System Context (delta only)
+### 7.1 Level 1 — System Context (delta only)
 
 ```mermaid
 C4Context
@@ -166,11 +206,11 @@ C4Context
     System(scribefloat, "ScribeFloat", "Local-first desktop app. Adds an on-device enrichment engine — still no cloud, no accounts.")
     System_Ext(hf, "Hugging Face", "Existing one-time model download path, extended to Gemma 4 GGUF weights alongside Whisper.")
 
-    Rel(user, scribefloat, "reviews/confirms AI-suggested tags, keywords, and future schemas")
+    Rel(user, scribefloat, "reviews and approves AI-drafted tags, keywords, and future layers")
     Rel(scribefloat, hf, "downloads Gemma 4 E2B/E4B QAT GGUF weights once, on request — same pattern as Whisper models")
 ```
 
-### 6.2 Level 2 — Containers (new "Design Brain Engine" boundary)
+### 7.2 Level 2 — Containers (new "Design Brain Engine" boundary)
 
 ```mermaid
 C4Container
@@ -182,7 +222,7 @@ C4Container
     Container_Boundary(brain, "Design Brain Engine — new") {
         Container(queue, "Enrichment Queue", "Rust / Tokio", "Global FIFO. One flow-run in flight at a time, app-wide — mirrors ModelService::inference_gate")
         Container(flow_engine, "Flow Engine", "Rust", "Runs a flow's ordered steps against one transcript; writes results back through HistoryService")
-        Container(schema_registry, "Schema Registry", "Rust", "Defines schemas: unique list, per-item description, render type. Tags + Keywords ship as defaults")
+        Container(layer_registry, "Layer Registry", "Rust", "Defines layers: unique list, per-item description, render type. Tags + Keywords ship as defaults")
         Container(chunker, "Chunker", "Rust", "Shared service — splits transcript on Segment timestamp boundaries (speaker turn / pause gap), not raw token count")
         Container(llm_svc, "LocalLLMService", "Rust / llama.cpp via llama-cpp-2", "Loads Gemma 4 E2B/E4B QAT GGUF. Same inference_gate-style serialization as ModelService — concurrency 1, shared GPU/ggml state")
     }
@@ -191,45 +231,45 @@ C4Container
     Rel(svc_history, queue, "enqueue on-creation flow-run when a record completes")
     Rel(queue, flow_engine, "dequeue, run when free")
     Rel(flow_engine, chunker, "chunk transcript per step's chunk-or-full setting")
-    Rel(flow_engine, schema_registry, "read schema def + unique list for grounding context")
+    Rel(flow_engine, layer_registry, "read layer def + unique list for grounding context")
     Rel(flow_engine, llm_svc, "one bounded call per step, per chunk")
-    Rel(flow_engine, svc_history, "write results as record metadata, status=suggested")
-    Rel(history_ui, svc_history, "read/edit metadata; flip status to confirmed/corrected")
+    Rel(flow_engine, svc_history, "write results as record metadata, status=draft")
+    Rel(history_ui, svc_history, "read/edit metadata; approve result, promoting new items to layer vocabulary")
 ```
 
-### 6.3 Level 3 notes (not a full diagram yet — call out before the spike)
+### 7.3 Level 3 notes (not a full diagram yet — call out before the spike)
 
 - `LocalLLMService` needs the same defensive load/cache pattern as `ModelService::get_or_load_context` — load once, keep warm, never reload per call.
 - Structured output reliability should lean on grammar-constrained decoding (GBNF via llama.cpp) rather than hoping a 2–4B model returns clean JSON unaided.
 - `Chunker` is shared infrastructure, not something each Step reimplements — this was explicitly flagged as a risk if left per-step.
-- Render types are a small, fixed catalog (chip-list, plain-list, item+description, task-list) that the UI knows how to draw; a new Schema picks from this catalog rather than commissioning new UI.
+- Render types are a small, fixed catalog (chip-list, plain-list, item+description, task-list) that the UI knows how to draw; a new Layer picks from this catalog rather than commissioning new UI.
 
 ---
 
-## 7. Non-goals and open questions for the MVP spike
+## 8. Non-goals and open questions for the MVP spike
 
 **Non-goals (explicitly deferred, not forgotten):**
-- Project entity CRUD — Projects should ride on the same Schema/Step/Flow + list-view machinery later, not get bespoke UI now.
+- Project entity CRUD — Projects should ride on the same Layer/Step/Flow + list-view machinery later, not get bespoke UI now.
 - Voice-triggered explicit tagging via the `float` word-replacement engine.
 - More than one flow triggering on-creation.
 - Step-to-step chaining / DAG ordering (flows are a flat ordered sequence for MVP; a step cannot yet declare "I need step M's output").
 - Any embeddings/vector work.
+- Zero-use item pruning from a Layer's vocabulary on Approve — useful for keeping the unique list clean, but destructive and risky (a tag only ever used on one transcript would silently vanish if that transcript is edited post-approval). Defer; revisit as an opt-in toggle with clear consequences shown in UI.
 
 **Open questions to resolve during/after the spike, not before:**
 - Is the system prompt engine-wide (one shared framing for every step in every flow) or per-flow? Engine-wide is the simpler MVP default.
-- How does a step's new value get promoted into a schema's shared unique list — automatically, or gated through the same suggested/confirmed status as everything else?
-- Re-run semantics: if a flow is manually re-run on a session whose vocabulary has since grown, do new results merge with or replace the existing ones?
+- Re-run semantics: if a flow is manually re-run on a transcript whose vocabulary has since grown, do new results merge with or replace the existing draft?
 - Combined-vs-separate model calls per chunk when a flow has multiple steps — test both for latency before deciding.
 
 **Already-decided UI change (independent of this spike, mentioned here so it isn't lost):**
 
 Reviewing the existing History detail-pane header (`HistoryDetailPane.svelte`) against "does this answer a question a designer asks when recalling a past decision" surfaced that most of today's chips don't — `model`, `dual source` / `speaker capture` describe *how capture happened*, not *what was decided*. Decision: drop those from default prominent display in the header; duration/word count can stay as a quiet secondary detail rather than a chip. No data changes — `model`, `dual_source`, `speaker_capture`, etc. stay in `history.jsonl` exactly as today, this is purely a UI surfacing change, and it frees the header's chip slot for new Schema-derived data (tags, keywords, ...) once the engine ships.
 
-This is a UI decision only — it does **not** imply or depend on the object/taxonomy naming above (Schema/Item/Step/Flow/Log, or candidate renames like Layer), which remains unresolved. Implementation must still go through `docs/history-ui-review.md`'s layout-contract review per `CLAUDE.md`, same as any other History detail UI change.
+This is a UI decision only — it does not depend on the engine shipping. Implementation must still go through `docs/history-ui-review.md`'s layout-contract review per `CLAUDE.md`, same as any other History detail UI change.
 
 ---
 
-## 8. Reference: where this connects to existing code
+## 9. Reference: where this connects to existing code
 
 | Concept here | Existing precedent |
 |---|---|

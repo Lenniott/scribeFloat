@@ -11,7 +11,7 @@ use crate::types::{
 };
 use anyhow::{anyhow, Result};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager};
@@ -45,8 +45,8 @@ const HOLD_THRESHOLD_MS: u128 = 500;
 const DOUBLE_TAP_WINDOW_MS: u128 = 400;
 /// Minimum ms after entering toggle-mode before a third tap can stop.
 const TOGGLE_STOP_COOLDOWN_MS: u128 = 1000;
-/// How long (ms) the Done panel stays visible before auto-dismissing.
-const DONE_DISMISS_MS: u64 = 2500;
+/// How long (ms) failure Done/Error panels stay visible before auto-dismissing.
+const FAILURE_DISMISS_MS: u64 = 800;
 
 // ── Key tracker state machine ────────────────────────────────────────────────
 
@@ -219,6 +219,8 @@ struct Inner {
     state: DictateState,
     session: Option<DictateMicSession>,
     transcription_abort: Option<Arc<AtomicBool>>,
+    /// Temp WAV path while Transcribing/Pasting — used to delete on user abort.
+    processing_wav_path: Option<PathBuf>,
 }
 
 pub struct DictateController {
@@ -237,6 +239,8 @@ pub struct DictateController {
     restore_paste_target_pid: Arc<Mutex<Option<i32>>>,
     /// Guards against a second simulated paste in the same transcription (e.g. duplicate Stop events).
     paste_once: AtomicBool,
+    /// Bumped on new activity so stale auto-dismiss timers cannot hide a new session HUD.
+    dismiss_generation: Arc<AtomicU64>,
 }
 
 impl DictateController {
@@ -253,6 +257,7 @@ impl DictateController {
                 state: DictateState::Idle,
                 session: None,
                 transcription_abort: None,
+                processing_wav_path: None,
             }),
             audio,
             model,
@@ -264,7 +269,23 @@ impl DictateController {
             hold_start_in_flight: Arc::new(AtomicBool::new(false)),
             restore_paste_target_pid: Arc::new(Mutex::new(None)),
             paste_once: AtomicBool::new(false),
+            dismiss_generation: Arc::new(AtomicU64::new(0)),
         })
+    }
+
+    fn bump_dismiss_generation(&self) {
+        self.dismiss_generation.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn schedule_failure_dismiss(this: Arc<Self>) {
+        let gen = this.dismiss_generation.load(Ordering::SeqCst);
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(FAILURE_DISMISS_MS)).await;
+            if this.dismiss_generation.load(Ordering::SeqCst) != gen {
+                return;
+            }
+            this.auto_dismiss();
+        });
     }
 
     fn clear_restore_paste_target_pid(&self) {
@@ -332,8 +353,13 @@ impl DictateController {
     fn dispatch_action(this: Arc<Self>, action: DictateAction) {
         match action {
             DictateAction::Start(source) => {
-                if this.current_state() != DictateState::Idle {
-                    return;
+                match this.current_state() {
+                    DictateState::Idle => {}
+                    DictateState::Done | DictateState::Error => {
+                        this.bump_dismiss_generation();
+                        this.dismiss();
+                    }
+                    _ => return,
                 }
                 match source {
                     DictateStartSource::Toggle => Self::spawn_dictate_window_and_start(this),
@@ -437,6 +463,7 @@ impl DictateController {
 
     /// Transition Idle → Recording. Opens mic stream, emits audio level events.
     pub fn start(&self) -> Result<()> {
+        self.bump_dismiss_generation();
         {
             let inner = self.lock();
             if inner.state != DictateState::Idle {
@@ -521,19 +548,30 @@ impl DictateController {
         let _ = self.app.emit(DICTATE_AUDIO_LEVEL_EVENT, 0.0_f32);
     }
 
-    /// Cancel from Recording or Done state → Idle. Discards audio. Hides window.
+    /// Cancel from Recording → Idle (discards audio), abort Transcribing/Pasting, or dismiss Done.
     pub fn cancel(&self) -> Result<()> {
+        match self.current_state() {
+            DictateState::Idle => return Ok(()),
+            DictateState::Transcribing | DictateState::Pasting => return self.abort_processing(),
+            DictateState::Done => {
+                self.bump_dismiss_generation();
+                self.dismiss();
+                return Ok(());
+            }
+            DictateState::Recording => {}
+            DictateState::Error => {
+                self.bump_dismiss_generation();
+                self.dismiss();
+                return Ok(());
+            }
+        }
+
+        self.bump_dismiss_generation();
         self.clear_restore_paste_target_pid();
         let session = {
             let mut inner = self.lock();
-            match &inner.state {
-                DictateState::Idle => return Ok(()),
-                DictateState::Recording | DictateState::Done => {}
-                other => {
-                    return Err(anyhow!("cannot cancel dictate: state is {:?}", other));
-                }
-            }
             inner.state = DictateState::Idle;
+            inner.processing_wav_path = None;
             let s = inner.session.take();
             self.emit_state_event(&inner);
             s
@@ -554,14 +592,49 @@ impl DictateController {
         Ok(())
     }
 
+    /// Abort an in-flight Transcribing or Pasting pipeline. Returns to Idle immediately.
+    /// If paste is already running on the main thread, it may still complete (best-effort).
+    pub fn abort_processing(&self) -> Result<()> {
+        self.bump_dismiss_generation();
+        let wav_path = {
+            let mut inner = self.lock();
+            match &inner.state {
+                DictateState::Transcribing | DictateState::Pasting => {}
+                other => {
+                    return Err(anyhow!(
+                        "cannot abort dictate processing: state is {:?}",
+                        other
+                    ));
+                }
+            }
+            if let Some(flag) = inner.transcription_abort.as_ref() {
+                flag.store(true, Ordering::SeqCst);
+            }
+            let path = inner.processing_wav_path.take();
+            inner.state = DictateState::Idle;
+            inner.transcription_abort = None;
+            self.emit_state_event(&inner);
+            path
+        };
+        if let Some(path) = wav_path {
+            self.delete_dictate_wav(&path);
+        }
+        self.clear_restore_paste_target_pid();
+        let _ = self.app.emit(DICTATE_AUDIO_LEVEL_EVENT, 0.0_f32);
+        self.hide_window();
+        Ok(())
+    }
+
     /// Dismiss the Done or Error panel → Idle. No-op from any other state.
     pub fn dismiss(&self) {
+        self.bump_dismiss_generation();
         let should_hide = {
             let mut inner = self.lock();
             if !matches!(inner.state, DictateState::Done | DictateState::Error) {
                 return;
             }
             inner.state = DictateState::Idle;
+            inner.processing_wav_path = None;
             self.emit_state_event(&inner);
             true
         };
@@ -574,6 +647,7 @@ impl DictateController {
     /// Transition Recording → Transcribing → Done (or Error/Idle for edge cases).
     /// Returns immediately; all heavy work runs in spawn_blocking.
     pub fn stop_and_transcribe(this: Arc<Self>) -> Result<()> {
+        this.bump_dismiss_generation();
         let abort_flag = Arc::new(AtomicBool::new(false));
         let session = {
             let mut inner = this.lock();
@@ -599,7 +673,9 @@ impl DictateController {
                     },
                 )
                 .ok();
-            inner.session.take().expect("session exists when Recording")
+            let session = inner.session.take().expect("session exists when Recording");
+            inner.processing_wav_path = Some(session.mic.wav_path().to_path_buf());
+            session
         };
 
         tauri::async_runtime::spawn(async move {
@@ -609,24 +685,22 @@ impl DictateController {
                     .await;
 
             match result {
-                Ok(Ok(true)) => {
-                    tokio::time::sleep(std::time::Duration::from_millis(DONE_DISMISS_MS)).await;
-                    this.auto_dismiss();
-                }
-                Ok(Ok(false)) => {
-                    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-                    this.auto_dismiss();
+                Ok(Ok(_)) => {
+                    if matches!(
+                        this.current_state(),
+                        DictateState::Done | DictateState::Error
+                    ) {
+                        Self::schedule_failure_dismiss(Arc::clone(&this));
+                    }
                 }
                 Ok(Err(e)) => {
                     this.set_error_state(e.to_string(), None);
-                    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-                    this.auto_dismiss();
+                    Self::schedule_failure_dismiss(Arc::clone(&this));
                 }
                 Err(e) => {
                     tracing::error!(error = %e, "dictate transcription panicked");
                     this.set_error_state("Transcription crashed unexpectedly.".to_string(), None);
-                    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-                    this.auto_dismiss();
+                    Self::schedule_failure_dismiss(Arc::clone(&this));
                 }
             }
         });
@@ -635,7 +709,7 @@ impl DictateController {
     }
 
     /// Blocking transcription pipeline — runs inside spawn_blocking.
-    /// Returns Ok(true) when text was pasted (Done state), Ok(false) when silently idle.
+    /// Returns Ok(true) when a failure Done panel was shown; Ok(false) when silently idle.
     fn do_transcription(
         &self,
         session: DictateMicSession,
@@ -699,6 +773,11 @@ impl DictateController {
         ) {
             Ok(segments) => segments,
             Err(e) => {
+                if abort_flag.load(Ordering::SeqCst) {
+                    self.delete_dictate_wav(&wav_path);
+                    self.transition_to_idle();
+                    return Ok(false);
+                }
                 let salvaged = self.salvage_dictate_wav(&wav_path);
                 self.set_error_state(e.to_string(), salvaged);
                 return Ok(false);
@@ -723,16 +802,27 @@ impl DictateController {
             &config.replacement_prefix,
         );
 
+        if abort_flag.load(Ordering::SeqCst) {
+            self.delete_dictate_wav(&wav_path);
+            self.transition_to_idle();
+            return Ok(false);
+        }
+
         {
             let mut inner = self.lock();
             inner.state = DictateState::Pasting;
-            inner.transcription_abort = None;
             self.app
                 .emit(
                     DICTATE_STATE_EVENT,
                     DictateStateEvent::new(DictateState::Pasting),
                 )
                 .ok();
+        }
+
+        if abort_flag.load(Ordering::SeqCst) {
+            self.delete_dictate_wav(&wav_path);
+            self.transition_to_idle();
+            return Ok(false);
         }
 
         let model_name = model_path
@@ -791,25 +881,30 @@ impl DictateController {
 
         self.delete_dictate_wav(&wav_path);
 
-        {
-            let mut inner = self.lock();
-            inner.state = DictateState::Done;
-            inner.transcription_abort = None;
-            self.app
-                .emit(
-                    DICTATE_STATE_EVENT,
-                    DictateStateEvent {
-                        text: Some(text),
-                        paste_failed,
-                        history_write_failed,
-                        ..DictateStateEvent::new(DictateState::Done)
-                    },
-                )
-                .ok();
+        if paste_failed {
+            {
+                let mut inner = self.lock();
+                inner.state = DictateState::Done;
+                inner.transcription_abort = None;
+                inner.processing_wav_path = None;
+                self.app
+                    .emit(
+                        DICTATE_STATE_EVENT,
+                        DictateStateEvent {
+                            text: Some(text),
+                            paste_failed: true,
+                            history_write_failed,
+                            ..DictateStateEvent::new(DictateState::Done)
+                        },
+                    )
+                    .ok();
+            }
+            let _ = self.app.emit(DICTATE_AUDIO_LEVEL_EVENT, 0.0_f32);
+            return Ok(true);
         }
-        let _ = self.app.emit(DICTATE_AUDIO_LEVEL_EVENT, 0.0_f32);
 
-        Ok(true)
+        self.transition_to_idle();
+        Ok(false)
     }
 
     pub fn get_history(&self) -> Result<Vec<crate::types::DictateHistoryEntry>, String> {
@@ -826,6 +921,7 @@ impl DictateController {
         let mut inner = self.lock();
         inner.state = DictateState::Idle;
         inner.transcription_abort = None;
+        inner.processing_wav_path = None;
         self.emit_state_event(&inner);
         drop(inner);
         let _ = self.app.emit(DICTATE_AUDIO_LEVEL_EVENT, 0.0_f32);
@@ -837,6 +933,7 @@ impl DictateController {
         let mut inner = self.lock();
         inner.state = DictateState::Error;
         inner.transcription_abort = None;
+        inner.processing_wav_path = None;
         self.app
             .emit(
                 DICTATE_STATE_EVENT,
@@ -877,6 +974,7 @@ impl DictateController {
             match inner.state {
                 DictateState::Done | DictateState::Error => {
                     inner.state = DictateState::Idle;
+                    inner.processing_wav_path = None;
                     self.emit_state_event(&inner);
                     true
                 }

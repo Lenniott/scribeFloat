@@ -179,7 +179,7 @@ Key listener (always on): **Left Control** only (`CGEventTap` on macOS, low-leve
 10. History Service: appends a JSONL record to `{save_folder}/history.jsonl`
     - Empty transcript → skip log entry
     - Dictate never writes a `.md` file
-11. Floating panel dismissed (auto)
+11. On success the floating panel hides immediately (no lingering Done state). Paste failure shows a brief Done panel (~800 ms) with clipboard fallback text; errors auto-dismiss after ~800 ms. **X** during Transcribing or Pasting aborts the pipeline and returns to Idle.
 
 ---
 

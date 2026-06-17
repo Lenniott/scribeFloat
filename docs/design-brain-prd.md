@@ -45,7 +45,7 @@ That reframe surfaces problems the current flat-list History UI doesn't solve:
 Three constraints carry through every layer of the design, because they're what make the bet safe to make incrementally:
 
 - **Always async, always decoupled.** Enrichment runs after `DONE`, never inside the Scribe/Dictate/Transcribe state machine. The core capture flow must never feel slower because this exists.
-- **Concurrency = 1.** One global queue, one flow-run in flight at a time, matching the proven `inference_gate` pattern. This turns "how do we schedule this" into a non-problem.
+- **Concurrency = 1 for the spike; priority preemption is the target direction.** Whisper and Gemma share the same ggml/Metal GPU backend — concurrent encode passes corrupt shared GPU state. The spike serialises them with a simple queue (Gemma waits its turn). The intended long-term behaviour is priority-based preemption: Whisper is first-class and can interrupt Gemma mid-run; Gemma saves its KV cache state, yields, resumes after Whisper finishes. This is viable because Gemma generates output one token at a time, giving it natural yield points between tokens. Whisper has no equivalent pause point, which is why the priority is asymmetric. Not built in the spike; validated first.
 - **Every AI-derived result carries a status at the transcript level.** When a Flow runs on a Transcript the result is `draft`. The user can edit individual items (flips to `edited`) and explicitly approve the whole result (`approved`). On approve, new items are auto-promoted into the Layer's shared vocabulary. Artifact generation (later) must be able to filter to approved-only by default.
 
 ---

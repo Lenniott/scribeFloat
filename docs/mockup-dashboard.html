@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ScribeFloat — Mockup v2</title>
+<title>ScribeFloat — Mockup v3</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
@@ -16,12 +16,13 @@
   ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .spinner { display: inline-block; width: 10px; height: 10px; border: 1.5px solid #71717a; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; }
-  .nav-btn { transition: background 0.1s, color 0.1s; }
   .chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 9999px; font-size: 11px; padding: 3px 10px; line-height: 1.4; }
   .pill-add { display: inline-flex; align-items: center; gap: 4px; border-radius: 9999px; font-size: 11px; padding: 3px 10px; border: 1px dashed #3f3f46; color: #71717a; cursor: pointer; }
   .pill-add:hover { border-color: #71717a; color: #a1a1aa; }
-  input[type=text], textarea, select { outline: none; }
-  .toggle { position: relative; }
+  input[type=text], textarea { outline: none; }
+  /* Slide-in side panels */
+  .side-panel { display: none; width: 300px; flex-shrink: 0; border-left: 1px solid #27272a; overflow-y: auto; }
+  .side-panel.open { display: flex; flex-direction: column; }
 </style>
 </head>
 <body class="bg-zinc-950 min-h-screen flex items-center justify-center p-8">
@@ -33,7 +34,7 @@
   <button onclick="show('transcripts')" id="btn-transcripts" class="text-[11px] px-3 py-1 rounded-full text-zinc-400 hover:text-white">Transcripts</button>
   <button onclick="show('complete')" id="btn-complete" class="text-[11px] px-3 py-1 rounded-full text-zinc-400 hover:text-white">After Recording</button>
   <button onclick="show('detail')" id="btn-detail" class="text-[11px] px-3 py-1 rounded-full text-zinc-400 hover:text-white">Transcript Detail</button>
-  <button onclick="show('library')" id="btn-library" class="text-[11px] px-3 py-1 rounded-full text-zinc-400 hover:text-white">Library</button>
+  <button onclick="show('float')" id="btn-float" class="text-[11px] px-3 py-1 rounded-full text-zinc-400 hover:text-white">Float</button>
 </div>
 
 <!-- WINDOW -->
@@ -49,8 +50,13 @@
     <div class="flex-1 flex items-center justify-center">
       <span class="ff text-zinc-500 text-xs">ScribeFloat</span>
     </div>
-    <button class="text-zinc-600 hover:text-zinc-300 flex-shrink-0">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <!-- Dictate: persistent title-bar trigger -->
+    <button
+      title="Dictate — tap to start"
+      class="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-100 border border-zinc-700 hover:border-zinc-500 rounded-md px-2.5 py-1 flex-shrink-0 transition-colors"
+      style="font-size:11.5px;">
+      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 18.5a6 6 0 0 0 6-6V6a6 6 0 1 0-12 0v6.5a6 6 0 0 0 6 6Z"/><path d="M19 10.5v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="18.5" x2="12" y2="22"/></svg>
+      Dictate
     </button>
   </div>
 
@@ -58,57 +64,48 @@
   <div class="flex overflow-hidden" style="height:640px;">
 
     <!-- SIDEBAR -->
-    <div class="bg-zinc-900 border-r border-zinc-800 flex flex-col flex-shrink-0 overflow-y-auto" style="width:180px; padding:12px 10px;">
+    <div class="bg-zinc-900 border-r border-zinc-800 flex flex-col flex-shrink-0" style="width:172px; padding:14px 10px;">
 
-      <!-- Capture actions -->
+      <!-- Capture -->
       <div class="mb-1">
         <p class="mono text-zinc-600 px-2 mb-2" style="font-size:9px; letter-spacing:0.08em; text-transform:uppercase;">Capture</p>
-        <button class="nav-btn w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 text-amber-400 hover:bg-zinc-800 mb-0.5" style="font-size:12.5px; font-weight:500;">
+        <button class="w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 text-amber-400 hover:bg-zinc-800 mb-0.5 transition-colors" style="font-size:12.5px; font-weight:500;">
           <svg class="w-3.5 h-3.5 flex-shrink-0 fill-current" viewBox="0 0 20 20"><circle cx="10" cy="10" r="4.5"/></svg>
           Scribe
         </button>
-        <button class="nav-btn w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 mb-0.5" style="font-size:12.5px;">
-          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 18.5a6 6 0 0 0 6-6V6a6 6 0 1 0-12 0v6.5a6 6 0 0 0 6 6Z"/><path d="M19 10.5v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="18.5" x2="12" y2="22"/></svg>
-          Dictate
-        </button>
-        <button class="nav-btn w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800" style="font-size:12.5px;">
+        <button class="w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors" style="font-size:12.5px;">
           <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="7 9 12 4 17 9"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
           Upload
         </button>
       </div>
 
-      <div class="border-t border-zinc-800 my-2.5 mx-1"></div>
+      <div class="border-t border-zinc-800 my-3 mx-1"></div>
 
-      <!-- Navigate -->
+      <!-- Manage -->
       <div class="flex-1">
-        <p class="mono text-zinc-600 px-2 mb-2" style="font-size:9px; letter-spacing:0.08em; text-transform:uppercase;">Navigate</p>
-        <button onclick="show('dashboard')" id="nav-dashboard" class="nav-btn w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 text-zinc-200 bg-zinc-800 mb-0.5" style="font-size:12.5px; font-weight:500;">
+        <p class="mono text-zinc-600 px-2 mb-2" style="font-size:9px; letter-spacing:0.08em; text-transform:uppercase;">Manage</p>
+        <button onclick="show('dashboard')" id="nav-dashboard" class="w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 text-zinc-200 bg-zinc-800 mb-0.5 transition-colors" style="font-size:12.5px; font-weight:500;">
           <svg class="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           Dashboard
         </button>
-        <button onclick="show('transcripts')" id="nav-transcripts" class="nav-btn w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 mb-0.5" style="font-size:12.5px;">
+        <button onclick="show('transcripts')" id="nav-transcripts" class="w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 mb-0.5 transition-colors" style="font-size:12.5px;">
           <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           Transcripts
         </button>
-        <button onclick="show('library')" id="nav-library" class="nav-btn w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800" style="font-size:12.5px;">
-          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-          Library
+        <button onclick="show('float')" id="nav-float" class="w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors" style="font-size:12.5px;">
+          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          Float
         </button>
       </div>
 
-      <div class="border-t border-zinc-800 my-2.5 mx-1"></div>
+      <div class="border-t border-zinc-800 my-3 mx-1"></div>
 
-      <!-- Bottom -->
       <div>
-        <button class="nav-btn w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 mb-0.5" style="font-size:12.5px;">
-          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          Search
-        </button>
-        <button class="nav-btn w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800" style="font-size:12.5px;">
+        <button class="w-full text-left px-2.5 py-2 rounded-lg flex items-center gap-2.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors" style="font-size:12.5px;">
           <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M2 12h2m16 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
           Settings
         </button>
-        <p class="mono text-zinc-700 px-2 mt-2.5 leading-relaxed" style="font-size:9px;">local · no cloud<br>Gemma E2B · queue 1</p>
+        <p class="mono text-zinc-700 px-2 mt-3 leading-relaxed" style="font-size:9px;">local · no cloud<br>Gemma E2B · queue 1</p>
       </div>
     </div>
 
@@ -123,7 +120,6 @@
           <h1 class="ff text-zinc-100 mb-1" style="font-size:22px; font-weight:500;">Good afternoon, Ben</h1>
           <p class="text-zinc-500 mb-6" style="font-size:13px;">Tuesday, 17 June 2026</p>
 
-          <!-- Stats -->
           <div class="grid grid-cols-4 gap-3 mb-7">
             <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
               <p class="mono text-zinc-100 mb-1" style="font-size:22px; font-weight:600;">142</p>
@@ -131,7 +127,7 @@
             </div>
             <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
               <p class="mono text-zinc-100 mb-1" style="font-size:22px; font-weight:600;">8</p>
-              <p class="text-zinc-500" style="font-size:11.5px;">Layers</p>
+              <p class="text-zinc-500" style="font-size:11.5px;">Float layers</p>
             </div>
             <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
               <p class="mono text-amber-400 mb-1" style="font-size:22px; font-weight:600;">3</p>
@@ -143,14 +139,13 @@
             </div>
           </div>
 
-          <!-- Recent -->
           <div class="flex items-center justify-between mb-3">
             <h2 class="text-zinc-300 font-medium" style="font-size:13px;">Recent</h2>
             <button onclick="show('transcripts')" class="text-amber-500 hover:text-amber-400" style="font-size:12px;">See all →</button>
           </div>
 
           <div class="flex flex-col gap-2.5">
-            <!-- draft card -->
+            <!-- Scribe / draft -->
             <div onclick="show('detail')" class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 cursor-pointer hover:border-zinc-700 transition-colors">
               <div class="flex items-start gap-3">
                 <div class="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -159,24 +154,41 @@
                 <div class="flex-1 min-w-0">
                   <div class="flex items-start justify-between gap-3">
                     <p class="text-zinc-200 font-medium truncate" style="font-size:13.5px;">Onboarding flow — stakeholder sync</p>
-                    <span class="mono flex items-center gap-1.5 flex-shrink-0" style="font-size:10.5px; color:#d97706; text-transform:uppercase; letter-spacing:.03em;">
-                      <span class="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0"></span>Draft
-                    </span>
+                    <span class="mono flex items-center gap-1.5 flex-shrink-0" style="font-size:10.5px; color:#d97706; text-transform:uppercase; letter-spacing:.03em;"><span class="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0"></span>Draft</span>
                   </div>
-                  <p class="text-zinc-500 mt-0.5 truncate" style="font-size:12px;">We decided to cut the third onboarding step because drop-off was concentrated there…</p>
+                  <p class="text-zinc-500 mt-0.5 truncate" style="font-size:12px;">Decided to cut the third onboarding step — drop-off concentrated there…</p>
                   <div class="flex gap-1.5 mt-2 flex-wrap">
                     <span class="chip bg-zinc-800 text-zinc-400 border border-zinc-700/60">onboarding</span>
                     <span class="chip bg-zinc-800 text-zinc-400 border border-zinc-700/60">drop-off</span>
                     <span class="chip bg-zinc-800 text-zinc-400 border border-zinc-700/60">client-x</span>
                   </div>
                 </div>
-                <div class="flex-shrink-0 text-right ml-1">
-                  <p class="mono text-zinc-600" style="font-size:10px;">15 Jun · 18m 42s</p>
-                </div>
+                <p class="mono text-zinc-600 flex-shrink-0 ml-1" style="font-size:10px;">15 Jun · 18m 42s</p>
               </div>
             </div>
 
-            <!-- approved card -->
+            <!-- Dictate / approved -->
+            <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 cursor-pointer hover:border-zinc-700 transition-colors">
+              <div class="flex items-start gap-3">
+                <div class="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <svg class="w-3.5 h-3.5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 18.5a6 6 0 0 0 6-6V6a6 6 0 1 0-12 0v6.5a6 6 0 0 0 6 6Z"/><path d="M19 10.5v2a7 7 0 0 1-14 0v-2"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-start justify-between gap-3">
+                    <p class="text-zinc-200 font-medium truncate" style="font-size:13.5px;">Nav rename rationale</p>
+                    <span class="mono flex items-center gap-1.5 flex-shrink-0" style="font-size:10.5px; color:#5FA88A; text-transform:uppercase; letter-spacing:.03em;"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"></span>Approved</span>
+                  </div>
+                  <p class="text-zinc-500 mt-0.5 truncate" style="font-size:12px;">Renaming 'Workspace' to 'Project' — workspace was overloaded…</p>
+                  <div class="flex gap-1.5 mt-2 flex-wrap">
+                    <span class="chip bg-zinc-800 text-zinc-400 border border-zinc-700/60">navigation</span>
+                    <span class="chip bg-zinc-800 text-zinc-400 border border-zinc-700/60">design-system</span>
+                  </div>
+                </div>
+                <p class="mono text-zinc-600 flex-shrink-0 ml-1" style="font-size:10px;">14 Jun · 4m 10s</p>
+              </div>
+            </div>
+
+            <!-- Upload / running -->
             <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 cursor-pointer hover:border-zinc-700 transition-colors">
               <div class="flex items-start gap-3">
                 <div class="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -185,43 +197,14 @@
                 <div class="flex-1 min-w-0">
                   <div class="flex items-start justify-between gap-3">
                     <p class="text-zinc-200 font-medium truncate" style="font-size:13.5px;">Client-X kickoff call</p>
-                    <span class="mono flex items-center gap-1.5 flex-shrink-0" style="font-size:10.5px; color:#5FA88A; text-transform:uppercase; letter-spacing:.03em;">
-                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"></span>Approved
-                    </span>
+                    <span class="mono flex items-center gap-1.5 flex-shrink-0 text-zinc-500" style="font-size:10.5px; text-transform:uppercase; letter-spacing:.03em;"><span class="spinner"></span>Floating…</span>
                   </div>
-                  <p class="text-zinc-500 mt-0.5 truncate" style="font-size:12px;">Client wants pricing page to lead with enterprise tier, not starter…</p>
-                  <div class="flex gap-1.5 mt-2 flex-wrap">
-                    <span class="chip bg-zinc-800 text-zinc-400 border border-zinc-700/60">pricing-page</span>
-                    <span class="chip bg-zinc-800 text-zinc-400 border border-zinc-700/60">client-x</span>
-                  </div>
-                </div>
-                <div class="flex-shrink-0 ml-1">
-                  <p class="mono text-zinc-600" style="font-size:10px;">12 Jun · 41m 3s</p>
-                </div>
-              </div>
-            </div>
-
-            <!-- analysing card -->
-            <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 cursor-pointer hover:border-zinc-700 transition-colors">
-              <div class="flex items-start gap-3">
-                <div class="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <svg class="w-3.5 h-3.5 fill-zinc-500" viewBox="0 0 20 20"><circle cx="10" cy="10" r="4.5"/></svg>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-start justify-between gap-3">
-                    <p class="text-zinc-200 font-medium truncate" style="font-size:13.5px;">Accessibility audit notes</p>
-                    <span class="mono flex items-center gap-1.5 flex-shrink-0 text-zinc-500" style="font-size:10.5px; text-transform:uppercase; letter-spacing:.03em;">
-                      <span class="spinner"></span>Running
-                    </span>
-                  </div>
-                  <p class="text-zinc-500 mt-0.5 truncate" style="font-size:12px;">Contrast ratio on the empty state illustration fails AA…</p>
+                  <p class="text-zinc-500 mt-0.5 truncate" style="font-size:12px;">Client wants pricing page to lead with enterprise tier…</p>
                   <div class="flex gap-1.5 mt-2">
                     <span class="chip text-zinc-600 border border-zinc-800 italic" style="font-size:10.5px;">extracting tags…</span>
                   </div>
                 </div>
-                <div class="flex-shrink-0 ml-1">
-                  <p class="mono text-zinc-600" style="font-size:10px;">Just now · 12m 55s</p>
-                </div>
+                <p class="mono text-zinc-600 flex-shrink-0 ml-1" style="font-size:10px;">12 Jun · 41m 3s</p>
               </div>
             </div>
           </div>
@@ -229,109 +212,198 @@
       </div>
 
       <!-- ═══════════════════════════════════════════
-           SCREEN: TRANSCRIPTS
+           SCREEN: TRANSCRIPTS (with filter side panel)
       ═══════════════════════════════════════════ -->
-      <div id="screen-transcripts" class="screen flex-col h-full overflow-y-auto">
-        <div style="padding:28px 32px;">
-          <div class="flex items-end justify-between mb-5">
-            <div>
-              <h1 class="ff text-zinc-100 mb-1" style="font-size:22px; font-weight:500;">Transcripts</h1>
-              <p class="text-zinc-500" style="font-size:13px;">Every Scribe, Dictate, and Upload session.</p>
-            </div>
-          </div>
+      <div id="screen-transcripts" class="screen h-full overflow-hidden">
 
-          <!-- Filters -->
-          <div class="flex items-center justify-between mb-4">
-            <div class="flex gap-1">
-              <button class="px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700" style="font-size:12px; font-weight:500;">All</button>
+        <!-- List column -->
+        <div class="flex-1 flex flex-col h-full overflow-hidden">
+          <div class="flex-shrink-0" style="padding:24px 24px 0;">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h1 class="ff text-zinc-100 mb-0.5" style="font-size:20px; font-weight:500;">Transcripts</h1>
+                <p class="text-zinc-500" style="font-size:12.5px;">Every Scribe, Dictate, and Upload session.</p>
+              </div>
+              <button onclick="toggleFilter()" id="filter-btn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors" style="font-size:12px;">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+                Filter
+              </button>
+            </div>
+
+            <!-- Source tabs -->
+            <div class="flex gap-1 mb-4">
+              <button class="px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700 font-medium" style="font-size:12px;">All</button>
               <button class="px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800" style="font-size:12px;">Scribe</button>
               <button class="px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800" style="font-size:12px;">Dictate</button>
               <button class="px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800" style="font-size:12px;">Upload</button>
-            </div>
-            <div class="flex gap-1">
-              <button class="px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700" style="font-size:12px; font-weight:500;">All</button>
+              <div class="flex-1"></div>
+              <button class="px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700 font-medium" style="font-size:12px;">All</button>
               <button class="px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800" style="font-size:12px;">Draft</button>
               <button class="px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800" style="font-size:12px;">Approved</button>
             </div>
           </div>
 
-          <div class="flex flex-col gap-2">
-            <!-- t1 -->
-            <div onclick="show('detail')" class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 cursor-pointer hover:border-zinc-700 transition-colors">
-              <div class="flex items-start gap-3">
-                <div class="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <svg class="w-3.5 h-3.5 fill-zinc-500" viewBox="0 0 20 20"><circle cx="10" cy="10" r="4.5"/></svg>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-baseline justify-between gap-3">
-                    <p class="text-zinc-200 font-medium" style="font-size:13.5px;">Onboarding flow — stakeholder sync</p>
-                    <span class="mono flex items-center gap-1.5 flex-shrink-0" style="font-size:10.5px; color:#d97706; text-transform:uppercase; letter-spacing:.03em;"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Draft</span>
+          <!-- List -->
+          <div class="flex-1 overflow-y-auto" style="padding:0 24px 24px;">
+            <div class="flex flex-col gap-2">
+              <div onclick="show('detail')" class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 cursor-pointer hover:border-zinc-700 transition-colors">
+                <div class="flex items-start gap-3">
+                  <div class="w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5"><svg class="w-3 h-3 fill-zinc-500" viewBox="0 0 20 20"><circle cx="10" cy="10" r="4.5"/></svg></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-baseline justify-between gap-2">
+                      <p class="text-zinc-200 font-medium truncate" style="font-size:13px;">Onboarding flow — stakeholder sync</p>
+                      <span class="mono flex items-center gap-1 flex-shrink-0" style="font-size:10px; color:#d97706; text-transform:uppercase;"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Draft</span>
+                    </div>
+                    <p class="text-zinc-500 mt-0.5 truncate" style="font-size:11.5px;">Decided to cut the third onboarding step — drop-off concentrated there…</p>
+                    <div class="flex items-center gap-2 mt-1.5">
+                      <span class="mono text-zinc-600" style="font-size:10px;">Scribe · 15 Jun · 18m 42s</span>
+                      <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700/60">onboarding</span>
+                      <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700/60">drop-off</span>
+                    </div>
                   </div>
-                  <p class="text-zinc-500 mt-0.5 truncate" style="font-size:12px;">We decided to cut the third onboarding step because drop-off was concentrated there…</p>
-                  <div class="flex items-center gap-3 mt-1.5">
-                    <span class="mono text-zinc-600" style="font-size:10px;">Scribe · 15 Jun · 18m 42s</span>
-                    <div class="flex gap-1.5"><span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700/60">onboarding</span><span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700/60">drop-off</span></div>
+                </div>
+              </div>
+              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 cursor-pointer hover:border-zinc-700 transition-colors">
+                <div class="flex items-start gap-3">
+                  <div class="w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5"><svg class="w-3 h-3 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 18.5a6 6 0 0 0 6-6V6a6 6 0 1 0-12 0v6.5a6 6 0 0 0 6 6Z"/></svg></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-baseline justify-between gap-2">
+                      <p class="text-zinc-200 font-medium truncate" style="font-size:13px;">Nav rename rationale</p>
+                      <span class="mono flex items-center gap-1 flex-shrink-0" style="font-size:10px; color:#6E9FC1; text-transform:uppercase;"><span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>Edited</span>
+                    </div>
+                    <p class="text-zinc-500 mt-0.5 truncate" style="font-size:11.5px;">Renaming 'Workspace' to 'Project' — workspace was overloaded…</p>
+                    <div class="flex items-center gap-2 mt-1.5">
+                      <span class="mono text-zinc-600" style="font-size:10px;">Dictate · 14 Jun · 4m 10s</span>
+                      <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700/60">navigation</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 cursor-pointer hover:border-zinc-700 transition-colors">
+                <div class="flex items-start gap-3">
+                  <div class="w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5"><svg class="w-3 h-3 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="7 9 12 4 17 9"/><line x1="12" y1="4" x2="12" y2="16"/></svg></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-baseline justify-between gap-2">
+                      <p class="text-zinc-200 font-medium truncate" style="font-size:13px;">Client-X kickoff call</p>
+                      <span class="mono flex items-center gap-1 flex-shrink-0" style="font-size:10px; color:#5FA88A; text-transform:uppercase;"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Approved</span>
+                    </div>
+                    <p class="text-zinc-500 mt-0.5 truncate" style="font-size:11.5px;">Client wants pricing page to lead with enterprise tier…</p>
+                    <div class="flex items-center gap-2 mt-1.5">
+                      <span class="mono text-zinc-600" style="font-size:10px;">Upload · 12 Jun · 41m 3s</span>
+                      <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700/60">pricing-page</span>
+                      <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700/60">client-x</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 cursor-pointer hover:border-zinc-700 transition-colors">
+                <div class="flex items-start gap-3">
+                  <div class="w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5"><svg class="w-3 h-3 fill-zinc-500" viewBox="0 0 20 20"><circle cx="10" cy="10" r="4.5"/></svg></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-baseline justify-between gap-2">
+                      <p class="text-zinc-200 font-medium truncate" style="font-size:13px;">Accessibility audit notes</p>
+                      <span class="mono flex items-center gap-1 flex-shrink-0" style="font-size:10px; color:#5FA88A; text-transform:uppercase;"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Approved</span>
+                    </div>
+                    <p class="text-zinc-500 mt-0.5 truncate" style="font-size:11.5px;">Contrast ratio on empty state illustration fails AA…</p>
+                    <div class="flex items-center gap-2 mt-1.5">
+                      <span class="mono text-zinc-600" style="font-size:10px;">Scribe · 10 Jun · 12m 55s</span>
+                      <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700/60">accessibility</span>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-            <!-- t2 -->
-            <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 cursor-pointer hover:border-zinc-700 transition-colors">
-              <div class="flex items-start gap-3">
-                <div class="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <svg class="w-3.5 h-3.5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 18.5a6 6 0 0 0 6-6V6a6 6 0 1 0-12 0v6.5a6 6 0 0 0 6 6Z"/><path d="M19 10.5v2a7 7 0 0 1-14 0v-2"/></svg>
+          </div>
+        </div>
+
+        <!-- Filter side panel (side-by-side — list stays visible) -->
+        <div id="filter-panel" class="side-panel bg-zinc-900" style="width:260px;">
+          <div class="flex-shrink-0 p-4 border-b border-zinc-800 flex items-center justify-between">
+            <p class="text-zinc-300 font-medium" style="font-size:13px;">Filter</p>
+            <button onclick="toggleFilter()" class="text-zinc-600 hover:text-zinc-300">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <!-- Layer tabs in filter -->
+          <div class="flex gap-0 border-b border-zinc-800 px-4 flex-shrink-0">
+            <button id="ftab-tags" onclick="setFilterTab('tags')" class="py-2 pr-4 text-zinc-200 font-medium border-b-2 border-amber-500 -mb-px" style="font-size:12px; background:none; border-left:none; border-right:none; border-top:none;">Tags</button>
+            <button id="ftab-keywords" onclick="setFilterTab('keywords')" class="py-2 pr-4 text-zinc-500 hover:text-zinc-300 border-b-2 border-transparent -mb-px" style="font-size:12px; background:none; border-left:none; border-right:none; border-top:none;">Keywords</button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-4">
+            <div id="fpanel-tags" class="flex flex-col gap-1.5">
+              <p class="mono text-zinc-600 mb-2" style="font-size:9px; letter-spacing:.08em; text-transform:uppercase;">Select to filter list</p>
+              <label class="flex items-center gap-2.5 cursor-pointer group">
+                <div class="w-4 h-4 rounded border border-amber-500 bg-amber-600/20 flex items-center justify-center flex-shrink-0">
+                  <svg class="w-2.5 h-2.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
                 </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-baseline justify-between gap-3">
-                    <p class="text-zinc-200 font-medium" style="font-size:13.5px;">Nav rename rationale</p>
-                    <span class="mono flex items-center gap-1.5 flex-shrink-0" style="font-size:10.5px; color:#6E9FC1; text-transform:uppercase; letter-spacing:.03em;"><span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>Edited</span>
-                  </div>
-                  <p class="text-zinc-500 mt-0.5 truncate" style="font-size:12px;">Renaming 'Workspace' to 'Project' across the nav. Workspace was overloaded…</p>
-                  <div class="flex items-center gap-3 mt-1.5">
-                    <span class="mono text-zinc-600" style="font-size:10px;">Dictate · 14 Jun · 4m 10s</span>
-                    <div class="flex gap-1.5"><span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700/60">navigation</span><span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700/60">design-system</span></div>
-                  </div>
-                </div>
-              </div>
+                <span class="text-zinc-300 group-hover:text-zinc-100" style="font-size:12.5px;">onboarding</span>
+                <span class="mono text-zinc-600 ml-auto" style="font-size:10px;">2</span>
+              </label>
+              <label class="flex items-center gap-2.5 cursor-pointer group">
+                <div class="w-4 h-4 rounded border border-zinc-600 flex-shrink-0"></div>
+                <span class="text-zinc-400 group-hover:text-zinc-200" style="font-size:12.5px;">navigation</span>
+                <span class="mono text-zinc-600 ml-auto" style="font-size:10px;">1</span>
+              </label>
+              <label class="flex items-center gap-2.5 cursor-pointer group">
+                <div class="w-4 h-4 rounded border border-zinc-600 flex-shrink-0"></div>
+                <span class="text-zinc-400 group-hover:text-zinc-200" style="font-size:12.5px;">design-system</span>
+                <span class="mono text-zinc-600 ml-auto" style="font-size:10px;">1</span>
+              </label>
+              <label class="flex items-center gap-2.5 cursor-pointer group">
+                <div class="w-4 h-4 rounded border border-zinc-600 flex-shrink-0"></div>
+                <span class="text-zinc-400 group-hover:text-zinc-200" style="font-size:12.5px;">drop-off</span>
+                <span class="mono text-zinc-600 ml-auto" style="font-size:10px;">2</span>
+              </label>
+              <label class="flex items-center gap-2.5 cursor-pointer group">
+                <div class="w-4 h-4 rounded border border-zinc-600 flex-shrink-0"></div>
+                <span class="text-zinc-400 group-hover:text-zinc-200" style="font-size:12.5px;">client-x</span>
+                <span class="mono text-zinc-600 ml-auto" style="font-size:10px;">3</span>
+              </label>
+              <label class="flex items-center gap-2.5 cursor-pointer group">
+                <div class="w-4 h-4 rounded border border-zinc-600 flex-shrink-0"></div>
+                <span class="text-zinc-400 group-hover:text-zinc-200" style="font-size:12.5px;">accessibility</span>
+                <span class="mono text-zinc-600 ml-auto" style="font-size:10px;">1</span>
+              </label>
+              <label class="flex items-center gap-2.5 cursor-pointer group">
+                <div class="w-4 h-4 rounded border border-zinc-600 flex-shrink-0"></div>
+                <span class="text-zinc-400 group-hover:text-zinc-200" style="font-size:12.5px;">pricing-page</span>
+                <span class="mono text-zinc-600 ml-auto" style="font-size:10px;">1</span>
+              </label>
+              <label class="flex items-center gap-2.5 cursor-pointer group">
+                <div class="w-4 h-4 rounded border border-zinc-600 flex-shrink-0"></div>
+                <span class="text-zinc-400 group-hover:text-zinc-200" style="font-size:12.5px;">ios</span>
+                <span class="mono text-zinc-600 ml-auto" style="font-size:10px;">1</span>
+              </label>
             </div>
-            <!-- t3 -->
-            <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 cursor-pointer hover:border-zinc-700 transition-colors">
-              <div class="flex items-start gap-3">
-                <div class="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <svg class="w-3.5 h-3.5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="7 9 12 4 17 9"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-baseline justify-between gap-3">
-                    <p class="text-zinc-200 font-medium" style="font-size:13.5px;">Client-X kickoff call</p>
-                    <span class="mono flex items-center gap-1.5 flex-shrink-0" style="font-size:10.5px; color:#5FA88A; text-transform:uppercase; letter-spacing:.03em;"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Approved</span>
-                  </div>
-                  <p class="text-zinc-500 mt-0.5 truncate" style="font-size:12px;">Client wants pricing page to lead with enterprise tier, not starter…</p>
-                  <div class="flex items-center gap-3 mt-1.5">
-                    <span class="mono text-zinc-600" style="font-size:10px;">Upload · 12 Jun · 41m 3s</span>
-                    <div class="flex gap-1.5"><span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700/60">pricing-page</span><span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700/60">client-x</span></div>
-                  </div>
-                </div>
-              </div>
+            <div id="fpanel-keywords" style="display:none;" class="flex flex-col gap-1.5">
+              <p class="mono text-zinc-600 mb-2" style="font-size:9px; letter-spacing:.08em; text-transform:uppercase;">Select to filter list</p>
+              <label class="flex items-center gap-2.5 cursor-pointer group">
+                <div class="w-4 h-4 rounded border border-zinc-600 flex-shrink-0"></div>
+                <span class="text-zinc-400 group-hover:text-zinc-200" style="font-size:12.5px;">drop-off</span>
+                <span class="mono text-zinc-600 ml-auto" style="font-size:10px;">2</span>
+              </label>
+              <label class="flex items-center gap-2.5 cursor-pointer group">
+                <div class="w-4 h-4 rounded border border-zinc-600 flex-shrink-0"></div>
+                <span class="text-zinc-400 group-hover:text-zinc-200" style="font-size:12.5px;">north star metric</span>
+                <span class="mono text-zinc-600 ml-auto" style="font-size:10px;">1</span>
+              </label>
+              <label class="flex items-center gap-2.5 cursor-pointer group">
+                <div class="w-4 h-4 rounded border border-zinc-600 flex-shrink-0"></div>
+                <span class="text-zinc-400 group-hover:text-zinc-200" style="font-size:12.5px;">empty state</span>
+                <span class="mono text-zinc-600 ml-auto" style="font-size:10px;">1</span>
+              </label>
+              <label class="flex items-center gap-2.5 cursor-pointer group">
+                <div class="w-4 h-4 rounded border border-zinc-600 flex-shrink-0"></div>
+                <span class="text-zinc-400 group-hover:text-zinc-200" style="font-size:12.5px;">handoff</span>
+                <span class="mono text-zinc-600 ml-auto" style="font-size:10px;">1</span>
+              </label>
             </div>
-            <!-- t4 -->
-            <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 cursor-pointer hover:border-zinc-700 transition-colors">
-              <div class="flex items-start gap-3">
-                <div class="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <svg class="w-3.5 h-3.5 fill-zinc-500" viewBox="0 0 20 20"><circle cx="10" cy="10" r="4.5"/></svg>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-baseline justify-between gap-3">
-                    <p class="text-zinc-200 font-medium" style="font-size:13.5px;">Accessibility audit notes</p>
-                    <span class="mono flex items-center gap-1.5 flex-shrink-0" style="font-size:10.5px; color:#5FA88A; text-transform:uppercase; letter-spacing:.03em;"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Approved</span>
-                  </div>
-                  <p class="text-zinc-500 mt-0.5 truncate" style="font-size:12px;">Contrast ratio on empty state illustration fails AA. Going with higher-contrast variant…</p>
-                  <div class="flex items-center gap-3 mt-1.5">
-                    <span class="mono text-zinc-600" style="font-size:10px;">Scribe · 10 Jun · 12m 55s</span>
-                    <div class="flex gap-1.5"><span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700/60">accessibility</span></div>
-                  </div>
-                </div>
-              </div>
-            </div>
+          </div>
+
+          <div class="p-4 border-t border-zinc-800 flex-shrink-0">
+            <p class="mono text-zinc-600" style="font-size:10px;">1 active filter · showing 2 of 4</p>
           </div>
         </div>
       </div>
@@ -340,8 +412,7 @@
            SCREEN: AFTER RECORDING
       ═══════════════════════════════════════════ -->
       <div id="screen-complete" class="screen flex-col h-full items-center overflow-y-auto">
-        <div style="padding:40px 32px; max-width:520px; width:100%;">
-          <!-- Done header -->
+        <div style="padding:40px 32px; max-width:500px; width:100%;">
           <div class="text-center mb-8">
             <div class="w-14 h-14 rounded-full bg-zinc-800 flex items-center justify-center mx-auto mb-4">
               <svg class="w-6 h-6 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
@@ -350,21 +421,17 @@
             <p class="text-zinc-500" style="font-size:13px;">That's everything. What follows is background — you don't need to wait.</p>
           </div>
 
-          <!-- Pipeline card -->
           <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5 mb-5">
             <p class="text-zinc-200 font-medium mb-4" style="font-size:13.5px;">Onboarding flow — stakeholder sync <span class="mono text-zinc-600" style="font-size:10px;">18m 42s</span></p>
-
             <div class="flex flex-col gap-3">
               <div class="flex items-start gap-3">
                 <svg class="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                <div>
-                  <p class="text-zinc-300" style="font-size:13px;">Transcript written to history</p>
-                </div>
+                <p class="text-zinc-300" style="font-size:13px;">Transcript written to history</p>
               </div>
               <div class="flex items-start gap-3">
                 <svg class="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                 <div>
-                  <p class="text-zinc-300" style="font-size:13px;">On-creation flow enqueued</p>
+                  <p class="text-zinc-300" style="font-size:13px;">Float flow enqueued</p>
                   <p class="mono text-zinc-600 mt-0.5" style="font-size:10.5px;">Tags + Keywords · 2 steps</p>
                 </div>
               </div>
@@ -384,23 +451,16 @@
               </div>
               <div class="flex items-start gap-3">
                 <svg class="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                <div>
-                  <p class="text-zinc-300" style="font-size:13px;">Draft result written</p>
-                </div>
+                <p class="text-zinc-300" style="font-size:13px;">Draft result written</p>
               </div>
             </div>
-
             <div class="border-t border-zinc-800 mt-4 pt-4 flex items-center justify-between">
-              <span class="mono flex items-center gap-1.5" style="font-size:10.5px; color:#d97706; text-transform:uppercase; letter-spacing:.03em;">
-                <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Draft
-              </span>
+              <span class="mono flex items-center gap-1.5" style="font-size:10.5px; color:#d97706; text-transform:uppercase; letter-spacing:.03em;"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Draft</span>
               <button onclick="show('detail')" class="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg px-4 py-2 font-medium" style="font-size:13px;">
-                Review draft
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                Review draft <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
             </div>
           </div>
-
           <div class="text-center">
             <button onclick="show('transcripts')" class="text-zinc-500 hover:text-zinc-300" style="font-size:13px;">Back to transcripts</button>
           </div>
@@ -412,30 +472,20 @@
       ═══════════════════════════════════════════ -->
       <div id="screen-detail" class="screen flex-col h-full overflow-y-auto">
         <div style="padding:24px 32px;">
-          <!-- Back -->
           <button onclick="show('transcripts')" class="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-300 mb-4" style="font-size:12.5px;">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
             Transcripts
           </button>
-
-          <!-- Header -->
           <div class="flex items-start justify-between gap-4 mb-2">
             <h1 class="ff text-zinc-100" style="font-size:20px; font-weight:500; max-width:480px;">Onboarding flow — stakeholder sync</h1>
-            <!-- Run flow button -->
-            <div class="relative flex-shrink-0">
-              <button class="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 rounded-lg px-3 py-2" style="font-size:12.5px;">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4m0 0-5 6m5-6 5 6"/></svg>
-                Run flow
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-              </button>
-            </div>
+            <button class="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 rounded-lg px-3 py-2 flex-shrink-0" style="font-size:12.5px;">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              Run Float flow
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
           </div>
-
-          <!-- Meta + overall status -->
           <div class="flex items-center gap-3 mb-5 flex-wrap">
-            <span class="mono flex items-center gap-1.5" style="font-size:10.5px; color:#d97706; text-transform:uppercase; letter-spacing:.03em;">
-              <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Draft
-            </span>
+            <span class="mono flex items-center gap-1.5" style="font-size:10.5px; color:#d97706; text-transform:uppercase; letter-spacing:.03em;"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Draft</span>
             <span class="text-zinc-700">·</span>
             <span class="mono text-zinc-500" style="font-size:11px;">Scribe · 15 Jun 2026 · 14:20 · 18m 42s</span>
             <button class="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg px-3 py-1.5 font-medium" style="font-size:12px;">
@@ -443,36 +493,26 @@
               Approve all
             </button>
           </div>
-
-          <!-- Two-column -->
           <div class="grid gap-5" style="grid-template-columns: 1fr 300px;">
-
-            <!-- Transcript text -->
             <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
               <p class="mono text-zinc-600 mb-3" style="font-size:9px; letter-spacing:.08em; text-transform:uppercase;">Transcript</p>
               <p class="text-zinc-300 leading-relaxed" style="font-size:13.5px;">We decided to cut the third onboarding step because drop-off was concentrated there — most users never finish step three. Going with two steps, the second one optional. Sarah flagged that we need to make sure the optional labelling is obvious, not buried. Jake raised a risk around the iOS version — the conditional logic for optional steps is more complex there. We'll need a ticket for that. Overall alignment: ship the two-step flow on web first, iOS follows in the next sprint.</p>
               <p class="text-zinc-600 mt-3 italic" style="font-size:12px;">… (full transcript continues)</p>
             </div>
-
-            <!-- Enrichment sidebar -->
             <div class="flex flex-col gap-3">
-
-              <!-- Tags block -->
               <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
                 <div class="flex items-center justify-between mb-3">
                   <div class="flex items-center gap-2">
                     <svg class="w-3 h-3 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
                     <span class="font-medium text-zinc-200" style="font-size:13px;">Tags</span>
                   </div>
-                  <span class="mono flex items-center gap-1.5" style="font-size:10px; color:#d97706; text-transform:uppercase; letter-spacing:.03em;">
-                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Draft
-                  </span>
+                  <span class="mono flex items-center gap-1.5" style="font-size:10px; color:#d97706; text-transform:uppercase; letter-spacing:.03em;"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Draft</span>
                 </div>
                 <div class="flex flex-wrap gap-1.5 mb-3">
-                  <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">onboarding <span class="text-zinc-600 cursor-pointer hover:text-zinc-300 ml-0.5">×</span></span>
-                  <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">drop-off <span class="text-zinc-600 cursor-pointer hover:text-zinc-300 ml-0.5">×</span></span>
-                  <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">client-x <span class="text-zinc-600 cursor-pointer hover:text-zinc-300 ml-0.5">×</span></span>
-                  <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">ios <span class="text-zinc-600 cursor-pointer hover:text-zinc-300 ml-0.5">×</span></span>
+                  <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">onboarding <span class="text-zinc-600 cursor-pointer hover:text-zinc-300">×</span></span>
+                  <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">drop-off <span class="text-zinc-600 cursor-pointer hover:text-zinc-300">×</span></span>
+                  <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">client-x <span class="text-zinc-600 cursor-pointer hover:text-zinc-300">×</span></span>
+                  <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">ios <span class="text-zinc-600 cursor-pointer hover:text-zinc-300">×</span></span>
                   <span class="pill-add">+ add</span>
                 </div>
                 <button class="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 border border-zinc-700 rounded-lg px-3 py-1.5" style="font-size:12px;">
@@ -480,21 +520,17 @@
                   Approve
                 </button>
               </div>
-
-              <!-- Keywords block -->
               <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
                 <div class="flex items-center justify-between mb-3">
                   <div class="flex items-center gap-2">
                     <svg class="w-3 h-3 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
                     <span class="font-medium text-zinc-200" style="font-size:13px;">Keywords</span>
                   </div>
-                  <span class="mono flex items-center gap-1.5" style="font-size:10px; color:#d97706; text-transform:uppercase; letter-spacing:.03em;">
-                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Draft
-                  </span>
+                  <span class="mono flex items-center gap-1.5" style="font-size:10px; color:#d97706; text-transform:uppercase; letter-spacing:.03em;"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Draft</span>
                 </div>
                 <div class="flex flex-wrap gap-1.5 mb-3">
-                  <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">drop-off <span class="text-zinc-600 cursor-pointer hover:text-zinc-300 ml-0.5">×</span></span>
-                  <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">north star metric <span class="text-zinc-600 cursor-pointer hover:text-zinc-300 ml-0.5">×</span></span>
+                  <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">drop-off <span class="text-zinc-600 cursor-pointer hover:text-zinc-300">×</span></span>
+                  <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">north star metric <span class="text-zinc-600 cursor-pointer hover:text-zinc-300">×</span></span>
                   <span class="pill-add">+ add</span>
                 </div>
                 <button class="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 border border-zinc-700 rounded-lg px-3 py-1.5" style="font-size:12px;">
@@ -502,11 +538,9 @@
                   Approve
                 </button>
               </div>
-
-              <!-- Info nudge -->
               <div class="border border-zinc-800 rounded-xl p-4 flex gap-3" style="border-style:dashed;">
                 <svg class="w-3.5 h-3.5 text-zinc-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                <p class="text-zinc-600" style="font-size:12px;">Decisions and other layers haven't run on this session — add them via Run flow above, or set one to auto-run in Library → Authoring.</p>
+                <p class="text-zinc-600" style="font-size:12px;">Decisions and other layers haven't run on this session — add them via Run Float flow above, or set one to auto-run in Float.</p>
               </div>
             </div>
           </div>
@@ -514,278 +548,200 @@
       </div>
 
       <!-- ═══════════════════════════════════════════
-           SCREEN: LIBRARY
+           SCREEN: FLOAT (Layers / Steps / Flows + side panel)
       ═══════════════════════════════════════════ -->
-      <div id="screen-library" class="screen flex-col h-full overflow-hidden">
-        <div style="padding:28px 32px 0; flex-shrink:0;">
-          <h1 class="ff text-zinc-100 mb-1" style="font-size:22px; font-weight:500;">Library</h1>
-          <p class="text-zinc-500 mb-5" style="font-size:13px;">Browse your accumulated vocabulary, or author the layers and flows that build it.</p>
+      <div id="screen-float" class="screen h-full overflow-hidden">
 
-          <!-- Main tabs -->
-          <div class="flex gap-1 border-b border-zinc-800 mb-0">
-            <button id="libtab-browse" onclick="setLibTab('browse')" class="px-4 py-2.5 text-zinc-200 font-medium border-b-2 border-amber-500 -mb-px" style="font-size:13px; background:none; border-left:none; border-right:none; border-top:none;">Browse</button>
-            <button id="libtab-authoring" onclick="setLibTab('authoring')" class="px-4 py-2.5 text-zinc-500 hover:text-zinc-200 border-b-2 border-transparent -mb-px" style="font-size:13px; background:none; border-left:none; border-right:none; border-top:none;">Authoring</button>
-          </div>
-        </div>
+        <!-- Main column -->
+        <div class="flex-1 flex flex-col h-full overflow-hidden">
 
-        <!-- Browse panel -->
-        <div id="libpanel-browse" class="flex-1 overflow-y-auto" style="padding:20px 32px 28px;">
-          <!-- Layer selector -->
-          <div class="flex gap-2 mb-5">
-            <button id="vocabtab-tags" onclick="setVocabTab('tags')" class="px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700 font-medium" style="font-size:12px;">Tags <span class="mono text-zinc-500" style="font-size:10px;">(8)</span></button>
-            <button id="vocabtab-keywords" onclick="setVocabTab('keywords')" class="px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800" style="font-size:12px;">Keywords <span class="mono text-zinc-500" style="font-size:10px;">(6)</span></button>
-            <button id="vocabtab-decisions" onclick="setVocabTab('decisions')" class="px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800" style="font-size:12px;">Decisions <span class="mono text-zinc-500" style="font-size:10px;">(0)</span></button>
-          </div>
+          <!-- Header + sub-tabs -->
+          <div class="flex-shrink-0" style="padding:24px 24px 0;">
+            <h1 class="ff text-zinc-100 mb-1" style="font-size:20px; font-weight:500;">Float</h1>
+            <p class="text-zinc-500 mb-4" style="font-size:12.5px;">Define what to extract from your transcripts and how to run it.</p>
 
-          <div class="grid gap-5" style="grid-template-columns: 1fr 260px;">
-            <!-- Vocab pills -->
-            <div>
-              <p class="mono text-zinc-600 mb-3" style="font-size:9px; letter-spacing:.08em; text-transform:uppercase;">Tags vocabulary · 8 items</p>
-              <div class="flex flex-wrap gap-2" id="vocab-pills">
-                <button onclick="selectVocab('onboarding')" class="chip bg-zinc-900 text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 cursor-pointer" style="font-size:12px;">onboarding</button>
-                <button onclick="selectVocab('navigation')" class="chip bg-zinc-900 text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 cursor-pointer" style="font-size:12px;">navigation</button>
-                <button onclick="selectVocab('design-system')" class="chip bg-zinc-900 text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 cursor-pointer" style="font-size:12px;">design-system</button>
-                <button onclick="selectVocab('stakeholder-review')" class="chip bg-zinc-900 text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 cursor-pointer" style="font-size:12px;">stakeholder-review</button>
-                <button onclick="selectVocab('ios')" class="chip bg-zinc-900 text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 cursor-pointer" style="font-size:12px;">ios</button>
-                <button onclick="selectVocab('accessibility')" class="chip bg-zinc-900 text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 cursor-pointer" style="font-size:12px;">accessibility</button>
-                <button onclick="selectVocab('pricing-page')" class="chip bg-zinc-900 text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 cursor-pointer" style="font-size:12px;">pricing-page</button>
-                <button onclick="selectVocab('drop-off')" class="chip bg-zinc-900 text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 cursor-pointer" style="font-size:12px;">drop-off</button>
-              </div>
-              <p class="text-zinc-600 mt-4" style="font-size:12px;">Click any item to see which transcripts it appears in.</p>
-            </div>
-
-            <!-- Transcript links panel (shown on click) -->
-            <div id="vocab-detail" style="display:none;">
-              <p class="mono text-zinc-600 mb-3" id="vocab-detail-label" style="font-size:9px; letter-spacing:.08em; text-transform:uppercase;"></p>
-              <div class="flex flex-col gap-2">
-                <div onclick="show('detail')" class="bg-zinc-900 border border-zinc-800 rounded-xl p-3 cursor-pointer hover:border-zinc-700 transition-colors">
-                  <p class="text-zinc-300 font-medium" style="font-size:12.5px;">Onboarding flow — stakeholder sync</p>
-                  <p class="mono text-zinc-600 mt-0.5" style="font-size:10px;">15 Jun · Scribe</p>
-                </div>
-                <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-3 cursor-pointer hover:border-zinc-700 transition-colors">
-                  <p class="text-zinc-300 font-medium" style="font-size:12.5px;">Accessibility audit notes</p>
-                  <p class="mono text-zinc-600 mt-0.5" style="font-size:10px;">10 Jun · Scribe</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Authoring panel -->
-        <div id="libpanel-authoring" style="display:none; flex:1; overflow:hidden; flex-direction:column;">
-          <!-- Authoring sub-tabs -->
-          <div style="padding:0 32px; flex-shrink:0; border-bottom:1px solid #27272a;">
-            <div class="flex gap-1">
-              <button id="authtab-layers" onclick="setAuthTab('layers')" class="px-4 py-2.5 text-zinc-200 font-medium border-b-2 border-amber-500 -mb-px" style="font-size:12.5px; background:none; border-left:none; border-right:none; border-top:none;">Layers <span class="mono text-zinc-500" style="font-size:10px;">3</span></button>
-              <button id="authtab-steps" onclick="setAuthTab('steps')" class="px-4 py-2.5 text-zinc-500 hover:text-zinc-200 border-b-2 border-transparent -mb-px" style="font-size:12.5px; background:none; border-left:none; border-right:none; border-top:none;">Steps <span class="mono text-zinc-500" style="font-size:10px;">2</span></button>
-              <button id="authtab-flows" onclick="setAuthTab('flows')" class="px-4 py-2.5 text-zinc-500 hover:text-zinc-200 border-b-2 border-transparent -mb-px" style="font-size:12.5px; background:none; border-left:none; border-right:none; border-top:none;">Flows <span class="mono text-zinc-500" style="font-size:10px;">2</span></button>
-            </div>
-          </div>
-
-          <!-- Layers sub-panel -->
-          <div id="authpanel-layers" style="flex:1; overflow-y:auto; padding:20px 32px 28px;">
-            <div class="flex flex-col gap-2.5">
-
-              <!-- Built-in: Tags -->
-              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-                <div class="flex items-start justify-between">
-                  <div>
-                    <div class="flex items-center gap-2 mb-1">
-                      <span class="text-zinc-200 font-medium" style="font-size:13.5px;">Tags</span>
-                      <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700" style="font-size:10px;">built-in</span>
-                    </div>
-                    <p class="text-zinc-500" style="font-size:12.5px;">Free-form topical labels</p>
-                  </div>
-                  <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700" style="font-size:10.5px; white-space:nowrap;">chip-list</span>
-                </div>
-                <div class="flex gap-4 mt-3 mono text-zinc-600" style="font-size:10.5px;">
-                  <span>unique list: on</span>
-                  <span>per-item description: off</span>
-                  <span>8 items</span>
-                </div>
-              </div>
-
-              <!-- Built-in: Keywords -->
-              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-                <div class="flex items-start justify-between">
-                  <div>
-                    <div class="flex items-center gap-2 mb-1">
-                      <span class="text-zinc-200 font-medium" style="font-size:13.5px;">Keywords</span>
-                      <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700" style="font-size:10px;">built-in</span>
-                    </div>
-                    <p class="text-zinc-500" style="font-size:12.5px;">Notable terms surfaced verbatim</p>
-                  </div>
-                  <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700" style="font-size:10.5px; white-space:nowrap;">plain-list</span>
-                </div>
-                <div class="flex gap-4 mt-3 mono text-zinc-600" style="font-size:10.5px;">
-                  <span>unique list: on</span>
-                  <span>per-item description: off</span>
-                  <span>6 items</span>
-                </div>
-              </div>
-
-              <!-- User layer: Decisions -->
-              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-                <div class="flex items-start justify-between">
-                  <div>
-                    <span class="text-zinc-200 font-medium mb-1 block" style="font-size:13.5px;">Decisions</span>
-                    <p class="text-zinc-500" style="font-size:12.5px;">Calls made, with the reason behind them</p>
-                  </div>
-                  <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700" style="font-size:10.5px; white-space:nowrap;">item+description</span>
-                </div>
-                <div class="flex gap-4 mt-3 mono text-zinc-600" style="font-size:10.5px;">
-                  <span>unique list: off</span>
-                  <span>per-item description: on</span>
-                  <span>0 items</span>
-                </div>
-              </div>
-
-              <!-- Create form (collapsed/open toggle) -->
-              <div class="border border-zinc-800 rounded-xl" style="border-style:dashed;">
-                <button onclick="toggleLayerForm()" id="layer-form-toggle" class="w-full flex items-center gap-2 p-4 text-zinc-500 hover:text-zinc-300" style="font-size:13px;">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  New layer
-                </button>
-
-                <!-- Create form: hidden by default -->
-                <div id="layer-create-form" style="display:none; padding:0 16px 16px;">
-                  <!-- Describe / Build toggle -->
-                  <div class="flex gap-2 mb-4">
-                    <button id="layermode-describe" onclick="setLayerMode('describe')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-600 text-zinc-200 bg-zinc-800" style="font-size:12px;">
-                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                      Describe it
-                    </button>
-                    <button id="layermode-build" onclick="setLayerMode('build')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-500 hover:text-zinc-200" style="font-size:12px;">
-                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M2 12h2m16 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-                      Build it
-                    </button>
-                  </div>
-
-                  <!-- Describe mode -->
-                  <div id="layer-form-describe">
-                    <textarea placeholder="e.g. Risks raised during a call — things that could derail the project, with why they matter" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-zinc-300 resize-none" style="font-size:13px; min-height:72px; outline:none;"></textarea>
-                    <div class="flex items-center gap-2 mt-3">
-                      <button class="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg px-3 py-1.5 font-medium" style="font-size:12.5px;">
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                        Scaffold layer
-                      </button>
-                      <span class="mono text-zinc-600" style="font-size:10.5px;">Gemma E2B infers name, render type, and settings</span>
-                    </div>
-                  </div>
-
-                  <!-- Build mode (shown after scaffold or direct) -->
-                  <div id="layer-form-build" style="display:none;">
-                    <div class="flex items-center gap-2 mb-3 mono text-amber-500" style="font-size:11px;">
-                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                      Scaffolded — review and adjust before creating
-                    </div>
-                    <div class="flex flex-col gap-3">
-                      <div>
-                        <p class="text-zinc-500 mb-1" style="font-size:11px;">Name</p>
-                        <input type="text" value="Risks" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200" style="font-size:13px; outline:none;">
-                      </div>
-                      <div>
-                        <p class="text-zinc-500 mb-1" style="font-size:11px;">Description</p>
-                        <input type="text" value="Risks raised during a call, with why they matter" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200" style="font-size:13px; outline:none;">
-                      </div>
-                      <div class="flex items-center gap-5">
-                        <div class="flex items-center gap-2 cursor-pointer">
-                          <div class="w-8 h-4 rounded-full bg-amber-500 relative"><div class="w-3 h-3 bg-white rounded-full absolute top-0.5 right-0.5"></div></div>
-                          <span class="text-zinc-300" style="font-size:12px;">Unique list</span>
-                        </div>
-                        <div class="flex items-center gap-2 cursor-pointer">
-                          <div class="w-8 h-4 rounded-full bg-zinc-700 relative"><div class="w-3 h-3 bg-zinc-500 rounded-full absolute top-0.5 left-0.5"></div></div>
-                          <span class="text-zinc-500" style="font-size:12px;">Per-item description</span>
-                        </div>
-                      </div>
-                      <div>
-                        <p class="text-zinc-500 mb-2" style="font-size:11px;">Render type</p>
-                        <div class="flex gap-2 flex-wrap">
-                          <button class="px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-500 mono" style="font-size:11px;">chip-list</button>
-                          <button class="px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-500 mono" style="font-size:11px;">plain-list</button>
-                          <button class="px-3 py-1.5 rounded-lg border border-amber-600 text-zinc-200 bg-zinc-800 mono" style="font-size:11px;">item+description</button>
-                          <button class="px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-500 mono" style="font-size:11px;">task-list</button>
-                        </div>
-                      </div>
-                      <div class="flex gap-2 mt-1">
-                        <button class="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg px-3 py-1.5 font-medium" style="font-size:12.5px;">
-                          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                          Create layer
-                        </button>
-                        <button onclick="toggleLayerForm()" class="text-zinc-500 hover:text-zinc-300 px-3 py-1.5" style="font-size:12.5px;">Cancel</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Steps sub-panel -->
-          <div id="authpanel-steps" style="display:none; flex:1; overflow-y:auto; padding:20px 32px 28px;">
-            <div class="flex flex-col gap-2.5">
-              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-zinc-200 font-medium" style="font-size:13.5px;">Extract Tags</span>
-                  <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700" style="font-size:11px;">→ Tags</span>
-                </div>
-                <p class="text-zinc-500 mb-2" style="font-size:12.5px;">Identify topical tags for this chunk, reusing existing vocabulary where it fits.</p>
-                <span class="mono text-zinc-600" style="font-size:10.5px;">chunk strategy: segment-boundary</span>
-              </div>
-              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-zinc-200 font-medium" style="font-size:13.5px;">Extract Keywords</span>
-                  <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700" style="font-size:11px;">→ Keywords</span>
-                </div>
-                <p class="text-zinc-500 mb-2" style="font-size:12.5px;">Pull notable terms or phrases worth surfacing verbatim.</p>
-                <span class="mono text-zinc-600" style="font-size:10.5px;">chunk strategy: full transcript</span>
-              </div>
-              <button class="flex items-center gap-2 p-4 border border-zinc-800 rounded-xl text-zinc-500 hover:text-zinc-300 w-full" style="font-size:13px; border-style:dashed;">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                New step
+            <div class="flex gap-0 border-b border-zinc-800">
+              <button id="ftab-layers" onclick="setFloatTab('layers')" class="py-2.5 pr-5 text-zinc-200 font-medium border-b-2 border-amber-500 -mb-px" style="font-size:12.5px; background:none; border-left:none; border-right:none; border-top:none;">
+                Layers <span class="mono text-zinc-500 ml-1" style="font-size:10px;">3</span>
+              </button>
+              <button id="ftab-steps" onclick="setFloatTab('steps')" class="py-2.5 pr-5 text-zinc-500 hover:text-zinc-200 border-b-2 border-transparent -mb-px" style="font-size:12.5px; background:none; border-left:none; border-right:none; border-top:none;">
+                Steps <span class="mono text-zinc-500 ml-1" style="font-size:10px;">2</span>
+              </button>
+              <button id="ftab-flows" onclick="setFloatTab('flows')" class="py-2.5 pr-5 text-zinc-500 hover:text-zinc-200 border-b-2 border-transparent -mb-px" style="font-size:12.5px; background:none; border-left:none; border-right:none; border-top:none;">
+                Flows <span class="mono text-zinc-500 ml-1" style="font-size:10px;">2</span>
               </button>
             </div>
           </div>
 
-          <!-- Flows sub-panel -->
-          <div id="authpanel-flows" style="display:none; flex:1; overflow-y:auto; padding:20px 32px 28px;">
-            <div class="flex flex-col gap-2.5">
+          <!-- Scrollable list area -->
+          <div class="flex-1 overflow-y-auto" style="padding:16px 24px 24px;">
+
+            <!-- Layers panel -->
+            <div id="fpanel-layers" class="flex flex-col gap-2.5">
               <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-                <div class="flex items-center justify-between mb-3">
-                  <span class="text-zinc-200 font-medium" style="font-size:13.5px;">Tags + Keywords</span>
-                  <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-600" style="font-size:11px;">runs on every new session</span>
+                <div class="flex items-start justify-between">
+                  <div>
+                    <div class="flex items-center gap-2 mb-1"><span class="text-zinc-200 font-medium" style="font-size:13.5px;">Tags</span><span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700" style="font-size:10px;">built-in</span></div>
+                    <p class="text-zinc-500" style="font-size:12.5px;">Free-form topical labels</p>
+                  </div>
+                  <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700 flex-shrink-0" style="font-size:10.5px;">chip-list</span>
                 </div>
-                <div class="flex items-center gap-2 flex-wrap">
+                <div class="flex gap-4 mt-3 mono text-zinc-600" style="font-size:10.5px;"><span>unique list: on</span><span>per-item desc: off</span><span>8 items</span></div>
+              </div>
+              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                <div class="flex items-start justify-between">
+                  <div>
+                    <div class="flex items-center gap-2 mb-1"><span class="text-zinc-200 font-medium" style="font-size:13.5px;">Keywords</span><span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700" style="font-size:10px;">built-in</span></div>
+                    <p class="text-zinc-500" style="font-size:12.5px;">Notable terms surfaced verbatim</p>
+                  </div>
+                  <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700 flex-shrink-0" style="font-size:10.5px;">plain-list</span>
+                </div>
+                <div class="flex gap-4 mt-3 mono text-zinc-600" style="font-size:10.5px;"><span>unique list: on</span><span>per-item desc: off</span><span>6 items</span></div>
+              </div>
+              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                <div class="flex items-start justify-between">
+                  <div>
+                    <span class="text-zinc-200 font-medium block mb-1" style="font-size:13.5px;">Decisions</span>
+                    <p class="text-zinc-500" style="font-size:12.5px;">Calls made, with the reason behind them</p>
+                  </div>
+                  <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700 flex-shrink-0" style="font-size:10.5px;">item+description</span>
+                </div>
+                <div class="flex gap-4 mt-3 mono text-zinc-600" style="font-size:10.5px;"><span>unique list: off</span><span>per-item desc: on</span><span>0 items</span></div>
+              </div>
+              <button onclick="openFloatPanel('layer')" class="flex items-center gap-2 p-4 w-full border border-zinc-800 rounded-xl text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors" style="font-size:13px; border-style:dashed;">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                New layer
+              </button>
+            </div>
+
+            <!-- Steps panel -->
+            <div id="fpanel-steps" style="display:none;" class="flex flex-col gap-2.5">
+              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                <div class="flex items-center justify-between mb-2"><span class="text-zinc-200 font-medium" style="font-size:13.5px;">Extract Tags</span><span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700" style="font-size:11px;">→ Tags</span></div>
+                <p class="text-zinc-500 mb-2" style="font-size:12.5px;">Identify topical tags, reusing existing vocabulary where it fits.</p>
+                <span class="mono text-zinc-600" style="font-size:10.5px;">chunk strategy: segment-boundary</span>
+              </div>
+              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                <div class="flex items-center justify-between mb-2"><span class="text-zinc-200 font-medium" style="font-size:13.5px;">Extract Keywords</span><span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700" style="font-size:11px;">→ Keywords</span></div>
+                <p class="text-zinc-500 mb-2" style="font-size:12.5px;">Pull notable terms or phrases worth surfacing verbatim.</p>
+                <span class="mono text-zinc-600" style="font-size:10.5px;">chunk strategy: full transcript</span>
+              </div>
+              <button onclick="openFloatPanel('step')" class="flex items-center gap-2 p-4 w-full border border-zinc-800 rounded-xl text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors" style="font-size:13px; border-style:dashed;">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                New step
+              </button>
+            </div>
+
+            <!-- Flows panel -->
+            <div id="fpanel-flows" style="display:none;" class="flex flex-col gap-2.5">
+              <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                <div class="flex items-center justify-between mb-3"><span class="text-zinc-200 font-medium" style="font-size:13.5px;">Tags + Keywords</span><span class="chip bg-zinc-800 text-zinc-300 border border-zinc-600" style="font-size:11px;">runs on every new session</span></div>
+                <div class="flex items-center gap-2">
                   <span class="chip bg-zinc-800 text-zinc-400 border border-zinc-700" style="font-size:11.5px;">Extract Tags</span>
                   <svg class="w-3 h-3 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
                   <span class="chip bg-zinc-800 text-zinc-400 border border-zinc-700" style="font-size:11.5px;">Extract Keywords</span>
                 </div>
               </div>
               <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-                <div class="flex items-center justify-between mb-3">
-                  <span class="text-zinc-200 font-medium" style="font-size:13.5px;">Decisions &amp; Stakeholders</span>
-                  <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700" style="font-size:11px;">manual</span>
-                </div>
-                <div class="flex items-center gap-2 flex-wrap">
+                <div class="flex items-center justify-between mb-3"><span class="text-zinc-200 font-medium" style="font-size:13.5px;">Decisions &amp; Stakeholders</span><span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700" style="font-size:11px;">manual</span></div>
+                <div class="flex items-center gap-2">
                   <span class="chip bg-zinc-800 text-zinc-400 border border-zinc-700" style="font-size:11.5px;">Extract Decisions</span>
                 </div>
               </div>
-              <button class="flex items-center gap-2 p-4 border border-zinc-800 rounded-xl text-zinc-500 hover:text-zinc-300 w-full" style="font-size:13px; border-style:dashed;">
+              <button onclick="openFloatPanel('flow')" class="flex items-center gap-2 p-4 w-full border border-zinc-800 rounded-xl text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors" style="font-size:13px; border-style:dashed;">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 New flow
               </button>
             </div>
           </div>
         </div>
+
+        <!-- Create side panel (list stays visible alongside) -->
+        <div id="float-side-panel" class="side-panel bg-zinc-900">
+          <div class="p-4 border-b border-zinc-800 flex items-center justify-between flex-shrink-0">
+            <p id="float-panel-title" class="text-zinc-300 font-medium" style="font-size:13px;">New layer</p>
+            <button onclick="closeFloatPanel()" class="text-zinc-600 hover:text-zinc-300">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="flex-1 overflow-y-auto p-4">
+
+            <!-- Describe / Build toggle -->
+            <div class="flex gap-2 mb-4">
+              <button id="mode-describe" onclick="setPanelMode('describe')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-600 bg-zinc-800 text-zinc-200" style="font-size:12px;">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                Describe it
+              </button>
+              <button id="mode-build" onclick="setPanelMode('build')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-500 hover:text-zinc-200" style="font-size:12px;">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M2 12h2m16 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                Build it
+              </button>
+            </div>
+
+            <!-- Describe mode -->
+            <div id="mode-panel-describe">
+              <textarea placeholder="e.g. Risks raised during a call — things that could derail the project, with why they matter" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-zinc-300 resize-none" style="font-size:12.5px; min-height:80px; outline:none;"></textarea>
+              <div class="flex items-center gap-2 mt-3">
+                <button class="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg px-3 py-1.5 font-medium" style="font-size:12px;">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                  Scaffold
+                </button>
+                <span class="mono text-zinc-600" style="font-size:10px;">Gemma infers the form</span>
+              </div>
+            </div>
+
+            <!-- Build mode (shown after scaffold or direct entry) -->
+            <div id="mode-panel-build" style="display:none;" class="flex flex-col gap-3">
+              <div class="flex items-center gap-2 mb-1 mono text-amber-500" style="font-size:10.5px;">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                Scaffolded — review before creating
+              </div>
+              <div>
+                <p class="text-zinc-500 mb-1" style="font-size:11px;">Name</p>
+                <input type="text" value="Risks" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200" style="font-size:13px;">
+              </div>
+              <div>
+                <p class="text-zinc-500 mb-1" style="font-size:11px;">Description</p>
+                <input type="text" value="Risks raised during a call, with why they matter" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200" style="font-size:13px;">
+              </div>
+              <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2 cursor-pointer">
+                  <div class="w-8 h-4 rounded-full bg-amber-500 relative flex-shrink-0"><div class="w-3 h-3 bg-white rounded-full absolute top-0.5 right-0.5"></div></div>
+                  <span class="text-zinc-300" style="font-size:12px;">Unique list</span>
+                </div>
+                <div class="flex items-center gap-2 cursor-pointer">
+                  <div class="w-8 h-4 rounded-full bg-zinc-700 relative flex-shrink-0"><div class="w-3 h-3 bg-zinc-500 rounded-full absolute top-0.5 left-0.5"></div></div>
+                  <span class="text-zinc-500" style="font-size:12px;">Per-item desc</span>
+                </div>
+              </div>
+              <div>
+                <p class="text-zinc-500 mb-2" style="font-size:11px;">Render type</p>
+                <div class="flex gap-1.5 flex-wrap">
+                  <button class="px-2.5 py-1.5 rounded-lg border border-zinc-700 text-zinc-500 mono" style="font-size:10.5px;">chip-list</button>
+                  <button class="px-2.5 py-1.5 rounded-lg border border-zinc-700 text-zinc-500 mono" style="font-size:10.5px;">plain-list</button>
+                  <button class="px-2.5 py-1.5 rounded-lg border border-amber-600 text-zinc-200 bg-zinc-800 mono" style="font-size:10.5px;">item+desc</button>
+                  <button class="px-2.5 py-1.5 rounded-lg border border-zinc-700 text-zinc-500 mono" style="font-size:10.5px;">task-list</button>
+                </div>
+              </div>
+              <div class="flex gap-2 pt-2">
+                <button class="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg px-3 py-1.5 font-medium" style="font-size:12.5px;">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  Create layer
+                </button>
+                <button onclick="closeFloatPanel()" class="text-zinc-500 hover:text-zinc-300 px-3 py-1.5" style="font-size:12.5px;">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-    </div><!-- /main content -->
-  </div><!-- /body -->
-</div><!-- /window -->
+    </div>
+  </div>
+</div>
 
 <script>
-const SCREENS = ['dashboard','transcripts','complete','detail','library'];
-const NAV_IDS = ['dashboard','transcripts','library'];
+const SCREENS = ['dashboard','transcripts','complete','detail','float'];
+const NAV_IDS  = ['dashboard','transcripts','float'];
 
 function show(id) {
   SCREENS.forEach(s => {
@@ -794,7 +750,6 @@ function show(id) {
     const btn = document.getElementById('btn-' + s);
     if (btn) { btn.style.background = ''; btn.style.color = '#a1a1aa'; }
   });
-
   const el = document.getElementById('screen-' + id);
   if (el) el.classList.add('active');
   const btn = document.getElementById('btn-' + id);
@@ -803,84 +758,67 @@ function show(id) {
   NAV_IDS.forEach(n => {
     const nav = document.getElementById('nav-' + n);
     if (!nav) return;
-    if (n === id) {
-      nav.style.background = '#27272a';
-      nav.style.color = '#e4e4e7';
-      nav.style.fontWeight = '500';
-    } else {
-      nav.style.background = '';
-      nav.style.color = '#71717a';
-      nav.style.fontWeight = '';
-    }
+    if (n === id) { nav.style.background = '#27272a'; nav.style.color = '#e4e4e7'; nav.style.fontWeight = '500'; }
+    else { nav.style.background = ''; nav.style.color = '#71717a'; nav.style.fontWeight = ''; }
   });
 }
 
-// Library main tabs
-function setLibTab(tab) {
-  ['browse','authoring'].forEach(t => {
-    document.getElementById('libpanel-' + t).style.display = t === tab ? (t === 'browse' ? 'block' : 'flex') : 'none';
-    const btn = document.getElementById('libtab-' + t);
+// Transcripts filter panel toggle
+function toggleFilter() {
+  const panel = document.getElementById('filter-panel');
+  const btn = document.getElementById('filter-btn');
+  const isOpen = panel.classList.contains('open');
+  panel.classList.toggle('open', !isOpen);
+  btn.style.borderColor = isOpen ? '' : '#6366f1';
+  btn.style.color = isOpen ? '' : '#e4e4e7';
+}
+
+// Filter layer tabs
+function setFilterTab(tab) {
+  ['tags','keywords'].forEach(t => {
+    document.getElementById('fpanel-' + t).style.display = t === tab ? 'flex' : 'none';
+    if (t === 'fpanel-' + t) document.getElementById('fpanel-' + t).style.flexDirection = 'column';
+    const btn = document.getElementById('ftab-' + t);
     btn.style.borderBottomColor = t === tab ? '#d97706' : 'transparent';
     btn.style.color = t === tab ? '#e4e4e7' : '#71717a';
     btn.style.fontWeight = t === tab ? '500' : '400';
   });
-  if (tab === 'authoring') {
-    document.getElementById('libpanel-authoring').style.flexDirection = 'column';
-    setAuthTab('layers');
-  }
+  document.getElementById('fpanel-tags').style.display = tab === 'tags' ? 'flex' : 'none';
+  document.getElementById('fpanel-tags').style.flexDirection = 'column';
+  document.getElementById('fpanel-keywords').style.display = tab === 'keywords' ? 'flex' : 'none';
+  document.getElementById('fpanel-keywords').style.flexDirection = 'column';
 }
 
-// Authoring sub-tabs
-function setAuthTab(tab) {
+// Float tabs
+function setFloatTab(tab) {
   ['layers','steps','flows'].forEach(t => {
-    document.getElementById('authpanel-' + t).style.display = t === tab ? 'block' : 'none';
-    const btn = document.getElementById('authtab-' + t);
+    document.getElementById('fpanel-' + t).style.display = t === tab ? 'flex' : 'none';
+    if (t === tab) document.getElementById('fpanel-' + t).style.flexDirection = 'column';
+    const btn = document.getElementById('ftab-' + t);
     btn.style.borderBottomColor = t === tab ? '#d97706' : 'transparent';
     btn.style.color = t === tab ? '#e4e4e7' : '#71717a';
     btn.style.fontWeight = t === tab ? '500' : '400';
   });
 }
 
-// Layer create form
-function toggleLayerForm() {
-  const form = document.getElementById('layer-create-form');
-  const isOpen = form.style.display !== 'none';
-  form.style.display = isOpen ? 'none' : 'block';
+// Float create side panel
+const panelTitles = { layer: 'New layer', step: 'New step', flow: 'New flow' };
+function openFloatPanel(type) {
+  document.getElementById('float-panel-title').textContent = panelTitles[type] || 'New';
+  document.getElementById('float-side-panel').classList.add('open');
+  setPanelMode('describe');
 }
-
-function setLayerMode(mode) {
-  document.getElementById('layer-form-describe').style.display = mode === 'describe' ? 'block' : 'none';
-  document.getElementById('layer-form-build').style.display = mode === 'build' ? 'block' : 'none';
+function closeFloatPanel() {
+  document.getElementById('float-side-panel').classList.remove('open');
+}
+function setPanelMode(mode) {
+  document.getElementById('mode-panel-describe').style.display = mode === 'describe' ? 'block' : 'none';
+  document.getElementById('mode-panel-build').style.display = mode === 'build' ? 'block' : 'none';
   ['describe','build'].forEach(m => {
-    const btn = document.getElementById('layermode-' + m);
+    const btn = document.getElementById('mode-' + m);
     btn.style.background = m === mode ? '#27272a' : '';
     btn.style.borderColor = m === mode ? '#52525b' : '#3f3f46';
     btn.style.color = m === mode ? '#e4e4e7' : '#71717a';
-  });
-}
-
-// Vocab tab (layer selector in Browse)
-function setVocabTab(tab) {
-  ['tags','keywords','decisions'].forEach(t => {
-    const btn = document.getElementById('vocabtab-' + t);
-    btn.style.background = t === tab ? '#27272a' : '';
-    btn.style.color = t === tab ? '#e4e4e7' : '#71717a';
-    btn.style.borderColor = t === tab ? '#3f3f46' : 'transparent';
-    btn.style.fontWeight = t === tab ? '500' : '400';
-  });
-  document.getElementById('vocab-detail').style.display = 'none';
-}
-
-// Vocab item click
-function selectVocab(item) {
-  const detail = document.getElementById('vocab-detail');
-  const label = document.getElementById('vocab-detail-label');
-  detail.style.display = 'block';
-  label.textContent = 'Sessions tagged "' + item + '"';
-  document.querySelectorAll('#vocab-pills button').forEach(b => {
-    b.style.borderColor = b.textContent.trim() === item ? '#d97706' : '';
-    b.style.color = b.textContent.trim() === item ? '#e4e4e7' : '';
-    b.style.background = b.textContent.trim() === item ? '#27272a' : '';
   });
 }
 </script>

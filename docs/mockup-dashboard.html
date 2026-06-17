@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScribeFloat — Dashboard Mockup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif; }
+  .screen { display: none; }
+  .screen.active { display: flex; }
+  .nav-item { transition: background 0.1s; }
+  .chip { display: inline-flex; align-items: center; border-radius: 9999px; font-size: 11px; font-weight: 500; padding: 2px 9px; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+</style>
+</head>
+<body class="bg-zinc-950 min-h-screen flex items-center justify-center p-8">
+
+<!-- SCREEN NAV (outside window, for demo) -->
+<div class="fixed top-4 left-1/2 -translate-x-1/2 flex gap-2 z-50 bg-zinc-900 rounded-full px-3 py-1.5 border border-zinc-800">
+  <span class="text-zinc-500 text-xs self-center mr-1">Screen:</span>
+  <button onclick="show('dashboard')" id="btn-dashboard" class="text-xs px-3 py-1 rounded-full bg-violet-600 text-white">Dashboard</button>
+  <button onclick="show('transcripts')" id="btn-transcripts" class="text-xs px-3 py-1 rounded-full text-zinc-400 hover:text-white">Transcripts</button>
+  <button onclick="show('detail')" id="btn-detail" class="text-xs px-3 py-1 rounded-full text-zinc-400 hover:text-white">Detail + Enrichment</button>
+  <button onclick="show('layers')" id="btn-layers" class="text-xs px-3 py-1 rounded-full text-zinc-400 hover:text-white">Layers</button>
+  <button onclick="show('flows')" id="btn-flows" class="text-xs px-3 py-1 rounded-full text-zinc-400 hover:text-white">Flows</button>
+</div>
+
+<!-- WINDOW CHROME -->
+<div class="w-[960px] rounded-xl overflow-hidden shadow-2xl border border-zinc-800" style="height: 660px;">
+
+  <!-- TITLE BAR -->
+  <div class="h-10 bg-zinc-900 border-b border-zinc-800 flex items-center px-4 flex-shrink-0" style="min-height:40px;">
+    <div class="flex gap-1.5 mr-4">
+      <div class="w-3 h-3 rounded-full bg-red-500 opacity-80"></div>
+      <div class="w-3 h-3 rounded-full bg-yellow-500 opacity-80"></div>
+      <div class="w-3 h-3 rounded-full bg-green-500 opacity-80"></div>
+    </div>
+    <span class="text-zinc-400 text-xs font-medium flex-1 text-center -ml-16">Dashboard</span>
+    <!-- Quick launch -->
+    <div class="flex gap-2">
+      <button class="flex items-center gap-1.5 text-xs bg-violet-600 hover:bg-violet-500 text-white px-3 py-1 rounded-md font-medium">
+        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><circle cx="10" cy="10" r="4"/></svg>
+        Scribe
+      </button>
+      <button class="flex items-center gap-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1 rounded-md font-medium">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 18.5a6 6 0 0 0 6-6V6a6 6 0 1 0-12 0v6.5a6 6 0 0 0 6 6Z"/><path d="M19 10.5v2a7 7 0 0 1-14 0v-2"/></svg>
+        Dictate
+      </button>
+      <button class="flex items-center gap-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1 rounded-md font-medium">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="7 9 12 4 17 9"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
+        Import
+      </button>
+    </div>
+  </div>
+
+  <!-- BODY: sidebar + content -->
+  <div class="flex" style="height: calc(660px - 40px);">
+
+    <!-- SIDEBAR -->
+    <div class="w-44 bg-zinc-900 border-r border-zinc-800 flex flex-col py-3 flex-shrink-0">
+      <div class="px-3 mb-4">
+        <p class="text-zinc-500 text-[10px] uppercase tracking-wider font-semibold mb-1 px-2">Workspace</p>
+        <button onclick="show('dashboard')" class="nav-item w-full text-left text-sm px-2 py-1.5 rounded-md flex items-center gap-2 text-zinc-200 bg-zinc-800 font-medium">
+          <svg class="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          Dashboard
+        </button>
+        <button onclick="show('transcripts')" class="nav-item w-full text-left text-sm px-2 py-1.5 rounded-md flex items-center gap-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 mt-0.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Transcripts
+        </button>
+      </div>
+
+      <div class="px-3 mb-4">
+        <p class="text-zinc-500 text-[10px] uppercase tracking-wider font-semibold mb-1 px-2">Design Brain</p>
+        <button onclick="show('layers')" class="nav-item w-full text-left text-sm px-2 py-1.5 rounded-md flex items-center gap-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="2" y="7" width="20" height="4" rx="1"/><rect x="2" y="13" width="20" height="4" rx="1"/></svg>
+          Layers
+        </button>
+        <button onclick="show('flows')" class="nav-item w-full text-left text-sm px-2 py-1.5 rounded-md flex items-center gap-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 mt-0.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4m0 0-5 6m5-6 5 6"/></svg>
+          Flows
+        </button>
+      </div>
+
+      <div class="mt-auto px-3">
+        <button class="nav-item w-full text-left text-sm px-2 py-1.5 rounded-md flex items-center gap-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M2 12h2m16 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          Settings
+        </button>
+      </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="flex-1 overflow-hidden bg-zinc-950">
+
+      <!-- ── DASHBOARD ── -->
+      <div id="screen-dashboard" class="screen active flex-col h-full overflow-y-auto">
+        <div class="p-6">
+          <h1 class="text-lg font-semibold text-zinc-100 mb-0.5">Good afternoon, Ben</h1>
+          <p class="text-zinc-500 text-sm mb-5">Tuesday, 17 June 2026</p>
+
+          <!-- Stats row -->
+          <div class="grid grid-cols-4 gap-3 mb-6">
+            <div class="bg-zinc-900 rounded-lg p-3 border border-zinc-800">
+              <p class="text-2xl font-semibold text-zinc-100">142</p>
+              <p class="text-xs text-zinc-500 mt-0.5">Transcripts</p>
+            </div>
+            <div class="bg-zinc-900 rounded-lg p-3 border border-zinc-800">
+              <p class="text-2xl font-semibold text-zinc-100">8</p>
+              <p class="text-xs text-zinc-500 mt-0.5">Layers</p>
+            </div>
+            <div class="bg-zinc-900 rounded-lg p-3 border border-zinc-800">
+              <p class="text-2xl font-semibold text-amber-400">3</p>
+              <p class="text-xs text-zinc-500 mt-0.5">Drafts to review</p>
+            </div>
+            <div class="bg-zinc-900 rounded-lg p-3 border border-zinc-800">
+              <p class="text-2xl font-semibold text-zinc-100">24h</p>
+              <p class="text-xs text-zinc-500 mt-0.5">This week</p>
+            </div>
+          </div>
+
+          <!-- Recent transcripts -->
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-medium text-zinc-300">Recent</h2>
+            <button onclick="show('transcripts')" class="text-xs text-violet-400 hover:text-violet-300">See all →</button>
+          </div>
+
+          <div class="space-y-2">
+            <!-- Card 1: Draft -->
+            <div onclick="show('detail')" class="bg-zinc-900 rounded-lg p-4 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-colors">
+              <div class="flex items-start justify-between mb-2">
+                <div>
+                  <p class="text-sm font-medium text-zinc-100">Onboarding flow discussion</p>
+                  <p class="text-xs text-zinc-500 mt-0.5">Scribe · 2 hours ago · 12 min · 1,847 words</p>
+                </div>
+                <span class="chip border border-amber-500/40 text-amber-400 bg-amber-500/10 ml-3 flex-shrink-0">● Draft</span>
+              </div>
+              <div class="flex gap-1.5 flex-wrap">
+                <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">onboarding</span>
+                <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">navigation</span>
+                <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">user-testing</span>
+                <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">accessibility</span>
+              </div>
+            </div>
+
+            <!-- Card 2: Approved -->
+            <div class="bg-zinc-900 rounded-lg p-4 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-colors">
+              <div class="flex items-start justify-between mb-2">
+                <div>
+                  <p class="text-sm font-medium text-zinc-100">Design system token audit</p>
+                  <p class="text-xs text-zinc-500 mt-0.5">Dictate · Yesterday · 3 min · 412 words</p>
+                </div>
+                <span class="chip border border-emerald-500/40 text-emerald-400 bg-emerald-500/10 ml-3 flex-shrink-0">✓ Approved</span>
+              </div>
+              <div class="flex gap-1.5 flex-wrap">
+                <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">design-system</span>
+                <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">tokens</span>
+                <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">spacing</span>
+              </div>
+            </div>
+
+            <!-- Card 3: Analyzing -->
+            <div class="bg-zinc-900 rounded-lg p-4 border border-zinc-800 opacity-70">
+              <div class="flex items-start justify-between mb-2">
+                <div>
+                  <p class="text-sm font-medium text-zinc-100">Stakeholder review prep</p>
+                  <p class="text-xs text-zinc-500 mt-0.5">Scribe · 2 days ago · 28 min · 4,203 words</p>
+                </div>
+                <span class="chip border border-violet-500/40 text-violet-400 bg-violet-500/10 ml-3 flex-shrink-0 animate-pulse">⟳ Analysing</span>
+              </div>
+              <div class="flex gap-1.5 flex-wrap">
+                <span class="chip bg-zinc-800/50 text-zinc-500 border border-zinc-800">—</span>
+              </div>
+            </div>
+
+            <!-- Card 4: No enrichment -->
+            <div class="bg-zinc-900 rounded-lg p-4 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-colors">
+              <div class="flex items-start justify-between mb-2">
+                <div>
+                  <p class="text-sm font-medium text-zinc-100">Client call notes — Acme Corp</p>
+                  <p class="text-xs text-zinc-500 mt-0.5">Transcribe · 3 days ago · 45 min · 6,891 words</p>
+                </div>
+                <button class="text-xs text-zinc-500 hover:text-zinc-300 ml-3 flex-shrink-0">Run flow</button>
+              </div>
+              <div class="flex gap-1.5 flex-wrap">
+                <span class="text-xs text-zinc-600 italic">No enrichment yet</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── TRANSCRIPTS ── -->
+      <div id="screen-transcripts" class="screen flex-col h-full">
+        <div class="flex items-center justify-between px-5 pt-5 pb-3 border-b border-zinc-800 flex-shrink-0">
+          <h2 class="text-sm font-semibold text-zinc-200">Transcripts</h2>
+          <div class="flex gap-2">
+            <div class="flex bg-zinc-900 rounded-md border border-zinc-800 overflow-hidden text-xs">
+              <button class="px-3 py-1.5 text-zinc-200 bg-zinc-800">All</button>
+              <button class="px-3 py-1.5 text-zinc-500 hover:text-zinc-300">Scribe</button>
+              <button class="px-3 py-1.5 text-zinc-500 hover:text-zinc-300">Dictate</button>
+              <button class="px-3 py-1.5 text-zinc-500 hover:text-zinc-300">Import</button>
+            </div>
+            <div class="flex bg-zinc-900 rounded-md border border-zinc-800 overflow-hidden text-xs">
+              <button class="px-3 py-1.5 text-zinc-500 hover:text-zinc-300">All</button>
+              <button class="px-3 py-1.5 text-amber-400 bg-amber-500/10">Draft</button>
+              <button class="px-3 py-1.5 text-zinc-500 hover:text-zinc-300">Approved</button>
+            </div>
+          </div>
+        </div>
+        <div class="flex-1 overflow-y-auto px-5 py-3 space-y-2">
+          <div onclick="show('detail')" class="bg-zinc-900 rounded-lg p-4 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-colors">
+            <div class="flex items-center justify-between mb-1.5">
+              <p class="text-sm font-medium text-zinc-100">Onboarding flow discussion</p>
+              <span class="chip border border-amber-500/40 text-amber-400 bg-amber-500/10">● Draft</span>
+            </div>
+            <p class="text-xs text-zinc-500 mb-2">Scribe · 17 Jun 2026 · 12 min · 1,847 words</p>
+            <div class="flex gap-1.5 flex-wrap">
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">onboarding</span>
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">navigation</span>
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">user-testing</span>
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">accessibility</span>
+            </div>
+          </div>
+          <div class="bg-zinc-900 rounded-lg p-4 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-colors">
+            <div class="flex items-center justify-between mb-1.5">
+              <p class="text-sm font-medium text-zinc-100">Design system token audit</p>
+              <span class="chip border border-emerald-500/40 text-emerald-400 bg-emerald-500/10">✓ Approved</span>
+            </div>
+            <p class="text-xs text-zinc-500 mb-2">Dictate · 16 Jun 2026 · 3 min · 412 words</p>
+            <div class="flex gap-1.5 flex-wrap">
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">design-system</span>
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">tokens</span>
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">spacing</span>
+            </div>
+          </div>
+          <div class="bg-zinc-900 rounded-lg p-4 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-colors">
+            <div class="flex items-center justify-between mb-1.5">
+              <p class="text-sm font-medium text-zinc-100">Stakeholder review prep</p>
+              <span class="chip border border-amber-500/40 text-amber-400 bg-amber-500/10">● Draft</span>
+            </div>
+            <p class="text-xs text-zinc-500 mb-2">Scribe · 15 Jun 2026 · 28 min · 4,203 words</p>
+            <div class="flex gap-1.5 flex-wrap">
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">stakeholders</span>
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">presentation</span>
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">acme-corp</span>
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">decisions</span>
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">+3</span>
+            </div>
+          </div>
+          <div class="bg-zinc-900 rounded-lg p-4 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-colors">
+            <div class="flex items-center justify-between mb-1.5">
+              <p class="text-sm font-medium text-zinc-100">Client call notes — Acme Corp</p>
+              <button class="text-xs text-zinc-500 hover:text-zinc-300">Run flow</button>
+            </div>
+            <p class="text-xs text-zinc-500 mb-2">Transcribe · 14 Jun 2026 · 45 min · 6,891 words</p>
+            <span class="text-xs text-zinc-600 italic">No enrichment yet</span>
+          </div>
+          <div class="bg-zinc-900 rounded-lg p-4 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-colors">
+            <div class="flex items-center justify-between mb-1.5">
+              <p class="text-sm font-medium text-zinc-100">Navigation patterns research</p>
+              <span class="chip border border-emerald-500/40 text-emerald-400 bg-emerald-500/10">✓ Approved</span>
+            </div>
+            <p class="text-xs text-zinc-500 mb-2">Scribe · 12 Jun 2026 · 19 min · 2,541 words</p>
+            <div class="flex gap-1.5 flex-wrap">
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">navigation</span>
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">patterns</span>
+              <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">research</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── TRANSCRIPT DETAIL ── -->
+      <div id="screen-detail" class="screen flex-col h-full">
+        <div class="flex items-center gap-3 px-5 pt-4 pb-3 border-b border-zinc-800 flex-shrink-0">
+          <button onclick="show('transcripts')" class="text-zinc-500 hover:text-zinc-300 text-sm">←</button>
+          <div class="flex-1">
+            <h2 class="text-sm font-semibold text-zinc-100">Onboarding flow discussion</h2>
+            <p class="text-xs text-zinc-500">Scribe · 17 Jun 2026 · 12 min · 1,847 words</p>
+          </div>
+          <button class="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-md">Run flow ▾</button>
+        </div>
+        <div class="flex-1 overflow-y-auto">
+          <!-- Enrichment block -->
+          <div class="px-5 pt-4 pb-4 border-b border-zinc-800/60">
+            <p class="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-3">Enrichment · Tags & Keywords</p>
+
+            <!-- Tags layer: Draft -->
+            <div class="mb-4">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-medium text-zinc-300">Tags</span>
+                  <span class="chip border border-amber-500/40 text-amber-400 bg-amber-500/10">● Draft</span>
+                </div>
+                <div class="flex gap-1.5">
+                  <button class="text-xs text-zinc-500 hover:text-zinc-300 px-2 py-1 rounded border border-zinc-800 hover:border-zinc-700">Edit</button>
+                  <button class="text-xs text-emerald-400 hover:text-emerald-300 px-2 py-1 rounded border border-emerald-800/50 hover:border-emerald-700/50 bg-emerald-500/5">Approve</button>
+                </div>
+              </div>
+              <div class="flex gap-1.5 flex-wrap">
+                <span class="chip bg-zinc-800/80 text-zinc-300 border border-zinc-700">onboarding</span>
+                <span class="chip bg-zinc-800/80 text-zinc-300 border border-zinc-700">navigation</span>
+                <span class="chip bg-zinc-800/80 text-zinc-300 border border-zinc-700">user-testing</span>
+                <span class="chip bg-zinc-800/80 text-zinc-300 border border-zinc-700">accessibility</span>
+                <button class="chip border border-zinc-700 border-dashed text-zinc-600 hover:text-zinc-400 hover:border-zinc-600">+ Add</button>
+              </div>
+            </div>
+
+            <!-- Keywords layer: Draft -->
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-medium text-zinc-300">Keywords</span>
+                  <span class="chip border border-amber-500/40 text-amber-400 bg-amber-500/10">● Draft</span>
+                </div>
+                <div class="flex gap-1.5">
+                  <button class="text-xs text-zinc-500 hover:text-zinc-300 px-2 py-1 rounded border border-zinc-800 hover:border-zinc-700">Edit</button>
+                  <button class="text-xs text-emerald-400 hover:text-emerald-300 px-2 py-1 rounded border border-emerald-800/50 hover:border-emerald-700/50 bg-emerald-500/5">Approve</button>
+                </div>
+              </div>
+              <div class="flex gap-1.5 flex-wrap">
+                <span class="chip bg-zinc-800/80 text-zinc-300 border border-zinc-700">progressive disclosure</span>
+                <span class="chip bg-zinc-800/80 text-zinc-300 border border-zinc-700">step indicator</span>
+                <span class="chip bg-zinc-800/80 text-zinc-300 border border-zinc-700">modal vs page</span>
+                <span class="chip bg-zinc-800/80 text-zinc-300 border border-zinc-700">error recovery</span>
+                <span class="chip bg-zinc-800/80 text-zinc-300 border border-zinc-700">back navigation</span>
+              </div>
+            </div>
+
+            <div class="mt-3 pt-3 border-t border-zinc-800/60 flex justify-end">
+              <button class="text-xs text-emerald-400 hover:text-emerald-300 px-3 py-1.5 rounded border border-emerald-800/50 hover:border-emerald-700/50 bg-emerald-500/5 font-medium">Approve all layers</button>
+            </div>
+          </div>
+
+          <!-- Transcript text -->
+          <div class="px-5 py-4">
+            <p class="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-3">Transcript</p>
+            <div class="text-sm text-zinc-400 leading-relaxed space-y-3">
+              <p>Okay so I want to talk through the onboarding flow today because I think we're overcomplicating it. The current five-step wizard feels heavy — users are clicking through it without reading anything.</p>
+              <p>The problem is we're trying to teach the whole product upfront. What if we just asked for the one thing we actually need, which is the output folder, and then let people discover everything else through use?</p>
+              <p>I looked at some research on progressive disclosure yesterday and there's a strong argument for deferring configuration until the user actually needs it. The testing we did last month backed this up — people who skipped onboarding entirely performed almost as well as people who completed it.</p>
+              <p class="text-zinc-600">— 4 min 23 sec —</p>
+              <p>The other thing I want to flag is the back navigation. Right now if you go back on step three you lose what you entered on step four. That's a bug but it's also a signal that the step model itself is wrong — steps imply irreversible progression and our flow isn't actually like that.</p>
+              <p>So my proposal: single screen, two required fields — name and output folder — everything else collapsed behind a "More options" disclosure. Ship that and see how far we get.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── LAYERS ── -->
+      <div id="screen-layers" class="screen flex-col h-full">
+        <div class="flex items-center justify-between px-5 pt-5 pb-3 border-b border-zinc-800 flex-shrink-0">
+          <h2 class="text-sm font-semibold text-zinc-200">Layers</h2>
+          <button class="text-xs bg-violet-600 hover:bg-violet-500 text-white px-3 py-1.5 rounded-md">+ New layer</button>
+        </div>
+        <div class="flex h-full overflow-hidden">
+          <!-- Layer list -->
+          <div class="w-44 border-r border-zinc-800 py-2 flex-shrink-0">
+            <button class="w-full text-left px-4 py-2.5 text-sm font-medium text-zinc-100 bg-zinc-800/60 border-l-2 border-violet-500">
+              <p>Tags</p>
+              <p class="text-xs text-zinc-500 font-normal">18 items · unique list</p>
+            </button>
+            <button class="w-full text-left px-4 py-2.5 text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 border-l-2 border-transparent">
+              <p>Keywords</p>
+              <p class="text-xs text-zinc-600 font-normal">Per transcript</p>
+            </button>
+            <button class="w-full text-left px-4 py-2.5 text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 border-l-2 border-transparent">
+              <p>Decisions</p>
+              <p class="text-xs text-zinc-600 font-normal">4 items</p>
+            </button>
+            <button class="w-full text-left px-4 py-2.5 text-sm text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800/40 border-l-2 border-transparent flex items-center gap-1.5">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              New layer
+            </button>
+          </div>
+          <!-- Layer detail: Tags vocabulary -->
+          <div class="flex-1 overflow-y-auto px-5 py-4">
+            <div class="flex items-center justify-between mb-1">
+              <div>
+                <h3 class="text-sm font-semibold text-zinc-100">Tags</h3>
+                <p class="text-xs text-zinc-500">Shared vocabulary across all transcripts · chip-list display</p>
+              </div>
+            </div>
+            <p class="text-xs text-zinc-600 mb-4">18 items · used in 47 transcripts</p>
+            <div class="space-y-1">
+              {[
+                ['onboarding', 12],
+                ['navigation', 9],
+                ['design-system', 8],
+                ['user-testing', 7],
+                ['accessibility', 5],
+                ['stakeholders', 5],
+                ['tokens', 4],
+                ['patterns', 4],
+                ['research', 3],
+                ['acme-corp', 3],
+                ['presentation', 2],
+                ['decisions', 2],
+                ['spacing', 2],
+                ['typography', 1],
+                ['animation', 1],
+                ['handoff', 1],
+                ['components', 1],
+                ['flows', 1],
+              ].map(([name, count]) => `
+              <div class="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-zinc-900 cursor-pointer group">
+                <div class="flex items-center gap-2">
+                  <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">${name}</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-xs text-zinc-600">${count} transcript${count !== 1 ? 's' : ''}</span>
+                  <svg class="w-3 h-3 text-zinc-700 group-hover:text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                </div>
+              </div>`).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── FLOWS ── -->
+      <div id="screen-flows" class="screen flex-col h-full">
+        <div class="flex items-center justify-between px-5 pt-5 pb-3 border-b border-zinc-800 flex-shrink-0">
+          <h2 class="text-sm font-semibold text-zinc-200">Flows</h2>
+          <button class="text-xs bg-violet-600 hover:bg-violet-500 text-white px-3 py-1.5 rounded-md">+ New flow</button>
+        </div>
+        <div class="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+
+          <!-- Auto-run flow -->
+          <div class="bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-800/60">
+              <div class="flex items-center gap-2">
+                <div class="w-1.5 h-1.5 rounded-full bg-violet-400"></div>
+                <span class="text-sm font-medium text-zinc-100">Tags & Keywords</span>
+                <span class="chip bg-violet-500/10 text-violet-400 border border-violet-500/30">Auto-run</span>
+              </div>
+              <button class="text-xs text-zinc-500 hover:text-zinc-300">Edit</button>
+            </div>
+            <div class="px-4 py-3 space-y-2">
+              <div class="flex items-center gap-3">
+                <div class="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center flex-shrink-0">
+                  <span class="text-[9px] text-zinc-400 font-bold">1</span>
+                </div>
+                <div>
+                  <p class="text-xs font-medium text-zinc-300">Extract Tags</p>
+                  <p class="text-xs text-zinc-600">Tags layer · Chunk strategy</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center flex-shrink-0">
+                  <span class="text-[9px] text-zinc-400 font-bold">2</span>
+                </div>
+                <div>
+                  <p class="text-xs font-medium text-zinc-300">Extract Keywords</p>
+                  <p class="text-xs text-zinc-600">Keywords layer · Full transcript</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Manual flow -->
+          <div class="bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-800/60">
+              <div class="flex items-center gap-2">
+                <div class="w-1.5 h-1.5 rounded-full bg-zinc-600"></div>
+                <span class="text-sm font-medium text-zinc-100">Decisions & Actions</span>
+                <span class="chip bg-zinc-800 text-zinc-500 border border-zinc-700">Manual</span>
+              </div>
+              <button class="text-xs text-zinc-500 hover:text-zinc-300">Edit</button>
+            </div>
+            <div class="px-4 py-3 space-y-2">
+              <div class="flex items-center gap-3">
+                <div class="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center flex-shrink-0">
+                  <span class="text-[9px] text-zinc-400 font-bold">1</span>
+                </div>
+                <div>
+                  <p class="text-xs font-medium text-zinc-300">Extract Decisions</p>
+                  <p class="text-xs text-zinc-600">Decisions layer · Full transcript</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center flex-shrink-0">
+                  <span class="text-[9px] text-zinc-400 font-bold">2</span>
+                </div>
+                <div>
+                  <p class="text-xs font-medium text-zinc-300">Extract Action Items</p>
+                  <p class="text-xs text-zinc-600">Actions layer · Full transcript</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Create layer prompt -->
+          <div class="bg-zinc-900/50 rounded-lg border border-zinc-800 border-dashed p-4">
+            <p class="text-xs text-zinc-500 mb-3">Describe a new flow in plain language</p>
+            <div class="flex gap-2">
+              <input class="flex-1 bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-zinc-300 placeholder-zinc-600 outline-none focus:border-violet-500" placeholder="e.g. Extract risks and open questions from each transcript…" />
+              <button class="text-xs bg-violet-600 hover:bg-violet-500 text-white px-3 py-2 rounded-md flex-shrink-0">Generate</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- end main content -->
+  </div><!-- end body -->
+</div><!-- end window -->
+
+<script>
+  // Inline the template literals since we can't use .map in static HTML
+  document.getElementById('screen-layers').querySelector('.space-y-1').innerHTML = [
+    ['onboarding', 12], ['navigation', 9], ['design-system', 8], ['user-testing', 7],
+    ['accessibility', 5], ['stakeholders', 5], ['tokens', 4], ['patterns', 4],
+    ['research', 3], ['acme-corp', 3], ['presentation', 2], ['decisions', 2],
+    ['spacing', 2], ['typography', 1], ['animation', 1], ['handoff', 1],
+    ['components', 1], ['flows', 1],
+  ].map(([name, count]) => `
+    <div class="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-zinc-900 cursor-pointer group">
+      <span class="chip bg-zinc-800 text-zinc-300 border border-zinc-700">${name}</span>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-zinc-600">${count} transcript${count !== 1 ? 's' : ''}</span>
+        <svg class="w-3 h-3 text-zinc-700 group-hover:text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+    </div>`).join('');
+
+  const screens = ['dashboard','transcripts','detail','layers','flows'];
+
+  function show(id) {
+    screens.forEach(s => {
+      document.getElementById('screen-' + s).classList.remove('active');
+      const btn = document.getElementById('btn-' + s);
+      if (btn) {
+        btn.className = 'text-xs px-3 py-1 rounded-full text-zinc-400 hover:text-white';
+      }
+    });
+    document.getElementById('screen-' + id).classList.add('active');
+    const activeBtn = document.getElementById('btn-' + id);
+    if (activeBtn) activeBtn.className = 'text-xs px-3 py-1 rounded-full bg-violet-600 text-white';
+  }
+</script>
+</body>
+</html>

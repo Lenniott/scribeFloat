@@ -2,7 +2,7 @@
 	import { Copy, Eye, SquareArrowOutUpRight, Trash2 } from 'lucide-svelte';
 	import IconButton from '@lib/components/IconButton.svelte';
 	import Chip from '@lib/components/Chip.svelte';
-	import SourceKindIcon from '@lib/components/transcripts/SourceKindIcon.svelte';
+	import SourceKindIcon from '@lib/components/notes/SourceKindIcon.svelte';
 	import type { HistoryListItem } from '@lib/services/historyActions';
 	import {
 		formatDurationFromSecs,

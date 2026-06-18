@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Chip from '@lib/components/Chip.svelte';
-	import SourceKindIcon from '@lib/components/transcripts/SourceKindIcon.svelte';
+	import SourceKindIcon from '@lib/components/notes/SourceKindIcon.svelte';
 	import type { HistoryListItem } from '@lib/services/historyActions';
 	import {
 		formatDurationFromSecs,

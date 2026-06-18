@@ -126,9 +126,9 @@ Phase 8 — Component taxonomy reorganisation (story 0027 partial)
 - [x] Phase 3 — Home Area (home.svelte, StatTile, RecentNoteCard)
 - [x] Phase 4 — Notes Area (notes.svelte, NoteListCard, FilterSidePanel)
 - [x] Phase 5 — Settings sidebar (SettingsSidebar, SettingsPanel, settingsTypes)
-- [ ] **Phase 6 — New Note title bar (story 0025)** ← next session starts here
-- [ ] Phase 7 — Rename passes (stories 0016, 0017, 0018, 0042)
-- [ ] Phase 8 — Taxonomy reorganisation (story 0027)
+- [x] Phase 6 — New Note title bar (story 0025) — already wired in shell
+- [x] Phase 7 — Rename passes (stories 0016, 0017, 0018, 0042)
+- [x] Phase 8 — Taxonomy reorganisation (story 0027)
 
 ### HO-2 handoff — for next agent
 

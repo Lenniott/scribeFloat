@@ -2,7 +2,7 @@
 	import { ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-svelte';
 	import HistoryDetailPane from '@lib/components/history/HistoryDetailPane.svelte';
 	import NoteListCard from '@lib/components/notes/NoteListCard.svelte';
-	import FilterSidePanel from '@lib/components/transcripts/FilterSidePanel.svelte';
+	import FilterSidePanel from '@lib/components/notes/FilterSidePanel.svelte';
 	import ScrollablePanel from '@lib/components/accordion/ScrollablePanel.svelte';
 	import IconButton from '@lib/components/IconButton.svelte';
 	import Button from '@lib/components/Button.svelte';

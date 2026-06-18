@@ -42,18 +42,11 @@ pub fn scribe_abort_transcription(ctrl: State<'_, Arc<ScribeController>>) -> Res
     ctrl.abort_transcription_keep_wav().map_err(AppError::from)
 }
 
-/// Hide the Scribe window without destroying it. Destroying the last window would quit the
-/// tray-backed process; hide matches native close behaviour (`CloseRequested` → hide).
-///
-/// Always tries to end an active recording first so mic/speaker streams release even if the
-/// frontend hid the window without awaiting `scribe_cancel`.
+/// No-op: Scribe lives in the main shell window; kept for legacy frontend callers.
 #[tauri::command]
 pub fn scribe_destroy_window(app: tauri::AppHandle) -> Result<(), AppError> {
     if let Some(ctrl) = app.try_state::<Arc<ScribeController>>() {
         let _ = ctrl.cancel();
-    }
-    if let Some(w) = app.get_webview_window(crate::SCRIBE_WINDOW_LABEL) {
-        w.hide().map_err(|e| AppError::Internal(e.to_string()))?;
     }
     crate::platform::window_impl::sync_activation_policy(&app);
     Ok(())

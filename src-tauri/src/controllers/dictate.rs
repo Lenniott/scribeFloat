@@ -207,6 +207,15 @@ impl DictateKeyTracker {
             _ => DictateAction::None,
         }
     }
+
+    /// UI title-bar start — keyboard third-tap stop must see toggle mode.
+    fn arm_ui_toggle(&mut self, now: Instant) {
+        self.state = DictateKeyState::ToggleRecording { started_at: now };
+    }
+
+    fn reset_to_idle(&mut self) {
+        self.state = DictateKeyState::Idle;
+    }
 }
 
 // ── Controller ───────────────────────────────────────────────────────────────
@@ -241,6 +250,8 @@ pub struct DictateController {
     paste_once: AtomicBool,
     /// Bumped on new activity so stale auto-dismiss timers cannot hide a new session HUD.
     dismiss_generation: Arc<AtomicU64>,
+    /// Shared with the global key listener — kept in sync when dictate starts/stops from the UI.
+    key_tracker: Arc<Mutex<DictateKeyTracker>>,
 }
 
 impl DictateController {
@@ -270,7 +281,24 @@ impl DictateController {
             restore_paste_target_pid: Arc::new(Mutex::new(None)),
             paste_once: AtomicBool::new(false),
             dismiss_generation: Arc::new(AtomicU64::new(0)),
+            key_tracker: Arc::new(Mutex::new(DictateKeyTracker::new())),
         })
+    }
+
+    fn arm_key_tracker_toggle(&self) {
+        let mut tracker = self
+            .key_tracker
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        tracker.arm_ui_toggle(Instant::now());
+    }
+
+    fn reset_key_tracker(&self) {
+        let mut tracker = self
+            .key_tracker
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        tracker.reset_to_idle();
     }
 
     fn bump_dismiss_generation(&self) {
@@ -318,7 +346,7 @@ impl DictateController {
     /// Spawn the global key listener on a background thread.
     /// Must be called once after the controller is created.
     pub fn start_key_listener(self: Arc<Self>) {
-        let tracker = Arc::new(Mutex::new(DictateKeyTracker::new()));
+        let tracker = Arc::clone(&self.key_tracker);
 
         // Timeout thread: advances timed states so the state machine resets
         // to Idle when tap windows expire without a second keypress.
@@ -461,6 +489,35 @@ impl DictateController {
         self.lock().state.clone()
     }
 
+    /// Start or stop dictate from the dashboard title-bar button.
+    pub fn trigger_toggle(self: &Arc<Self>) {
+        match self.current_state() {
+            DictateState::Recording => {
+                self.reset_key_tracker();
+                if let Err(e) = Self::stop_and_transcribe(Arc::clone(self)) {
+                    tracing::warn!(error = %e, "dictate UI stop failed");
+                }
+            }
+            DictateState::Idle => {
+                self.arm_key_tracker_toggle();
+                Self::dispatch_action(
+                    Arc::clone(self),
+                    DictateAction::Start(DictateStartSource::Toggle),
+                );
+            }
+            DictateState::Done | DictateState::Error => {
+                self.bump_dismiss_generation();
+                self.dismiss();
+                self.arm_key_tracker_toggle();
+                Self::dispatch_action(
+                    Arc::clone(self),
+                    DictateAction::Start(DictateStartSource::Toggle),
+                );
+            }
+            DictateState::Transcribing | DictateState::Pasting => {}
+        }
+    }
+
     /// Transition Idle → Recording. Opens mic stream, emits audio level events.
     pub fn start(&self) -> Result<()> {
         self.bump_dismiss_generation();
@@ -568,6 +625,7 @@ impl DictateController {
 
         self.bump_dismiss_generation();
         self.clear_restore_paste_target_pid();
+        self.reset_key_tracker();
         let session = {
             let mut inner = self.lock();
             inner.state = DictateState::Idle;
@@ -619,6 +677,7 @@ impl DictateController {
         if let Some(path) = wav_path {
             self.delete_dictate_wav(&path);
         }
+        self.reset_key_tracker();
         self.clear_restore_paste_target_pid();
         let _ = self.app.emit(DICTATE_AUDIO_LEVEL_EVENT, 0.0_f32);
         self.hide_window();
@@ -639,6 +698,7 @@ impl DictateController {
             true
         };
         if should_hide {
+            self.reset_key_tracker();
             self.clear_restore_paste_target_pid();
             self.hide_window();
         }

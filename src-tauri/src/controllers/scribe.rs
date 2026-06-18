@@ -834,7 +834,7 @@ impl ScribeController {
         );
         let record_id = match self.history.append(&config.save_folder, record) {
             Ok(id) => {
-                self.app.emit("history://item-added", ()).ok();
+                self.app.emit("note://item-added", ()).ok();
                 Some(id)
             }
             Err(e) => {

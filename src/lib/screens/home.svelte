@@ -36,7 +36,7 @@
 
 	onMount(() => {
 		void fetchDashboardStats().then((s) => (stats = s));
-		const unlistenP = listen('history://item-added', () => {
+		const unlistenP = listen('note://item-added', () => {
 			void fetchDashboardStats().then((s) => (stats = s));
 		});
 		return async () => (await unlistenP)();

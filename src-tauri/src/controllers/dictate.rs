@@ -895,7 +895,7 @@ impl DictateController {
             tracing::warn!(error = %e, "dictate failed to write history");
             true
         } else {
-            self.app.emit("history://item-added", ()).ok();
+            self.app.emit("note://item-added", ()).ok();
             false
         };
 

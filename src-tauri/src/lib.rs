@@ -282,7 +282,7 @@ fn navigate_shell(
         route: route.to_string(),
         settings_tab: settings_tab.map(|s| s.to_string()),
     };
-    let _ = window.emit("shell://navigate", payload);
+    let _ = window.emit("app://navigate", payload);
     if route == "scribe" {
         let _ = window.emit("scribe://opened", ());
     }

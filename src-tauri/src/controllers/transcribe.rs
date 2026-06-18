@@ -416,7 +416,7 @@ impl TranscribeController {
             if let Err(e) = self.history.append(&save_folder, record) {
                 tracing::warn!(error = %e, "failed to append transcribe history record");
             } else {
-                self.app.emit("history://item-added", ()).ok();
+                self.app.emit("note://item-added", ()).ok();
             }
 
             queue[index].status = TranscribeItemStatus::Done;

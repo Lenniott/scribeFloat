@@ -167,7 +167,7 @@
 
 	onMount(() => {
 		void loadNotes();
-		const unlistenNoteP = listen('history://item-added', () => {
+		const unlistenNoteP = listen('note://item-added', () => {
 			void loadNotes();
 		});
 		const unlistenNavP = listen<AppNavigateEvent>('app://navigate', (event) => {

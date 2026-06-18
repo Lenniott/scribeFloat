@@ -64,8 +64,13 @@
 	};
 </script>
 
+<!--
+  Tabbed pane primitive. For bounded app panes, wrap the parent in
+  `flex h-full min-h-0 flex-col overflow-hidden`, keep the tab list as shrink-0
+  chrome, and place tab content inside ScrollablePanel.
+-->
 <section class="{wrapperClass[mode]} {className}">
-	<div class={tabListClass[mode]} role="tablist" aria-label="Tabs">
+	<div class="{tabListClass[mode]} shrink-0" role="tablist" aria-label="Tabs">
 		{#each tabs as tab (tab.id)}
 			<button
 				type="button"

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import NotesList from "./NotesList.svelte";
 	import NoteComposer from "./NoteComposer.svelte";
+	import ScrollablePanel from "@lib/components/accordion/ScrollablePanel.svelte";
+	import PanelFooter from "@lib/components/layout/PanelFooter.svelte";
 	import type { Note } from "./NoteCard.svelte";
 	import type { Snippet } from "svelte";
 
@@ -26,7 +28,7 @@
 	}
 </script>
 
-<div class="flex min-h-0 flex-1 flex-col gap-0">
+<div class="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden">
 	<div class="shrink-0 px-4 pt-4 pb-2">
 		{#if header}
 			{@render header()}
@@ -34,10 +36,10 @@
 			<h2 class="sf-section-label text-fg-dim">Notes</h2>
 		{/if}
 	</div>
-	<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4">
+	<ScrollablePanel class="px-4">
 		<NotesList bind:selectedId {notes} />
-	</div>
-	<div class="shrink-0 border-t border-card/0 px-4 pt-3 pb-4" style="box-shadow: inset 0 1px 0 0 var(--sf-card);">
+	</ScrollablePanel>
+	<PanelFooter class="w-full justify-start border-t-0 px-4 pt-3 pb-4">
 		<NoteComposer bind:value={draft} onSubmit={add} />
-	</div>
+	</PanelFooter>
 </div>

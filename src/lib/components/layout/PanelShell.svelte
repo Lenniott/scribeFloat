@@ -10,6 +10,10 @@
 	} = $props();
 </script>
 
+<!--
+  Fixed-height panel shell. Children must implement pattern B internally:
+  shrink-0 chrome + ScrollablePanel body + optional PanelFooter.
+-->
 <div
 	class="shadow-ambient flex h-[min(720px,90dvh)] w-full max-w-5xl flex-col overflow-hidden rounded-md bg-card {className}"
 >

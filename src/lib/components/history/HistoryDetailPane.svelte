@@ -171,7 +171,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+<div class="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
   <PanelHeader>
     {#snippet left()}
       <p class="min-w-0 truncate sf-headline-sm text-fg">
@@ -247,7 +247,7 @@
     {/if}
   </div>
 
-  <ScrollablePanel class="min-h-0 flex-1 px-4 py-3">
+  <ScrollablePanel class="px-4 py-3">
     {#if loadingBody}
       <p class="sf-body-md text-fg-muted">Loading…</p>
     {:else if loadError}

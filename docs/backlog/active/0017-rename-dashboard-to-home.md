@@ -1,7 +1,7 @@
 ---
 id: "0017"
 title: Rename Dashboard → Home
-status: active
+status: done
 ---
 
 # Rename Dashboard → Home

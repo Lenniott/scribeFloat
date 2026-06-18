@@ -1,7 +1,7 @@
 ---
 id: "0038"
 title: Build Home Area screen
-status: active
+status: done
 ---
 
 # Build Home Area (home.svelte)

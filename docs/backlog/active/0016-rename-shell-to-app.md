@@ -1,7 +1,7 @@
 ---
 id: "0016"
 title: Rename Shell → App in code
-status: active
+status: done
 ---
 
 # Rename Shell → App in code

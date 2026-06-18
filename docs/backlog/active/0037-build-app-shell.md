@@ -1,7 +1,7 @@
 ---
 id: "0037"
 title: Build app-shell.svelte — persistent sidebar shell replacing +page.svelte
-status: active
+status: done
 exploration: design-brain-prd.md
 ---
 

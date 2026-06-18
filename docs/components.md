@@ -53,26 +53,36 @@ The sketch clearly separates settings into collapsible groups and notes that onl
 
 | Component | What it is | How it works |
 |---|---|---|
-| `HistoryListCard` | Legacy compact list row.   | View, Copy, Open, Delete; used before dashboard shell. Prefer `TranscriptListCard` in the Transcripts screen.   |
+| `HistoryListCard` | Legacy compact list row.   | View, Copy, Open, Delete; used before app shell. Prefer `NoteListCard` in the Notes screen.   |
 | `HistoryDetailPane` | Fullscreen transcript detail.   | Scrollable transcript via `history_render_markdown`; metadata chips; prev/next; Export / Open / Copy / Close. Delete is on the list card only.   |
-| `TranscriptListCard` | Rich transcripts list row (`transcripts.svelte`).   | Source icon, title, excerpt, tag chips, metadata line, and icon actions. Same event contract as `HistoryListCard`.   |
 
-## Dashboard shell components
+## App shell components
 
 | Component | What it is | How it works |
 |---|---|---|
-| `AppShell` | Main window host (`app-shell.svelte`).   | Sidebar + title bar + route switcher (`dashboard` / `transcripts` / `upload` / `scribe` / `settings`); shared toast and delete modal. Listens for `shell://navigate` from tray/hotkeys.   |
-| `AppSidebar` | Capture + Manage navigation.   | In-shell routes for Scribe, Upload, Dashboard, Transcripts, Settings; Float teaser disabled.   |
+| `AppShell` | Main window host (`app-shell.svelte`).   | Sidebar + title bar + route switcher (`home` / `notes` / `upload` / `scribe` / `settings`); shared toast and delete modal. Listens for `app://navigate` from tray/hotkeys.   |
+| `AppSidebar` | Capture + Manage navigation.   | In-shell routes for Scribe, Upload, Home, Notes, Settings; Float teaser disabled.   |
 | `SettingsSidebar` | Settings tab nav (replaces `AppSidebar` on settings route).   | Back button returns to previous shell route; tab list matches settings screens.   |
 | `SettingsPanel` | Settings content column.   | Banner + tab body (`SettingGeneral`, etc.); used in shell and legacy modal `settings.svelte`.   |
 | `CaptureScreen` | Scribe capture wrapper (`capture.svelte`).   | Toggles recording vs processing sub-screens; registers leave guard for route changes during capture.   |
 | `SidebarNavItem` | Single sidebar row with icon and optional badge.   | Active, accent (Scribe), or disabled states.   |
 | `ShellTitleBar` | Top strip with Dictate trigger.   | Invokes `dictate_trigger` IPC.   |
-| `StatTile` | Dashboard metric card.   | Value + label; Phase A shows `—` for Float stats.   |
-| `RecentSessionCard` | Dashboard recent-session row.   | Click opens detail via shell (routes to Transcripts).   |
-| `FilterSidePanel` | Transcripts tag filter column.   | OR within tags; footer shows active filter count.   |
+
+## Home components (`components/home/`)
+
+| Component | What it is | How it works |
+|---|---|---|
+| `StatTile` | Home screen metric card.   | Value + label; Phase A shows `—` for Float stats.   |
+| `RecentNoteCard` | Home screen recent-note row.   | Click opens detail via shell (routes to Notes screen). Emits `note://item-added` on new additions.   |
+
+## Notes components (`components/notes/`)
+
+| Component | What it is | How it works |
+|---|---|---|
+| `NoteListCard` | Rich notes list row (`notes.svelte`).   | Source icon, title, excerpt, tag chips, metadata line, and icon actions.   |
+| `FilterSidePanel` | Notes tag filter column.   | OR within tags; footer shows active filter count.   |
 | `FilterCheckboxRow` | One tag filter row.   | Checkbox + label + count.   |
-| `SourceKindIcon` | Scribe / Dictate / Upload icon badge.   | Used on recent and transcript list cards.   |
+| `SourceKindIcon` | Scribe / Dictate / Upload icon badge.   | Used on recent and note list cards.   |
 
 ## Layout components
 

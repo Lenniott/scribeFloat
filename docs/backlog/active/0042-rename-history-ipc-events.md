@@ -1,7 +1,7 @@
 ---
 id: "0042"
 title: Rename history:// and shell:// IPC events to note:// and app://
-status: active
+status: done
 adr: ADR-0001
 ---
 

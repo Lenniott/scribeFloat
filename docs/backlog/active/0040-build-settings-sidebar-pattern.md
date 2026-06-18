@@ -1,7 +1,7 @@
 ---
 id: "0040"
 title: Build Settings sidebar pattern — sidebar swap on settings navigation
-status: active
+status: done
 ---
 
 # Build Settings sidebar pattern

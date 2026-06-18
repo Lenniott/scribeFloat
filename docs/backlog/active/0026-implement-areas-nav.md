@@ -1,7 +1,7 @@
 ---
 id: "0026"
 title: Implement Areas nav — Home, Notes, Upload, Float, Settings
-status: active
+status: done
 ---
 
 # Implement Areas nav

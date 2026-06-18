@@ -1,7 +1,7 @@
 ---
 id: "0027"
 title: Reorder component library by taxonomy level
-status: active
+status: done
 ---
 
 # Reorder component library by taxonomy

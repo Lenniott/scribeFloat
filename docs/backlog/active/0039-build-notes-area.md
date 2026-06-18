@@ -1,7 +1,7 @@
 ---
 id: "0039"
 title: Build Notes Area screen — list + detail
-status: active
+status: done
 ---
 
 # Build Notes Area (notes.svelte)

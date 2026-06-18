@@ -1,7 +1,7 @@
 ---
 id: "0025"
 title: Move Capture (Scribe) to "New Note" title bar action
-status: active
+status: done
 ---
 
 # New Note title bar action

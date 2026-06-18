@@ -32,20 +32,21 @@ That reframe surfaces problems the current flat-list History UI doesn't solve:
 | GraphQL | **Rejected for now** | Answers "how do multiple clients flexibly query a relational API over a network." There's one local app reading its own local store via Tauri IPC — no multi-client problem exists yet. Revisit only if a genuinely separate companion app needs a network query surface. |
 | Embeddings for project-description / within-project chunk matching | **Deferred** | Both turned out to be one capability, not two staged layers — you can't match against a project-description vector without also embedding the incoming content, so there's no useful halfway point. Defer until plain-text grounding (inlining the existing tag/project vocabulary into the prompt) stops scaling. |
 | Voice-triggered explicit tagging (extend the existing `float`-prefix word-replacement engine, e.g. `float tag onboarding`) | **Good idea, deferred** | Strongest possible trust signal (user said it directly, no verification needed) and reuses an existing convention — but it's a new *kind* of trigger action (metadata write + strip from text, not substitute-and-keep), and the replacement engine isn't heavily used yet. Revisit once the core engine ships. |
-| Small local LLM (Gemma 4 family — E2B/E4B, Google's QAT Q4_0 GGUF builds) | **Adopted — core mechanism** | Matches the existing `whisper-rs`/ggml precedent exactly (bundled model, no network at runtime, same Metal/AVX2 feature-flag split). Google's QAT GGUF removes most quantization-quality risk. 128K context on the small variants is generous for single-session extraction. |
+| Small local LLM via llama-cpp-2 (Gemma 4 family, GGUF bundled in-process) | **Reconsidered — superseded by HTTP-based inference** | Eliminated by the concurrency problem: `llama.cpp` shares the same `ggml`/Metal GPU backend as Whisper — running both in-process requires app-wide serialization, making Whisper wait on LLM jobs. Also adds significant build complexity (native bindings, GGUF download/management, Metal feature flags). |
+| HTTP-based inference endpoint (Ollama local daemon or cloud API key) | **Adopted — core mechanism** | Float becomes a configurable HTTP client (`POST /v1/chat/completions`, OpenAI-compatible). User points it at their Ollama instance (`http://localhost:11434`) or a cloud provider. ScribeFloat owns zero model management — no GGUF files, no download flow, no Metal lifecycle code. The concurrency problem dissolves: Ollama is a separate process with its own GPU context; OS manages Metal scheduling between Whisper and Ollama. Cloud API (OpenAI, Anthropic, etc.) is a zero-GPU alternative — user opts in by providing an API key and endpoint URL. Both use the same HTTP client code; the distinction is just configuration. |
 | Autonomous multi-turn agent loop (planning, tool calls, ReAct-style) | **Rejected** | Wrong shape for this problem. Every job here — classify, extract, tag — is answerable in one bounded call given the right input. A deterministic pipeline of single-shot steps is faster, predictable, and far easier to test than a model deciding what to do next. |
-| Concurrent local-model inference (run N steps in parallel) | **Rejected — confirmed by existing code** | `ModelService::inference_gate` already serializes every Whisper call app-wide because concurrent `ggml`/Metal encode passes corrupt shared GPU state. `llama.cpp` shares the same `ggml` backend — the same constraint almost certainly applies. Concurrency is 1, by precedent, not just caution. |
+| Concurrent local-model inference (run N steps in parallel) | **Rejected — still applies within a session** | `ModelService::inference_gate` serializes Whisper app-wide; that constraint is unchanged. Float always runs after transcription completes, so Whisper and Float never race. Multiple Float Steps within one Flow still run sequentially — queue concurrency is 1. This is a simplicity choice; the GPU-lock problem that forced it with llama-cpp-2 is gone with Ollama. |
 
 ---
 
 ## 3. The bet
 
-**Build one general engine, not a list of point features.** The MVP use cases are deliberately narrow — Tags and Keywords — but the mechanism underneath (Layer → Step → Flow) has to be general enough that Decisions, Actions, Stakeholders, Risks, and Projects are *configuration added later*, not re-architecture. If a small on-device model can reliably do bounded, single-purpose extraction (tag a transcript, pull keywords) inside this engine, the same engine is the path to the harder, higher-value jobs (decision logs, stakeholder artifacts) that actually deliver on the "design brain" promise — without ever touching the pipeline code again.
+**Build one general engine, not a list of point features.** The MVP use cases are deliberately narrow — Tags and Keywords — but the mechanism underneath (Layer → Step → Flow) has to be general enough that Decisions, Actions, Stakeholders, Risks, and Projects are *configuration added later*, not re-architecture. The engine is a thin HTTP orchestration layer: it chunks transcripts, assembles prompts, calls a user-configured inference endpoint (Ollama or cloud API), and parses structured results back into the record store. If that pipeline reliably does bounded, single-purpose extraction (tag a transcript, pull keywords), the same pipeline is the path to the harder, higher-value jobs (decision logs, stakeholder artifacts) that deliver on the "design brain" promise — without ever touching the pipeline code again.
 
 Three constraints carry through every layer of the design, because they're what make the bet safe to make incrementally:
 
 - **Always async, always decoupled.** Enrichment runs after `DONE`, never inside the Scribe/Dictate/Transcribe state machine. The core capture flow must never feel slower because this exists.
-- **Concurrency = 1.** One global queue, one flow-run in flight at a time, matching the proven `inference_gate` pattern. This turns "how do we schedule this" into a non-problem.
+- **Concurrency constraint is dissolved by the HTTP backend.** With Ollama as a separate process, there is no shared `ggml`/Metal GPU lock between Whisper and Float — the OS manages GPU scheduling between processes. Float jobs are independent HTTP requests; `ModelService::inference_gate` still serializes Whisper as before but Float doesn't touch that gate. The Float queue runs one job at a time as a simplicity default (not a hardware constraint). Whisper takes natural priority because Float only runs after `DONE` — they don't overlap in the normal flow.
 - **Every AI-derived result carries a status at the transcript level.** When a Flow runs on a Transcript the result is `draft`. The user can edit individual items (flips to `edited`) and explicitly approve the whole result (`approved`). On approve, new items are auto-promoted into the Layer's shared vocabulary. Artifact generation (later) must be able to filter to approved-only by default.
 
 ---
@@ -118,8 +119,8 @@ flowchart TD
     D -- no --> Z[Nothing further happens]
     D -- yes --> E[Flow-run enqueued — global queue, depth unbounded]
     E --> F[Queue worker picks up run\nconcurrency = 1, app-wide]
-    F --> G[Step 1: chunk transcript on segment boundaries\nrun Tags step against Gemma E2B]
-    G --> H[Step 2: run Keywords step against Gemma E2B]
+    F --> G[Step 1: chunk transcript on segment boundaries\nrun Tags step — HTTP call to inference endpoint]
+    G --> H[Step 2: run Keywords step — HTTP call to inference endpoint]
     H --> I[Write results to record metadata,\nstatus = draft]
     I --> J[History card status chip flips\nfrom Analyzing… to showing tags/keywords]
     J --> K[User opens transcript, reviews draft result,\nedits items as needed, approves]
@@ -135,14 +136,14 @@ sequenceDiagram
     participant TV as Transcript View
     participant Q as Enrichment Queue
     participant FE as Flow Engine
-    participant LLM as Local Gemma (llama.cpp)
+    participant LLM as Inference endpoint (Ollama / cloud)
 
     User->>TV: Open past session, choose "Run flow: Risks & Stakeholders"
     TV->>Q: Enqueue flow-run
     Q->>FE: Dequeue when free (concurrency 1)
     loop each step in flow, in order
-        FE->>LLM: chunk + system prompt + step prompt + layer def (+ unique list if any)
-        LLM-->>FE: structured JSON matching layer schema
+        FE->>LLM: POST /v1/chat/completions — chunk + system prompt + step prompt + layer def (+ unique list if any)
+        LLM-->>FE: JSON response matching layer schema
     end
     FE->>TV: Write items as status=draft, emit status event
     TV-->>User: Status chip updates queued→running→done
@@ -194,37 +195,39 @@ flowchart TD
 
 ## 7. Architecture (C4)
 
-These extend `context/architecture.md` Level 1/2 — additive, not a replacement. Everything new stays inside the existing `Container_Boundary(app, ...)`; no new external systems beyond an optional one-time Gemma weight download mirroring the existing Hugging Face / Whisper pattern.
+These extend `context/architecture.md` Level 1/2 — additive, not a replacement. Everything new stays inside the existing `Container_Boundary(app, ...)`; the only external systems are the user-configured inference endpoint (Ollama daemon or cloud API) — no model downloads managed by ScribeFloat.
 
 ### 7.1 Level 1 — System Context (delta only)
 
 ```mermaid
 C4Context
-    title ScribeFloat — System Context (Design Brain delta)
+    title ScribeFloat — System Context (Float delta)
 
-    Person(user, "User", "Designer. Records, transcribes, dictates, and now reviews AI-organized metadata.")
-    System(scribefloat, "ScribeFloat", "Local-first desktop app. Adds an on-device enrichment engine — still no cloud, no accounts.")
-    System_Ext(hf, "Hugging Face", "Existing one-time model download path, extended to Gemma 4 GGUF weights alongside Whisper.")
+    Person(user, "User", "Designer. Records, transcribes, dictates, and now reviews AI-organised metadata.")
+    System(scribefloat, "ScribeFloat", "Local-first desktop app. Float engine enriches transcripts via a user-configured HTTP inference endpoint.")
+    System_Ext(ollama, "Ollama (local daemon)", "User-managed. Runs any GGUF-compatible model locally. Exposes OpenAI-compatible API at localhost:11434. Separate process — no shared GPU state with Whisper.")
+    System_Ext(cloud_api, "Cloud inference API", "Optional. OpenAI, Anthropic, or any OpenAI-compatible endpoint. User provides endpoint URL + API key in settings.")
 
     Rel(user, scribefloat, "reviews and approves AI-drafted tags, keywords, and future layers")
-    Rel(scribefloat, hf, "downloads Gemma 4 E2B/E4B QAT GGUF weights once, on request — same pattern as Whisper models")
+    Rel(scribefloat, ollama, "POST /v1/chat/completions — local, zero-latency, user's model choice")
+    Rel(scribefloat, cloud_api, "POST /v1/chat/completions — opt-in, user-supplied key")
 ```
 
-### 7.2 Level 2 — Containers (new "Design Brain Engine" boundary)
+### 7.2 Level 2 — Containers (new "Float Engine" boundary)
 
 ```mermaid
 C4Container
-    title ScribeFloat — Design Brain Engine (proposed addition)
+    title ScribeFloat — Float Engine (proposed addition)
 
-    Container(history_ui, "History UI", "Svelte 5", "Existing — gains status chips, transcript-level metadata blocks, and a new generic list-level browse view")
+    Container(history_ui, "History UI / Dashboard", "Svelte 5", "Existing — gains status chips, transcript-level metadata blocks, and filter panel vocabulary")
     Container(svc_history, "HistoryService", "Rust", "Existing — append-only JSONL record store; enrichment results land in record metadata, never replace it")
 
-    Container_Boundary(brain, "Design Brain Engine — new") {
-        Container(queue, "Enrichment Queue", "Rust / Tokio", "Global FIFO. One flow-run in flight at a time, app-wide — mirrors ModelService::inference_gate")
+    Container_Boundary(brain, "Float Engine — new") {
+        Container(queue, "Enrichment Queue", "Rust / Tokio", "Global FIFO. One flow-run in flight at a time. Simplicity default — not a GPU-lock constraint.")
         Container(flow_engine, "Flow Engine", "Rust", "Runs a flow's ordered steps against one transcript; writes results back through HistoryService")
         Container(layer_registry, "Layer Registry", "Rust", "Defines layers: unique list, per-item description, render type. Tags + Keywords ship as defaults")
         Container(chunker, "Chunker", "Rust", "Shared service — splits transcript on Segment timestamp boundaries (speaker turn / pause gap), not raw token count")
-        Container(llm_svc, "LocalLLMService", "Rust / llama.cpp via llama-cpp-2", "Loads Gemma 4 E2B/E4B QAT GGUF. Same inference_gate-style serialization as ModelService — concurrency 1, shared GPU/ggml state")
+        Container(inference_client, "InferenceClient", "Rust / reqwest", "HTTP client for OpenAI-compatible /v1/chat/completions. Endpoint URL + optional API key from Config. No model management, no GPU lifecycle.")
     }
 
     Rel(history_ui, queue, "enqueue manual flow-run; subscribe to status events")
@@ -232,15 +235,15 @@ C4Container
     Rel(queue, flow_engine, "dequeue, run when free")
     Rel(flow_engine, chunker, "chunk transcript per step's chunk-or-full setting")
     Rel(flow_engine, layer_registry, "read layer def + unique list for grounding context")
-    Rel(flow_engine, llm_svc, "one bounded call per step, per chunk")
+    Rel(flow_engine, inference_client, "one bounded HTTP call per step, per chunk")
     Rel(flow_engine, svc_history, "write results as record metadata, status=draft")
     Rel(history_ui, svc_history, "read/edit metadata; approve result, promoting new items to layer vocabulary")
 ```
 
 ### 7.3 Level 3 notes (not a full diagram yet — call out before the spike)
 
-- `LocalLLMService` needs the same defensive load/cache pattern as `ModelService::get_or_load_context` — load once, keep warm, never reload per call.
-- Structured output reliability should lean on grammar-constrained decoding (GBNF via llama.cpp) rather than hoping a 2–4B model returns clean JSON unaided.
+- `InferenceClient` reads `float_endpoint_url` and `float_api_key` from `Config`. Both have `#[serde(default)]` so existing config files load cleanly — endpoint defaults to `http://localhost:11434` (Ollama).
+- Structured output reliability: request JSON mode (most providers support `response_format: { type: "json_object" }`) or use a fenced-JSON prompt pattern with a parse-and-retry step rather than grammar-constrained decoding.
 - `Chunker` is shared infrastructure, not something each Step reimplements — this was explicitly flagged as a risk if left per-step.
 - Render types are a small, fixed catalog (chip-list, plain-list, item+description, task-list) that the UI knows how to draw; a new Layer picks from this catalog rather than commissioning new UI.
 
@@ -273,7 +276,7 @@ This is a UI decision only — it does not depend on the engine shipping. Implem
 
 | Concept here | Existing precedent |
 |---|---|
-| `LocalLLMService` serialization | `ModelService::inference_gate` (`src-tauri/src/services/model.rs:171`) |
+| `InferenceClient` HTTP pattern | `reqwest` async client — same tokio runtime already in use; no new async executor needed |
 | Chunking on natural boundaries | `Segment` timestamps already produced by Whisper transcription |
 | Status chip on History card | Existing Whisper `on_tick`-per-segment progress pattern |
 | Metadata storage | Extends `HistoryRecord` (`src-tauri/src/types.rs:627`) — additive fields, not a new store |

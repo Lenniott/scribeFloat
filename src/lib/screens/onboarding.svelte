@@ -7,7 +7,7 @@
 	import PermissionsStep from "@lib/components/sections/onboarding/PermissionsStep.svelte";
 	import DictatePracticeStep from "@lib/components/sections/onboarding/DictatePracticeStep.svelte";
 	import FeatureTourStep from "@lib/components/sections/onboarding/FeatureTourStep.svelte";
-	import StepProgress from "@lib/components/ui/indicators/StepDots.svelte";
+	import StepProgress from "@lib/components/ui/indicators/StepIndicator.svelte";
 	import ScrollablePanel from "@lib/components/primitives/layout/ScrollBody.svelte";
 	import { appErrorMessage, type ModelListItem } from "$lib/types";
 

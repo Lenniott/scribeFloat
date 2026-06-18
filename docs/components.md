@@ -19,11 +19,8 @@ Components are organised into five taxonomy levels from lowest to highest compos
 | Component | Path | What it is |
 |---|---|---|
 | `ScrollBody` | `primitives/layout/ScrollBody.svelte` | The default body slot for pattern-B panes. `min-h-0 flex-1 overflow-y-auto overscroll-contain`. Pass padding via `class`. |
-| `PanelFrame` | `primitives/layout/PanelFrame.svelte` | Outer frame for a panel column: `h-full min-h-0 flex flex-col overflow-hidden`. |
 | `PanelHeader` | `primitives/layout/PanelHeader.svelte` | Top chrome with title + left/centre/right action slots. `shrink-0`. |
 | `PanelFooter` | `primitives/layout/PanelFooter.svelte` | Bottom chrome for primary actions. `shrink-0`, not `position: fixed`. |
-| `SplitLayout` | `primitives/layout/SplitLayout.svelte` | Two-column split with a resizable or fixed divider. |
-| `TabBody` | `primitives/layout/TabBody.svelte` | Tab bar + body slot. Exports `TabBodyItem` type. |
 | `Modal` | `primitives/layout/Modal.svelte` | Focus-trap overlay with title, description, and footer snippet slots. |
 | `StepFrame` | `primitives/layout/StepFrame.svelte` | Outer layout frame for onboarding step screens. |
 
@@ -35,17 +32,16 @@ Components are organised into five taxonomy levels from lowest to highest compos
 | `Timestamp` | `primitives/display/Timestamp.svelte` | Formatted elapsed-time label (e.g. `2:23 PM`). |
 | `SourceIcon` | `primitives/display/SourceIcon.svelte` | Icon indicating the source kind of a note (mic, speaker, etc.). |
 | `StatusDot` | `primitives/display/StatusDot.svelte` | Pulsing dot for recording state. Changes appearance for idle, recording, paused, error. |
-| `ElapsedTimer` | `primitives/display/ElapsedTimer.svelte` | Elapsed-time display. Shows formatted session time such as `00:00` from external state. |
+| `RecordingTimer` | `primitives/display/RecordingTimer.svelte` | Elapsed-time display. Shows formatted session time such as `00:00` from external state. |
 | `ProgressBar` | `primitives/display/ProgressBar.svelte` | Horizontal stacked-bar progress indicator. Supports `indeterminate` shimmer mode. |
 
 ### Form
 
 | Component | Path | What it is |
 |---|---|---|
-| `LabeledInput` | `primitives/form/LabeledInput.svelte` | Text input with a label. Used for mic name, speaker name, etc. |
-| `FormRow` | `primitives/form/FormRow.svelte` | Labelled config field row. Renders label + control in a consistent layout. |
+| `TextField` | `primitives/form/TextField.svelte` | Text input with a label. Used for mic name, speaker name, etc. |
+| `FieldRow` | `primitives/form/FieldRow.svelte` | Labelled config field row. Renders label + control in a consistent layout. |
 | `Checkbox` | `primitives/form/Checkbox.svelte` | Standard checkbox with accessible label. |
-| `ContentGroup` | `primitives/form/ContentGroup.svelte` | Styled wrapper for grouped controls (accordion body wrapper). |
 | `SettingsSection` | `primitives/form/SettingsSection.svelte` | Titled section container for settings screen groups. |
 
 ---
@@ -59,19 +55,17 @@ Components are organised into five taxonomy levels from lowest to highest compos
 | `Button` | `ui/controls/Button.svelte` | Primary action button. Five variants: primary, destructive, ghost, normal, active. |
 | `IconButton` | `ui/controls/IconButton.svelte` | Compact icon-only button. Fewer variants than `Button` (primary, destructive, normal). |
 | `Toggle` | `ui/controls/Toggle.svelte` | On/off switch. Used for speaker enablement and export options. |
-| `DeviceSelect` | `ui/controls/DeviceSelect.svelte` | Dropdown for audio hardware selection. Returns device id/value. |
-| `InlineTitle` | `ui/controls/InlineTitle.svelte` | Inline editable title field. Starts as plain text; switches to input on focus. |
-| `PathSelector` | `ui/controls/PathSelector.svelte` | Path value + Change button. Triggers a file-picker callback. |
+| `EditableTitle` | `ui/controls/EditableTitle.svelte` | Inline editable title field. Starts as plain text; switches to input on focus. |
+| `PathPicker` | `ui/controls/PathPicker.svelte` | Path value + Change button. Triggers a file-picker callback. |
 | `OptionGroup` | `ui/controls/OptionGroup.svelte` | Small grouped radio/segmented selector. Used for model size, theme, etc. |
-| `HotkeyCapture` | `ui/controls/HotkeyCapture.svelte` | Keyboard shortcut capture field. Records and displays a hotkey combo. |
 
 ### Cards
 
 | Component | Path | What it is |
 |---|---|---|
 | `NoteCard` | `ui/cards/NoteCard.svelte` | History list row (was `NoteListCard`). Selectable title + icon actions (Copy, View, Open, Delete). |
-| `NoteSnippet` | `ui/cards/NoteSnippet.svelte` | Inline note card (was legacy `NoteCard`). Displays note text + timestamp. Exports `Note` type. |
-| `RecentCard` | `ui/cards/RecentCard.svelte` | Recent-note card for the Home screen. Compact title + metadata. |
+| `InlineNote` | `ui/cards/InlineNote.svelte` | Inline note card. Displays note text + timestamp. Exports `Note` type. |
+| `RecentNoteCard` | `ui/cards/RecentNoteCard.svelte` | Recent-note card for the Home screen. Compact title + metadata. |
 | `SettingRow` | `ui/cards/SettingRow.svelte` | Single setting row in a settings list. Label + control slot. |
 | `UploadItem` | `ui/cards/UploadItem.svelte` | Per-item row in the upload/transcribe queue. Shows progress + status + actions. |
 | `FilterRow` | `ui/cards/FilterRow.svelte` | Checkbox row in the filter panel. Tag label + checkbox. |
@@ -90,8 +84,8 @@ Components are organised into five taxonomy levels from lowest to highest compos
 |---|---|---|
 | `Toast` | `ui/indicators/Toast.svelte` | Transient notification strip. Exports `ToastState` type (normal, success, error). |
 | `StatTile` | `ui/indicators/StatTile.svelte` | Summary stat tile for the Home screen. Label + value. |
-| `StepDots` | `ui/indicators/StepDots.svelte` | Step progress dots for onboarding flows. |
-| `WaveformDisplay` | `ui/indicators/WaveformDisplay.svelte` | Live PCM stack-bar waveform visualizer. Used in Scribe + Dictate. Exports `StackBlockSize` type. |
+| `StepIndicator` | `ui/indicators/StepIndicator.svelte` | Step progress dots for onboarding flows. |
+| `Waveform` | `ui/indicators/Waveform.svelte` | Live PCM stack-bar waveform visualizer. Used in Scribe + Dictate. Exports `StackBlockSize` type. |
 
 ---
 
@@ -101,9 +95,8 @@ Components are organised into five taxonomy levels from lowest to highest compos
 |---|---|---|
 | `Accordion` | `patterns/Accordion.svelte` | Collapsible section system. Controls `AccordionRow` children, enforces single-open behaviour. |
 | `NoteComposer` | `patterns/NoteComposer.svelte` | Text entry + submit for manual note creation. |
-| `NoteList` | `patterns/NoteList.svelte` | Scrollable list of `NoteSnippet` rows. |
+| `NoteList` | `patterns/NoteList.svelte` | Scrollable list of `InlineNote` rows. |
 | `UploadQueue` | `patterns/UploadQueue.svelte` | Scrollable list of `UploadItem` rows. |
-| `UploadSummary` | `patterns/UploadSummary.svelte` | Processing summary for completed upload jobs. |
 
 ---
 
@@ -113,7 +106,6 @@ Components are organised into five taxonomy levels from lowest to highest compos
 |---|---|---|
 | `FilterPanel` | `sections/FilterPanel.svelte` | Tag-filter side panel. Vocabulary list of `FilterRow` items + active filter count. |
 | `NoteDetailPane` | `sections/NoteDetailPane.svelte` | Fullscreen transcript + metadata detail pane (was `HistoryDetailPane`). |
-| `NotesPanel` | `sections/NotesPanel.svelte` | Notes column: `NoteList` + `NoteComposer` in a `ScrollBody`/`PanelFooter` layout. |
 | `SettingList` | `sections/SettingList.svelte` | Scrollable container for `SettingRow` items. |
 | `SettingsPanel` | `sections/SettingsPanel.svelte` | Full settings area. Routes active tab to the correct setting screen. |
 

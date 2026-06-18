@@ -11,9 +11,9 @@
   import IconButton from "@lib/components/ui/controls/IconButton.svelte";
   import Modal from "@lib/components/primitives/layout/Modal.svelte";
   import RecordingStatusDot from "@lib/components/primitives/display/StatusDot.svelte";
-  import RecordingTimer from "@lib/components/primitives/display/ElapsedTimer.svelte";
-  import AudioWaveFormVisualizer from "@lib/components/ui/indicators/WaveformDisplay.svelte";
-  import EditableTitleField from "@lib/components/ui/controls/InlineTitle.svelte";
+  import RecordingTimer from "@lib/components/primitives/display/RecordingTimer.svelte";
+  import Waveform from "@lib/components/ui/indicators/Waveform.svelte";
+  import EditableTitle from "@lib/components/ui/controls/EditableTitle.svelte";
   import ToggleSwitch from "@lib/components/ui/controls/Toggle.svelte";
   import NoteComposer from "@lib/components/patterns/NoteComposer.svelte";
   import NotesList from "@lib/components/patterns/NoteList.svelte";
@@ -22,7 +22,7 @@
   import { createModelDownloadStore } from "$lib/stores/modelDownload.svelte";
   import Bin from "lucide-svelte/icons/trash-2";
   import Cog from "lucide-svelte/icons/settings-2";
-  import type { Note } from "@lib/components/ui/cards/NoteSnippet.svelte";
+  import type { Note } from "@lib/components/ui/cards/InlineNote.svelte";
   import type { PermissionStatus } from "$lib/types";
   import { isWindows } from "$lib/platform";
 
@@ -496,7 +496,7 @@
       class="flex min-h-14 shrink-0 items-end justify-between border-b border-b-rim px-5 py-2"
     >
       <div class="min-w-0 flex-1">
-        <EditableTitleField bind:value={fileName} />
+        <EditableTitle bind:value={fileName} />
       </div>
       <div class="ml-4 flex items-center gap-2">
         <IconButton
@@ -542,7 +542,7 @@
       <!-- Left: visualizer + settings -->
       <div class="flex min-h-0 flex-col px-4 py-3">
         <div class="shrink-0">
-          <AudioWaveFormVisualizer
+          <Waveform
             micLevel={micLevel}
             speakerLevel={speakerLevel}
             speakerEnabled={speakerEnabledForWaveform}

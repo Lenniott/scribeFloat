@@ -4,8 +4,8 @@
 	import Button from "@lib/components/ui/controls/Button.svelte";
 	import Chip from "@lib/components/primitives/display/Chip.svelte";
 	import IconButton from "@lib/components/ui/controls/IconButton.svelte";
-	import ConfigField from "@lib/components/primitives/form/FormRow.svelte";
-	import LabeledTextField from "@lib/components/primitives/form/LabeledInput.svelte";
+	import FieldRow from "@lib/components/primitives/form/FieldRow.svelte";
+	import TextField from "@lib/components/primitives/form/TextField.svelte";
 	import SettingsList from "@lib/components/sections/SettingList.svelte";
 	import SettingsRow from "@lib/components/ui/cards/SettingRow.svelte";
 	import SettingsSection from "@lib/components/primitives/form/SettingsSection.svelte";
@@ -161,7 +161,7 @@
 				{#snippet control()}
 					<div class="flex w-full items-end gap-2 sm:w-72">
 						<div class="min-w-0 flex-1">
-							<LabeledTextField
+							<TextField
 								label="Trigger prefix"
 								labelHidden={true}
 								bind:value={globalPrefix}
@@ -193,19 +193,19 @@
 			<SettingsList>
 				<SettingsRow title="Trigger word or phrase">
 					<div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_10rem] sm:items-end">
-						<LabeledTextField
+						<TextField
 							label="Trigger word or phrase"
 							labelHidden={true}
 							bind:value={form.trigger}
 							placeholder="e.g. close bracket"
 						/>
-						<ConfigField
+						<FieldRow
 							label="Type"
 							value={form.type}
 							options={ruleTypeOptions}
 							onchange={(value) => (form.type = value as RuleType)}
 						/>
-						<ConfigField
+						<FieldRow
 							label="Apply to"
 							value={form.scope}
 							options={scopeOptions}
@@ -215,7 +215,7 @@
 				</SettingsRow>
 
 				<SettingsRow title="Also matches">
-					<LabeledTextField
+					<TextField
 						label="Also matches (comma-separated)"
 						labelHidden={true}
 						bind:value={aliasesText}
@@ -225,7 +225,7 @@
 
 				{#if form.type === "simple"}
 					<SettingsRow title="Replace with">
-						<LabeledTextField
+						<TextField
 							label="Replace with"
 							labelHidden={true}
 							bind:value={form.output}
@@ -236,9 +236,9 @@
 				{:else if form.type === "wrap"}
 					<SettingsRow title="Wrap output">
 						<div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_10rem] sm:items-end">
-							<LabeledTextField label="Prefix" bind:value={form.prefix} placeholder="e.g. #" />
-							<LabeledTextField label="Suffix" bind:value={form.suffix} placeholder="" />
-							<ConfigField
+							<TextField label="Prefix" bind:value={form.prefix} placeholder="e.g. #" />
+							<TextField label="Suffix" bind:value={form.suffix} placeholder="" />
+							<FieldRow
 								label="Transform"
 								value={form.transform}
 								options={transformOptions}

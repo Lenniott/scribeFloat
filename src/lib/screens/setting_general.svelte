@@ -3,9 +3,9 @@
   import { invoke } from "@tauri-apps/api/core";
   import { emit } from "@tauri-apps/api/event";
   import Button from "@lib/components/ui/controls/Button.svelte";
-  import LabeledTextField from "@lib/components/primitives/form/LabeledInput.svelte";
+  import TextField from "@lib/components/primitives/form/TextField.svelte";
   import OptionGroup from "@lib/components/ui/controls/OptionGroup.svelte";
-  import PathSelectorField from "@lib/components/ui/controls/PathSelector.svelte";
+  import PathPicker from "@lib/components/ui/controls/PathPicker.svelte";
   import ToggleSwitch from "@lib/components/ui/controls/Toggle.svelte";
   import SettingsList from "@lib/components/sections/SettingList.svelte";
   import SettingsRow from "@lib/components/ui/cards/SettingRow.svelte";
@@ -206,7 +206,7 @@
   <SettingsSection title="Scribe">
     <SettingsList>
       <SettingsRow title="Default save folder">
-        <PathSelectorField
+        <PathPicker
           label="Default save folder"
           labelHidden={true}
           bind:path={outputPath}
@@ -235,7 +235,7 @@
       
       {#if saveTranscriptsAsMarkdown}
         <SettingsRow title="Open transcripts with">
-          <PathSelectorField
+          <PathPicker
             label="Open transcripts with"
             labelHidden={true}
             bind:path={openWithApp}
@@ -253,7 +253,7 @@
           title="Speaker capture device name"
           description="Type the exact Audio MIDI device name."
         >
-          <LabeledTextField
+          <TextField
             label="Speaker capture device name"
             labelHidden={true}
             bind:value={preferredSpeakerDevice}
@@ -263,14 +263,14 @@
       {/if}
       {#if speakerCaptureAvailable}
         <SettingsRow title="Input label">
-          <LabeledTextField
+          <TextField
             label="Input label"
             labelHidden={true}
             bind:value={inputLabel}
           />
         </SettingsRow>
         <SettingsRow title="Output label">
-          <LabeledTextField
+          <TextField
             label="Output label"
             labelHidden={true}
             bind:value={outputLabel}

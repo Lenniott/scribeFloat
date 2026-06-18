@@ -3,9 +3,9 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
 	import { X as Close } from "lucide-svelte";
-	import AudioWaveFormVisualizer from "@lib/components/ui/indicators/WaveformDisplay.svelte";
+	import Waveform from "@lib/components/ui/indicators/Waveform.svelte";
 	import RecordingStatusDot from "@lib/components/primitives/display/StatusDot.svelte";
-	import RecordingTimer from "@lib/components/primitives/display/ElapsedTimer.svelte";
+	import RecordingTimer from "@lib/components/primitives/display/RecordingTimer.svelte";
 	import IconButton from "@lib/components/ui/controls/IconButton.svelte";
 
 	type DictateState = "IDLE" | "RECORDING" | "TRANSCRIBING" | "PASTING" | "DONE" | "ERROR";
@@ -185,7 +185,7 @@
 				<RecordingStatusDot status={dotStatus} pulseWhileRecording={false} />
 				<RecordingTimer {elapsedSeconds} />
 			</div>
-			<AudioWaveFormVisualizer
+			<Waveform
 				{micLevel}
 				speakerLevel={0}
 				speakerEnabled={false}

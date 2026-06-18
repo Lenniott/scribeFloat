@@ -225,9 +225,9 @@ graph TB
     end
 
     subgraph form_comp["Form — src/lib/components/form/"]
-        device_sel["DeviceSelect"]
+        device_sel["DeviceSelect (removed)"]
         toggle["Toggle"]
-        path_sel["PathSelector"]
+        path_sel["PathPicker"]
         option_grp["OptionGroup"]
     end
 
@@ -510,8 +510,8 @@ graph TB
         processing["Scribe Processing Screen\nscribe-processing.svelte"]
         controller["ScribeController\ncontrollers/scribe.rs"]
         state["State Machine\nIDLE → RECORDING → TRANSCRIBING → DONE | NO_MODEL | ERROR"]
-        waveform["Waveform Visualizer\nWaveformDisplay.svelte"]
-        notes["Notes Manager\nNotesPanel.svelte + NoteList.svelte"]
+        waveform["Waveform Visualizer\nWaveform.svelte"]
+        notes["Notes Manager\nNoteList.svelte + NoteList.svelte"]
     end
 
     svc_audio["AudioService"]
@@ -597,7 +597,7 @@ graph TB
         state["State Machine\nIDLE → RECORDING → TRANSCRIBING → PASTING → DONE | ERROR"]
         key_listener["Key Listener\nplatform/key_listener.rs — CGEventTap (macOS) / win32 hook"]
         hud["Floating HUD\ndictate.svelte — near cursor, does not steal focus"]
-        waveform["Waveform Visualizer\nWaveformDisplay.svelte"]
+        waveform["Waveform Visualizer\nWaveform.svelte"]
         paste_handler["Paste Handler\nplatform/paste_impl.rs"]
     end
 
@@ -726,11 +726,11 @@ src-tauri/src/
 src/
 ├── lib/
 │   ├── components/             Reusable Svelte components
-│   │   ├── audio/              WaveformDisplay, StatusDot, ElapsedTimer
-│   │   ├── form/               DeviceSelect, Toggle, PathSelector, OptionGroup, …
-│   │   ├── layout/             PanelFrame, PanelHeader, PanelFooter, SplitLayout, deleted
+│   │   ├── audio/              Waveform, StatusDot, RecordingTimer
+│   │   ├── form/               DeviceSelect (removed), Toggle, PathPicker, OptionGroup, …
+│   │   ├── layout/             PanelHeader, PanelFooter, Modal, StepFrame
 │   │   ├── history/            NoteCard (deleted), NoteDetailPane
-│   │   ├── notes/              NotesPanel, NoteCard, NoteList, NoteComposer
+│   │   ├── notes/              NoteCard, NoteList, NoteComposer
 │   │   └── transcribe/         UploadQueue, UploadItem
 │   ├── screens/                Full panel screens
 │   │   ├── scribe.svelte       Recording UI

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import NoteCard, { type Note } from "../ui/cards/NoteSnippet.svelte";
+	import NoteCard, { type Note } from "../ui/cards/InlineNote.svelte";
 
 	let {
 		notes,

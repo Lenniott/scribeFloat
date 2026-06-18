@@ -4,7 +4,7 @@
   import { createModelDownloadStore } from "$lib/stores/modelDownload.svelte";
   import Toast from "@lib/components/ui/indicators/Toast.svelte";
   import type { ToastState } from "@lib/components/ui/indicators/Toast.svelte";
-  import ConfigField from "@lib/components/primitives/form/FormRow.svelte";
+  import FieldRow from "@lib/components/primitives/form/FieldRow.svelte";
   import IconButton from "@lib/components/ui/controls/IconButton.svelte";
   import Chip from "@lib/components/primitives/display/Chip.svelte";
   import SettingsList from "@lib/components/sections/SettingList.svelte";
@@ -173,7 +173,7 @@
         >
           {#snippet control()}
             <div class="w-full sm:w-56">
-              <ConfigField
+              <FieldRow
                 label="Default Scribe transcription model"
                 labelHidden={true}
                 id="scribe-model-select"
@@ -196,7 +196,7 @@
         >
           {#snippet control()}
             <div class="w-full sm:w-56">
-              <ConfigField
+              <FieldRow
                 label="Dictate transcription model override"
                 labelHidden={true}
                 id="dictate-model-select"

@@ -6,7 +6,7 @@
 
 ## Architecture
 
-Transcripts lives in the main app shell (`transcripts.svelte` route inside `app-shell.svelte`). List and detail are **separate full-height modes** — no `SplitLayout`.
+Transcripts lives in the main app shell (`transcripts.svelte` route inside `app-shell.svelte`). List and detail are **separate full-height modes** — no `two-column split layout`.
 
 ---
 

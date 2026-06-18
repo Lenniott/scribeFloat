@@ -7,7 +7,7 @@
 
   import Button from "@lib/components/ui/controls/Button.svelte";
   import ToggleSwitch from "@lib/components/ui/controls/Toggle.svelte";
-  import PathSelectorField from "@lib/components/ui/controls/PathSelector.svelte";
+  import PathPicker from "@lib/components/ui/controls/PathPicker.svelte";
   import StackProgressBar from "@lib/components/primitives/display/ProgressBar.svelte";
   import { createModelDownloadStore } from "$lib/stores/modelDownload.svelte";
   import TranscribeQueueList from "@lib/components/patterns/UploadQueue.svelte";
@@ -357,7 +357,7 @@
   <ScrollablePanel class="relative flex flex-col gap-4 {embedded ? 'px-6 py-4' : 'px-5 py-4'}">
     <div class="flex gap-2 justify-between">
       <div class="space-y-3">
-        <PathSelectorField
+        <PathPicker
           label="Save path"
           bind:path={outputFolder}
           directory={true}

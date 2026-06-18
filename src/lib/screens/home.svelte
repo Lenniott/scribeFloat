@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { listen } from '@tauri-apps/api/event';
 	import StatTile from '@lib/components/ui/indicators/StatTile.svelte';
-	import RecentNoteCard from '@lib/components/ui/cards/RecentCard.svelte';
+	import RecentNoteCard from '@lib/components/ui/cards/RecentNoteCard.svelte';
 	import {
 		fetchDashboardStats,
 		type DashboardStats,

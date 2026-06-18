@@ -63,4 +63,4 @@ Recipes: `docs/color-audit.md` · `.cursor/skills/ui-enforcement/references/colo
 
 **App shell:** `<main>` must be `flex flex-col` so child screens get a bounded height.
 
-Deep reference: inline cheat sheet above (layout-scroll chapter planned in `skills/ui-enforcement/references/`).
+Deep reference: `skills/ui-enforcement/references/layout-scroll.md`

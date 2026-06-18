@@ -6,6 +6,7 @@ Progressive disclosure index. Each file is one aspect agents read **only when th
 |---------|------|--------|
 | Typography | [typography.md](typography.md) | **Active** |
 | Color | [color.md](color.md) | **Active** |
+| Layout & scroll | [layout-scroll.md](layout-scroll.md) | **Active** |
 | Spacing | `spacing.md` | Planned |
 | Radius & shadows | `radius-shadows.md` | Planned (partial coverage in `check:ds` today) |
 | Surfaces & elevation | `surfaces.md` | Planned |

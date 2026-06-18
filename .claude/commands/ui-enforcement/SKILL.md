@@ -4,7 +4,8 @@ description: >-
   Enforces ScribeFloat UI consistency — typography role classes, design tokens,
   and component primitives. Use when writing or editing Svelte/CSS frontend code,
   Tailwind classes, forms, labels, screens, onboarding, or when the user mentions
-  design system, typography pass, sf-* classes, or UI consistency.
+  design system, typography pass, sf-* classes, scroll layout, chrome/body
+  panes, or UI consistency.
 ---
 
 # UI enforcement
@@ -16,6 +17,7 @@ Gate for all frontend work in this repo. **Load the relevant chapter only** — 
 - Adding or editing `.svelte` screens or components
 - Choosing Tailwind classes for text, color, spacing, or surfaces
 - Typography consistency pass or migrating inline styles to role classes
+- List/detail/settings panes, app shell routes, or fixing scroll clipping
 - Reviewing whether a PR matches the design system
 
 ## Workflow
@@ -36,20 +38,22 @@ Do **not** read this skill file on every frontend edit — the rule + preToolUse
 |--------|--------|-----------|
 | **Typography** | Active — refactor in progress | [references/typography.md](references/typography.md) |
 | **Color** | Active — audit complete, refactor pending | [references/color.md](references/color.md) |
+| **Layout & scroll** | Active | [references/layout-scroll.md](references/layout-scroll.md) |
 | Spacing | Planned | [references/README.md](references/README.md) |
 | Radius & shadows | Partial — `check:ds` rules exist | [references/README.md](references/README.md) |
 | Surfaces & elevation | Planned | [references/README.md](references/README.md) |
 | Motion | Planned | [references/README.md](references/README.md) |
 | Component primitives | Planned | [references/README.md](references/README.md) |
 
-Read **one chapter** for the aspect you are changing. Cross-read a second only when the task clearly spans aspects (e.g. a new form field = typography + spacing).
+Read **one chapter** for the aspect you are changing. Cross-read a second only when the task clearly spans aspects (e.g. a new form field = typography + spacing; a new list screen = layout-scroll + typography).
 
 ## Hard rules (all aspects)
 
 - **Design skill first** for anything not covered in a reference chapter: `skills/design-skill/SKILL.md`
 - **`npm run check:ds`** must pass before committing frontend changes (when rules exist for that aspect)
 - **No off-scale Tailwind defaults** in product UI (`text-base`, `text-sm`, etc.) — see typography chapter
-- **Extend primitives** (`ConfigField`, `Button`, `TabPage`, …) — do not paste label/layout recipes into screens
+- **Extend primitives** (`ConfigField`, `Button`, `TabPage`, `ScrollablePanel`, `PanelHeader`, …) — do not paste label/layout recipes into screens
+- **One scroll body per pane** — chrome `shrink-0`, body `ScrollablePanel`; screen roots use `h-full`, not bare `flex-1` on a block parent (see layout chapter)
 - **Color at call site** for contextual states (destructive, active, muted); role classes own size/weight/tracking/case. Use **Option A** semantic fg: `text-fg`, `text-fg-dim`, `text-fg-muted` — not `text-fg/N`.
 
 ## Key paths

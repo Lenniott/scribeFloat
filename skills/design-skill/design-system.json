@@ -322,7 +322,7 @@
     "components": {
   
       "button": {
-        "description": "Five variants implemented in src/lib/components/Button.svelte. No separate yellow-outline secondary; use normal (border-rim) or ghost for non-primary actions.",
+        "description": "Five variants implemented in src/lib/ui/2_components/controls/Button.svelte. No separate yellow-outline secondary; use normal (border-rim) or ghost for non-primary actions.",
         "rules": [
           "Max one primary (brand-filled) button per screen",
           "Font: Geist Sans for all variants in the component (tracking-stamped on primary only)",
@@ -458,7 +458,7 @@
       },
 
       "historyListCard": {
-        "description": "History list row: selectable title + icon actions (Copy, Open, Delete). Implemented in src/lib/components/history/HistoryListCard.svelte. NoteCard remains notes-only.",
+        "description": "History list row: selectable title + icon actions (Copy, Open, Delete). Implemented in src/lib/ui/2_components/cards/NoteCard.svelte. NoteCard remains notes-only.",
         "status": "shipped",
         "tw": {
           "article": "rounded-md px-3 py-2 text-left transition-colors",

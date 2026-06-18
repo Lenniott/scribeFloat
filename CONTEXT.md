@@ -64,8 +64,8 @@ The full UI taxonomy lives in `ui-taxonomy.md`. Summary of levels relevant to ap
 | Taxonomy level | Definition | Examples in ScribeFloat |
 |---|---|---|
 | **Token** | A single named design value | colour, spacing, radius values |
-| **Primitive** | Styled HTML reused by multiple components | `Button`, `Chip`, `ScrollablePanel` |
-| **Component** | A single, indivisible user action | `TranscriptListCard`, `StatTile`, `ToggleSwitch` |
+| **Primitive** | Structural or display building block, not used standalone | `ScrollBody`, `PanelHeader`, `StatusDot` |
+| **Component** | A single, indivisible user action | `Button`, `NoteCard`, `Toggle` |
 | **Pattern** | Multiple components working together as one action | Note triage flow, recording controls |
 | **Section** | A contained mental model — about one clearly-named thing | Note detail, Filter panel, Settings group |
 | **Region** | A fixed structural area of the layout, regardless of content | Sidebar, title bar, main content area |
@@ -164,4 +164,4 @@ Storage: Domains are folders. Artifacts are markdown files with YAML frontmatter
 
 ## Open questions
 
-- [ ] The existing code uses "Panel" (`PanelHeader`, `PanelFooter`, `ScrollablePanel`) — these are Regions in the taxonomy. Rename in code when touching those files, or do a dedicated migration pass?
+None.

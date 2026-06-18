@@ -1,31 +1,29 @@
 <script lang="ts">
-  import Accordion from "@components/accordion/Accordion.svelte";
-  import AccordionItem from "@components/accordion/AccordionItem.svelte";
-  import SettingsSection from "@components/accordion/SettingsSection.svelte";
-  import AudioLayerLegend from "@components/audio/AudioLayerLegend.svelte";
-  import RecordingStatusDot from "@components/audio/RecordingStatusDot.svelte";
-  import RecordingTimer from "@components/audio/RecordingTimer.svelte";
-  import Button from "@components/Button.svelte";
-  import IconButton from "@components/IconButton.svelte";
-  import Checkbox from "@components/form/Checkbox.svelte";
-  import ConfigField from "@components/form/ConfigField.svelte";
-  import EditableTitleField from "@components/form/EditableTitleField.svelte";
-  import LabeledTextField from "@components/form/LabeledTextField.svelte";
-  import OptionGroup from "@components/form/OptionGroup.svelte";
-  import StackProgressBar from "@components/form/StackProgressBar.svelte";
-  import ToggleSwitch from "@components/form/ToggleSwitch.svelte";
-  import TabPage, { type TabPageItem } from "@components/layout/TabPage.svelte";
-  import NoteCard from "@components/notes/NoteCard.svelte";
-  import NoteComposer from "@components/notes/NoteComposer.svelte";
-  import NotesList from "@components/notes/NotesList.svelte";
-  import TimestampLabel from "@components/notes/TimestampLabel.svelte";
-  import type { Note } from "@components/notes/NoteCard.svelte";
-  import { applyThemeMode, type ThemeMode } from "$lib/theme";
+  import Accordion from "@patterns/Accordion.svelte";
+  import AccordionItem from "@components/nav/AccordionRow.svelte";
+  import SettingsSection from "@primitives/form/SettingsSection.svelte";
+  import RecordingStatusDot from "@primitives/display/StatusDot.svelte";
+  import RecordingTimer from "@primitives/display/RecordingTimer.svelte";
+  import Button from "@components/controls/Button.svelte";
+  import IconButton from "@components/controls/IconButton.svelte";
+  import Checkbox from "@primitives/form/Checkbox.svelte";
+  import ConfigField from "@primitives/form/FieldRow.svelte";
+  import EditableTitleField from "@components/controls/EditableTitle.svelte";
+  import LabeledTextField from "@primitives/form/TextField.svelte";
+  import OptionGroup from "@components/controls/OptionGroup.svelte";
+  import StackProgressBar from "@primitives/display/ProgressBar.svelte";
+  import ToggleSwitch from "@components/controls/Toggle.svelte";
+  import NoteCard from "@components/cards/InlineNote.svelte";
+  import NoteComposer from "@patterns/NoteComposer.svelte";
+  import NotesList from "@patterns/NoteList.svelte";
+  import TimestampLabel from "@primitives/display/Timestamp.svelte";
+  import type { Note } from "@components/cards/InlineNote.svelte";
+  import { applyThemeMode, type ThemeMode } from '@utils/theme';
   import { X as Close } from "lucide-svelte";
   import ChevronRight from "lucide-svelte/icons/chevron-right";
   import Plus from "lucide-svelte/icons/plus";
   import Trash2 from "lucide-svelte/icons/trash-2";
-  import AudioWaveFormVisualizer from "@lib/components/audio/AudioWaveFormVisualizer.svelte";
+  import AudioWaveFormVisualizer from "@components/indicators/Waveform.svelte";
 
   /** Local playground state — only for exercising controls, not a real screen */
   let toggleA = $state(false);
@@ -41,8 +39,6 @@
   ]);
   let selectedNoteId = $state<string | null>(null);
   let draft = $state("");
-  let activePanelTab = $state<string>("setup");
-  let activeSectionTab = $state<string>("timers");
   let previewTheme = $state<ThemeMode>("system");
 
   const selectOptions = [
@@ -107,15 +103,6 @@
     { label: "Transcribing audio", complete: true },
     { label: "Writing transcript", complete: false },
     { label: "Cleaning up audio", complete: false },
-  ];
-  const panelTabs: TabPageItem[] = [
-    { id: "setup", label: "Setup" },
-    { id: "status", label: "Status" },
-    { id: "notes", label: "Notes" },
-  ];
-  const sectionTabs: TabPageItem[] = [
-    { id: "timers", label: "Timers" },
-    { id: "recording", label: "Recording" },
   ];
 
   /** Static demo elapsed time for recording-bar prototype (14:07) */
@@ -404,56 +391,6 @@
       <div>
         <p class="text-label-sm text-fg/45 mb-2">EditableTitleField</p>
         <EditableTitleField bind:value={titleDemo} />
-      </div>
-    </div>
-  </section>
-
-  <section class="mb-16" aria-labelledby="sec-tabs">
-    <h2
-      id="sec-tabs"
-      class="mb-6 text-headline-lg font-light tracking-heading text-fg"
-    >
-      TabPage
-    </h2>
-    <div class="max-w-2xl">
-      <TabPage tabs={panelTabs} bind:activeId={activePanelTab}>
-        {#snippet children(activeTab)}
-          {#if activeTab?.id === "setup"}
-            <p class="text-body-md text-fg/80">
-              Use this mode when a tab owns the full panel body.
-            </p>
-          {:else if activeTab?.id === "status"}
-            <div class="flex items-center gap-3">
-              <RecordingStatusDot status="recording" />
-              <RecordingTimer elapsedSeconds={245} />
-            </div>
-          {:else}
-            <NoteComposer bind:value={draft} onSubmit={onComposerDone} />
-          {/if}
-        {/snippet}
-      </TabPage>
-
-      <div class="mt-4">
-        <TabPage
-          tabs={sectionTabs}
-          mode="section"
-          bind:activeId={activeSectionTab}
-        >
-          {#snippet children(activeTab)}
-            {#if activeTab?.id === "timers"}
-              <div class="flex items-center gap-4">
-                <RecordingTimer elapsedSeconds={94} />
-                <RecordingTimer elapsedSeconds={3723} />
-              </div>
-            {:else}
-              <div class="flex items-center gap-2">
-                <RecordingStatusDot status="idle" />
-                <RecordingStatusDot status="recording" />
-                <RecordingStatusDot status="paused" />
-              </div>
-            {/if}
-          {/snippet}
-        </TabPage>
       </div>
     </div>
   </section>
@@ -749,12 +686,7 @@
           />
           </div>
         </div>
-        <div>
-          <p class="text-label-sm text-fg/45 mb-2">AudioLayerLegend</p>
-          <div class="rounded-md bg-card px-4 py-3">
-            <AudioLayerLegend speakerEnabled={true} />
-          </div>
-        </div>
+
       </div>
     </div>
   </section>

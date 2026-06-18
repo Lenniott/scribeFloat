@@ -1,113 +1,134 @@
-# ScribeFloat — UI component catalogue
+# ScribeFloat — Component catalogue
 
-For tokens and surface layout, query `skills/design-skill/design-system.json`. **History interaction rules** (fullscreen detail, delete on list only, `PanelFooter`): [../docs/history-ui-review.md](../docs/history-ui-review.md).
+For tokens and surface layout, query `skills/design-skill/design-system.json`. **Notes detail interaction rules** (fullscreen detail, delete on list only, `PanelFooter`): [../docs/history-ui-review.md](../docs/history-ui-review.md).
+
+Components are organised into five taxonomy levels from lowest to highest composition. Folders are numbered to match the ordering, and each level has an alias + barrel file:
+
+| Level | Folder | Alias | Example import |
+|---|---|---|---|
+| 1. **Primitives** | `ui/1_primitives/` | `@primitives` | `import { ScrollBody } from '@primitives/layout'` |
+| 2. **Components** | `ui/2_components/` | `@components` | `import { Button, Toggle } from '@components'` |
+| 3. **Patterns** | `ui/3_patterns/` | `@patterns` | `import { Accordion } from '@patterns'` |
+| 4. **Sections** | `ui/4_sections/` | `@sections` | `import { FilterPanel } from '@sections'` |
+| 5. **Regions** | `ui/6_regions/` | `@regions` | `import { AppSidebar } from '@regions'` |
+
+Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other aliases: `@services`, `@stores`, `@utils` (platform, theme, types). All defined in `svelte.config.js`.
 
 ---
 
-## Audio components
+## Primitives
 
-| Component | What it is | How it works |
+### Layout
+
+| Component | Path | What it is |
 |---|---|---|
-| `CircularAudioVisualizer` | A parent visual component for circular live audio display.   | Composes one or more circular layers, usually mic in the centre and optional speaker as an outer overlay ring.   |
-| `MicWaveRing` | A circular waveform ring for microphone input.   | Reads mic level/amplitude data and renders animated radial motion as the core waveform layer.   |
-| `SpeakerWaveRing` | A circular waveform ring for speaker/system input.   | Renders a second waveform overlay; if speaker input is disabled, this component is not mounted or is hidden.   |
-| `StackProgressBar` | A reusable horizontal progress indicator.   | Fills waveform-style stacked bars from left to right and shows processing steps across the row. Supports an `indeterminate` prop: when true, a scanning shimmer animation replaces the fill (used during model load when no meaningful progress is available).   |
-| `AudioLayerLegend` | A small key showing which colour maps to mic and speaker.   | Displays colour swatches and labels; can optionally show disabled state for speaker when not active.   |
-| `RecordingStatusDot` | Small status indicator for recording state.   | Changes appearance for idle, recording, paused, or error states.   |
-| `RecordingTimer` | Elapsed-time display component.   | Shows formatted session time such as `00:00` and updates from external recording state.   |
+| `ScrollBody` | `1_primitives/layout/ScrollBody.svelte` | The default body slot for pattern-B panes. `min-h-0 flex-1 overflow-y-auto overscroll-contain`. Pass padding via `class`. |
+| `PanelHeader` | `1_primitives/layout/PanelHeader.svelte` | Top chrome with title + left/centre/right action slots. `shrink-0`. |
+| `PanelFooter` | `1_primitives/layout/PanelFooter.svelte` | Bottom chrome for primary actions. `shrink-0`, not `position: fixed`. |
+| `Modal` | `1_primitives/layout/Modal.svelte` | Focus-trap overlay with title, description, and footer snippet slots. |
+| `StepFrame` | `1_primitives/layout/StepFrame.svelte` | Outer layout frame for onboarding step screens. |
 
-## Form components
+### Display
 
-| Component | What it is | How it works |
+| Component | Path | What it is |
 |---|---|---|
-| `EditableTitleField` | Inline editable text field for naming a session/file.   | Starts as plain text or input and allows direct rename without leaving the panel.   |
-| `DeviceSelect` | Generic dropdown for input/output hardware selection.   | Used for things like “Selected mic” and returns the chosen device id/value.   |
-| `ToggleSwitch` | Generic on/off switch component.   | Used for speaker enablement and send/export options; emits a boolean state change.   |
-| `LabeledTextField` | Reusable text input with a label.   | Used for fields like mic name and speaker name when those options are active.   |
-| `PathSelectorField` | Input-plus-button component for save destinations.   | Shows a path value and triggers a picker or callback when the user clicks Change.   |
-| `OptionGroup` | Small grouped choice control.   | Suitable for model-size options like small and medium, using radio or segmented selection.   |
+| `Chip` | `1_primitives/display/Chip.svelte` | Small badge/label. Exports `ChipVariant` type (brand, focus, muted, active, warning). |
+| `Timestamp` | `1_primitives/display/Timestamp.svelte` | Formatted elapsed-time label (e.g. `2:23 PM`). |
+| `SourceIcon` | `1_primitives/display/SourceIcon.svelte` | Icon indicating the source kind of a note (mic, speaker, etc.). |
+| `StatusDot` | `1_primitives/display/StatusDot.svelte` | Pulsing dot for recording state. Changes appearance for idle, recording, paused, error. |
+| `RecordingTimer` | `1_primitives/display/RecordingTimer.svelte` | Elapsed-time display. Shows formatted session time such as `00:00` from external state. |
+| `ProgressBar` | `1_primitives/display/ProgressBar.svelte` | Horizontal stacked-bar progress indicator. Supports `indeterminate` shimmer mode. |
 
-## Accordion components
+### Form
 
-The sketch clearly separates settings into collapsible groups and notes that only one can be open at a time. 
-
-| Component | What it is | How it works |
+| Component | Path | What it is |
 |---|---|---|
-| `Accordion` | A reusable collapsible section system.   | Controls one or more `AccordionItem` children and can enforce single-open behaviour.   |
-| `AccordionItem` | One collapsible section such as Basic or Advanced.   | Has header, open/closed state, and content body; opening one can close siblings if configured.   |
-| `SettingsSection` | A styled wrapper for grouped configuration controls.   | Adds layout, spacing, and optional section title inside an accordion body.   |
-| `ScrollablePanel` | A constrained panel body with overflow scrolling.   | Lets long settings content scroll while the overall shell and footer stay fixed. **Default body slot** for pattern B panes (chrome + scroll body).   |
+| `TextField` | `1_primitives/form/TextField.svelte` | Text input with a label. Used for mic name, speaker name, etc. |
+| `FieldRow` | `1_primitives/form/FieldRow.svelte` | Labelled config field row. Renders label + control in a consistent layout. |
+| `Checkbox` | `1_primitives/form/Checkbox.svelte` | Standard checkbox with accessible label. |
+| `SettingsSection` | `1_primitives/form/SettingsSection.svelte` | Titled section container for settings screen groups. |
 
-## Notes components
+---
 
-| Component | What it is | How it works |
+## UI Components
+
+### Controls
+
+| Component | Path | What it is |
 |---|---|---|
-| `NotesPanel` | Container for the notes side of the UI.   | Holds the notes list and note composer in a vertically structured area.   |
-| `NoteCard` | A reusable note item component.   | Displays note text with its timestamp and can support selection, editing, or highlighting.   |
-| `TimestampLabel` | A small metadata component for time markers.   | Shows when the note was created or when the source event occurred.   |
-| `NotesList` | Scrollable list of note items.   | Renders multiple `NoteCard` components in chronological or grouped order.   |
-| `NoteComposer` | Input area for adding new notes.   | Combines a text entry field and submit action for manual note creation.   |
-| `IconSubmitButton` | Compact circular action button.   | Used in the note composer to submit entered content via an icon-based trigger.   |
+| `Button` | `2_components/controls/Button.svelte` | Primary action button. Five variants: primary, destructive, ghost, normal, active. |
+| `IconButton` | `2_components/controls/IconButton.svelte` | Compact icon-only button. Fewer variants than `Button` (primary, destructive, normal). |
+| `Toggle` | `2_components/controls/Toggle.svelte` | On/off switch. Used for speaker enablement and export options. |
+| `EditableTitle` | `2_components/controls/EditableTitle.svelte` | Inline editable title field. Starts as plain text; switches to input on focus. |
+| `PathPicker` | `2_components/controls/PathPicker.svelte` | Path value + Change button. Triggers a file-picker callback. |
+| `OptionGroup` | `2_components/controls/OptionGroup.svelte` | Small grouped radio/segmented selector. Used for model size, theme, etc. |
 
-## History components
+### Cards
 
-| Component | What it is | How it works |
+| Component | Path | What it is |
 |---|---|---|
-| `HistoryListCard` | Legacy compact list row.   | View, Copy, Open, Delete; used before app shell. Prefer `NoteListCard` in the Notes screen.   |
-| `HistoryDetailPane` | Fullscreen transcript detail.   | Scrollable transcript via `history_render_markdown`; metadata chips; prev/next; Export / Open / Copy / Close. Delete is on the list card only.   |
+| `NoteCard` | `2_components/cards/NoteCard.svelte` | Notes list row. Selectable title + icon actions (Copy, View, Open, Delete). |
+| `InlineNote` | `2_components/cards/InlineNote.svelte` | Inline note card. Displays note text + timestamp. Exports `Note` type. |
+| `RecentNoteCard` | `2_components/cards/RecentNoteCard.svelte` | Recent-note card for the Home screen. Compact title + metadata. |
+| `SettingRow` | `2_components/cards/SettingRow.svelte` | Single setting row in a settings list. Label + control slot. |
+| `UploadItem` | `2_components/cards/UploadItem.svelte` | Per-item row in the upload/transcribe queue. Shows progress + status + actions. |
+| `FilterRow` | `2_components/cards/FilterRow.svelte` | Checkbox row in the filter panel. Tag label + checkbox. |
 
-## App shell components
+### Nav
 
-| Component | What it is | How it works |
+| Component | Path | What it is |
 |---|---|---|
-| `AppShell` | Main window host (`app-shell.svelte`).   | Sidebar + title bar + route switcher (`home` / `notes` / `upload` / `scribe` / `settings`); shared toast and delete modal. Listens for `app://navigate` from tray/hotkeys.   |
-| `AppSidebar` | Capture + Manage navigation.   | In-shell routes for Scribe, Upload, Home, Notes, Settings; Float teaser disabled.   |
-| `SettingsSidebar` | Settings tab nav (replaces `AppSidebar` on settings route).   | Back button returns to previous shell route; tab list matches settings screens.   |
-| `SettingsPanel` | Settings content column.   | Banner + tab body (`SettingGeneral`, etc.); used in shell and legacy modal `settings.svelte`.   |
-| `CaptureScreen` | Scribe capture wrapper (`capture.svelte`).   | Toggles recording vs processing sub-screens; registers leave guard for route changes during capture.   |
-| `SidebarNavItem` | Single sidebar row with icon and optional badge.   | Active, accent (Scribe), or disabled states.   |
-| `ShellTitleBar` | Top strip with Dictate trigger.   | Invokes `dictate_trigger` IPC.   |
+| `NavButton` | `2_components/nav/NavButton.svelte` | Route navigation button. Used for top-level app navigation. |
+| `NavItem` | `2_components/nav/NavItem.svelte` | Sidebar navigation item. Icon + label + optional badge chip. |
+| `AccordionRow` | `2_components/nav/AccordionRow.svelte` | One collapsible accordion section. Must be used inside `Accordion`. |
 
-## Home components (`components/home/`)
+### Indicators
 
-| Component | What it is | How it works |
+| Component | Path | What it is |
 |---|---|---|
-| `StatTile` | Home screen metric card.   | Value + label; Phase A shows `—` for Float stats.   |
-| `RecentNoteCard` | Home screen recent-note row.   | Click opens detail via shell (routes to Notes screen). Emits `note://item-added` on new additions.   |
+| `Toast` | `2_components/indicators/Toast.svelte` | Transient notification strip. Exports `ToastState` type (normal, success, error). |
+| `StatTile` | `2_components/indicators/StatTile.svelte` | Summary stat tile for the Home screen. Label + value. |
+| `StepIndicator` | `2_components/indicators/StepIndicator.svelte` | Step progress dots for onboarding flows. |
+| `Waveform` | `2_components/indicators/Waveform.svelte` | Live PCM stack-bar waveform visualizer. Used in Scribe + Dictate. Exports `StackBlockSize` type. |
 
-## Notes components (`components/notes/`)
+---
 
-| Component | What it is | How it works |
+## Patterns
+
+| Component | Path | What it is |
 |---|---|---|
-| `NoteListCard` | Rich notes list row (`notes.svelte`).   | Source icon, title, excerpt, tag chips, metadata line, and icon actions.   |
-| `FilterSidePanel` | Notes tag filter column.   | OR within tags; footer shows active filter count.   |
-| `FilterCheckboxRow` | One tag filter row.   | Checkbox + label + count.   |
-| `SourceKindIcon` | Scribe / Dictate / Upload icon badge.   | Used on recent and note list cards.   |
+| `Accordion` | `3_patterns/Accordion.svelte` | Collapsible section system. Controls `AccordionRow` children, enforces single-open behaviour. |
+| `NoteComposer` | `3_patterns/NoteComposer.svelte` | Text entry + submit for manual note creation. |
+| `NoteList` | `3_patterns/NoteList.svelte` | Scrollable list of `InlineNote` rows. |
+| `UploadQueue` | `3_patterns/UploadQueue.svelte` | Scrollable list of `UploadItem` rows. |
 
-## Layout components
+---
 
-**Scroll contract (chrome + body):** `.cursor/skills/ui-enforcement/references/layout-scroll.md` — `shrink-0` chrome, one `ScrollablePanel` body per pane, screen roots use `h-full`.
+## Sections
 
-| Component | What it is | How it works |
+| Component | Path | What it is |
 |---|---|---|
-| `PanelShell` | Outer reusable application frame.   | Provides border, rounded container, internal layout regions, and fixed sizing.   |
-| `PanelHeader` | Top bar for title, timer, and status.   | Aligns metadata and controls across the top of the shell.   |
-| `PanelFooter` | Bottom bar in a flex column layout (not `position: fixed`).   | `shrink-0` sibling below a `flex-1` scroll region — actions stay visible without covering content. Used by `HistoryDetailPane`.   |
-| `SplitPane` | Two-column layout wrapper.   | Places settings/audio on the left and notes on the right with a vertical divider. History no longer uses it (list/detail are separate modes).   |
-| `FixedFooterBar` | Legacy footer bar component.   | Prefer `PanelFooter` for new panes.   |
-| `ActionButton` | Generic footer button.   | Used for actions like Cancel and Finished, with variant styling for primary and secondary actions.   |
+| `FilterPanel` | `4_sections/FilterPanel.svelte` | Tag-filter side panel. Vocabulary list of `FilterRow` items + active filter count. |
+| `NoteDetailPane` | `4_sections/NoteDetailPane.svelte` | Fullscreen transcript + metadata detail pane (was `HistoryDetailPane`). |
+| `SettingList` | `4_sections/SettingList.svelte` | Scrollable container for `SettingRow` items. |
+| `SettingsPanel` | `4_sections/SettingsPanel.svelte` | Full settings area. Routes active tab to the correct setting screen. |
 
-## Best component boundaries
+### Onboarding
 
-For reusability, I’d separate them like this instead of tying them to “Scribe Panel” specifically. The waveform stack should be its own self-contained system, the form controls should stay generic, and notes should be independent from recording so they can be reused elsewhere. 
+| Component | Path | What it is |
+|---|---|---|
+| `WelcomeStep` | `4_sections/onboarding/WelcomeStep.svelte` | First onboarding step: app intro + CTA. |
+| `FeatureTourStep` | `4_sections/onboarding/FeatureTourStep.svelte` | Feature overview step with app menu mock. |
+| `DictatePracticeStep` | `4_sections/onboarding/DictatePracticeStep.svelte` | Interactive dictation practice step. |
+| `PermissionsStep` | `4_sections/onboarding/PermissionsStep.svelte` | Microphone + accessibility permission request step. |
+| `ModelDownloadStep` | `4_sections/onboarding/ModelDownloadStep.svelte` | Whisper model download step with progress. |
 
-A clean composition would be:
+---
 
-- `CircularAudioVisualizer`
-- `StackProgressBar`
-- `Accordion`
-- `DeviceSelect`
-- `ToggleSwitch`
-- `NotesList`
-- `NoteComposer`
-- `FixedFooterBar` 
+## Regions
+
+| Component | Path | What it is |
+|---|---|---|
+| `AppSidebar` | `6_regions/AppSidebar.svelte` | Left nav sidebar with route icons. Exports `AppRoute` type. |
+| `SettingsSidebar` | `6_regions/SettingsSidebar.svelte` | Settings-mode left sidebar with tab nav and back button. |
+| `TitleBar` | `6_regions/TitleBar.svelte` | Top title bar chrome. Houses the New Note button and recording state indicator. |

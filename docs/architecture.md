@@ -182,85 +182,64 @@ C4Container
 
 ### Frontend Component Map
 
-How Svelte screens compose shared components. A new frontend developer should start here.
+How routes, views, and components compose. A new frontend developer should start here.
 
 ```mermaid
 graph TB
-    subgraph screens["Screens — src/lib/screens/"]
-        scribe_s["scribe.svelte\nRecording idle + active state"]
-        scribe_p["scribe-processing.svelte\nTranscribing / Done / No-model / Error"]
-        transcribe_s["transcribe.svelte\nFile import and queue"]
-        dictate_s["dictate.svelte\nFloating HUD near cursor"]
-        history_s["history.svelte\nList mode + fullscreen detail"]
-        settings_s["settings.svelte\nTab shell"]
-        setting_tabs["setting_general.svelte\nsetting_models.svelte\nsetting_replace.svelte\nsetting_permissions.svelte\nsetting_help.svelte\nsetting_webhook.svelte"]
+    subgraph routes["Routes — src/routes/"]
+        layout["+layout.svelte\nApp shell: sidebar + TitleBar +\ncapture overlay + toast + modal"]
+        home_r["+page.svelte\nHome"]
+        notes_r["notes/+page.svelte\nNotes"]
+        upload_r["upload/+page.svelte\nUpload"]
+        settings_r["settings/+page.svelte\nSettings"]
     end
 
-    subgraph layout["Layout — src/lib/components/layout/"]
-        shell["PanelShell\nOuter frame for all panels"]
-        header["PanelHeader\nTitle bar with close / back"]
-        footer["PanelFooter\nflex shrink-0, below scroll — History detail only"]
+    subgraph views["Views — src/lib/5_views/"]
+        home_v["home.svelte\nRecent notes + stats"]
+        notes_v["notes.svelte\nList + detail"]
+        capture_v["capture.svelte\nScribe overlay"]
+        transcribe_v["transcribe.svelte\nFile import queue"]
+        setting_tabs["setting_general.svelte\nsetting_models.svelte\nsetting_permissions.svelte\nsetting_replace.svelte\nsetting_help.svelte"]
     end
 
-    subgraph audio_comp["Audio — src/lib/components/audio/"]
-        waveform["AudioWaveFormVisualizer\nLive PCM bars — Scribe + Dictate"]
-        dot["RecordingStatusDot\nPulsing red dot"]
-        timer["RecordingTimer\nElapsed display"]
+    subgraph regions["Regions — src/lib/ui/6_regions/"]
+        sidebar["AppSidebar / SettingsSidebar"]
+        titlebar["TitleBar"]
     end
 
-    subgraph history_comp["History — src/lib/components/history/"]
-        list_card["HistoryListCard\nTitle = button (opens detail)\nAction icons use stopPropagation"]
-        detail_pane["HistoryDetailPane\nFullscreen transcript + metadata"]
+    subgraph sections["Sections — src/lib/ui/4_sections/"]
+        detail_pane["NoteDetailPane"]
+        settings_panel["SettingsPanel"]
+        filter_panel["FilterPanel"]
     end
 
-    subgraph notes_comp["Notes — src/lib/components/notes/"]
-        notes_panel["NotesPanel\nContainer"]
-        note_composer["NoteComposer\nInput field"]
-        notes_list["NotesList + NoteCard\nTimestamped note rows"]
+    subgraph primitives["Primitives"]
+        panel_header["PanelHeader"]
+        panel_footer["PanelFooter"]
+        scroll_body["ScrollBody"]
+        waveform["Waveform"]
+        status_dot["StatusDot"]
     end
 
-    subgraph transcribe_comp["Transcribe — src/lib/components/transcribe/"]
-        queue_list["TranscribeQueueList\nScroll list of items"]
-        queue_row["TranscribeQueueRow\nPer-item progress + status"]
-    end
-
-    subgraph form_comp["Form — src/lib/components/form/"]
-        device_sel["DeviceSelect"]
-        toggle["ToggleSwitch"]
-        path_sel["PathSelectorField"]
-        option_grp["OptionGroup"]
-    end
-
-    scribe_s --> shell
-    scribe_s --> waveform
-    scribe_s --> dot
-    scribe_s --> timer
-    scribe_s --> notes_panel
-    notes_panel --> note_composer
-    notes_panel --> notes_list
-
-    scribe_p --> shell
-
-    transcribe_s --> shell
-    transcribe_s --> queue_list
-    queue_list --> queue_row
-
-    dictate_s --> waveform
-
-    history_s --> shell
-    history_s --> list_card
-    history_s --> detail_pane
-    detail_pane --> footer
-
-    settings_s --> shell
-    settings_s --> setting_tabs
-    setting_tabs --> form_comp
+    layout --> sidebar
+    layout --> titlebar
+    layout --> capture_v
+    home_r --> home_v
+    notes_r --> notes_v
+    upload_r --> transcribe_v
+    settings_r --> settings_panel
+    notes_v --> detail_pane
+    notes_v --> filter_panel
+    settings_panel --> setting_tabs
+    capture_v --> panel_header
+    transcribe_v --> scroll_body
+    transcribe_v --> panel_footer
 ```
 
 **Key UI rules for new contributors:**
 - **List vs detail** in `history.svelte` are separate full-height modes — no split pane. Detail opens when a card title or View icon is clicked; list tabs stay hidden until Close is pressed.
-- **`HistoryListCard`**: title is a `<button>` that opens detail. Action icons (`stopPropagation`) are siblings — never nested inside the title button.
-- **`PanelFooter`** (`flex shrink-0`) belongs below the scroll area in History detail. Do not use `FixedFooterBar` there.
+- **`NoteCard (deleted)`**: title is a `<button>` that opens detail. Action icons (`stopPropagation`) are siblings — never nested inside the title button.
+- **`PanelFooter`** (`flex shrink-0`) belongs below the scroll area in History detail. Do not use `deleted` there.
 - **`dictate.svelte` HUD** never calls `set_focus()` — the app may be in `.accessory` activation policy at any time.
 
 ---
@@ -510,8 +489,8 @@ graph TB
         processing["Scribe Processing Screen\nscribe-processing.svelte"]
         controller["ScribeController\ncontrollers/scribe.rs"]
         state["State Machine\nIDLE → RECORDING → TRANSCRIBING → DONE | NO_MODEL | ERROR"]
-        waveform["Waveform Visualizer\nAudioWaveFormVisualizer.svelte"]
-        notes["Notes Manager\nNotesPanel.svelte + NotesList.svelte"]
+        waveform["Waveform Visualizer\nWaveform.svelte"]
+        notes["Notes Manager\nNoteList.svelte + NoteList.svelte"]
     end
 
     svc_audio["AudioService"]
@@ -597,7 +576,7 @@ graph TB
         state["State Machine\nIDLE → RECORDING → TRANSCRIBING → PASTING → DONE | ERROR"]
         key_listener["Key Listener\nplatform/key_listener.rs — CGEventTap (macOS) / win32 hook"]
         hud["Floating HUD\ndictate.svelte — near cursor, does not steal focus"]
-        waveform["Waveform Visualizer\nAudioWaveFormVisualizer.svelte"]
+        waveform["Waveform Visualizer\nWaveform.svelte"]
         paste_handler["Paste Handler\nplatform/paste_impl.rs"]
     end
 
@@ -725,24 +704,44 @@ src-tauri/src/
 
 src/
 ├── lib/
-│   ├── components/             Reusable Svelte components
-│   │   ├── audio/              AudioWaveFormVisualizer, RecordingStatusDot, RecordingTimer
-│   │   ├── form/               DeviceSelect, ToggleSwitch, PathSelectorField, OptionGroup, …
-│   │   ├── layout/             PanelShell, PanelHeader, PanelFooter, SplitPane, FixedFooterBar
-│   │   ├── history/            HistoryListCard, HistoryDetailPane
-│   │   ├── notes/              NotesPanel, NoteCard, NotesList, NoteComposer
-│   │   └── transcribe/         TranscribeQueueList, TranscribeQueueRow
-│   ├── screens/                Full panel screens
-│   │   ├── scribe.svelte       Recording UI
-│   │   ├── scribe-processing.svelte   Transcribing / Done / No-model UI
-│   │   ├── transcribe.svelte   File import and queue UI
-│   │   ├── dictate.svelte      Floating HUD
-│   │   ├── history.svelte      Unified history (list mode + fullscreen detail)
-│   │   ├── settings.svelte     Settings shell with tab routing
-│   │   └── setting_*.svelte    Individual settings tabs
+│   ├── ui/                     All UI code (@ui → src/lib/ui)
+│   │   ├── 1_primitives/       Structural/display building blocks (@primitives)
+│   │   │   ├── layout/         ScrollBody, PanelHeader, PanelFooter, Modal, StepFrame
+│   │   │   ├── display/        Chip, Timestamp, SourceIcon, StatusDot, RecordingTimer, ProgressBar
+│   │   │   └── form/           TextField, FieldRow, Checkbox, SettingsSection
+│   │   ├── 2_components/       Single user action components (@components)
+│   │   │   ├── controls/       Button, IconButton, Toggle, EditableTitle, PathPicker, OptionGroup
+│   │   │   ├── cards/          NoteCard, InlineNote, RecentNoteCard, SettingRow, UploadItem, FilterRow
+│   │   │   ├── nav/            NavButton, NavItem, AccordionRow
+│   │   │   └── indicators/     Toast, StatTile, StepIndicator, Waveform
+│   │   ├── 3_patterns/         Multi-component single-action flows (@patterns)
+│   │   │   └── Accordion, NoteComposer, NoteList, UploadQueue
+│   │   ├── 4_sections/         Contained mental model areas (@sections)
+│   │   │   ├── FilterPanel, NoteDetailPane, SettingsPanel, SettingList
+│   │   │   └── onboarding/     WelcomeStep, FeatureTourStep, DictatePracticeStep, PermissionsStep, ModelDownloadStep
+│   │   ├── 6_regions/          Fixed structural layout areas (@regions)
+│   │   │   └── AppSidebar, SettingsSidebar, TitleBar
+│   │   └── views/              Route-level view components and window-specific views (@views)
+│   │       ├── home.svelte     Home area content
+│   │       ├── notes.svelte    Notes area content
+│   │       ├── capture.svelte  Scribe capture overlay (recording → processing)
+│   │       ├── transcribe.svelte  Upload/transcribe workflow
+│   │       ├── scribe.svelte   Recording UI
+│   │       ├── scribe-processing.svelte  Transcribing / Done / No-model UI
+│   │       ├── dictate.svelte  Floating HUD (separate Tauri window)
+│   │       ├── onboarding.svelte  Onboarding flow (separate Tauri window)
+│   │       └── setting_*.svelte   Individual settings tab content
+│   ├── utils/                  Shared utilities (@utils): platform.ts, theme.ts, types.ts
 │   └── stores/
-│       └── modelDownload.svelte.ts   Download progress store
-└── routes/
-    ├── +page.svelte            Root — selects panel based on window label
-    └── +layout.svelte          Theme provider
+│       ├── appState.svelte.ts  Singleton reactive state (notes, capture, toast, delete)
+│       ├── appActions.ts       State mutation actions (loadNotes, copyItem, delete, etc.)
+│       └── modelDownload.svelte.ts  Download progress store
+└── routes/                     SvelteKit routes (SPA, ssr=false)
+    ├── +layout.svelte          App shell: ?view= branching, sidebar, CaptureView overlay,
+    │                           global toast + delete modal, IPC listeners, theme
+    ├── +page.svelte            / → Home
+    ├── notes/+page.svelte      /notes → Notes
+    ├── upload/+page.svelte     /upload → Upload
+    ├── float/+page.svelte      /float → Float (placeholder)
+    └── settings/+page.svelte   /settings → Settings
 ```

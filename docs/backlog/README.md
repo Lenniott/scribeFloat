@@ -1,6 +1,7 @@
 # Backlog
 
 One file per story. Point an agent directly at a story file — no parsing needed.
+Once a backlog item is done it must be moved to archived.
 
 ## Structure
 

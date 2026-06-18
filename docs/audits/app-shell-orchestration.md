@@ -119,16 +119,41 @@ Phase 8 — Component taxonomy reorganisation (story 0027 partial)
 - [x] Branch created: `feature/app-shell-nav`
 - [x] Backlog gardening complete (see below)
 - [x] Orchestration plan written
-- [ ] Phase 1b — historyFormat.ts
-- [ ] Phase 1c — historyActions.ts additions
-- [ ] Phase 1d — Rust backend tags
-- [ ] Phase 2 — Shell skeleton
-- [ ] Phase 3 — Home Area
-- [ ] Phase 4 — Notes Area
-- [ ] Phase 5 — Settings sidebar
-- [ ] Phase 6 — New Note title bar
-- [ ] Phase 7 — Rename passes
-- [ ] Phase 8 — Taxonomy reorganisation
+- [x] Phase 1b — historyFormat.ts
+- [x] Phase 1c — historyActions.ts additions
+- [x] Phase 1d — Rust backend tags + dashboard_stats + tag_vocabulary
+- [x] Phase 2 — Shell skeleton (app-shell, AppSidebar, ShellTitleBar, SidebarNavItem, capture)
+- [x] Phase 3 — Home Area (home.svelte, StatTile, RecentNoteCard)
+- [x] Phase 4 — Notes Area (notes.svelte, NoteListCard, FilterSidePanel)
+- [x] Phase 5 — Settings sidebar (SettingsSidebar, SettingsPanel, settingsTypes)
+- [ ] **Phase 6 — New Note title bar (story 0025)** ← next session starts here
+- [ ] Phase 7 — Rename passes (stories 0016, 0017, 0018, 0042)
+- [ ] Phase 8 — Taxonomy reorganisation (story 0027)
+
+### HO-2 handoff — for next agent
+
+Branch: `feature/app-shell-nav`
+
+All Areas are built and committed. The shell is wired and routing works.
+The title bar already has a "New Note" button that calls `onNewNote` on the shell,
+and `captureOpen` toggles the `CaptureScreen` overlay. Phase 6 is **already wired** —
+test it manually before claiming it needs more work.
+
+Phase 7 is pure renames — no logic changes:
+- `shell://navigate` → `app://navigate` in Rust emitters (commands/scribe.rs, lib.rs)
+- `history://item-added` → `note://item-added` in Rust and all Svelte listeners
+- All `ROUTE_LABELS['dashboard']` → already done (it's `'home'` now)
+- Story 0017 (Dashboard → Home in copy) — already done in home.svelte
+
+Phase 8 is file moves:
+- `components/transcripts/FilterSidePanel.svelte` → `components/notes/`
+- `components/transcripts/FilterCheckboxRow.svelte` → `components/notes/`
+- `components/transcripts/SourceKindIcon.svelte` → `components/notes/`
+- `components/dashboard/` folder — delete (replaced by `components/home/`)
+- `screens/dashboard.svelte` — delete (untracked, just rm)
+- `screens/transcripts.svelte` — delete (untracked, just rm)
+
+**Read before starting:** CONTEXT.md, CLAUDE.md, this file.
 
 ---
 

@@ -15,6 +15,8 @@ Short-lived notes and UI specs live here. **Behaviour and architecture** stay in
 | [../.cursor/rules/ui-enforcement.mdc](../.cursor/rules/ui-enforcement.mdc) | Auto-attached Cursor rule for `src/**/*.svelte` and `src/app.css` |
 | [../.cursor/hooks.json](../.cursor/hooks.json) | Agent hooks — `check:ds` + typography warnings after frontend edits |
 | [backlog.md](backlog.md) | Deferred / follow-up items |
-| [design-brain-prd.md](design-brain-prd.md) | Proposal: local-LLM enrichment engine (Schema/Step/Flow) — pre-spike, nothing built yet |
+| [dashboard-prd.md](dashboard-prd.md) | Dashboard & navigation shell redesign — Phase A (no Float needed), Phase B links to Float |
+| [design-brain-prd.md](design-brain-prd.md) | Float: enrichment engine (Layer/Step/Flow), HTTP inference via Ollama/cloud — Phase B of dashboard-prd |
+| [knowledge-layer-intent.md](knowledge-layer-intent.md) | Intent doc: cross-transcript synthesis into knowledge artifacts (personas, project arcs, etc.) — depends on Float |
 
 If `context/` and code disagree, fix the doc or confirm the code change was intentional.

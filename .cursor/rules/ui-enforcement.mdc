@@ -43,3 +43,24 @@ Run `npm run check:ds` before finishing. Deep reference: `.cursor/skills/ui-enfo
 **Banned:** `text-fg/40`–`text-fg/90`, `bg-black/50` — use semantic fg levels + `sf-scrim` / `bg-overlay`.
 
 Recipes: `docs/color-audit.md` · `.cursor/skills/ui-enforcement/references/color.md`
+
+## Layout & scroll cheat sheet
+
+**Default (lists, detail, settings):** chrome stays visible; **one** body scrolls.
+
+| Zone | Classes | Primitive |
+|------|---------|-----------|
+| Screen root | `h-full min-h-0 flex flex-col overflow-hidden` | — |
+| Chrome (title, tabs, actions, banners) | `shrink-0` — height varies with content | `PanelHeader` |
+| Scroll body | `min-h-0 flex-1 overflow-y-auto` | `ScrollablePanel` |
+| Footer actions (optional) | `shrink-0` | `PanelFooter` |
+
+**Simple overview (no sticky chrome):** `h-full overflow-y-auto` on root — whole page scrolls (`dashboard`).
+
+**Height chain:** `h-screen` shell → `flex min-h-0 flex-1` body row → `<main class="flex flex-col …">` → screen `h-full` → `ScrollablePanel`.
+
+**Banned:** `flex-1` on screen root without flex parent · `overflow-y-auto` without `min-h-0` · multiple vertical scroll regions per pane · `sticky`/`fixed` pane chrome.
+
+**App shell:** `<main>` must be `flex flex-col` so child screens get a bounded height.
+
+Deep reference: `skills/ui-enforcement/references/layout-scroll.md`

@@ -91,7 +91,16 @@ export const CHEAT_SHEET = `ScribeFloat typography — use sf-* from src/app.css
 
 Case: labels/headers → capitalize via sf-* (never uppercase). Body → sentence case.
 
-${COLOR_CHEATSHEET}`;
+${COLOR_CHEATSHEET}
+
+Layout & scroll (chrome + body):
+- Pattern B (default): screen root h-full min-h-0 flex flex-col overflow-hidden
+- Chrome: shrink-0 (PanelHeader) — height varies; tabs use overflow-x-auto on tab row only
+- Body: ScrollablePanel (min-h-0 flex-1 overflow-y-auto) — one vertical scroll per pane
+- Footer: shrink-0 PanelFooter (not sticky/fixed)
+- Pattern A: h-full overflow-y-auto when no sticky chrome (dashboard)
+- Never flex-1 on screen root unless parent is display:flex; use h-full in app shell routes
+- Never overflow-y-auto without min-h-0 on the same element`;
 
 export function relPathSync(absPath, root = ROOT) {
   if (!absPath) return "";

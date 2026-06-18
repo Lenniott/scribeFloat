@@ -111,7 +111,7 @@ Transcripts and audio files are saved to `~/Documents/transcripts_scribefloat/` 
 
 ## Architecture
 
-See [context/README.md](context/README.md) for the doc reading order and [context/architecture.md](context/architecture.md) for full C4 model diagrams.
+See [CONTEXT.md](CONTEXT.md) for the doc reading order and [docs/architecture.md](docs/architecture.md) for full C4 model diagrams.
 
 The layered call chain:
 
@@ -148,7 +148,7 @@ src-tauri/                 Tauri / Rust backend
     platform/              OS-specific implementations
     types.rs               Shared types, state enums, serialisation
 
-context/                   Architecture and design documentation
+docs/                      Architecture, design, and engineering documentation
   architecture.md          C4 model diagrams
   action-flows.md          Step-by-step workflow descriptions
   components.md            UI component catalogue
@@ -283,7 +283,7 @@ macOS builds require Xcode command line tools; signed/notarized builds need loca
 
 **Windows contributors are especially welcome.** Most day-to-day development happens on macOS, so we rely on Windows users to test releases, report bugs, and fix Windows-specific issues (permissions, audio devices, paste, installers, and anything under `src-tauri/src/platform/`). You do not need to own the whole app — reproducible bug reports, small fixes, and “this broke on my machine” PRs are all valuable.
 
-1. Read `context/architecture.md` before touching any Rust code
+1. Read `docs/architecture.md` before touching any Rust code
 2. Run `cargo clippy -- -D warnings` and `cargo test -p scribefloat` before committing
 3. If you add a new `#[tauri::command]`, register it in `lib.rs` and validate any user-supplied strings before passing to a controller
 4. `#[cfg(target_os)]` checks belong only in `src-tauri/src/platform/` — never in commands, controllers, or services

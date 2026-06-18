@@ -1,0 +1,68 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // \"\"'); echo \"$f\" | grep -qE '(\\.cursor/skills/|\\.claude/commands/)' && echo '{\"decision\":\"block\",\"reason\":\"Write to skills/ instead — .cursor/skills/ and .claude/commands/ are managed by build.sh and will be overwritten.\"}' || true"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // \"\"'); (echo \"$f\" | grep -q '/skills/' || echo \"$f\" | grep -qE '(CLAUDE\\.md|AGENTS\\.md)$') && bash skills/build.sh 2>/dev/null || true",
+            "statusMessage": "Syncing skills and agent files..."
+          },
+          {
+            "type": "command",
+            "command": "node hooks/session-capture/on-doc-write.mjs",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/session-capture/on-prompt.mjs",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/session-capture/on-compact.mjs",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/session-capture/stop.mjs",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

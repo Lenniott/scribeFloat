@@ -1,7 +1,0 @@
-- [x] setitngs tabs are a mess
-- [ ] scribe screen is gross
-- [x] history viewer controls are annoying, put nav buttons in top with header and remove actions form bottom the distance between all actions is too big.
-- [ ] add text reader (small local tts model).
-- [ ]  reorder component library to make more sense
-- [x] ensure consistent use of components
-- [ ] make a rule for padding and surfacees colors and add to the skill so its part of iniciation

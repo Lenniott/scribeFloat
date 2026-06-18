@@ -1,6 +1,6 @@
 # Color consistency audit
 
-> Scope: `src/**/*.svelte`, `src/app.css`. Design source: `context/design-skill/design-system.json` → `rules.colors`.
+> Scope: `src/**/*.svelte`, `src/app.css`. Design source: `skills/design-skill/design-system.json` → `rules.colors`.
 >
 > **Agent guidance:** `.cursor/skills/ui-enforcement/references/color.md`
 >
@@ -122,7 +122,7 @@
 | File | Opacity steps | Notes |
 |------|---------------|-------|
 | `history/HistoryDetailPane.svelte` | 40, 45, 50, 80, 90 | Highest complexity |
-| `history.svelte` | 45, 60, 70, 80 | |
+| `app-shell.svelte` / `transcripts.svelte` | 45, 60, 70, 80 | |
 | `scribe-processing.svelte` | 45, 55, 80, 90 | |
 | `setting_general.svelte` | 50, 60, 70, 80 | |
 | `setting_replace.svelte` | 40, 50, 70, 80 | |

@@ -1,6 +1,6 @@
 # ScribeFloat — UI component catalogue
 
-For tokens and surface layout, query `context/design-skill/design-system.json`. **History interaction rules** (fullscreen detail, delete on list only, `PanelFooter`): [../docs/history-ui-review.md](../docs/history-ui-review.md).
+For tokens and surface layout, query `skills/design-skill/design-system.json`. **History interaction rules** (fullscreen detail, delete on list only, `PanelFooter`): [../docs/history-ui-review.md](../docs/history-ui-review.md).
 
 ---
 
@@ -36,7 +36,7 @@ The sketch clearly separates settings into collapsible groups and notes that onl
 | `Accordion` | A reusable collapsible section system.   | Controls one or more `AccordionItem` children and can enforce single-open behaviour.   |
 | `AccordionItem` | One collapsible section such as Basic or Advanced.   | Has header, open/closed state, and content body; opening one can close siblings if configured.   |
 | `SettingsSection` | A styled wrapper for grouped configuration controls.   | Adds layout, spacing, and optional section title inside an accordion body.   |
-| `ScrollablePanel` | A constrained panel body with overflow scrolling.   | Lets long settings content scroll while the overall shell and footer stay fixed.   |
+| `ScrollablePanel` | A constrained panel body with overflow scrolling.   | Lets long settings content scroll while the overall shell and footer stay fixed. **Default body slot** for pattern B panes (chrome + scroll body).   |
 
 ## Notes components
 
@@ -53,10 +53,30 @@ The sketch clearly separates settings into collapsible groups and notes that onl
 
 | Component | What it is | How it works |
 |---|---|---|
-| `HistoryListCard` | History list row (replaces `NoteCard` in History).   | View (`Eye`), Copy, Open (when `.md` exists), Delete (store only); selectable title with hover affordance. Delete opens a confirm modal on `history.svelte`; the card emits events only.   |
-| `HistoryDetailPane` | Fullscreen detail for the History view (`history.svelte`).   | Scrollable transcript via `history_render_markdown`; muted metadata from `history_get_detail`; prev/next in header; Export / Open / Copy / Close in `PanelFooter`. Delete is on the list card only.   |
+| `HistoryListCard` | Legacy compact list row.   | View, Copy, Open, Delete; used before dashboard shell. Prefer `TranscriptListCard` in the Transcripts screen.   |
+| `HistoryDetailPane` | Fullscreen transcript detail.   | Scrollable transcript via `history_render_markdown`; metadata chips; prev/next; Export / Open / Copy / Close. Delete is on the list card only.   |
+| `TranscriptListCard` | Rich transcripts list row (`transcripts.svelte`).   | Source icon, title, excerpt, tag chips, metadata line, and icon actions. Same event contract as `HistoryListCard`.   |
+
+## Dashboard shell components
+
+| Component | What it is | How it works |
+|---|---|---|
+| `AppShell` | Main window host (`app-shell.svelte`).   | Sidebar + title bar + route switcher (`dashboard` / `transcripts` / `upload` / `scribe` / `settings`); shared toast and delete modal. Listens for `shell://navigate` from tray/hotkeys.   |
+| `AppSidebar` | Capture + Manage navigation.   | In-shell routes for Scribe, Upload, Dashboard, Transcripts, Settings; Float teaser disabled.   |
+| `SettingsSidebar` | Settings tab nav (replaces `AppSidebar` on settings route).   | Back button returns to previous shell route; tab list matches settings screens.   |
+| `SettingsPanel` | Settings content column.   | Banner + tab body (`SettingGeneral`, etc.); used in shell and legacy modal `settings.svelte`.   |
+| `CaptureScreen` | Scribe capture wrapper (`capture.svelte`).   | Toggles recording vs processing sub-screens; registers leave guard for route changes during capture.   |
+| `SidebarNavItem` | Single sidebar row with icon and optional badge.   | Active, accent (Scribe), or disabled states.   |
+| `ShellTitleBar` | Top strip with Dictate trigger.   | Invokes `dictate_trigger` IPC.   |
+| `StatTile` | Dashboard metric card.   | Value + label; Phase A shows `—` for Float stats.   |
+| `RecentSessionCard` | Dashboard recent-session row.   | Click opens detail via shell (routes to Transcripts).   |
+| `FilterSidePanel` | Transcripts tag filter column.   | OR within tags; footer shows active filter count.   |
+| `FilterCheckboxRow` | One tag filter row.   | Checkbox + label + count.   |
+| `SourceKindIcon` | Scribe / Dictate / Upload icon badge.   | Used on recent and transcript list cards.   |
 
 ## Layout components
+
+**Scroll contract (chrome + body):** `.cursor/skills/ui-enforcement/references/layout-scroll.md` — `shrink-0` chrome, one `ScrollablePanel` body per pane, screen roots use `h-full`.
 
 | Component | What it is | How it works |
 |---|---|---|

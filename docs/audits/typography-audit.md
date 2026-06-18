@@ -154,7 +154,7 @@ Grouped by how often the same recipe appears. Color/opacity suffixes (`text-fg/4
 | File | Inline highlights | Priority |
 |------|-------------------|----------|
 | `scribe.svelte` | Field labels, inputs, timer area, errors — all inline | High (primary workflow) |
-| `history.svelte` | Tab bar, empty states | High |
+| `transcripts.svelte` | Tab bar, empty states | High |
 | `dictate.svelte` | HUD result text `text-label-md font-medium` | Medium |
 | `setting_replace.svelte` | Field labels + table text | Medium |
 | `setting_general.svelte` | Headline only sf-*; 7× field label recipe | High |
@@ -271,7 +271,7 @@ These use **inline** headline tokens (should migrate):
 | Element | Current classes | File |
 |---------|-----------------|------|
 | Welcome hero | `text-display-lg tracking-stamped uppercase` | `WelcomeStep.svelte` |
-| History list header | `text-label-md tracking-stamped uppercase` | `history.svelte` |
+| History list header | `text-label-md tracking-stamped uppercase` | `transcripts.svelte` |
 | Scribe notes header | `text-label-md tracking-stamped uppercase` | `scribe.svelte` |
 | Transcribe section labels | `text-label-sm uppercase tracking-stamped` | `transcribe.svelte` |
 

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { open } from "@tauri-apps/plugin-dialog";
-	import Button from "../Button.svelte";
+	import Button from "./Button.svelte";
 
 	let {
 		label,

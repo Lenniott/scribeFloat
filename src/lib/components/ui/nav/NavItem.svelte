@@ -1,6 +1,11 @@
 <script lang="ts">
-	import type { Component } from 'svelte';
+	import type { IconProps } from 'lucide-svelte';
+	import type { Component, ComponentConstructorOptions, SvelteComponent } from 'svelte';
 	import Chip from '../../primitives/display/Chip.svelte';
+
+	type LucideIcon =
+		| Component<IconProps>
+		| (new (options: ComponentConstructorOptions<IconProps>) => SvelteComponent<IconProps>);
 
 	let {
 		label,
@@ -12,7 +17,7 @@
 		onclick,
 	}: {
 		label: string;
-		icon: Component;
+		icon: LucideIcon;
 		active?: boolean;
 		disabled?: boolean;
 		accent?: boolean;

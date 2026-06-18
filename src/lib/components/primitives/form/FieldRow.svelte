@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import Button from '../Button.svelte';
+	import Button from '../../ui/controls/Button.svelte';
 
 	export type ConfigFieldOption = { value: string; label: string };
 	export type ConfigFieldMode = 'select' | 'action';

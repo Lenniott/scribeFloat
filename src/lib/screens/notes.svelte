@@ -1,0 +1,238 @@
+<script lang="ts">
+	import { ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-svelte';
+	import HistoryDetailPane from '@lib/components/history/HistoryDetailPane.svelte';
+	import NoteListCard from '@lib/components/notes/NoteListCard.svelte';
+	import FilterSidePanel from '@lib/components/transcripts/FilterSidePanel.svelte';
+	import ScrollablePanel from '@lib/components/accordion/ScrollablePanel.svelte';
+	import IconButton from '@lib/components/IconButton.svelte';
+	import Button from '@lib/components/Button.svelte';
+	import type { HistoryListItem } from '@lib/services/historyActions';
+	import { fetchTagVocabulary, type TagVocabularyEntry } from '@lib/services/historyActions';
+
+	type CaptureFilter = 'all' | 'scribe' | 'dictate' | 'upload';
+
+	const tabs: { id: CaptureFilter; label: string }[] = [
+		{ id: 'all', label: 'All' },
+		{ id: 'scribe', label: 'Scribe' },
+		{ id: 'dictate', label: 'Dictate' },
+		{ id: 'upload', label: 'Upload' },
+	];
+
+	let {
+		allItems,
+		loading,
+		selectedItem = $bindable(null),
+		oncopy,
+		onopen,
+		ondelete,
+		onrefresh,
+		deleting = false,
+	}: {
+		allItems: HistoryListItem[];
+		loading: boolean;
+		selectedItem?: HistoryListItem | null;
+		oncopy: (item: HistoryListItem) => void;
+		onopen: (item: HistoryListItem) => void;
+		ondelete: (item: HistoryListItem) => void;
+		onrefresh: () => void;
+		deleting?: boolean;
+	} = $props();
+
+	let activeTab = $state<CaptureFilter>('all');
+	let filterOpen = $state(false);
+	let vocabulary = $state<TagVocabularyEntry[]>([]);
+	let selectedTags = $state<Set<string>>(new Set());
+
+	const sourceFiltered = $derived(
+		activeTab === 'all'
+			? allItems
+			: activeTab === 'scribe'
+				? allItems.filter((item) => item.kind === 'scribe')
+				: activeTab === 'dictate'
+					? allItems.filter((item) => item.kind === 'dictate')
+					: allItems.filter((item) => item.kind === 'transcribe'),
+	);
+
+	const filteredItems = $derived(
+		selectedTags.size === 0
+			? sourceFiltered
+			: sourceFiltered.filter((item) => {
+					const tags = item.tags ?? [];
+					return tags.some((t) => selectedTags.has(t));
+				}),
+	);
+
+	const selectedIndex = $derived(
+		selectedItem ? filteredItems.findIndex((i) => i.id === selectedItem!.id) : -1,
+	);
+	const canGoPrev = $derived(selectedIndex > 0);
+	const canGoNext = $derived(
+		selectedIndex >= 0 && selectedIndex < filteredItems.length - 1,
+	);
+
+	$effect(() => {
+		if (!selectedItem) return;
+		const inFilter = filteredItems.some((i) => i.id === selectedItem!.id);
+		if (!inFilter) {
+			selectedItem = null;
+		}
+	});
+
+	$effect(() => {
+		void fetchTagVocabulary().then((v) => (vocabulary = v));
+	});
+
+	function emptyMessage(filter: CaptureFilter): string {
+		if (filter === 'scribe') return 'No Scribe notes yet.';
+		if (filter === 'dictate') return 'No dictations yet.';
+		if (filter === 'upload') return 'No uploads yet.';
+		return 'No notes yet.';
+	}
+
+	function chipForKind(kind: string): { label: string; variant: 'brand' | 'focus' | 'muted' } {
+		if (kind === 'dictate') return { label: 'Dictate', variant: 'focus' };
+		if (kind === 'transcribe') return { label: 'Upload', variant: 'focus' };
+		return { label: 'Scribe', variant: 'brand' };
+	}
+
+	function navigateDetail(delta: -1 | 1) {
+		if (selectedIndex < 0) return;
+		const next = filteredItems[selectedIndex + delta];
+		if (next) selectedItem = next;
+	}
+
+	function toggleTag(tag: string, checked: boolean) {
+		const next = new Set(selectedTags);
+		if (checked) next.add(tag);
+		else next.delete(tag);
+		selectedTags = next;
+	}
+</script>
+
+{#if selectedItem}
+	<div class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-panel">
+		<header class="flex shrink-0 items-center justify-between gap-4 border-b border-card px-4 py-3">
+			<button
+				type="button"
+				class="sf-label-md text-fg-dim hover:text-fg"
+				onclick={() => (selectedItem = null)}
+			>
+				← Notes
+			</button>
+			<div class="flex items-center gap-1">
+				<IconButton
+					aria-label="Previous note"
+					icon={ChevronLeft}
+					size="small"
+					variant="normal"
+					disabled={!canGoPrev}
+					onclick={() => navigateDetail(-1)}
+				/>
+				<IconButton
+					aria-label="Next note"
+					icon={ChevronRight}
+					size="small"
+					variant="normal"
+					disabled={!canGoNext}
+					onclick={() => navigateDetail(1)}
+				/>
+			</div>
+		</header>
+		<HistoryDetailPane
+			item={selectedItem}
+			{canGoPrev}
+			{canGoNext}
+			onprev={() => navigateDetail(-1)}
+			onnext={() => navigateDetail(1)}
+			onclose={() => (selectedItem = null)}
+			onrefresh={() => {
+				onrefresh();
+				if (selectedItem) {
+					const refreshed = allItems.find((i) => i.id === selectedItem!.id);
+					selectedItem = refreshed ?? null;
+				}
+			}}
+		/>
+	</div>
+{:else}
+	<div class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+		<div class="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden" role="tabpanel">
+			<div class="shrink-0 px-6 pt-6">
+				<div class="mb-4 flex items-start justify-between gap-4">
+					<div>
+						<h1 class="sf-headline-sm text-fg">Notes</h1>
+						<p class="mt-0.5 sf-body-md text-fg-dim">
+							Every Scribe, Dictate, and Upload session.
+						</p>
+					</div>
+					<Button
+						variant={filterOpen ? 'active' : 'normal'}
+						size="small"
+						icon={SlidersHorizontal}
+						onclick={() => (filterOpen = !filterOpen)}
+					>
+						Filter
+					</Button>
+				</div>
+
+				<div
+					class="mb-4 flex gap-1 overflow-x-auto border-b border-card/60"
+					role="tablist"
+					aria-label="Filter notes by capture method"
+				>
+					{#each tabs as tab (tab.id)}
+						<button
+							type="button"
+							role="tab"
+							aria-selected={activeTab === tab.id}
+							class="sf-label-md border-0 border-b-2 px-3 py-1.5 whitespace-nowrap transition-colors {activeTab === tab.id
+								? 'border-active bg-active/15 text-fg'
+								: 'border-transparent text-fg-dim hover:bg-fill hover:text-fg'}"
+							onclick={() => (activeTab = tab.id)}
+						>
+							{tab.label}
+						</button>
+					{/each}
+				</div>
+			</div>
+
+			<ScrollablePanel class="px-6 pb-6">
+				{#if loading}
+					<p class="sf-body-md text-fg-muted">Loading…</p>
+				{:else if filteredItems.length === 0}
+					<p class="sf-body-md text-fg-muted">{emptyMessage(activeTab)}</p>
+				{:else}
+					<div class="flex flex-col gap-2" role="list">
+						{#each filteredItems as item (item.id)}
+							<div role="listitem">
+								<NoteListCard
+									{item}
+									chip={chipForKind(item.kind)}
+									disabled={deleting}
+									onselect={() => (selectedItem = item)}
+									oncopy={() => oncopy(item)}
+									onopen={item.has_markdown && item.markdown_path
+										? () => onopen(item)
+										: undefined}
+									ondelete={item.source === 'store' ? () => ondelete(item) : undefined}
+								/>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</ScrollablePanel>
+		</div>
+
+		{#if filterOpen}
+			<FilterSidePanel
+				{vocabulary}
+				{selectedTags}
+				activeFilterCount={selectedTags.size}
+				showingCount={filteredItems.length}
+				totalCount={sourceFiltered.length}
+				onclose={() => (filterOpen = false)}
+				ontoggle={toggleTag}
+			/>
+		{/if}
+	</div>
+{/if}

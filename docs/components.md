@@ -1,14 +1,14 @@
 # ScribeFloat — Component catalogue
 
-For tokens and surface layout, query `skills/design-skill/design-system.json`. **History interaction rules** (fullscreen detail, delete on list only, `PanelFooter`): [../docs/history-ui-review.md](../docs/history-ui-review.md).
+For tokens and surface layout, query `skills/design-skill/design-system.json`. **Notes detail interaction rules** (fullscreen detail, delete on list only, `PanelFooter`): [../docs/history-ui-review.md](../docs/history-ui-review.md).
 
 Components are organised into five taxonomy levels from lowest to highest composition:
 
-1. **Primitives** — atoms with no internal component dependencies
-2. **UI** — named interactive units built from primitives
-3. **Patterns** — repeated multi-step flows or data presentations
-4. **Sections** — full screen sections, assembled from components above
-5. **Regions** — persistent shell zones that frame the entire app
+1. **Primitives** — structural or display building blocks not used standalone in the app
+2. **UI** — single user actions (controls, cards, nav items, indicators)
+3. **Patterns** — one complex action that needs multiple components working together
+4. **Sections** — a contained mental model grouped around one clearly-named thing
+5. **Regions** — fixed structural areas of the layout, always present regardless of content
 
 ---
 
@@ -63,7 +63,7 @@ Components are organised into five taxonomy levels from lowest to highest compos
 
 | Component | Path | What it is |
 |---|---|---|
-| `NoteCard` | `ui/cards/NoteCard.svelte` | History list row (was `NoteListCard`). Selectable title + icon actions (Copy, View, Open, Delete). |
+| `NoteCard` | `ui/cards/NoteCard.svelte` | Notes list row. Selectable title + icon actions (Copy, View, Open, Delete). |
 | `InlineNote` | `ui/cards/InlineNote.svelte` | Inline note card. Displays note text + timestamp. Exports `Note` type. |
 | `RecentNoteCard` | `ui/cards/RecentNoteCard.svelte` | Recent-note card for the Home screen. Compact title + metadata. |
 | `SettingRow` | `ui/cards/SettingRow.svelte` | Single setting row in a settings list. Label + control slot. |

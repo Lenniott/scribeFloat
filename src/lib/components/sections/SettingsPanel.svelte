@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
-	import SettingGeneral from '@lib/screens/setting_general.svelte';
-	import SettingPermissions from '@lib/screens/setting_permissions.svelte';
-	import SettingModels from '@lib/screens/setting_models.svelte';
-	import SettingHelp from '@lib/screens/setting_help.svelte';
-	import SettingReplace from '@lib/screens/setting_replace.svelte';
+	import SettingGeneral from '@lib/views/setting_general.svelte';
+	import SettingPermissions from '@lib/views/setting_permissions.svelte';
+	import SettingModels from '@lib/views/setting_models.svelte';
+	import SettingHelp from '@lib/views/setting_help.svelte';
+	import SettingReplace from '@lib/views/setting_replace.svelte';
 	import ScrollablePanel from '../primitives/layout/ScrollBody.svelte';
 	import { isWindows } from '$lib/platform';
 	import { appErrorMessage, type PermissionStatus, type ModelListItem } from '$lib/types';

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import ScribeScreen from '@lib/screens/scribe.svelte';
-	import ScribeProcessingScreen from '@lib/screens/scribe-processing.svelte';
+	import ScribeScreen from '@lib/views/scribe.svelte';
+	import ScribeProcessingScreen from '@lib/views/scribe-processing.svelte';
 
 	type AppScreen = 'recording' | 'processing';
 

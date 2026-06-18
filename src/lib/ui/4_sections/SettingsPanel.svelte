@@ -6,7 +6,7 @@
 	import SettingModels from '@views/setting_models.svelte';
 	import SettingHelp from '@views/setting_help.svelte';
 	import SettingReplace from '@views/setting_replace.svelte';
-	import ScrollablePanel from '../primitives/layout/ScrollBody.svelte';
+	import ScrollablePanel from '@primitives/layout/ScrollBody.svelte';
 	import { isWindows } from '@utils/platform';
 	import { appErrorMessage, type PermissionStatus, type ModelListItem } from '@utils/types';
 	import type { SettingsTab } from './settingsTypes';

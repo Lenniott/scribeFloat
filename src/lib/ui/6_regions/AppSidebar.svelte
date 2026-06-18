@@ -6,7 +6,7 @@
 		Upload,
 		Settings,
 	} from 'lucide-svelte';
-	import SidebarNavItem from '../ui/nav/NavItem.svelte';
+	import SidebarNavItem from '@components/nav/NavItem.svelte';
 
 	export type AppRoute =
 		| 'home'

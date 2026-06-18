@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { X, Tag } from 'lucide-svelte';
-	import IconButton from '../ui/controls/IconButton.svelte';
-	import FilterCheckboxRow from '../ui/cards/FilterRow.svelte';
-	import ScrollablePanel from '../primitives/layout/ScrollBody.svelte';
+	import IconButton from '@components/controls/IconButton.svelte';
+	import FilterCheckboxRow from '@components/cards/FilterRow.svelte';
+	import ScrollablePanel from '@primitives/layout/ScrollBody.svelte';
 	import type { TagVocabularyEntry } from '@services/historyActions';
 
 	let {

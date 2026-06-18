@@ -2,8 +2,8 @@
 	import { onMount, onDestroy } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { getCurrentWindow } from "@tauri-apps/api/window";
-	import Button from "../../ui/controls/Button.svelte";
-	import StepShell from "../../primitives/layout/StepFrame.svelte";
+	import Button from "@components/controls/Button.svelte";
+	import StepShell from "@primitives/layout/StepFrame.svelte";
 	import { CircleCheckBig, Circle } from "lucide-svelte";
 	import type { PermissionStatus } from '@utils/types';
 

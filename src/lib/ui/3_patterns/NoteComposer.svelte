@@ -1,5 +1,5 @@
 <script lang="ts">
-    import IconButton from "../ui/controls/IconButton.svelte";
+    import IconButton from "@components/controls/IconButton.svelte";
     import Send from "lucide-svelte/icons/send";
 
     let {

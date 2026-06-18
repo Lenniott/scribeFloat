@@ -2,11 +2,11 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
 	import { onDestroy, onMount } from "svelte";
-	import Button from "../../ui/controls/Button.svelte";
-	import ToggleSwitch from "../../ui/controls/Toggle.svelte";
-	import NoteComposer from "../../patterns/NoteComposer.svelte";
-	import NoteCard, { type Note } from "../../ui/cards/InlineNote.svelte";
-	import StepShell from "../../primitives/layout/StepFrame.svelte";
+	import Button from "@components/controls/Button.svelte";
+	import ToggleSwitch from "@components/controls/Toggle.svelte";
+	import NoteComposer from "@patterns/NoteComposer.svelte";
+	import NoteCard, { type Note } from "@components/cards/InlineNote.svelte";
+	import StepShell from "@primitives/layout/StepFrame.svelte";
 	import { dictateModifierLabel } from '@utils/platform';
 
 	let {

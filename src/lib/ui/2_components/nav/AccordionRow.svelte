@@ -4,7 +4,7 @@
   import {
     ACCORDION_KEY,
     type AccordionContextState,
-  } from "../../patterns/accordion-context.js";
+  } from "@patterns/accordion-context.js";
   import { Minus, Plus } from "lucide-svelte";
 
   let {

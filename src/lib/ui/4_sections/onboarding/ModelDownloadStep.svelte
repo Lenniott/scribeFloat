@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onDestroy, onMount } from "svelte";
-	import Button from "../../ui/controls/Button.svelte";
-	import IconButton from "../../ui/controls/IconButton.svelte";
-	import StepShell from "../../primitives/layout/StepFrame.svelte";
+	import Button from "@components/controls/Button.svelte";
+	import IconButton from "@components/controls/IconButton.svelte";
+	import StepShell from "@primitives/layout/StepFrame.svelte";
 	import { Download, CircleCheckBig } from "lucide-svelte";
 	import { createModelDownloadStore } from "$lib/stores/modelDownload.svelte";
 

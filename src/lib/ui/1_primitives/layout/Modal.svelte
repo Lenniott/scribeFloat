@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import IconButton from '../../ui/controls/IconButton.svelte';
+	import IconButton from '@components/controls/IconButton.svelte';
 	import { X } from 'lucide-svelte';
 
 	let {

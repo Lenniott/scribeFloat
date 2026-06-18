@@ -194,7 +194,7 @@ graph TB
         settings_r["settings/+page.svelte\nSettings"]
     end
 
-    subgraph views["Views — src/lib/ui/views/"]
+    subgraph views["Views — src/lib/5_views/"]
         home_v["home.svelte\nRecent notes + stats"]
         notes_v["notes.svelte\nList + detail"]
         capture_v["capture.svelte\nScribe overlay"]
@@ -202,7 +202,7 @@ graph TB
         setting_tabs["setting_general.svelte\nsetting_models.svelte\nsetting_permissions.svelte\nsetting_replace.svelte\nsetting_help.svelte"]
     end
 
-    subgraph regions["Regions — src/lib/ui/5_regions/"]
+    subgraph regions["Regions — src/lib/ui/6_regions/"]
         sidebar["AppSidebar / SettingsSidebar"]
         titlebar["TitleBar"]
     end
@@ -719,7 +719,7 @@ src/
 │   │   ├── 4_sections/         Contained mental model areas (@sections)
 │   │   │   ├── FilterPanel, NoteDetailPane, SettingsPanel, SettingList
 │   │   │   └── onboarding/     WelcomeStep, FeatureTourStep, DictatePracticeStep, PermissionsStep, ModelDownloadStep
-│   │   ├── 5_regions/          Fixed structural layout areas (@regions)
+│   │   ├── 6_regions/          Fixed structural layout areas (@regions)
 │   │   │   └── AppSidebar, SettingsSidebar, TitleBar
 │   │   └── views/              Route-level view components and window-specific views (@views)
 │   │       ├── home.svelte     Home area content

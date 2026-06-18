@@ -8,12 +8,12 @@
     FileDown,
     Trash2,
   } from "lucide-svelte";
-  import PanelHeader from "../primitives/layout/PanelHeader.svelte";
-  import ScrollablePanel from "../primitives/layout/ScrollBody.svelte";
-  import IconButton from "../ui/controls/IconButton.svelte";
-  import Chip from "../primitives/display/Chip.svelte";
-  import Toast from "../ui/indicators/Toast.svelte";
-  import type { ToastState } from "../ui/indicators/Toast.svelte";
+  import PanelHeader from "@primitives/layout/PanelHeader.svelte";
+  import ScrollablePanel from "@primitives/layout/ScrollBody.svelte";
+  import IconButton from "@components/controls/IconButton.svelte";
+  import Chip from "@primitives/display/Chip.svelte";
+  import Toast from "@components/indicators/Toast.svelte";
+  import type { ToastState } from "@components/indicators/Toast.svelte";
   import type { HistoryListItem } from "@services/historyActions";
   import { loadTranscriptPreview } from "@services/historyTranscript";
   import {

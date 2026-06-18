@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Button from "../../ui/controls/Button.svelte";
-  import StepShell from "../../primitives/layout/StepFrame.svelte";
+  import Button from "@components/controls/Button.svelte";
+  import StepShell from "@primitives/layout/StepFrame.svelte";
   import { Mic, FileVolume, History, Settings, Wifi } from "lucide-svelte";
   import { isWindows } from '@utils/platform';
   import { onDestroy, onMount } from "svelte";

@@ -1,7 +1,7 @@
 <script lang="ts">
   import TranscribeQueueRow, {
     type TranscribeQueueItemView,
-  } from "../ui/cards/UploadItem.svelte";
+  } from "@components/cards/UploadItem.svelte";
 
   let {
     items,

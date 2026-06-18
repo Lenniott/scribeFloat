@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Button from "../../ui/controls/Button.svelte";
+	import Button from "@components/controls/Button.svelte";
 
 	let {
 		onStart,

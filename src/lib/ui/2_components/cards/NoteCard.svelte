@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { Copy, Eye, SquareArrowOutUpRight, Trash2 } from 'lucide-svelte';
 	import IconButton from '../controls/IconButton.svelte';
-	import Chip from '../../primitives/display/Chip.svelte';
-	import SourceKindIcon from '../../primitives/display/SourceIcon.svelte';
+	import Chip from '@primitives/display/Chip.svelte';
+	import SourceKindIcon from '@primitives/display/SourceIcon.svelte';
 	import type { HistoryListItem } from '@services/historyActions';
 	import {
 		formatDurationFromSecs,

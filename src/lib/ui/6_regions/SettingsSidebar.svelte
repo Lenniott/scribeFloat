@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { ArrowLeft } from 'lucide-svelte';
-	import NavButton from '../ui/nav/NavButton.svelte';
-	import { SETTINGS_TABS, type SettingsTab } from '../sections/settingsTypes';
+	import NavButton from '@components/nav/NavButton.svelte';
+	import { SETTINGS_TABS, type SettingsTab } from '@sections/settingsTypes';
 
 	let {
 		activeTab,

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { IconProps } from 'lucide-svelte';
 	import type { Component, ComponentConstructorOptions, SvelteComponent } from 'svelte';
-	import Chip from '../../primitives/display/Chip.svelte';
+	import Chip from '@primitives/display/Chip.svelte';
 
 	type LucideIcon =
 		| Component<IconProps>

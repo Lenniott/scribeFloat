@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Copy, SquareArrowOutUpRight } from "lucide-svelte";
   import IconButton from "../controls/IconButton.svelte";
-  import Chip, { type ChipVariant } from "../../primitives/display/Chip.svelte";
-  import TimestampLabel from "../../primitives/display/Timestamp.svelte";
+  import Chip, { type ChipVariant } from "@primitives/display/Chip.svelte";
+  import TimestampLabel from "@primitives/display/Timestamp.svelte";
 
   export type Note = {
     id: string;

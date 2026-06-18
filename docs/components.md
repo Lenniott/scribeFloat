@@ -10,9 +10,9 @@ Components are organised into five taxonomy levels from lowest to highest compos
 | 2. **Components** | `ui/2_components/` | `@components` | `import { Button, Toggle } from '@components'` |
 | 3. **Patterns** | `ui/3_patterns/` | `@patterns` | `import { Accordion } from '@patterns'` |
 | 4. **Sections** | `ui/4_sections/` | `@sections` | `import { FilterPanel } from '@sections'` |
-| 5. **Regions** | `ui/5_regions/` | `@regions` | `import { AppSidebar } from '@regions'` |
+| 5. **Regions** | `ui/6_regions/` | `@regions` | `import { AppSidebar } from '@regions'` |
 
-Views live at `ui/views/` → `@views`. The parent `ui/` folder is `@ui`. Other aliases: `@services`, `@stores`, `@utils` (platform, theme, types). All defined in `svelte.config.js`.
+Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other aliases: `@services`, `@stores`, `@utils` (platform, theme, types). All defined in `svelte.config.js`.
 
 ---
 
@@ -129,6 +129,6 @@ Views live at `ui/views/` → `@views`. The parent `ui/` folder is `@ui`. Other 
 
 | Component | Path | What it is |
 |---|---|---|
-| `AppSidebar` | `5_regions/AppSidebar.svelte` | Left nav sidebar with route icons. Exports `AppRoute` type. |
-| `SettingsSidebar` | `5_regions/SettingsSidebar.svelte` | Settings-mode left sidebar with tab nav and back button. |
-| `TitleBar` | `5_regions/TitleBar.svelte` | Top title bar chrome. Houses the New Note button and recording state indicator. |
+| `AppSidebar` | `6_regions/AppSidebar.svelte` | Left nav sidebar with route icons. Exports `AppRoute` type. |
+| `SettingsSidebar` | `6_regions/SettingsSidebar.svelte` | Settings-mode left sidebar with tab nav and back button. |
+| `TitleBar` | `6_regions/TitleBar.svelte` | Top title bar chrome. Houses the New Note button and recording state indicator. |

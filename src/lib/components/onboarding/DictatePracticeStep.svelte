@@ -100,8 +100,8 @@
 			</div>
 
 			<div class="flex flex-col flex-1 min-h-0 gap-2">
-				<div class="flex-1 min-h-0 relative">
-					<div class="overflow-y-auto space-y-2">
+				<div class="relative min-h-0 flex-1">
+					<div class="space-y-2">
 						{#each notes as note (note.id)}
 							<NoteCard {note} />
 						{/each}

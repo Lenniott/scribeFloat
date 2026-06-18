@@ -8,6 +8,7 @@
 	import DictatePracticeStep from "@lib/components/onboarding/DictatePracticeStep.svelte";
 	import FeatureTourStep from "@lib/components/onboarding/FeatureTourStep.svelte";
 	import StepProgress from "@lib/components/onboarding/StepProgress.svelte";
+	import ScrollablePanel from "@lib/components/accordion/ScrollablePanel.svelte";
 	import { appErrorMessage, type ModelListItem } from "$lib/types";
 
 	// Steps: 1=Welcome, 2=ModelDownload, 3=Permissions, 4=DictatePractice, 5=FeatureTour
@@ -66,17 +67,17 @@
 	});
 </script>
 
-<div class="flex flex-col h-screen overflow-hidden p-6 bg-panel">
+<div class="flex h-screen min-h-0 flex-col overflow-hidden bg-panel p-6">
 	<!-- Progress indicator: single persistent instance so CSS transitions fire -->
 	{#if currentStep > 1}
-		<div class="w-full flex justify-center mb-5 shrink-0">
+		<div class="mb-5 flex w-full shrink-0 justify-center">
 			<StepProgress {currentStep} />
 		</div>
 	{/if}
 
-	<div class="flex-1 min-h-0">
+	<ScrollablePanel class="flex flex-col">
 		{#if error}
-			<p class="mb-3 rounded-md border border-destructive/40 bg-fill px-3 py-2 sf-label-sm text-destructive">
+			<p class="mb-3 shrink-0 rounded-md border border-destructive/40 bg-fill px-3 py-2 sf-label-sm text-destructive">
 				{error}
 			</p>
 		{/if}
@@ -92,5 +93,5 @@
 		{:else if currentStep === 5}
 			<FeatureTourStep onBack={back} onFinish={finish} />
 		{/if}
-	</div>
+	</ScrollablePanel>
 </div>

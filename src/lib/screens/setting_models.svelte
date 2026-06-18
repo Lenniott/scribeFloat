@@ -10,6 +10,7 @@
   import SettingsList from "@lib/components/settings/SettingsList.svelte";
   import SettingsRow from "@lib/components/settings/SettingsRow.svelte";
   import SettingsSection from "@lib/components/settings/SettingsSection.svelte";
+  import ScrollablePanel from "@lib/components/accordion/ScrollablePanel.svelte";
   import { Download, Trash2 } from "lucide-svelte";
 
   let {
@@ -156,13 +157,13 @@
 
   {#if modelStore.error}
     <p
-      class="mx-4 rounded-md border border-destructive/40 bg-fill px-3 py-2 sf-body-md text-destructive"
+      class="mx-4 shrink-0 rounded-md border border-destructive/40 bg-fill px-3 py-2 sf-body-md text-destructive"
     >
       {modelStore.error}
     </p>
   {/if}
 
-  <div class="min-h-0 flex-1 space-y-5 overflow-y-scroll px-4 pb-4">
+  <ScrollablePanel class="space-y-5 px-4 pb-4">
     <SettingsSection title="Default models">
       <SettingsList>
         <SettingsRow
@@ -324,7 +325,7 @@
         {/each}
       </SettingsList>
     </SettingsSection>
-  </div>
+  </ScrollablePanel>
 </div>
 
 <Toast message={toast.message} state={toast.state} />

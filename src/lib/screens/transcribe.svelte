@@ -11,6 +11,8 @@
   import StackProgressBar from "@lib/components/form/StackProgressBar.svelte";
   import { createModelDownloadStore } from "$lib/stores/modelDownload.svelte";
   import TranscribeQueueList from "@lib/components/transcribe/TranscribeQueueList.svelte";
+  import ScrollablePanel from "@lib/components/accordion/ScrollablePanel.svelte";
+  import PanelFooter from "@lib/components/layout/PanelFooter.svelte";
   import type { TranscribeQueueItemView } from "@lib/components/transcribe/TranscribeQueueRow.svelte";
 
   type ProcessingStage =
@@ -36,6 +38,8 @@
   };
 
   type Phase = "idle" | "processing" | "done" | "error";
+
+  let { embedded = false }: { embedded?: boolean } = $props();
 
   let phase = $state<Phase>("idle");
   let queue = $state<TranscribeQueueItemView[]>([]);
@@ -290,7 +294,9 @@
       "transcribe://item-progress",
       (event) => handleItemProgress(event.payload),
     );
-    const ulNativeDrop = await getCurrentWindow().onDragDropEvent((event) => {
+    const ulNativeDrop = embedded
+      ? null
+      : await getCurrentWindow().onDragDropEvent((event) => {
       if (event.payload.type === "enter" || event.payload.type === "over") {
         if (canAcceptDrop) {
           isDraggingOverDropZone = true;
@@ -307,7 +313,7 @@
         void queuePaths(event.payload.paths);
       }
     });
-    unlisteners = [ulState, ulProgress, ulNativeDrop];
+    unlisteners = [ulState, ulProgress, ...(ulNativeDrop ? [ulNativeDrop] : [])];
   });
 
   onDestroy(() => {
@@ -316,27 +322,39 @@
   });
 </script>
 
-<section class="flex h-screen flex-col overflow-hidden bg-panel text-fg">
-  <header
-    class="flex min-h-14 items-center justify-between border-b border-rim px-5"
-  >
-    <h1 class="sf-headline-sm text-fg">Transcribe</h1>
-    {#if phase !== "processing" && queue.length === 0}
-      <p class="sf-body-md text-fg-dim">
-        Queue files, choose output path and model, then start transcription.
+<section class="flex h-full min-h-0 flex-col overflow-hidden bg-panel text-fg">
+  {#if !embedded}
+    <header
+      class="flex min-h-14 shrink-0 items-center justify-between border-b border-rim px-5"
+    >
+      <h1 class="sf-headline-sm text-fg">Transcribe</h1>
+      {#if phase !== "processing" && queue.length === 0}
+        <p class="sf-body-md text-fg-dim">
+          Queue files, choose output path and model, then start transcription.
+        </p>
+      {/if}
+      {#if phase === "processing"}
+        <p class="sf-label-sm text-fg-dim">
+          Processing {progress}%
+        </p>
+      {/if}
+      {#if errorMessage}
+        <p class="sf-label-sm text-destructive">{errorMessage}</p>
+      {/if}
+    </header>
+  {:else}
+    <header class="shrink-0 px-6 pt-6">
+      <h1 class="sf-headline-sm text-fg">Upload</h1>
+      <p class="mt-0.5 sf-body-md text-fg-dim">
+        Import audio files and transcribe them into your library.
       </p>
-    {/if}
-    {#if phase === "processing"}
-      <p class="sf-label-sm text-fg-dim">
-        Processing {progress}%
-      </p>
-    {/if}
-    {#if errorMessage}
-      <p class="sf-label-sm text-destructive">{errorMessage}</p>
-    {/if}
-  </header>
+      {#if errorMessage}
+        <p class="mt-2 sf-label-sm text-destructive">{errorMessage}</p>
+      {/if}
+    </header>
+  {/if}
 
-  <div class="relative flex min-h-0 flex-1 flex-col gap-4 px-5 py-4">
+  <ScrollablePanel class="relative flex flex-col gap-4 {embedded ? 'px-6 py-4' : 'px-5 py-4'}">
     <div class="flex gap-2 justify-between">
       <div class="space-y-3">
         <PathSelectorField
@@ -436,11 +454,9 @@
         </div>
       </div>
     {/if}
-  </div>
+  </ScrollablePanel>
 
-  <footer
-    class="flex items-center justify-end gap-2 border-t border-rim px-5 py-3"
-  >
+  <PanelFooter class="gap-2 {embedded ? 'px-6' : 'px-5'}">
     <Button
       variant="normal"
       onclick={() => {
@@ -464,5 +480,5 @@
     >
       Transcribe
     </Button>
-  </footer>
+  </PanelFooter>
 </section>

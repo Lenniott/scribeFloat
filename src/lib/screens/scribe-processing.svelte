@@ -37,9 +37,15 @@
   let {
     title,
     onRecordAgain,
+    embedded = false,
+    onOpenSettings,
+    registerLeaveHandler,
   }: {
     title: string;
     onRecordAgain?: () => void;
+    embedded?: boolean;
+    onOpenSettings?: () => void;
+    registerLeaveHandler?: (handler: (proceed: () => void) => void) => void;
   } = $props();
 
   let phase = $state<Phase>("transcribing");
@@ -62,6 +68,24 @@
 
   let abortConfirmOpen = $state(false);
   let abortInProgress = $state(false);
+  let pendingLeave: (() => void) | null = null;
+
+  function requestLeave(proceed: () => void) {
+    if (phase === "transcribing") {
+      pendingLeave = proceed;
+      abortConfirmOpen = true;
+      return;
+    }
+    proceed();
+  }
+
+  function openSettings() {
+    if (onOpenSettings) {
+      onOpenSettings();
+      return;
+    }
+    void invoke("settings_show_window").catch(() => {});
+  }
 
   function showToast(msg: string, state: ToastState = "normal") {
     if (toastTimeout) clearTimeout(toastTimeout);
@@ -168,7 +192,9 @@
     if (phase !== "transcribing") {
       onRecordAgain?.();
     }
-    await invoke("scribe_destroy_window").catch(() => {});
+    if (!embedded) {
+      await invoke("scribe_destroy_window").catch(() => {});
+    }
   }
 
   async function handleCloseRequest(): Promise<void> {
@@ -183,7 +209,17 @@
     abortInProgress = true;
     try {
       abortConfirmOpen = false;
-      await closeScribeWindowCompletely();
+      if (pendingLeave) {
+        const go = pendingLeave;
+        pendingLeave = null;
+        if (phase === "transcribing") {
+          await invoke("scribe_abort_transcription").catch(() => {});
+        }
+        await invoke("scribe_cancel").catch(() => {});
+        go();
+      } else {
+        await closeScribeWindowCompletely();
+      }
     } finally {
       abortInProgress = false;
     }
@@ -214,15 +250,18 @@
       "scribe://state-changed",
       (event) => handleScribeEvent(event.payload),
     );
-    const ulClose = await listen("scribe://native-close-requested", () => {
-      void handleCloseRequest();
-    });
+    const ulClose = embedded
+      ? null
+      : await listen("scribe://native-close-requested", () => {
+          void handleCloseRequest();
+        });
     const ulOpened = await listen("scribe://opened", () => {
       if (phase === "done" || phase === "no_model" || phase === "error") {
         onRecordAgain?.();
       }
     });
-    unlisteners = [ulState, ulClose, ulOpened];
+    unlisteners = ulClose ? [ulState, ulClose, ulOpened] : [ulState, ulOpened];
+    registerLeaveHandler?.(requestLeave);
     await startProcessing();
   });
 
@@ -231,8 +270,8 @@
   });
 </script>
 
-<div class="mx-auto flex flex-col text-fg">
-  <section class="flex h-screen flex-col overflow-hidden bg-panel">
+<div class="flex h-full min-h-0 flex-col overflow-hidden text-fg">
+  <section class="flex {embedded ? 'h-full min-h-0' : 'h-screen'} flex-col overflow-hidden bg-panel">
     <header class="flex min-h-14 items-end justify-between border-b border-card px-5 py-2 shrink-0">
       <div class="flex min-w-0 flex-1 flex-col gap-1">
         <p class="sf-section-label text-fg-dim">
@@ -294,7 +333,7 @@
             <p class="sf-label-md text-destructive">Could not load transcript.</p>
             <p class="sf-label-sm text-fg-muted">{previewError}</p>
           {:else if bodyText}
-            <ScrollablePanel class="flex-1 min-h-0 px-0 py-0">
+            <ScrollablePanel class="px-0 py-0">
               <p class="sf-body-md whitespace-pre-wrap wrap-break-word text-fg">
                 {bodyText}
               </p>
@@ -323,10 +362,7 @@
               No transcription model is installed. Your recording was saved as
               a WAV file and can be transcribed once a model is downloaded.
             </p>
-            <Button
-              variant="normal"
-              onclick={() => void invoke("settings_show_window").catch(() => {})}
-            >
+            <Button variant="normal" onclick={openSettings}>
               Open Settings
             </Button>
           {:else}
@@ -375,7 +411,10 @@
   description="Transcription is still running. Your audio file has been saved and can be transcribed later via the Transcribe tab."
   maxWidthClass="max-w-md"
   closeDisabled={abortInProgress}
-  onClose={() => (abortConfirmOpen = false)}
+  onClose={() => {
+    abortConfirmOpen = false;
+    pendingLeave = null;
+  }}
 >
   {#snippet footer()}
     <div class="flex gap-2">

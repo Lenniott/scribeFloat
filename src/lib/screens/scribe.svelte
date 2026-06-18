@@ -17,6 +17,8 @@
   import ToggleSwitch from "@components/form/ToggleSwitch.svelte";
   import NoteComposer from "@components/notes/NoteComposer.svelte";
   import NotesList from "@components/notes/NotesList.svelte";
+  import ScrollablePanel from "@lib/components/accordion/ScrollablePanel.svelte";
+  import PanelFooter from "@lib/components/layout/PanelFooter.svelte";
   import { createModelDownloadStore } from "$lib/stores/modelDownload.svelte";
   import Bin from "lucide-svelte/icons/trash-2";
   import Cog from "lucide-svelte/icons/settings-2";
@@ -26,9 +28,20 @@
 
   type Props = {
     processingStart?: (title: string) => void;
+    embedded?: boolean;
+    onOpenSettings?: () => void;
+    /** Bumped when the shell navigates to Scribe so device lists refresh. */
+    visitKey?: number;
+    registerLeaveHandler?: (handler: (proceed: () => void) => void) => void;
   };
 
-  let { processingStart }: Props = $props();
+  let {
+    processingStart,
+    embedded = false,
+    onOpenSettings,
+    visitKey = 0,
+    registerLeaveHandler,
+  }: Props = $props();
 
   // ── State machine ─────────────────────────────────────────────────────────
   type Phase = "idle" | "recording" | "no_model" | "error";
@@ -41,6 +54,7 @@
   let discardConfirmOpen = $state(false);
   let discardInProgress = $state(false);
   let startInProgress = false;
+  let pendingLeave: (() => void) | null = null;
 
   const downloadedModelOptions = $derived(
     modelStore.models
@@ -144,11 +158,24 @@
     ];
   }
 
-  /** Re-scan disk when Scribe is shown — prewarm runs `loadRecoverySessions` once at startup and would otherwise stay stale. */
+  /** Re-scan disk when Scribe is shown. */
   async function refreshRecoverySessionsIfVisible() {
+    if (embedded) {
+      await loadRecoverySessions();
+      return;
+    }
     const visible = await getCurrentWindow().isVisible().catch(() => false);
     if (!visible) return;
     await loadRecoverySessions();
+  }
+
+  function requestLeave(proceed: () => void) {
+    if (phase === "recording") {
+      pendingLeave = proceed;
+      discardConfirmOpen = true;
+      return;
+    }
+    proceed();
   }
 
   // ── Backend events ────────────────────────────────────────────────────────
@@ -274,11 +301,16 @@
   }
 
   async function openSettingsWindow() {
+    if (onOpenSettings) {
+      onOpenSettings();
+      return;
+    }
     await invoke("settings_show_window").catch(() => {});
   }
 
-  /** Backend hides the Scribe webview (does not destroy it) so the tray app keeps running. */
+  /** Backend hides the Scribe webview (standalone window only). */
   async function destroyScribeWindow() {
+    if (embedded) return;
     if (!browser) return;
     await invoke("scribe_cancel").catch(() => {});
     await invoke("scribe_abort_transcription").catch(() => {});
@@ -318,7 +350,13 @@
     try {
       await cancel();
       discardConfirmOpen = false;
-      await destroyScribeWindow();
+      if (pendingLeave) {
+        const go = pendingLeave;
+        pendingLeave = null;
+        go();
+      } else {
+        await destroyScribeWindow();
+      }
     } catch (e) {
       phase = "error";
       errorMessage = "Failed to discard recording: " + String(e);
@@ -414,21 +452,33 @@
         enabled: false,
       }).catch(() => {});
     });
-    const ul3 = await listen("scribe://native-close-requested", () => {
-      void handleNativeCloseRequested();
-    });
     const ulSpeakerSaved = await listen("settings://speaker-capture-saved", () => {
       void reloadSpeakerCaptureSettings();
     });
-    unlisteners = [ul1, ul2, ulSpeaker, ulSpeakerUnavailable, ul3, ulSpeakerSaved];
-    unlistenFocus = await getCurrentWindow().onFocusChanged(
-      ({ payload: focused }) => {
-        if (!focused) return;
-        void refreshMicDevices();
-        void reloadSpeakerCaptureSettings();
-        void refreshRecoverySessionsIfVisible();
-      },
-    );
+    unlisteners = [ul1, ul2, ulSpeaker, ulSpeakerUnavailable, ulSpeakerSaved];
+    if (!embedded) {
+      const ulClose = await listen("scribe://native-close-requested", () => {
+        void handleNativeCloseRequested();
+      });
+      unlisteners.push(ulClose);
+      unlistenFocus = await getCurrentWindow().onFocusChanged(
+        ({ payload: focused }) => {
+          if (!focused) return;
+          void refreshMicDevices();
+          void reloadSpeakerCaptureSettings();
+          void refreshRecoverySessionsIfVisible();
+        },
+      );
+    }
+    registerLeaveHandler?.(requestLeave);
+  });
+
+  $effect(() => {
+    if (!embedded) return;
+    visitKey;
+    void refreshMicDevices();
+    void reloadSpeakerCaptureSettings();
+    void refreshRecoverySessionsIfVisible();
   });
 
   onDestroy(() => {
@@ -439,11 +489,11 @@
   });
 </script>
 
-<div class="mx-auto flex flex-col gap-4 text-fg">
-  <section class="flex h-screen flex-col overflow-hidden bg-panel">
+<div class="flex h-full min-h-0 flex-col overflow-hidden text-fg">
+  <section class="flex {embedded ? 'h-full min-h-0' : 'h-screen'} flex-col overflow-hidden bg-panel">
     <!-- Header -->
     <header
-      class="flex min-h-14 items-end justify-between border-b border-b-rim px-5 py-2"
+      class="flex min-h-14 shrink-0 items-end justify-between border-b border-b-rim px-5 py-2"
     >
       <div class="min-w-0 flex-1">
         <EditableTitleField bind:value={fileName} />
@@ -468,12 +518,12 @@
     </header>
 
     {#if recoverySessions.length > 0 && phase === "idle"}
-      <div class="border-b border-warning bg-warning/15 px-5 py-2 sf-body-md text-fg">
+      <div class="shrink-0 border-b border-warning bg-warning/15 px-5 py-2 sf-body-md text-fg">
         <p>
           {recoverySessions.length === 1
             ? "An interrupted recording was found."
             : `${recoverySessions.length} interrupted recordings were found.`}
-          Open <strong>Transcribe</strong> from the menu bar and drop the session folder
+          Open <strong>Upload</strong> in the sidebar and drop the session folder
           (contains <code class="rounded bg-fill px-1 sf-label-sm">mic.wav</code>) to recover it.
         </p>
         {#if saveFolder}
@@ -491,14 +541,16 @@
     <div class="grid min-h-0 flex-1 grid-cols-[0.45fr_0.99fr] items-stretch">
       <!-- Left: visualizer + settings -->
       <div class="flex min-h-0 flex-col px-4 py-3">
-        <AudioWaveFormVisualizer
-          micLevel={micLevel}
-          speakerLevel={speakerLevel}
-          speakerEnabled={speakerEnabledForWaveform}
-          size="normal"
-        />
+        <div class="shrink-0">
+          <AudioWaveFormVisualizer
+            micLevel={micLevel}
+            speakerLevel={speakerLevel}
+            speakerEnabled={speakerEnabledForWaveform}
+            size="normal"
+          />
+        </div>
 
-        <div class="min-h-0 flex-1 overflow-y-auto">
+        <ScrollablePanel class="px-0 py-0">
           <Accordion>
             <AccordionItem id="basic" title="Basic">
               <div class="space-y-4">
@@ -595,10 +647,10 @@
               </div>
             </AccordionItem>
           </Accordion>
-        </div>
+        </ScrollablePanel>
 
         <!-- Footer -->
-        <footer class="flex flex-col gap-2 py-3">
+        <footer class="flex shrink-0 flex-col gap-2 py-3">
           {#if speakerWarning}
             <p class="sf-label-sm text-fg-dim">{speakerWarning}</p>
           {/if}
@@ -660,14 +712,16 @@
 
       <!-- Right: notes -->
       <div class="flex min-h-0 flex-col border-l border-l-rim bg-panel p-3">
-        <p class="sf-section-label mb-2 text-fg-dim">Add notes</p>
-        <div class="min-h-0 flex-1 overflow-y-auto">
+        <p class="sf-section-label mb-2 shrink-0 text-fg-dim">Add notes</p>
+        <ScrollablePanel class="px-0 py-0">
           <div class="h-full rounded-md">
             <NotesList {notes} bind:selectedId={selectedNoteId} />
           </div>
-        </div>
+        </ScrollablePanel>
         {#if phase === "recording"}
-          <NoteComposer bind:value={noteDraft} onSubmit={addNote} />
+          <div class="shrink-0 pt-3">
+            <NoteComposer bind:value={noteDraft} onSubmit={addNote} />
+          </div>
         {/if}
       </div>
     </div>
@@ -680,7 +734,10 @@
   description="Are you sure you want to discard this recording? This cannot be undone."
   maxWidthClass="max-w-md"
   closeDisabled={discardInProgress}
-  onClose={() => (discardConfirmOpen = false)}
+  onClose={() => {
+    discardConfirmOpen = false;
+    pendingLeave = null;
+  }}
 >
   {#snippet footer()}
     <div class="flex gap-2">

@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { appState } from '@lib/stores/appState.svelte';
-	import { copyItem, openItem, requestDelete, loadNotes } from '@lib/stores/appActions';
-	import NotesView from '@lib/views/notes.svelte';
+	import { appState } from '@stores/appState.svelte';
+	import { copyItem, openItem, requestDelete, loadNotes } from '@stores/appActions';
+	import NotesView from '@views/notes.svelte';
 </script>
 
 <NotesView

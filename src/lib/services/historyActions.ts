@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
-import { copyTranscript } from '$lib/services/clipboard';
-import { loadTranscriptPreview } from '$lib/services/historyTranscript';
+import { copyTranscript } from '@services/clipboard';
+import { loadTranscriptPreview } from '@services/historyTranscript';
 
 export type HistoryListItem = {
 	id: string;

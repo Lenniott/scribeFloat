@@ -1,6 +1,6 @@
-import type { HistoryListItem } from '@lib/services/historyActions';
-import type { ToastState } from '@lib/components/ui/indicators/Toast.svelte';
-import type { SettingsTab } from '@lib/components/sections/settingsTypes';
+import type { HistoryListItem } from '@services/historyActions';
+import type { ToastState } from '@components/indicators/Toast.svelte';
+import type { SettingsTab } from '@sections/settingsTypes';
 
 class AppState {
 	allItems = $state<HistoryListItem[]>([]);

@@ -194,7 +194,7 @@ graph TB
         settings_r["settings/+page.svelte\nSettings"]
     end
 
-    subgraph views["Views — src/lib/views/"]
+    subgraph views["Views — src/lib/ui/views/"]
         home_v["home.svelte\nRecent notes + stats"]
         notes_v["notes.svelte\nList + detail"]
         capture_v["capture.svelte\nScribe overlay"]
@@ -202,12 +202,12 @@ graph TB
         setting_tabs["setting_general.svelte\nsetting_models.svelte\nsetting_permissions.svelte\nsetting_replace.svelte\nsetting_help.svelte"]
     end
 
-    subgraph regions["Regions — src/lib/components/regions/"]
+    subgraph regions["Regions — src/lib/ui/5_regions/"]
         sidebar["AppSidebar / SettingsSidebar"]
         titlebar["TitleBar"]
     end
 
-    subgraph sections["Sections — src/lib/components/sections/"]
+    subgraph sections["Sections — src/lib/ui/4_sections/"]
         detail_pane["NoteDetailPane"]
         settings_panel["SettingsPanel"]
         filter_panel["FilterPanel"]
@@ -704,33 +704,34 @@ src-tauri/src/
 
 src/
 ├── lib/
-│   ├── components/             Reusable Svelte components (taxonomy levels)
-│   │   ├── primitives/         Structural/display building blocks (not standalone)
+│   ├── ui/                     All UI code (@ui → src/lib/ui)
+│   │   ├── 1_primitives/       Structural/display building blocks (@primitives)
 │   │   │   ├── layout/         ScrollBody, PanelHeader, PanelFooter, Modal, StepFrame
 │   │   │   ├── display/        Chip, Timestamp, SourceIcon, StatusDot, RecordingTimer, ProgressBar
 │   │   │   └── form/           TextField, FieldRow, Checkbox, SettingsSection
-│   │   ├── ui/                 Single user action components
+│   │   ├── 2_components/       Single user action components (@components)
 │   │   │   ├── controls/       Button, IconButton, Toggle, EditableTitle, PathPicker, OptionGroup
 │   │   │   ├── cards/          NoteCard, InlineNote, RecentNoteCard, SettingRow, UploadItem, FilterRow
 │   │   │   ├── nav/            NavButton, NavItem, AccordionRow
 │   │   │   └── indicators/     Toast, StatTile, StepIndicator, Waveform
-│   │   ├── patterns/           Multi-component single-action flows
+│   │   ├── 3_patterns/         Multi-component single-action flows (@patterns)
 │   │   │   └── Accordion, NoteComposer, NoteList, UploadQueue
-│   │   ├── sections/           Contained mental model areas
+│   │   ├── 4_sections/         Contained mental model areas (@sections)
 │   │   │   ├── FilterPanel, NoteDetailPane, SettingsPanel, SettingList
 │   │   │   └── onboarding/     WelcomeStep, FeatureTourStep, DictatePracticeStep, PermissionsStep, ModelDownloadStep
-│   │   └── regions/            Fixed structural layout areas
-│   │       └── AppSidebar, SettingsSidebar, TitleBar
-│   ├── views/                  Route-level view components and window-specific views
-│   │   ├── home.svelte         Home area content
-│   │   ├── notes.svelte        Notes area content
-│   │   ├── capture.svelte      Scribe capture overlay (recording → processing)
-│   │   ├── transcribe.svelte   Upload/transcribe workflow
-│   │   ├── scribe.svelte       Recording UI
-│   │   ├── scribe-processing.svelte  Transcribing / Done / No-model UI
-│   │   ├── dictate.svelte      Floating HUD (separate Tauri window)
-│   │   ├── onboarding.svelte   Onboarding flow (separate Tauri window)
-│   │   └── setting_*.svelte    Individual settings tab content
+│   │   ├── 5_regions/          Fixed structural layout areas (@regions)
+│   │   │   └── AppSidebar, SettingsSidebar, TitleBar
+│   │   └── views/              Route-level view components and window-specific views (@views)
+│   │       ├── home.svelte     Home area content
+│   │       ├── notes.svelte    Notes area content
+│   │       ├── capture.svelte  Scribe capture overlay (recording → processing)
+│   │       ├── transcribe.svelte  Upload/transcribe workflow
+│   │       ├── scribe.svelte   Recording UI
+│   │       ├── scribe-processing.svelte  Transcribing / Done / No-model UI
+│   │       ├── dictate.svelte  Floating HUD (separate Tauri window)
+│   │       ├── onboarding.svelte  Onboarding flow (separate Tauri window)
+│   │       └── setting_*.svelte   Individual settings tab content
+│   ├── utils/                  Shared utilities (@utils): platform.ts, theme.ts, types.ts
 │   └── stores/
 │       ├── appState.svelte.ts  Singleton reactive state (notes, capture, toast, delete)
 │       ├── appActions.ts       State mutation actions (loadNotes, copyItem, delete, etc.)

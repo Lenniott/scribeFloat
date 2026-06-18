@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { appState } from '@lib/stores/appState.svelte';
-	import { openNoteDetail } from '@lib/stores/appActions';
-	import HomeView from '@lib/views/home.svelte';
+	import { appState } from '@stores/appState.svelte';
+	import { openNoteDetail } from '@stores/appActions';
+	import HomeView from '@views/home.svelte';
 </script>
 
 <HomeView

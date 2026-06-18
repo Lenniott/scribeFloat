@@ -1,5 +1,5 @@
 <script lang="ts">
-	import UploadView from '@lib/views/upload.svelte';
+	import UploadView from '@views/upload.svelte';
 </script>
 
 <UploadView />

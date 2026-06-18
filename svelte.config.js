@@ -15,8 +15,16 @@ const config = {
     }),
     alias: {
       "@lib": path.resolve("./src/lib"),
-      "@components": path.resolve("./src/lib/components"),
+      "@ui": path.resolve("./src/lib/ui"),
+      "@primitives": path.resolve("./src/lib/ui/1_primitives"),
+      "@components": path.resolve("./src/lib/ui/2_components"),
+      "@patterns": path.resolve("./src/lib/ui/3_patterns"),
+      "@sections": path.resolve("./src/lib/ui/4_sections"),
+      "@regions": path.resolve("./src/lib/ui/5_regions"),
+      "@views": path.resolve("./src/lib/ui/views"),
       "@utils": path.resolve("./src/lib/utils"),
+      "@services": path.resolve("./src/lib/services"),
+      "@stores": path.resolve("./src/lib/stores"),
     },
   },
 };

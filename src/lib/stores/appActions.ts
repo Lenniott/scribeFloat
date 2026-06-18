@@ -5,9 +5,9 @@ import {
 	deleteHistoryItem,
 	openHistoryMarkdown,
 	type HistoryListItem,
-} from '@lib/services/historyActions';
+} from '@services/historyActions';
 import { appState } from './appState.svelte';
-import type { ToastState } from '@lib/components/ui/indicators/Toast.svelte';
+import type { ToastState } from '@components/indicators/Toast.svelte';
 
 export function showToast(msg: string, state: ToastState = 'normal') {
 	if (appState.toastTimeout) clearTimeout(appState.toastTimeout);

@@ -5,21 +5,21 @@
 	import { page } from '$app/state';
 	import { invoke } from '@tauri-apps/api/core';
 	import { listen } from '@tauri-apps/api/event';
-	import { watchThemeMode, type ThemeMode } from '$lib/theme';
+	import { watchThemeMode, type ThemeMode } from '@utils/theme';
 	import '../app.css';
 
-	import AppSidebar, { type AppRoute } from '@lib/components/regions/AppSidebar.svelte';
-	import ShellTitleBar from '@lib/components/regions/TitleBar.svelte';
-	import SettingsSidebar from '@lib/components/regions/SettingsSidebar.svelte';
-	import Toast from '@lib/components/ui/indicators/Toast.svelte';
-	import Button from '@lib/components/ui/controls/Button.svelte';
-	import Modal from '@lib/components/primitives/layout/Modal.svelte';
-	import CaptureView from '@lib/views/capture.svelte';
-	import DictateView from '@lib/views/dictate.svelte';
-	import OnboardingView from '@lib/views/onboarding.svelte';
-	import { appState } from '@lib/stores/appState.svelte';
-	import { loadNotes, executeDelete } from '@lib/stores/appActions';
-	import type { SettingsTab } from '@lib/components/sections/settingsTypes';
+	import AppSidebar, { type AppRoute } from '@regions/AppSidebar.svelte';
+	import ShellTitleBar from '@regions/TitleBar.svelte';
+	import SettingsSidebar from '@regions/SettingsSidebar.svelte';
+	import Toast from '@components/indicators/Toast.svelte';
+	import Button from '@components/controls/Button.svelte';
+	import Modal from '@primitives/layout/Modal.svelte';
+	import CaptureView from '@views/capture.svelte';
+	import DictateView from '@views/dictate.svelte';
+	import OnboardingView from '@views/onboarding.svelte';
+	import { appState } from '@stores/appState.svelte';
+	import { loadNotes, executeDelete } from '@stores/appActions';
+	import type { SettingsTab } from '@sections/settingsTypes';
 
 	let { children } = $props();
 

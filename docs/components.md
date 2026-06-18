@@ -2,13 +2,17 @@
 
 For tokens and surface layout, query `skills/design-skill/design-system.json`. **Notes detail interaction rules** (fullscreen detail, delete on list only, `PanelFooter`): [../docs/history-ui-review.md](../docs/history-ui-review.md).
 
-Components are organised into five taxonomy levels from lowest to highest composition:
+Components are organised into five taxonomy levels from lowest to highest composition. Folders are numbered to match the ordering, and each level has an alias + barrel file:
 
-1. **Primitives** — structural or display building blocks not used standalone in the app
-2. **UI** — single user actions (controls, cards, nav items, indicators)
-3. **Patterns** — one complex action that needs multiple components working together
-4. **Sections** — a contained mental model grouped around one clearly-named thing
-5. **Regions** — fixed structural areas of the layout, always present regardless of content
+| Level | Folder | Alias | Example import |
+|---|---|---|---|
+| 1. **Primitives** | `ui/1_primitives/` | `@primitives` | `import { ScrollBody } from '@primitives/layout'` |
+| 2. **Components** | `ui/2_components/` | `@components` | `import { Button, Toggle } from '@components'` |
+| 3. **Patterns** | `ui/3_patterns/` | `@patterns` | `import { Accordion } from '@patterns'` |
+| 4. **Sections** | `ui/4_sections/` | `@sections` | `import { FilterPanel } from '@sections'` |
+| 5. **Regions** | `ui/5_regions/` | `@regions` | `import { AppSidebar } from '@regions'` |
+
+Views live at `ui/views/` → `@views`. The parent `ui/` folder is `@ui`. Other aliases: `@services`, `@stores`, `@utils` (platform, theme, types). All defined in `svelte.config.js`.
 
 ---
 
@@ -18,31 +22,31 @@ Components are organised into five taxonomy levels from lowest to highest compos
 
 | Component | Path | What it is |
 |---|---|---|
-| `ScrollBody` | `primitives/layout/ScrollBody.svelte` | The default body slot for pattern-B panes. `min-h-0 flex-1 overflow-y-auto overscroll-contain`. Pass padding via `class`. |
-| `PanelHeader` | `primitives/layout/PanelHeader.svelte` | Top chrome with title + left/centre/right action slots. `shrink-0`. |
-| `PanelFooter` | `primitives/layout/PanelFooter.svelte` | Bottom chrome for primary actions. `shrink-0`, not `position: fixed`. |
-| `Modal` | `primitives/layout/Modal.svelte` | Focus-trap overlay with title, description, and footer snippet slots. |
-| `StepFrame` | `primitives/layout/StepFrame.svelte` | Outer layout frame for onboarding step screens. |
+| `ScrollBody` | `1_primitives/layout/ScrollBody.svelte` | The default body slot for pattern-B panes. `min-h-0 flex-1 overflow-y-auto overscroll-contain`. Pass padding via `class`. |
+| `PanelHeader` | `1_primitives/layout/PanelHeader.svelte` | Top chrome with title + left/centre/right action slots. `shrink-0`. |
+| `PanelFooter` | `1_primitives/layout/PanelFooter.svelte` | Bottom chrome for primary actions. `shrink-0`, not `position: fixed`. |
+| `Modal` | `1_primitives/layout/Modal.svelte` | Focus-trap overlay with title, description, and footer snippet slots. |
+| `StepFrame` | `1_primitives/layout/StepFrame.svelte` | Outer layout frame for onboarding step screens. |
 
 ### Display
 
 | Component | Path | What it is |
 |---|---|---|
-| `Chip` | `primitives/display/Chip.svelte` | Small badge/label. Exports `ChipVariant` type (brand, focus, muted, active, warning). |
-| `Timestamp` | `primitives/display/Timestamp.svelte` | Formatted elapsed-time label (e.g. `2:23 PM`). |
-| `SourceIcon` | `primitives/display/SourceIcon.svelte` | Icon indicating the source kind of a note (mic, speaker, etc.). |
-| `StatusDot` | `primitives/display/StatusDot.svelte` | Pulsing dot for recording state. Changes appearance for idle, recording, paused, error. |
-| `RecordingTimer` | `primitives/display/RecordingTimer.svelte` | Elapsed-time display. Shows formatted session time such as `00:00` from external state. |
-| `ProgressBar` | `primitives/display/ProgressBar.svelte` | Horizontal stacked-bar progress indicator. Supports `indeterminate` shimmer mode. |
+| `Chip` | `1_primitives/display/Chip.svelte` | Small badge/label. Exports `ChipVariant` type (brand, focus, muted, active, warning). |
+| `Timestamp` | `1_primitives/display/Timestamp.svelte` | Formatted elapsed-time label (e.g. `2:23 PM`). |
+| `SourceIcon` | `1_primitives/display/SourceIcon.svelte` | Icon indicating the source kind of a note (mic, speaker, etc.). |
+| `StatusDot` | `1_primitives/display/StatusDot.svelte` | Pulsing dot for recording state. Changes appearance for idle, recording, paused, error. |
+| `RecordingTimer` | `1_primitives/display/RecordingTimer.svelte` | Elapsed-time display. Shows formatted session time such as `00:00` from external state. |
+| `ProgressBar` | `1_primitives/display/ProgressBar.svelte` | Horizontal stacked-bar progress indicator. Supports `indeterminate` shimmer mode. |
 
 ### Form
 
 | Component | Path | What it is |
 |---|---|---|
-| `TextField` | `primitives/form/TextField.svelte` | Text input with a label. Used for mic name, speaker name, etc. |
-| `FieldRow` | `primitives/form/FieldRow.svelte` | Labelled config field row. Renders label + control in a consistent layout. |
-| `Checkbox` | `primitives/form/Checkbox.svelte` | Standard checkbox with accessible label. |
-| `SettingsSection` | `primitives/form/SettingsSection.svelte` | Titled section container for settings screen groups. |
+| `TextField` | `1_primitives/form/TextField.svelte` | Text input with a label. Used for mic name, speaker name, etc. |
+| `FieldRow` | `1_primitives/form/FieldRow.svelte` | Labelled config field row. Renders label + control in a consistent layout. |
+| `Checkbox` | `1_primitives/form/Checkbox.svelte` | Standard checkbox with accessible label. |
+| `SettingsSection` | `1_primitives/form/SettingsSection.svelte` | Titled section container for settings screen groups. |
 
 ---
 
@@ -52,40 +56,40 @@ Components are organised into five taxonomy levels from lowest to highest compos
 
 | Component | Path | What it is |
 |---|---|---|
-| `Button` | `ui/controls/Button.svelte` | Primary action button. Five variants: primary, destructive, ghost, normal, active. |
-| `IconButton` | `ui/controls/IconButton.svelte` | Compact icon-only button. Fewer variants than `Button` (primary, destructive, normal). |
-| `Toggle` | `ui/controls/Toggle.svelte` | On/off switch. Used for speaker enablement and export options. |
-| `EditableTitle` | `ui/controls/EditableTitle.svelte` | Inline editable title field. Starts as plain text; switches to input on focus. |
-| `PathPicker` | `ui/controls/PathPicker.svelte` | Path value + Change button. Triggers a file-picker callback. |
-| `OptionGroup` | `ui/controls/OptionGroup.svelte` | Small grouped radio/segmented selector. Used for model size, theme, etc. |
+| `Button` | `2_components/controls/Button.svelte` | Primary action button. Five variants: primary, destructive, ghost, normal, active. |
+| `IconButton` | `2_components/controls/IconButton.svelte` | Compact icon-only button. Fewer variants than `Button` (primary, destructive, normal). |
+| `Toggle` | `2_components/controls/Toggle.svelte` | On/off switch. Used for speaker enablement and export options. |
+| `EditableTitle` | `2_components/controls/EditableTitle.svelte` | Inline editable title field. Starts as plain text; switches to input on focus. |
+| `PathPicker` | `2_components/controls/PathPicker.svelte` | Path value + Change button. Triggers a file-picker callback. |
+| `OptionGroup` | `2_components/controls/OptionGroup.svelte` | Small grouped radio/segmented selector. Used for model size, theme, etc. |
 
 ### Cards
 
 | Component | Path | What it is |
 |---|---|---|
-| `NoteCard` | `ui/cards/NoteCard.svelte` | Notes list row. Selectable title + icon actions (Copy, View, Open, Delete). |
-| `InlineNote` | `ui/cards/InlineNote.svelte` | Inline note card. Displays note text + timestamp. Exports `Note` type. |
-| `RecentNoteCard` | `ui/cards/RecentNoteCard.svelte` | Recent-note card for the Home screen. Compact title + metadata. |
-| `SettingRow` | `ui/cards/SettingRow.svelte` | Single setting row in a settings list. Label + control slot. |
-| `UploadItem` | `ui/cards/UploadItem.svelte` | Per-item row in the upload/transcribe queue. Shows progress + status + actions. |
-| `FilterRow` | `ui/cards/FilterRow.svelte` | Checkbox row in the filter panel. Tag label + checkbox. |
+| `NoteCard` | `2_components/cards/NoteCard.svelte` | Notes list row. Selectable title + icon actions (Copy, View, Open, Delete). |
+| `InlineNote` | `2_components/cards/InlineNote.svelte` | Inline note card. Displays note text + timestamp. Exports `Note` type. |
+| `RecentNoteCard` | `2_components/cards/RecentNoteCard.svelte` | Recent-note card for the Home screen. Compact title + metadata. |
+| `SettingRow` | `2_components/cards/SettingRow.svelte` | Single setting row in a settings list. Label + control slot. |
+| `UploadItem` | `2_components/cards/UploadItem.svelte` | Per-item row in the upload/transcribe queue. Shows progress + status + actions. |
+| `FilterRow` | `2_components/cards/FilterRow.svelte` | Checkbox row in the filter panel. Tag label + checkbox. |
 
 ### Nav
 
 | Component | Path | What it is |
 |---|---|---|
-| `NavButton` | `ui/nav/NavButton.svelte` | Route navigation button. Used for top-level app navigation. |
-| `NavItem` | `ui/nav/NavItem.svelte` | Sidebar navigation item. Icon + label + optional badge chip. |
-| `AccordionRow` | `ui/nav/AccordionRow.svelte` | One collapsible accordion section. Must be used inside `Accordion`. |
+| `NavButton` | `2_components/nav/NavButton.svelte` | Route navigation button. Used for top-level app navigation. |
+| `NavItem` | `2_components/nav/NavItem.svelte` | Sidebar navigation item. Icon + label + optional badge chip. |
+| `AccordionRow` | `2_components/nav/AccordionRow.svelte` | One collapsible accordion section. Must be used inside `Accordion`. |
 
 ### Indicators
 
 | Component | Path | What it is |
 |---|---|---|
-| `Toast` | `ui/indicators/Toast.svelte` | Transient notification strip. Exports `ToastState` type (normal, success, error). |
-| `StatTile` | `ui/indicators/StatTile.svelte` | Summary stat tile for the Home screen. Label + value. |
-| `StepIndicator` | `ui/indicators/StepIndicator.svelte` | Step progress dots for onboarding flows. |
-| `Waveform` | `ui/indicators/Waveform.svelte` | Live PCM stack-bar waveform visualizer. Used in Scribe + Dictate. Exports `StackBlockSize` type. |
+| `Toast` | `2_components/indicators/Toast.svelte` | Transient notification strip. Exports `ToastState` type (normal, success, error). |
+| `StatTile` | `2_components/indicators/StatTile.svelte` | Summary stat tile for the Home screen. Label + value. |
+| `StepIndicator` | `2_components/indicators/StepIndicator.svelte` | Step progress dots for onboarding flows. |
+| `Waveform` | `2_components/indicators/Waveform.svelte` | Live PCM stack-bar waveform visualizer. Used in Scribe + Dictate. Exports `StackBlockSize` type. |
 
 ---
 
@@ -93,10 +97,10 @@ Components are organised into five taxonomy levels from lowest to highest compos
 
 | Component | Path | What it is |
 |---|---|---|
-| `Accordion` | `patterns/Accordion.svelte` | Collapsible section system. Controls `AccordionRow` children, enforces single-open behaviour. |
-| `NoteComposer` | `patterns/NoteComposer.svelte` | Text entry + submit for manual note creation. |
-| `NoteList` | `patterns/NoteList.svelte` | Scrollable list of `InlineNote` rows. |
-| `UploadQueue` | `patterns/UploadQueue.svelte` | Scrollable list of `UploadItem` rows. |
+| `Accordion` | `3_patterns/Accordion.svelte` | Collapsible section system. Controls `AccordionRow` children, enforces single-open behaviour. |
+| `NoteComposer` | `3_patterns/NoteComposer.svelte` | Text entry + submit for manual note creation. |
+| `NoteList` | `3_patterns/NoteList.svelte` | Scrollable list of `InlineNote` rows. |
+| `UploadQueue` | `3_patterns/UploadQueue.svelte` | Scrollable list of `UploadItem` rows. |
 
 ---
 
@@ -104,20 +108,20 @@ Components are organised into five taxonomy levels from lowest to highest compos
 
 | Component | Path | What it is |
 |---|---|---|
-| `FilterPanel` | `sections/FilterPanel.svelte` | Tag-filter side panel. Vocabulary list of `FilterRow` items + active filter count. |
-| `NoteDetailPane` | `sections/NoteDetailPane.svelte` | Fullscreen transcript + metadata detail pane (was `HistoryDetailPane`). |
-| `SettingList` | `sections/SettingList.svelte` | Scrollable container for `SettingRow` items. |
-| `SettingsPanel` | `sections/SettingsPanel.svelte` | Full settings area. Routes active tab to the correct setting screen. |
+| `FilterPanel` | `4_sections/FilterPanel.svelte` | Tag-filter side panel. Vocabulary list of `FilterRow` items + active filter count. |
+| `NoteDetailPane` | `4_sections/NoteDetailPane.svelte` | Fullscreen transcript + metadata detail pane (was `HistoryDetailPane`). |
+| `SettingList` | `4_sections/SettingList.svelte` | Scrollable container for `SettingRow` items. |
+| `SettingsPanel` | `4_sections/SettingsPanel.svelte` | Full settings area. Routes active tab to the correct setting screen. |
 
 ### Onboarding
 
 | Component | Path | What it is |
 |---|---|---|
-| `WelcomeStep` | `sections/onboarding/WelcomeStep.svelte` | First onboarding step: app intro + CTA. |
-| `FeatureTourStep` | `sections/onboarding/FeatureTourStep.svelte` | Feature overview step with app menu mock. |
-| `DictatePracticeStep` | `sections/onboarding/DictatePracticeStep.svelte` | Interactive dictation practice step. |
-| `PermissionsStep` | `sections/onboarding/PermissionsStep.svelte` | Microphone + accessibility permission request step. |
-| `ModelDownloadStep` | `sections/onboarding/ModelDownloadStep.svelte` | Whisper model download step with progress. |
+| `WelcomeStep` | `4_sections/onboarding/WelcomeStep.svelte` | First onboarding step: app intro + CTA. |
+| `FeatureTourStep` | `4_sections/onboarding/FeatureTourStep.svelte` | Feature overview step with app menu mock. |
+| `DictatePracticeStep` | `4_sections/onboarding/DictatePracticeStep.svelte` | Interactive dictation practice step. |
+| `PermissionsStep` | `4_sections/onboarding/PermissionsStep.svelte` | Microphone + accessibility permission request step. |
+| `ModelDownloadStep` | `4_sections/onboarding/ModelDownloadStep.svelte` | Whisper model download step with progress. |
 
 ---
 
@@ -125,6 +129,6 @@ Components are organised into five taxonomy levels from lowest to highest compos
 
 | Component | Path | What it is |
 |---|---|---|
-| `AppSidebar` | `regions/AppSidebar.svelte` | Left nav sidebar with route icons. Exports `AppRoute` type. |
-| `SettingsSidebar` | `regions/SettingsSidebar.svelte` | Settings-mode left sidebar with tab nav and back button. |
-| `TitleBar` | `regions/TitleBar.svelte` | Top title bar chrome. Houses the New Note button and recording state indicator. |
+| `AppSidebar` | `5_regions/AppSidebar.svelte` | Left nav sidebar with route icons. Exports `AppRoute` type. |
+| `SettingsSidebar` | `5_regions/SettingsSidebar.svelte` | Settings-mode left sidebar with tab nav and back button. |
+| `TitleBar` | `5_regions/TitleBar.svelte` | Top title bar chrome. Houses the New Note button and recording state indicator. |

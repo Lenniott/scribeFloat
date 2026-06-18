@@ -53,7 +53,8 @@
 	}
 
 	const viewParam = browser ? new URLSearchParams(window.location.search).get('view') : null;
-	const isMainWindow = !viewParam;
+	// Main shell uses ?view=history (Tauri); only dictate/onboarding are satellite windows.
+	const isSatelliteWindow = viewParam === 'onboarding' || viewParam === 'dictate';
 
 	let previousPath = $state('/');
 
@@ -113,7 +114,7 @@
 		}
 		window.addEventListener('storage', onStorage);
 
-		if (!isMainWindow) {
+		if (isSatelliteWindow) {
 			return () => {
 				mounted = false;
 				cleanup();

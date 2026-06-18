@@ -1,8 +1,11 @@
 use crate::services::config::ConfigService;
 use crate::services::history::HistoryService;
 use crate::services::output::{self, OutputService};
-use crate::types::{HistoryItemSource, HistoryKind, HistoryListItem, HistoryRecord};
-use std::collections::HashSet;
+use crate::types::{
+    DashboardStats, HistoryItemSource, HistoryKind, HistoryListItem, HistoryRecord,
+    TagVocabularyEntry,
+};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -63,6 +66,9 @@ impl HistoryController {
                     model: entry.model,
                     word_count: 0,
                     duration_ms: 0,
+                    duration_secs: 0,
+                    excerpt: None,
+                    tags: Vec::new(),
                     has_markdown: true,
                     markdown_path: Some(entry.path),
                     source: HistoryItemSource::LegacyMarkdown,
@@ -81,6 +87,9 @@ impl HistoryController {
                     model: String::new(),
                     word_count: entry.text.split_whitespace().count(),
                     duration_ms: 0,
+                    duration_secs: 0,
+                    excerpt: excerpt_from_legacy_text(&entry.text),
+                    tags: Vec::new(),
                     has_markdown: false,
                     markdown_path: None,
                     source: HistoryItemSource::LegacyDictate,
@@ -225,6 +234,48 @@ impl HistoryController {
             .ok_or_else(|| "path is outside the configured save folder".to_string())?;
         self.output.read_transcript(&canonical)
     }
+
+    /// Dashboard home-screen metrics (store records only for week duration).
+    pub fn dashboard_stats(&self) -> Result<DashboardStats, String> {
+        let save_folder = self.config.get().save_folder;
+        let store = self
+            .history
+            .list_summaries(&save_folder)
+            .map_err(|e| e.to_string())?;
+        let transcript_count = store.len();
+        let recorded_this_week_secs = sum_duration_this_iso_week(&store);
+        Ok(DashboardStats {
+            transcript_count,
+            recorded_this_week_secs,
+            float_layers: None,
+            drafts_to_review: None,
+        })
+    }
+
+    /// Unique tag names and transcript counts for the Transcripts filter panel.
+    pub fn tag_vocabulary(&self) -> Result<Vec<TagVocabularyEntry>, String> {
+        let save_folder = self.config.get().save_folder;
+        let store = self
+            .history
+            .list_summaries(&save_folder)
+            .map_err(|e| e.to_string())?;
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for item in &store {
+            for tag in &item.tags {
+                let key = tag.trim();
+                if key.is_empty() {
+                    continue;
+                }
+                *counts.entry(key.to_string()).or_default() += 1;
+            }
+        }
+        let mut out: Vec<TagVocabularyEntry> = counts
+            .into_iter()
+            .map(|(name, count)| TagVocabularyEntry { name, count })
+            .collect();
+        out.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(out)
+    }
 }
 
 fn is_legacy(id: &str) -> bool {
@@ -244,6 +295,40 @@ fn short_title(text: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+fn excerpt_from_legacy_text(text: &str) -> Option<String> {
+    let flat: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.is_empty() {
+        return None;
+    }
+    const MAX: usize = 120;
+    if flat.chars().count() <= MAX {
+        Some(flat)
+    } else {
+        let truncated: String = flat.chars().take(MAX).collect();
+        Some(format!("{truncated}…"))
+    }
+}
+
+fn sum_duration_this_iso_week(store: &[HistoryListItem]) -> Option<i64> {
+    use chrono::Datelike;
+    let now = chrono::Utc::now();
+    let this_week = now.iso_week();
+    let this_year = now.year();
+    let mut total_secs: i64 = 0;
+    let mut any = false;
+    for item in store {
+        let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&item.created_at) else {
+            continue;
+        };
+        let utc = dt.with_timezone(&chrono::Utc);
+        if utc.iso_week() == this_week && utc.year() == this_year {
+            total_secs += item.duration_secs.max(0);
+            any = true;
+        }
+    }
+    any.then_some(total_secs)
 }
 
 /// Canonicalize `path` and confirm it lives inside `save_folder` (the `read_transcript_at` idiom).

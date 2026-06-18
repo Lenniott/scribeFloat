@@ -678,10 +678,31 @@ pub struct HistoryListItem {
     pub model: String,
     pub word_count: usize,
     pub duration_ms: i64,
+    pub duration_secs: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub excerpt: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
     pub has_markdown: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub markdown_path: Option<String>,
     pub source: HistoryItemSource,
+}
+
+/// Aggregated dashboard metrics for the home screen.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardStats {
+    pub transcript_count: usize,
+    pub recorded_this_week_secs: Option<i64>,
+    pub float_layers: Option<usize>,
+    pub drafts_to_review: Option<usize>,
+}
+
+/// One tag name and how many store transcripts reference it (filter panel vocabulary).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TagVocabularyEntry {
+    pub name: String,
+    pub count: usize,
 }
 
 impl HistoryRecord {
@@ -810,10 +831,32 @@ impl HistoryRecord {
             model: self.model.clone(),
             word_count: self.word_count,
             duration_ms: self.duration_ms,
+            duration_secs: self.duration_ms / 1000,
+            excerpt: excerpt_from_segments(&self.segments),
+            tags: Vec::new(),
             has_markdown: self.markdown_path.is_some(),
             markdown_path: self.markdown_path.clone(),
             source: HistoryItemSource::Store,
         }
+    }
+}
+
+const EXCERPT_MAX_CHARS: usize = 120;
+
+fn excerpt_from_segments(segments: &[Segment]) -> Option<String> {
+    let text = segments
+        .iter()
+        .map(|s| s.text.trim())
+        .find(|t| !t.is_empty())?;
+    let flat: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.is_empty() {
+        return None;
+    }
+    if flat.chars().count() <= EXCERPT_MAX_CHARS {
+        Some(flat)
+    } else {
+        let truncated: String = flat.chars().take(EXCERPT_MAX_CHARS).collect();
+        Some(format!("{truncated}…"))
     }
 }
 

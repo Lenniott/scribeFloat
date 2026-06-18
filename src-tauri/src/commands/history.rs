@@ -1,5 +1,5 @@
 use crate::controllers::history::HistoryController;
-use crate::types::{AppError, HistoryListItem, HistoryRecord};
+use crate::types::{AppError, DashboardStats, HistoryListItem, HistoryRecord, TagVocabularyEntry};
 use std::sync::Arc;
 use tauri::State;
 
@@ -88,4 +88,18 @@ pub fn history_read_legacy(
         return Err(AppError::InvalidInput("path must not be empty".to_string()));
     }
     ctrl.read_legacy(&path).map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn get_dashboard_stats(
+    ctrl: State<'_, Arc<HistoryController>>,
+) -> Result<DashboardStats, AppError> {
+    ctrl.dashboard_stats().map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn history_tag_vocabulary(
+    ctrl: State<'_, Arc<HistoryController>>,
+) -> Result<Vec<TagVocabularyEntry>, AppError> {
+    ctrl.tag_vocabulary().map_err(AppError::from)
 }

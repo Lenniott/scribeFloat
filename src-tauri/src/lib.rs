@@ -118,9 +118,6 @@ fn total_ram_bytes() -> Option<u64> {
     None
 }
 
-pub(crate) const SCRIBE_WINDOW_LABEL: &str = "scribe";
-const TRANSCRIBE_WINDOW_LABEL: &str = "transcribe";
-const SETTINGS_WINDOW_LABEL: &str = "settings";
 pub(crate) const DICTATE_WINDOW_LABEL: &str = "dictate";
 const HISTORY_WINDOW_LABEL: &str = "history";
 const ONBOARDING_WINDOW_LABEL: &str = "onboarding";
@@ -131,14 +128,8 @@ const OPEN_HISTORY_MENU_ID: &str = "open_history";
 const OPEN_SETTINGS_MENU_ID: &str = "open_settings";
 const QUIT_MENU_ID: &str = "quit";
 
-const SCRIBE_WINDOW_W: f64 = 800.0;
-const SCRIBE_WINDOW_H: f64 = 600.0;
-const TRANSCRIBE_WINDOW_W: f64 = 800.0;
-const TRANSCRIBE_WINDOW_H: f64 = 600.0;
-const SETTINGS_WINDOW_W: f64 = 960.0;
-const SETTINGS_WINDOW_H: f64 = 680.0;
-const HISTORY_WINDOW_W: f64 = 480.0;
-const HISTORY_WINDOW_H: f64 = 600.0;
+const HISTORY_WINDOW_W: f64 = 980.0;
+const HISTORY_WINDOW_H: f64 = 680.0;
 const DICTATE_WINDOW_W: f64 = 240.0;
 const DICTATE_WINDOW_H: f64 = 48.0;
 const ONBOARDING_WINDOW_W: f64 = 680.0;
@@ -181,7 +172,7 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
-    let open_history = MenuItem::with_id(app, OPEN_HISTORY_MENU_ID, "History", true, None::<&str>)?;
+    let open_history = MenuItem::with_id(app, OPEN_HISTORY_MENU_ID, "Dashboard", true, None::<&str>)?;
     let open_settings =
         MenuItem::with_id(app, OPEN_SETTINGS_MENU_ID, "Settings", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, QUIT_MENU_ID, "Quit", true, None::<&str>)?;
@@ -250,44 +241,6 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-fn prewarm_scribe_window(app: &AppHandle) {
-    let result: tauri::Result<()> = (|| {
-        let url = WebviewUrl::App("index.html".into());
-        let mut builder = WebviewWindowBuilder::new(app, SCRIBE_WINDOW_LABEL, url)
-            .title("Scribe")
-            .inner_size(SCRIBE_WINDOW_W, SCRIBE_WINDOW_H)
-            .visible(false);
-        if let Some(icon) = app.default_window_icon() {
-            builder = builder.icon(icon.clone())?;
-        }
-        let window = builder.build()?;
-        // `visible(false)` alone can still leave the webview reported visible on macOS until hide().
-        let _ = window.hide();
-        Ok(())
-    })();
-    if let Err(err) = result {
-        tracing::debug!(error = %err, "failed to prewarm scribe window");
-    }
-}
-
-fn prewarm_transcribe_window(app: &AppHandle) {
-    let result: tauri::Result<()> = (|| {
-        let url = WebviewUrl::App("?view=transcribe".into());
-        let mut builder = WebviewWindowBuilder::new(app, TRANSCRIBE_WINDOW_LABEL, url)
-            .title("Transcribe")
-            .inner_size(TRANSCRIBE_WINDOW_W, TRANSCRIBE_WINDOW_H)
-            .visible(false);
-        if let Some(icon) = app.default_window_icon() {
-            builder = builder.icon(icon.clone())?;
-        }
-        builder.build()?;
-        Ok(())
-    })();
-    if let Err(err) = result {
-        tracing::debug!(error = %err, "failed to prewarm transcribe window");
-    }
-}
-
 fn prewarm_dictate_window(app: &AppHandle) {
     let result: tauri::Result<()> = (|| {
         let (x, y) = primary_monitor_dictate_position(app);
@@ -312,48 +265,47 @@ fn prewarm_dictate_window(app: &AppHandle) {
     }
 }
 
-pub(crate) fn open_scribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    let window = open_or_focus_window(
-        app,
-        SCRIBE_WINDOW_LABEL,
-        "Scribe",
-        WebviewUrl::App("index.html".into()),
-        SCRIBE_WINDOW_W,
-        SCRIBE_WINDOW_H,
-    )?;
-    // Tell the frontend the window was deliberately opened (tray or hotkey).
-    // scribe-processing.svelte uses this to return to the recording screen when done.
-    let _ = window.emit("scribe://opened", ());
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ShellNavigatePayload {
+    route: String,
+    settings_tab: Option<String>,
+}
+
+fn navigate_shell(
+    app: &AppHandle,
+    route: &str,
+    settings_tab: Option<&str>,
+) -> tauri::Result<WebviewWindow> {
+    let window = open_history_window(app)?;
+    let payload = ShellNavigatePayload {
+        route: route.to_string(),
+        settings_tab: settings_tab.map(|s| s.to_string()),
+    };
+    let _ = window.emit("shell://navigate", payload);
+    if route == "scribe" {
+        let _ = window.emit("scribe://opened", ());
+    }
     Ok(window)
 }
 
+pub(crate) fn open_scribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    navigate_shell(app, "scribe", None)
+}
+
 pub(crate) fn open_settings_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    open_or_focus_window(
-        app,
-        SETTINGS_WINDOW_LABEL,
-        "Settings",
-        WebviewUrl::App("?view=settings".into()),
-        SETTINGS_WINDOW_W,
-        SETTINGS_WINDOW_H,
-    )
+    navigate_shell(app, "settings", None)
 }
 
 pub(crate) fn open_transcribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    open_or_focus_window(
-        app,
-        TRANSCRIBE_WINDOW_LABEL,
-        "Transcribe",
-        WebviewUrl::App("?view=transcribe".into()),
-        TRANSCRIBE_WINDOW_W,
-        TRANSCRIBE_WINDOW_H,
-    )
+    navigate_shell(app, "upload", None)
 }
 
 fn open_history_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     open_or_focus_window(
         app,
         HISTORY_WINDOW_LABEL,
-        "History",
+        "ScribeFloat",
         WebviewUrl::App("?view=history".into()),
         HISTORY_WINDOW_W,
         HISTORY_WINDOW_H,
@@ -636,8 +588,6 @@ pub fn run() {
             if is_first_run {
                 open_onboarding_window(app.handle())?;
             }
-            prewarm_scribe_window(app.handle());
-            prewarm_transcribe_window(app.handle());
             prewarm_dictate_window(app.handle());
             // Tao applies Regular activation at launch; `set_dock_visibility(false)` only runs when we
             // call it. Sync once after prewarm so a tray-only start hides the Dock (plist LSUIElement
@@ -689,34 +639,14 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if matches!(event, WindowEvent::Destroyed) {
-                if window.label() == SCRIBE_WINDOW_LABEL {
-                    // Release mic/speaker streams if the webview is torn down before invoke(`scribe_cancel`)
-                    // completes (crash or exceptional teardown — normal close uses hide, not destroy).
-                    if let Some(ctrl) = window
-                        .app_handle()
-                        .try_state::<Arc<controllers::scribe::ScribeController>>()
-                    {
-                        let _ = ctrl.cancel();
-                    }
-                    platform::window_impl::sync_activation_policy(window.app_handle());
-                    return;
-                }
                 // Sync dock visibility after onboarding is fully destroyed (not on CloseRequested,
                 // where is_visible() still returns true for the closing window).
                 if window.label() == ONBOARDING_WINDOW_LABEL {
                     platform::window_impl::sync_activation_policy(window.app_handle());
-                    return;
                 }
             }
 
             if let WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == SCRIBE_WINDOW_LABEL {
-                    api.prevent_close();
-                    let _ = window.emit("scribe://native-close-requested", serde_json::json!({}));
-                    platform::window_impl::sync_activation_policy(window.app_handle());
-                    return;
-                }
-
                 // The onboarding window is a one-time wizard: let it destroy normally.
                 // The frontend calls settings_complete_onboarding before closing.
                 if window.label() == ONBOARDING_WINDOW_LABEL {
@@ -805,12 +735,16 @@ pub fn run() {
             commands::dictate::dictate_cancel,
             commands::dictate::dictate_dismiss,
             commands::dictate::dictate_get_history,
+            commands::dictate::dictate_trigger,
+            commands::dictate::dictate_get_state,
             commands::history::history_list,
             commands::history::history_get_detail,
             commands::history::history_render_markdown,
             commands::history::history_export_markdown,
             commands::history::history_delete,
             commands::history::history_read_legacy,
+            commands::history::get_dashboard_stats,
+            commands::history::history_tag_vocabulary,
             commands::transcribe::transcribe_inspect_inputs,
             commands::transcribe::transcribe_start,
             commands::transcribe::transcribe_open_output,

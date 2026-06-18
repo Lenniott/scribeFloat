@@ -197,15 +197,15 @@ graph TB
     end
 
     subgraph layout["Layout — src/lib/components/layout/"]
-        shell["PanelFrame\nOuter frame for all panels"]
+        shell["PanelHeader\nTop chrome for all panels"]
         header["PanelHeader\nTitle bar with close / back"]
         footer["PanelFooter\nflex shrink-0, below scroll — History detail only"]
     end
 
     subgraph audio_comp["Audio — src/lib/components/audio/"]
-        waveform["WaveformDisplay\nLive PCM bars — Scribe + Dictate"]
+        waveform["Waveform\nLive PCM bars — Scribe + Dictate"]
         dot["StatusDot\nPulsing red dot"]
-        timer["ElapsedTimer\nElapsed display"]
+        timer["RecordingTimer\nElapsed display"]
     end
 
     subgraph history_comp["History — src/lib/components/history/"]
@@ -214,7 +214,7 @@ graph TB
     end
 
     subgraph notes_comp["Notes — src/lib/components/notes/"]
-        notes_panel["NotesPanel\nContainer"]
+        notes_panel["NoteList\nNote list"]
         note_composer["NoteComposer\nInput field"]
         notes_list["NoteList + NoteCard\nTimestamped note rows"]
     end
@@ -225,7 +225,7 @@ graph TB
     end
 
     subgraph form_comp["Form — src/lib/components/form/"]
-        device_sel["DeviceSelect (removed)"]
+        
         toggle["Toggle"]
         path_sel["PathPicker"]
         option_grp["OptionGroup"]
@@ -727,7 +727,7 @@ src/
 ├── lib/
 │   ├── components/             Reusable Svelte components
 │   │   ├── audio/              Waveform, StatusDot, RecordingTimer
-│   │   ├── form/               DeviceSelect (removed), Toggle, PathPicker, OptionGroup, …
+│   │   ├── form/               Toggle, PathPicker, OptionGroup, …
 │   │   ├── layout/             PanelHeader, PanelFooter, Modal, StepFrame
 │   │   ├── history/            NoteCard (deleted), NoteDetailPane
 │   │   ├── notes/              NoteCard, NoteList, NoteComposer

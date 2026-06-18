@@ -2,15 +2,15 @@
   import { onDestroy, onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { createModelDownloadStore } from "$lib/stores/modelDownload.svelte";
-  import Toast from "@lib/components/Toast.svelte";
-  import type { ToastState } from "@lib/components/Toast.svelte";
-  import ConfigField from "@lib/components/form/ConfigField.svelte";
-  import IconButton from "@lib/components/IconButton.svelte";
-  import Chip from "@lib/components/Chip.svelte";
-  import SettingsList from "@lib/components/settings/SettingsList.svelte";
-  import SettingsRow from "@lib/components/settings/SettingsRow.svelte";
-  import SettingsSection from "@lib/components/settings/SettingsSection.svelte";
-  import ScrollablePanel from "@lib/components/accordion/ScrollablePanel.svelte";
+  import Toast from "@lib/components/ui/indicators/Toast.svelte";
+  import type { ToastState } from "@lib/components/ui/indicators/Toast.svelte";
+  import ConfigField from "@lib/components/primitives/form/FormRow.svelte";
+  import IconButton from "@lib/components/ui/controls/IconButton.svelte";
+  import Chip from "@lib/components/primitives/display/Chip.svelte";
+  import SettingsList from "@lib/components/sections/SettingList.svelte";
+  import SettingsRow from "@lib/components/ui/cards/SettingRow.svelte";
+  import SettingsSection from "@lib/components/primitives/form/SettingsSection.svelte";
+  import ScrollablePanel from "@lib/components/primitives/layout/ScrollBody.svelte";
   import { Download, Trash2 } from "lucide-svelte";
 
   let {

@@ -8,14 +8,14 @@
   import { loadTranscriptPreview } from "$lib/services/historyTranscript";
   import { openHistoryMarkdown } from "$lib/services/historyActions";
 
-  import Button from "@components/Button.svelte";
-  import Modal from "@components/Modal.svelte";
-  import StackProgressBar from "@components/form/StackProgressBar.svelte";
-  import ScrollablePanel from "@lib/components/accordion/ScrollablePanel.svelte";
-  import Toast from "@components/Toast.svelte";
-  import type { ToastState } from "@components/Toast.svelte";
+  import Button from "@lib/components/ui/controls/Button.svelte";
+  import Modal from "@lib/components/primitives/layout/Modal.svelte";
+  import StackProgressBar from "@lib/components/primitives/display/ProgressBar.svelte";
+  import ScrollablePanel from "@lib/components/primitives/layout/ScrollBody.svelte";
+  import Toast from "@lib/components/ui/indicators/Toast.svelte";
+  import type { ToastState } from "@lib/components/ui/indicators/Toast.svelte";
   import { Copy, SquareArrowOutUpRight } from "lucide-svelte";
-  import IconButton from "@lib/components/IconButton.svelte";
+  import IconButton from "@lib/components/ui/controls/IconButton.svelte";
 
   type Phase = "transcribing" | "done" | "no_model" | "error";
   type ProcessingStage =

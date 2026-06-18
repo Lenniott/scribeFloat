@@ -1,31 +1,30 @@
 <script lang="ts">
-  import Accordion from "@components/accordion/Accordion.svelte";
-  import AccordionItem from "@components/accordion/AccordionItem.svelte";
-  import SettingsSection from "@components/accordion/SettingsSection.svelte";
-  import AudioLayerLegend from "@components/audio/AudioLayerLegend.svelte";
-  import RecordingStatusDot from "@components/audio/RecordingStatusDot.svelte";
-  import RecordingTimer from "@components/audio/RecordingTimer.svelte";
-  import Button from "@components/Button.svelte";
-  import IconButton from "@components/IconButton.svelte";
-  import Checkbox from "@components/form/Checkbox.svelte";
-  import ConfigField from "@components/form/ConfigField.svelte";
-  import EditableTitleField from "@components/form/EditableTitleField.svelte";
-  import LabeledTextField from "@components/form/LabeledTextField.svelte";
-  import OptionGroup from "@components/form/OptionGroup.svelte";
-  import StackProgressBar from "@components/form/StackProgressBar.svelte";
-  import ToggleSwitch from "@components/form/ToggleSwitch.svelte";
-  import TabPage, { type TabPageItem } from "@components/layout/TabPage.svelte";
-  import NoteCard from "@components/notes/NoteCard.svelte";
-  import NoteComposer from "@components/notes/NoteComposer.svelte";
-  import NotesList from "@components/notes/NotesList.svelte";
-  import TimestampLabel from "@components/notes/TimestampLabel.svelte";
-  import type { Note } from "@components/notes/NoteCard.svelte";
+  import Accordion from "@lib/components/patterns/Accordion.svelte";
+  import AccordionItem from "@lib/components/ui/nav/AccordionRow.svelte";
+  import SettingsSection from "@lib/components/primitives/form/ContentGroup.svelte";
+  import RecordingStatusDot from "@lib/components/primitives/display/StatusDot.svelte";
+  import RecordingTimer from "@lib/components/primitives/display/ElapsedTimer.svelte";
+  import Button from "@lib/components/ui/controls/Button.svelte";
+  import IconButton from "@lib/components/ui/controls/IconButton.svelte";
+  import Checkbox from "@lib/components/primitives/form/Checkbox.svelte";
+  import ConfigField from "@lib/components/primitives/form/FormRow.svelte";
+  import EditableTitleField from "@lib/components/ui/controls/InlineTitle.svelte";
+  import LabeledTextField from "@lib/components/primitives/form/LabeledInput.svelte";
+  import OptionGroup from "@lib/components/ui/controls/OptionGroup.svelte";
+  import StackProgressBar from "@lib/components/primitives/display/ProgressBar.svelte";
+  import ToggleSwitch from "@lib/components/ui/controls/Toggle.svelte";
+  import TabPage, { type TabPageItem } from "@lib/components/primitives/layout/TabBody.svelte";
+  import NoteCard from "@lib/components/ui/cards/NoteSnippet.svelte";
+  import NoteComposer from "@lib/components/patterns/NoteComposer.svelte";
+  import NotesList from "@lib/components/patterns/NoteList.svelte";
+  import TimestampLabel from "@lib/components/primitives/display/Timestamp.svelte";
+  import type { Note } from "@lib/components/ui/cards/NoteSnippet.svelte";
   import { applyThemeMode, type ThemeMode } from "$lib/theme";
   import { X as Close } from "lucide-svelte";
   import ChevronRight from "lucide-svelte/icons/chevron-right";
   import Plus from "lucide-svelte/icons/plus";
   import Trash2 from "lucide-svelte/icons/trash-2";
-  import AudioWaveFormVisualizer from "@lib/components/audio/AudioWaveFormVisualizer.svelte";
+  import AudioWaveFormVisualizer from "@lib/components/ui/indicators/WaveformDisplay.svelte";
 
   /** Local playground state — only for exercising controls, not a real screen */
   let toggleA = $state(false);
@@ -749,12 +748,7 @@
           />
           </div>
         </div>
-        <div>
-          <p class="text-label-sm text-fg/45 mb-2">AudioLayerLegend</p>
-          <div class="rounded-md bg-card px-4 py-3">
-            <AudioLayerLegend speakerEnabled={true} />
-          </div>
-        </div>
+
       </div>
     </div>
   </section>

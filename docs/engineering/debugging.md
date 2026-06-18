@@ -18,7 +18,7 @@
 | File not saved or wrong path | `services/output.rs` |
 | History record missing or wrong after a session | `services/history.rs` → `append` / `compact` |
 | History list wrong, merge/dedupe incorrect, or delete fails | `controllers/history.rs` |
-| History detail layout, delete placement, or prev/next wrong | `docs/history-ui-review.md` → `transcripts.svelte`, `HistoryDetailPane`, `HistoryListCard` |
+| History detail layout, delete placement, or prev/next wrong | `docs/history-ui-review.md` → `transcripts.svelte`, `NoteDetailPane`, `NoteCard` |
 | History chips wrong (dual source vs speaker capture) | `types.rs` `HistoryRecord::from_scribe` + `controllers/scribe.rs` write path |
 | UI shows stale state | `commands/` fn for that panel → check emitted events |
 | Hotkey not triggering | `lib.rs::run()` → `global_shortcut.on_shortcut` |

@@ -225,30 +225,30 @@ Unified read-only and management view across all transcript-bearing flows.
 
 ### 5b. Select and preview
 
-1. User selects a history item from the list (title row or **View** icon on `HistoryListCard`)
-2. List and filter tabs hide; **fullscreen detail** (`HistoryDetailPane`) fills the window until Close
+1. User selects a history item from the list (title row or **View** icon on `NoteCard`)
+2. List and filter tabs hide; **fullscreen detail** (`NoteDetailPane`) fills the window until Close
 3. `history_get_detail` IPC command → HistoryController returns metadata for the selected record (`speaker_capture`, `dual_source`, etc.)
     - **Dual source** chip: `dual_source` true — merged speaker transcription ran
     - **Speaker capture** chip: `speaker_capture` true — setting was on when the record was written (may be true without dual source)
 4. `history_render_markdown` IPC command → OutputService renders markdown from the record's segments (pure function, no disk read required unless already exported)
-5. `HistoryDetailPane` renders scrollable transcript preview, muted metadata chips, prev/next in the header, and item actions (Export / Open / Copy / Close) in `PanelFooter`
+5. `NoteDetailPane` renders scrollable transcript preview, muted metadata chips, prev/next in the header, and item actions (Export / Open / Copy / Close) in `PanelFooter`
 6. **Prev/next** (chevrons or Arrow keys) cycles within the active filter tab (All / Scribe / Dictate); changing tabs while detail is open closes detail if the item is not in the new filter
 
 ### 5c. Export to markdown (on demand)
 
-1. User clicks **Export to Markdown** in `HistoryDetailPane`
+1. User clicks **Export to Markdown** in `NoteDetailPane`
 2. `history_export_markdown` IPC command → HistoryController
 3. Output Service writes `.md` to save folder; HistoryService updates the record (`set_markdown_path`) — a new line for the same id is appended to `history.jsonl`
 4. Detail pane updates to show the new file path and enables the **Open** button
 
 ### 5d. Open exported file
 
-1. User clicks **Open** in `HistoryDetailPane` (only shown when `markdown_path` is set)
+1. User clicks **Open** in `NoteDetailPane` (only shown when `markdown_path` is set)
 2. OS opens the `.md` file in the configured or default viewer
 
 ### 5e. Delete
 
-1. User clicks **Delete** on `HistoryListCard` (only available for store records, not legacy items); `history.svelte` opens a confirm modal
+1. User clicks **Delete** on `NoteCard` (only available for store records, not legacy items); `history.svelte` opens a confirm modal
 2. `history_delete` IPC command → HistoryController
 3. HistoryService appends a tombstone (`deleted = true`) for the record id to `history.jsonl`
 4. If the record has a `markdown_path`, Output Service deletes the `.md` file

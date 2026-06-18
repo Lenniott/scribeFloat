@@ -2,19 +2,19 @@
 	import { onMount } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import { listen } from '@tauri-apps/api/event';
-	import AppSidebar, { type AppRoute } from '@lib/components/shell/AppSidebar.svelte';
-	import ShellTitleBar from '@lib/components/shell/ShellTitleBar.svelte';
-	import SettingsSidebar from '@lib/components/settings/SettingsSidebar.svelte';
-	import SettingsPanel from '@lib/components/settings/SettingsPanel.svelte';
-	import type { SettingsTab } from '@lib/components/settings/settingsTypes';
+	import AppSidebar, { type AppRoute } from '@lib/components/regions/AppSidebar.svelte';
+	import ShellTitleBar from '@lib/components/regions/TitleBar.svelte';
+	import SettingsSidebar from '@lib/components/regions/SettingsSidebar.svelte';
+	import SettingsPanel from '@lib/components/sections/SettingsPanel.svelte';
+	import type { SettingsTab } from '@lib/components/sections/settingsTypes';
 	import HomeScreen from '@lib/screens/home.svelte';
 	import NotesScreen from '@lib/screens/notes.svelte';
 	import UploadScreen from '@lib/screens/upload.svelte';
 	import CaptureScreen from '@lib/screens/capture.svelte';
-	import Toast from '@lib/components/Toast.svelte';
-	import type { ToastState } from '@lib/components/Toast.svelte';
-	import Button from '@lib/components/Button.svelte';
-	import Modal from '@lib/components/Modal.svelte';
+	import Toast from '@lib/components/ui/indicators/Toast.svelte';
+	import type { ToastState } from '@lib/components/ui/indicators/Toast.svelte';
+	import Button from '@lib/components/ui/controls/Button.svelte';
+	import Modal from '@lib/components/primitives/layout/Modal.svelte';
 	import {
 		copyHistoryItem,
 		deleteHistoryItem,

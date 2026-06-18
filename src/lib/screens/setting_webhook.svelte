@@ -1,7 +1,7 @@
 <script lang="ts">
-	import SettingsList from "@lib/components/settings/SettingsList.svelte";
-	import SettingsRow from "@lib/components/settings/SettingsRow.svelte";
-	import SettingsSection from "@lib/components/settings/SettingsSection.svelte";
+	import SettingsList from "@lib/components/sections/SettingList.svelte";
+	import SettingsRow from "@lib/components/ui/cards/SettingRow.svelte";
+	import SettingsSection from "@lib/components/primitives/form/SettingsSection.svelte";
 </script>
 
 <section class="space-y-4">

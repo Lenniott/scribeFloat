@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
-	import Button from "@lib/components/Button.svelte";
-	import Chip from "@lib/components/Chip.svelte";
-	import IconButton from "@lib/components/IconButton.svelte";
-	import ConfigField from "@lib/components/form/ConfigField.svelte";
-	import LabeledTextField from "@lib/components/form/LabeledTextField.svelte";
-	import SettingsList from "@lib/components/settings/SettingsList.svelte";
-	import SettingsRow from "@lib/components/settings/SettingsRow.svelte";
-	import SettingsSection from "@lib/components/settings/SettingsSection.svelte";
+	import Button from "@lib/components/ui/controls/Button.svelte";
+	import Chip from "@lib/components/primitives/display/Chip.svelte";
+	import IconButton from "@lib/components/ui/controls/IconButton.svelte";
+	import ConfigField from "@lib/components/primitives/form/FormRow.svelte";
+	import LabeledTextField from "@lib/components/primitives/form/LabeledInput.svelte";
+	import SettingsList from "@lib/components/sections/SettingList.svelte";
+	import SettingsRow from "@lib/components/ui/cards/SettingRow.svelte";
+	import SettingsSection from "@lib/components/primitives/form/SettingsSection.svelte";
 	import { Pencil, Trash2 } from "lucide-svelte";
 
 	type RuleType = "simple" | "newline" | "wrap";

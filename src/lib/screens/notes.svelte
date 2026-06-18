@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-svelte';
-	import HistoryDetailPane from '@lib/components/history/HistoryDetailPane.svelte';
-	import NoteListCard from '@lib/components/notes/NoteListCard.svelte';
-	import FilterSidePanel from '@lib/components/notes/FilterSidePanel.svelte';
-	import ScrollablePanel from '@lib/components/accordion/ScrollablePanel.svelte';
-	import IconButton from '@lib/components/IconButton.svelte';
-	import Button from '@lib/components/Button.svelte';
+	import HistoryDetailPane from '@lib/components/sections/NoteDetailPane.svelte';
+	import NoteListCard from '@lib/components/ui/cards/NoteCard.svelte';
+	import FilterSidePanel from '@lib/components/sections/FilterPanel.svelte';
+	import ScrollablePanel from '@lib/components/primitives/layout/ScrollBody.svelte';
+	import IconButton from '@lib/components/ui/controls/IconButton.svelte';
+	import Button from '@lib/components/ui/controls/Button.svelte';
 	import type { HistoryListItem } from '@lib/services/historyActions';
 	import { fetchTagVocabulary, type TagVocabularyEntry } from '@lib/services/historyActions';
 

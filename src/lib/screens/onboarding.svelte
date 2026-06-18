@@ -2,13 +2,13 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { getCurrentWindow } from "@tauri-apps/api/window";
 	import { onMount } from "svelte";
-	import WelcomeStep from "@lib/components/onboarding/WelcomeStep.svelte";
-	import ModelDownloadStep from "@lib/components/onboarding/ModelDownloadStep.svelte";
-	import PermissionsStep from "@lib/components/onboarding/PermissionsStep.svelte";
-	import DictatePracticeStep from "@lib/components/onboarding/DictatePracticeStep.svelte";
-	import FeatureTourStep from "@lib/components/onboarding/FeatureTourStep.svelte";
-	import StepProgress from "@lib/components/onboarding/StepProgress.svelte";
-	import ScrollablePanel from "@lib/components/accordion/ScrollablePanel.svelte";
+	import WelcomeStep from "@lib/components/sections/onboarding/WelcomeStep.svelte";
+	import ModelDownloadStep from "@lib/components/sections/onboarding/ModelDownloadStep.svelte";
+	import PermissionsStep from "@lib/components/sections/onboarding/PermissionsStep.svelte";
+	import DictatePracticeStep from "@lib/components/sections/onboarding/DictatePracticeStep.svelte";
+	import FeatureTourStep from "@lib/components/sections/onboarding/FeatureTourStep.svelte";
+	import StepProgress from "@lib/components/ui/indicators/StepDots.svelte";
+	import ScrollablePanel from "@lib/components/primitives/layout/ScrollBody.svelte";
 	import { appErrorMessage, type ModelListItem } from "$lib/types";
 
 	// Steps: 1=Welcome, 2=ModelDownload, 3=Permissions, 4=DictatePractice, 5=FeatureTour

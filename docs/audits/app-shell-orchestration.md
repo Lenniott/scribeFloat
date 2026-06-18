@@ -28,10 +28,10 @@ The `release/0.3` branch has working exploration code. Do NOT merge it — cherr
 | File | What to take |
 |---|---|
 | `src/lib/screens/app-shell.svelte` | Shell architecture, state management pattern — rename terms |
-| `src/lib/components/shell/AppSidebar.svelte` | Sidebar structure — fix Scribe-as-route error, rename routes |
-| `src/lib/components/shell/SidebarNavItem.svelte` | Keep as-is |
-| `src/lib/components/shell/ShellTitleBar.svelte` | Keep skeleton — flesh out in phase 3 |
-| `src/lib/components/settings/SettingsSidebar.svelte` | Keep — rename `shell://` → `app://` |
+| `src/lib/components/regions/AppSidebar.svelte` | Sidebar structure — fix Scribe-as-route error, rename routes |
+| `src/lib/components/shell/NavItem.svelte` | Keep as-is |
+| `src/lib/components/regions/TitleBar.svelte` | Keep skeleton — flesh out in phase 3 |
+| `src/lib/components/regions/SettingsSidebar.svelte` | Keep — rename `shell://` → `app://` |
 | `src/lib/components/settings/SettingsPanel.svelte` | Keep |
 | `src/lib/components/settings/settingsTypes.ts` | Keep |
 | `src/lib/screens/dashboard.svelte` | Port as `home.svelte` — rename all copy |
@@ -40,8 +40,8 @@ The `release/0.3` branch has working exploration code. Do NOT merge it — cherr
 | `src/lib/screens/upload.svelte` | Keep stub |
 | `src/lib/components/dashboard/RecentSessionCard.svelte` | Move to `components/home/` |
 | `src/lib/components/dashboard/StatTile.svelte` | Move to `components/home/` |
-| `src/lib/components/transcripts/TranscriptListCard.svelte` | Move to `components/notes/NoteListCard.svelte` |
-| `src/lib/components/transcripts/FilterSidePanel.svelte` | Move to `components/notes/` |
+| `src/lib/components/transcripts/TranscriptListCard.svelte` | Move to `components/notes/NoteCard.svelte` |
+| `src/lib/components/transcripts/FilterPanel.svelte` | Move to `components/notes/` |
 | `src/lib/components/transcripts/FilterCheckboxRow.svelte` | Move to `components/notes/` |
 | `src/lib/components/transcripts/SourceKindIcon.svelte` | Move to `components/notes/` |
 | `src/lib/services/historyFormat.ts` | Keep — already clean |
@@ -61,11 +61,11 @@ Phase 1 — Foundation (no UI visible yet)
 Phase 2 — Shell skeleton (replaces +page.svelte routing)
   2a. New folder structure: components/home/, components/notes/, components/shell/,
       components/settings/ (some already exist in exploration)
-  2b. SidebarNavItem primitive
+  2b. NavItem primitive
   2c. AppSidebar (Areas nav: Home, Notes, Upload, Float stub, Settings)
        — Scribe is NOT in the sidebar (story 0025)
        — routes: 'home' | 'notes' | 'upload' | 'float' | 'settings'
-  2d. ShellTitleBar (skeleton only — "New Note" button wired in phase 3)
+  2d. TitleBar (skeleton only — "New Note" button wired in phase 3)
   2e. app-shell.svelte replaces +page.svelte as the outer layout
        — IPC event: app://navigate (not shell://navigate)
        — global state: allItems, toast, delete modal
@@ -77,9 +77,9 @@ Phase 3 — Home Area (story 0026 partial + 0024 stub)
 
 Phase 4 — Notes Area (story 0026 partial)
   4a. SourceKindIcon primitive
-  4b. NoteListCard component (was TranscriptListCard)
-  4c. FilterSidePanel + FilterCheckboxRow
-  4d. notes.svelte screen (list + detail split, keep HistoryDetailPane for now)
+  4b. NoteCard component (was TranscriptListCard)
+  4c. FilterPanel + FilterCheckboxRow
+  4d. notes.svelte screen (list + detail split, keep NoteDetailPane for now)
 
 Phase 5 — Settings sidebar pattern
   5a. settingsTypes.ts
@@ -87,7 +87,7 @@ Phase 5 — Settings sidebar pattern
   5c. Wire into app-shell.svelte
 
 Phase 6 — New Note title bar action (story 0025)
-  6a. ShellTitleBar gets "New Note" button
+  6a. TitleBar gets "New Note" button
   6b. capture.svelte / Scribe screen wired as modal or overlay from title bar
   6c. Leave guard wired through shell
 
@@ -108,7 +108,7 @@ Phase 8 — Component taxonomy reorganisation (story 0027 partial)
 | Checkpoint | After phase | What to tell next agent |
 |---|---|---|
 | **HO-1** | 1d | "Backend and utility layer done. Read phases 2a–2e. Source from exploration AppSidebar + app-shell. Routes must be home/notes/upload/float/settings — not dashboard/transcripts/scribe." |
-| **HO-2** | 2e | "Shell skeleton committed. Read phases 3–4. Home and Notes screens. Use CONTEXT.md names throughout. HistoryDetailPane is still the detail view — just wrap it." |
+| **HO-2** | 2e | "Shell skeleton committed. Read phases 3–4. Home and Notes screens. Use CONTEXT.md names throughout. NoteDetailPane is still the detail view — just wrap it." |
 | **HO-3** | 4d | "Home + Notes Areas done. Read phase 5 (settings sidebar) then phase 6 (title bar New Note). Phase 6 removes Scribe from sidebar." |
 | **HO-4** | 6c | "All areas wired. Read phases 7–8. Pure rename + file-move pass. No logic changes. Run cargo check and npm run check:ds after." |
 
@@ -122,9 +122,9 @@ Phase 8 — Component taxonomy reorganisation (story 0027 partial)
 - [x] Phase 1b — historyFormat.ts
 - [x] Phase 1c — historyActions.ts additions
 - [x] Phase 1d — Rust backend tags + dashboard_stats + tag_vocabulary
-- [x] Phase 2 — Shell skeleton (app-shell, AppSidebar, ShellTitleBar, SidebarNavItem, capture)
+- [x] Phase 2 — Shell skeleton (app-shell, AppSidebar, TitleBar, NavItem, capture)
 - [x] Phase 3 — Home Area (home.svelte, StatTile, RecentNoteCard)
-- [x] Phase 4 — Notes Area (notes.svelte, NoteListCard, FilterSidePanel)
+- [x] Phase 4 — Notes Area (notes.svelte, NoteCard, FilterPanel)
 - [x] Phase 5 — Settings sidebar (SettingsSidebar, SettingsPanel, settingsTypes)
 - [x] Phase 6 — New Note title bar (story 0025) — already wired in shell
 - [x] Phase 7 — Rename passes (stories 0016, 0017, 0018, 0042)
@@ -146,7 +146,7 @@ Phase 7 is pure renames — no logic changes:
 - Story 0017 (Dashboard → Home in copy) — already done in home.svelte
 
 Phase 8 is file moves:
-- `components/transcripts/FilterSidePanel.svelte` → `components/notes/`
+- `components/transcripts/FilterPanel.svelte` → `components/notes/`
 - `components/transcripts/FilterCheckboxRow.svelte` → `components/notes/`
 - `components/transcripts/SourceKindIcon.svelte` → `components/notes/`
 - `components/dashboard/` folder — delete (replaced by `components/home/`)

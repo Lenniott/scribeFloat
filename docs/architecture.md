@@ -197,37 +197,37 @@ graph TB
     end
 
     subgraph layout["Layout — src/lib/components/layout/"]
-        shell["PanelShell\nOuter frame for all panels"]
+        shell["PanelFrame\nOuter frame for all panels"]
         header["PanelHeader\nTitle bar with close / back"]
         footer["PanelFooter\nflex shrink-0, below scroll — History detail only"]
     end
 
     subgraph audio_comp["Audio — src/lib/components/audio/"]
-        waveform["AudioWaveFormVisualizer\nLive PCM bars — Scribe + Dictate"]
-        dot["RecordingStatusDot\nPulsing red dot"]
-        timer["RecordingTimer\nElapsed display"]
+        waveform["WaveformDisplay\nLive PCM bars — Scribe + Dictate"]
+        dot["StatusDot\nPulsing red dot"]
+        timer["ElapsedTimer\nElapsed display"]
     end
 
     subgraph history_comp["History — src/lib/components/history/"]
-        list_card["HistoryListCard\nTitle = button (opens detail)\nAction icons use stopPropagation"]
-        detail_pane["HistoryDetailPane\nFullscreen transcript + metadata"]
+        list_card["NoteCard (deleted)\nTitle = button (opens detail)\nAction icons use stopPropagation"]
+        detail_pane["NoteDetailPane\nFullscreen transcript + metadata"]
     end
 
     subgraph notes_comp["Notes — src/lib/components/notes/"]
         notes_panel["NotesPanel\nContainer"]
         note_composer["NoteComposer\nInput field"]
-        notes_list["NotesList + NoteCard\nTimestamped note rows"]
+        notes_list["NoteList + NoteCard\nTimestamped note rows"]
     end
 
     subgraph transcribe_comp["Transcribe — src/lib/components/transcribe/"]
-        queue_list["TranscribeQueueList\nScroll list of items"]
-        queue_row["TranscribeQueueRow\nPer-item progress + status"]
+        queue_list["UploadQueue\nScroll list of items"]
+        queue_row["UploadItem\nPer-item progress + status"]
     end
 
     subgraph form_comp["Form — src/lib/components/form/"]
         device_sel["DeviceSelect"]
-        toggle["ToggleSwitch"]
-        path_sel["PathSelectorField"]
+        toggle["Toggle"]
+        path_sel["PathSelector"]
         option_grp["OptionGroup"]
     end
 
@@ -259,8 +259,8 @@ graph TB
 
 **Key UI rules for new contributors:**
 - **List vs detail** in `history.svelte` are separate full-height modes — no split pane. Detail opens when a card title or View icon is clicked; list tabs stay hidden until Close is pressed.
-- **`HistoryListCard`**: title is a `<button>` that opens detail. Action icons (`stopPropagation`) are siblings — never nested inside the title button.
-- **`PanelFooter`** (`flex shrink-0`) belongs below the scroll area in History detail. Do not use `FixedFooterBar` there.
+- **`NoteCard (deleted)`**: title is a `<button>` that opens detail. Action icons (`stopPropagation`) are siblings — never nested inside the title button.
+- **`PanelFooter`** (`flex shrink-0`) belongs below the scroll area in History detail. Do not use `deleted` there.
 - **`dictate.svelte` HUD** never calls `set_focus()` — the app may be in `.accessory` activation policy at any time.
 
 ---
@@ -510,8 +510,8 @@ graph TB
         processing["Scribe Processing Screen\nscribe-processing.svelte"]
         controller["ScribeController\ncontrollers/scribe.rs"]
         state["State Machine\nIDLE → RECORDING → TRANSCRIBING → DONE | NO_MODEL | ERROR"]
-        waveform["Waveform Visualizer\nAudioWaveFormVisualizer.svelte"]
-        notes["Notes Manager\nNotesPanel.svelte + NotesList.svelte"]
+        waveform["Waveform Visualizer\nWaveformDisplay.svelte"]
+        notes["Notes Manager\nNotesPanel.svelte + NoteList.svelte"]
     end
 
     svc_audio["AudioService"]
@@ -597,7 +597,7 @@ graph TB
         state["State Machine\nIDLE → RECORDING → TRANSCRIBING → PASTING → DONE | ERROR"]
         key_listener["Key Listener\nplatform/key_listener.rs — CGEventTap (macOS) / win32 hook"]
         hud["Floating HUD\ndictate.svelte — near cursor, does not steal focus"]
-        waveform["Waveform Visualizer\nAudioWaveFormVisualizer.svelte"]
+        waveform["Waveform Visualizer\nWaveformDisplay.svelte"]
         paste_handler["Paste Handler\nplatform/paste_impl.rs"]
     end
 
@@ -726,12 +726,12 @@ src-tauri/src/
 src/
 ├── lib/
 │   ├── components/             Reusable Svelte components
-│   │   ├── audio/              AudioWaveFormVisualizer, RecordingStatusDot, RecordingTimer
-│   │   ├── form/               DeviceSelect, ToggleSwitch, PathSelectorField, OptionGroup, …
-│   │   ├── layout/             PanelShell, PanelHeader, PanelFooter, SplitPane, FixedFooterBar
-│   │   ├── history/            HistoryListCard, HistoryDetailPane
-│   │   ├── notes/              NotesPanel, NoteCard, NotesList, NoteComposer
-│   │   └── transcribe/         TranscribeQueueList, TranscribeQueueRow
+│   │   ├── audio/              WaveformDisplay, StatusDot, ElapsedTimer
+│   │   ├── form/               DeviceSelect, Toggle, PathSelector, OptionGroup, …
+│   │   ├── layout/             PanelFrame, PanelHeader, PanelFooter, SplitLayout, deleted
+│   │   ├── history/            NoteCard (deleted), NoteDetailPane
+│   │   ├── notes/              NotesPanel, NoteCard, NoteList, NoteComposer
+│   │   └── transcribe/         UploadQueue, UploadItem
 │   ├── screens/                Full panel screens
 │   │   ├── scribe.svelte       Recording UI
 │   │   ├── scribe-processing.svelte   Transcribing / Done / No-model UI

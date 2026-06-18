@@ -5,15 +5,15 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { open } from "@tauri-apps/plugin-dialog";
 
-  import Button from "@lib/components/Button.svelte";
-  import ToggleSwitch from "@lib/components/form/ToggleSwitch.svelte";
-  import PathSelectorField from "@lib/components/form/PathSelectorField.svelte";
-  import StackProgressBar from "@lib/components/form/StackProgressBar.svelte";
+  import Button from "@lib/components/ui/controls/Button.svelte";
+  import ToggleSwitch from "@lib/components/ui/controls/Toggle.svelte";
+  import PathSelectorField from "@lib/components/ui/controls/PathSelector.svelte";
+  import StackProgressBar from "@lib/components/primitives/display/ProgressBar.svelte";
   import { createModelDownloadStore } from "$lib/stores/modelDownload.svelte";
-  import TranscribeQueueList from "@lib/components/transcribe/TranscribeQueueList.svelte";
-  import ScrollablePanel from "@lib/components/accordion/ScrollablePanel.svelte";
-  import PanelFooter from "@lib/components/layout/PanelFooter.svelte";
-  import type { TranscribeQueueItemView } from "@lib/components/transcribe/TranscribeQueueRow.svelte";
+  import TranscribeQueueList from "@lib/components/patterns/UploadQueue.svelte";
+  import ScrollablePanel from "@lib/components/primitives/layout/ScrollBody.svelte";
+  import PanelFooter from "@lib/components/primitives/layout/PanelFooter.svelte";
+  import type { TranscribeQueueItemView } from "@lib/components/ui/cards/UploadItem.svelte";
 
   type ProcessingStage =
     | "LOADING_MODEL"

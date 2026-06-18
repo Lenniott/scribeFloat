@@ -3,10 +3,10 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
 	import { X as Close } from "lucide-svelte";
-	import AudioWaveFormVisualizer from "@lib/components/audio/AudioWaveFormVisualizer.svelte";
-	import RecordingStatusDot from "@lib/components/audio/RecordingStatusDot.svelte";
-	import RecordingTimer from "@lib/components/audio/RecordingTimer.svelte";
-	import IconButton from "@lib/components/IconButton.svelte";
+	import AudioWaveFormVisualizer from "@lib/components/ui/indicators/WaveformDisplay.svelte";
+	import RecordingStatusDot from "@lib/components/primitives/display/StatusDot.svelte";
+	import RecordingTimer from "@lib/components/primitives/display/ElapsedTimer.svelte";
+	import IconButton from "@lib/components/ui/controls/IconButton.svelte";
 
 	type DictateState = "IDLE" | "RECORDING" | "TRANSCRIBING" | "PASTING" | "DONE" | "ERROR";
 

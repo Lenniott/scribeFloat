@@ -3,12 +3,12 @@
   import { invoke } from "@tauri-apps/api/core";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import type { UpdateCheckResult } from "$lib/types";
-  import Button from "@lib/components/Button.svelte";
-  import Toast from "@lib/components/Toast.svelte";
-  import type { ToastState } from "@lib/components/Toast.svelte";
-  import SettingsList from "@lib/components/settings/SettingsList.svelte";
-  import SettingsRow from "@lib/components/settings/SettingsRow.svelte";
-  import SettingsSection from "@lib/components/settings/SettingsSection.svelte";
+  import Button from "@lib/components/ui/controls/Button.svelte";
+  import Toast from "@lib/components/ui/indicators/Toast.svelte";
+  import type { ToastState } from "@lib/components/ui/indicators/Toast.svelte";
+  import SettingsList from "@lib/components/sections/SettingList.svelte";
+  import SettingsRow from "@lib/components/ui/cards/SettingRow.svelte";
+  import SettingsSection from "@lib/components/primitives/form/SettingsSection.svelte";
   import {
     dictateModifierLabel,
     formatHotkeyForDisplay,

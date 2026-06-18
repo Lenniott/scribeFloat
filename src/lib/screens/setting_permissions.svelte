@@ -2,10 +2,10 @@
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import Button from "@lib/components/Button.svelte";
-  import SettingsList from "@lib/components/settings/SettingsList.svelte";
-  import SettingsRow from "@lib/components/settings/SettingsRow.svelte";
-  import SettingsSection from "@lib/components/settings/SettingsSection.svelte";
+  import Button from "@lib/components/ui/controls/Button.svelte";
+  import SettingsList from "@lib/components/sections/SettingList.svelte";
+  import SettingsRow from "@lib/components/ui/cards/SettingRow.svelte";
+  import SettingsSection from "@lib/components/primitives/form/SettingsSection.svelte";
   import { CircleCheckBig } from "lucide-svelte";
   import type { PermissionStatus } from "$lib/types";
 

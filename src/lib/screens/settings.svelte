@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
-	import NavButton from '@components/NavButton.svelte';
-	import SettingsPanel from '@lib/components/settings/SettingsPanel.svelte';
-	import { SETTINGS_TABS, type SettingsTab } from '@lib/components/settings/settingsTypes';
+	import NavButton from '@lib/components/ui/nav/NavButton.svelte';
+	import SettingsPanel from '@lib/components/sections/SettingsPanel.svelte';
+	import { SETTINGS_TABS, type SettingsTab } from '@lib/components/sections/settingsTypes';
 
 	let { standalone = false }: { standalone?: boolean } = $props();
 

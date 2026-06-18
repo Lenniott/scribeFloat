@@ -52,8 +52,8 @@ Read **one chapter** for the aspect you are changing. Cross-read a second only w
 - **Design skill first** for anything not covered in a reference chapter: `skills/design-skill/SKILL.md`
 - **`npm run check:ds`** must pass before committing frontend changes (when rules exist for that aspect)
 - **No off-scale Tailwind defaults** in product UI (`text-base`, `text-sm`, etc.) — see typography chapter
-- **Extend primitives** (`ConfigField`, `Button`, `TabPage`, `ScrollablePanel`, `PanelHeader`, …) — do not paste label/layout recipes into screens
-- **One scroll body per pane** — chrome `shrink-0`, body `ScrollablePanel`; screen roots use `h-full`, not bare `flex-1` on a block parent (see layout chapter)
+- **Extend primitives** (`FormRow`, `Button`, `TabBody`, `ScrollBody`, `PanelHeader`, …) — do not paste label/layout recipes into screens
+- **One scroll body per pane** — chrome `shrink-0`, body `ScrollBody`; screen roots use `h-full`, not bare `flex-1` on a block parent (see layout chapter)
 - **Color at call site** for contextual states (destructive, active, muted); role classes own size/weight/tracking/case. Use **Option A** semantic fg: `text-fg`, `text-fg-dim`, `text-fg-muted` — not `text-fg/N`.
 
 ## Key paths

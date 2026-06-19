@@ -1,7 +1,7 @@
 ---
 id: "0045"
 title: Add CodeMirror written source editor panel
-status: active
+status: done
 adr: ADR-0008
 ---
 

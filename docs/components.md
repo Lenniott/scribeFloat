@@ -62,6 +62,7 @@ Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other a
 | `EditableTitle` | `2_components/controls/EditableTitle.svelte` | Inline editable title field. Starts as plain text; switches to input on focus. |
 | `PathPicker` | `2_components/controls/PathPicker.svelte` | Path value + Change button. Triggers a file-picker callback. |
 | `OptionGroup` | `2_components/controls/OptionGroup.svelte` | Small grouped radio/segmented selector. Used for model size, theme, etc. |
+| `MarkdownEditor` | `2_components/controls/MarkdownEditor.svelte` | CodeMirror 6 markdown editor. Props: `value` (bindable), `onchange`. Mounts a CM instance with design-token theme, line wrapping, and placeholder. No IPC — delegates saves to the parent view. |
 
 ### Cards
 
@@ -132,3 +133,20 @@ Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other a
 | `AppSidebar` | `6_regions/AppSidebar.svelte` | Left nav sidebar with route icons. Exports `AppRoute` type. |
 | `SettingsSidebar` | `6_regions/SettingsSidebar.svelte` | Settings-mode left sidebar with tab nav and back button. |
 | `TitleBar` | `6_regions/TitleBar.svelte` | Top title bar chrome. Houses the New Note button and recording state indicator. |
+
+---
+
+## Views
+
+Route-level view components. Imported by `src/routes/` pages. Live at `src/lib/ui/5_views/` → `@views`.
+
+| View | Path | What it is |
+|---|---|---|
+| `home.svelte` | `5_views/home.svelte` | Home area: recent notes + stats. |
+| `notes.svelte` | `5_views/notes.svelte` | Notes list + detail pane. |
+| `note-editor.svelte` | `5_views/note-editor.svelte` | Unified note editor at `/notes/[id]`. Props: `id`. Two-panel shell: header (← Notes + `EditableTitle`), recording chrome placeholder, left panel (written source / `MarkdownEditor`), right panel (transcript output, story 0047). Title autosaves at 500 ms; content autosaves at 800 ms. |
+| `capture.svelte` | `5_views/capture.svelte` | Scribe capture overlay (recording → processing). |
+| `transcribe.svelte` | `5_views/transcribe.svelte` | Upload/transcribe workflow. |
+| `dictate.svelte` | `5_views/dictate.svelte` | Floating Dictate HUD (separate Tauri window). |
+| `onboarding.svelte` | `5_views/onboarding.svelte` | Onboarding flow (separate Tauri window). |
+| `setting_*.svelte` | `5_views/setting_*.svelte` | Individual settings tab content (general, models, permissions, replace, help). |

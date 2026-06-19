@@ -382,7 +382,8 @@
       },
   
       "input": {
-        "tw": "bg-panel border border-rim rounded-md h-10 flex items-center text-body-md text-fg font-sans px-2 py-2 outline-none placeholder:text-fg-muted",
+        "tw": "sf-input — bg-canvas border border-rim rounded-md h-10 px-2 py-2 text-label-md text-fg placeholder:text-fg-muted",
+        "selectTw": "sf-select — same surface/border/focus as sf-input; h-10 py-2 pr-8 pl-2",
         "focusTw": "Global: src/app.css @layer base :focus uses ring-2 ring-focus ring-offset-2 ring-offset-canvas",
         "rules": [
           "Fixed control height h-10 for single-line fields (matches Button normal size)",

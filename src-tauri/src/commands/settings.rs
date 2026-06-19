@@ -257,14 +257,14 @@ pub fn settings_set_save_transcripts_as_markdown(
 }
 
 #[tauri::command]
-pub fn settings_get_dictate_model_id(
+pub fn settings_get_fast_model_id(
     ctrl: State<'_, Arc<SettingsController>>,
 ) -> Result<Option<String>, AppError> {
     Ok(ctrl.get_dictate_model_id())
 }
 
 #[tauri::command]
-pub fn settings_set_dictate_model_id(
+pub fn settings_set_fast_model_id(
     ctrl: State<'_, Arc<SettingsController>>,
     model_id: Option<String>,
 ) -> Result<(), AppError> {

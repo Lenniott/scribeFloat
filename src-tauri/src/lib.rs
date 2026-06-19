@@ -540,7 +540,7 @@ pub fn run() {
                 tracing::debug!(error = %err, "hotkey rehydration skipped");
             }
 
-            let ctrl = controllers::scribe::ScribeController::new(
+            let ctrl = controllers::scribe::RecordController::new(
                 Arc::clone(&audio),
                 Arc::clone(&model),
                 Arc::clone(&output),
@@ -664,21 +664,21 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            commands::scribe::scribe_start,
-            commands::scribe::scribe_stop_and_save,
-            commands::scribe::scribe_save_recording_only,
-            commands::scribe::scribe_abort_transcription,
-            commands::scribe::scribe_destroy_window,
-            commands::scribe::scribe_cancel,
-            commands::scribe::scribe_add_note,
-            commands::scribe::scribe_get_include_timestamps,
-            commands::scribe::scribe_set_include_timestamps,
-            commands::scribe::scribe_list_input_devices,
-            commands::scribe::scribe_list_output_devices,
-            commands::scribe::scribe_read_transcript,
-            commands::scribe::scribe_list_recovery_sessions,
-            commands::scribe::scribe_list_transcripts,
-            commands::scribe::scribe_toggle_speaker_capture,
+            commands::record::scribe_start,
+            commands::record::scribe_stop_and_save,
+            commands::record::scribe_save_recording_only,
+            commands::record::scribe_abort_transcription,
+            commands::record::scribe_destroy_window,
+            commands::record::scribe_cancel,
+            commands::record::scribe_add_note,
+            commands::record::scribe_get_include_timestamps,
+            commands::record::scribe_set_include_timestamps,
+            commands::record::scribe_list_input_devices,
+            commands::record::scribe_list_output_devices,
+            commands::record::scribe_read_transcript,
+            commands::record::scribe_list_recovery_sessions,
+            commands::record::scribe_list_transcripts,
+            commands::record::scribe_toggle_speaker_capture,
             commands::model::model_setup_status,
             commands::model::model_list,
             commands::model::model_download,
@@ -724,8 +724,8 @@ pub fn run() {
             commands::settings::settings_set_keep_wav,
             commands::settings::settings_get_save_transcripts_as_markdown,
             commands::settings::settings_set_save_transcripts_as_markdown,
-            commands::settings::settings_get_dictate_model_id,
-            commands::settings::settings_set_dictate_model_id,
+            commands::settings::settings_get_fast_model_id,
+            commands::settings::settings_set_fast_model_id,
             commands::settings::settings_get_replacement_rules,
             commands::settings::settings_add_replacement_rule,
             commands::settings::settings_update_replacement_rule,
@@ -745,10 +745,10 @@ pub fn run() {
             commands::history::history_read_legacy,
             commands::history::get_dashboard_stats,
             commands::history::history_tag_vocabulary,
-            commands::transcribe::transcribe_inspect_inputs,
-            commands::transcribe::transcribe_start,
-            commands::transcribe::transcribe_open_output,
-            commands::transcribe::transcribe_show_window,
+            commands::upload::transcribe_inspect_inputs,
+            commands::upload::transcribe_start,
+            commands::upload::transcribe_open_output,
+            commands::upload::transcribe_show_window,
             commands::update::update_check,
         ])
         .build(tauri::generate_context!())
@@ -762,7 +762,7 @@ pub fn run() {
                     svc.release_contexts();
                 }
                 if let Some(ctrl) =
-                    app_handle.try_state::<Arc<controllers::scribe::ScribeController>>()
+                    app_handle.try_state::<Arc<controllers::scribe::RecordController>>()
                 {
                     ctrl.finalize_capture_on_shutdown();
                 }

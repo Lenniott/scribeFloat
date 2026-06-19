@@ -78,11 +78,11 @@
    :root provides dark defaults; [data-theme] and @media override as needed.
 
    Brand source variables:
-     --brand-hue   change to shift ALL brand-tinted colors at once
-     --canvas-l    change to shift the entire dark-mode surface scale
+     --brand-hue     change to shift ALL brand-tinted colors at once
+     --canvas-l      base lightness for the surface scale (both themes)
+     --surface-dir   +1 dark (steps get lighter), -1 light (steps get darker)
 
-   Dark surfaces derive via calc — edit --canvas-l and all 5 steps move together.
-   Light surfaces use absolute values (direction inverts; calc would fight itself).
+   All five surfaces derive from --canvas-l — edit one knob and the scale moves together.
    ───────────────────────────────────────────────────────────────────────────── */
 
 /* Dark defaults */
@@ -94,18 +94,19 @@
   /* Single-source knobs */
   --brand-hue: 250;
   --canvas-l:  0.20;
+  --surface-dir: 1;
 
-  /* Surfaces — derived from --canvas-l in dark mode */
+  /* Surfaces — derived from --canvas-l; direction flips in light theme */
   --sf-canvas:  oklch(var(--canvas-l) 0 0);
-  --sf-panel:   oklch(calc(var(--canvas-l) + 0.04) 0 0);
-  --sf-card:    oklch(calc(var(--canvas-l) + 0.08) 0 0);
-  --sf-fill:    oklch(calc(var(--canvas-l) + 0.12) 0 0);
-  --sf-rim:     oklch(calc(var(--canvas-l) + 0.20) 0 0);
+  --sf-panel:   oklch(calc(var(--canvas-l) + var(--surface-dir) * 0.015) 0 0);
+  --sf-card:    oklch(calc(var(--canvas-l) + var(--surface-dir) * 0.025) 0 0);
+  --sf-fill:    oklch(calc(var(--canvas-l) + var(--surface-dir) * 0.10) 0 0);
+  --sf-rim:     oklch(calc(var(--canvas-l) + var(--surface-dir) * 0.16) 0 0);
 
   /* Foreground text */
   --sf-fg:       oklch(0.93 0.0044 286.28);
-  --sf-fg-dim:   oklch(0.60 0 0);
-  --sf-fg-muted: oklch(0.40 0 0);
+  --sf-fg-dim:   oklch(0.70 0 0);
+  --sf-fg-muted: oklch(0.50 0 0);
 
   /* Brand — all tints share --brand-hue */
   --sf-brand:    oklch(0.700 0.16 var(--brand-hue));
@@ -134,12 +135,7 @@
 
   --brand-hue: 250;
   --canvas-l:  0.20;
-
-  --sf-canvas:  oklch(var(--canvas-l) 0 0);
-  --sf-panel:   oklch(calc(var(--canvas-l) + 0.04) 0 0);
-  --sf-card:    oklch(calc(var(--canvas-l) + 0.08) 0 0);
-  --sf-fill:    oklch(calc(var(--canvas-l) + 0.12) 0 0);
-  --sf-rim:     oklch(calc(var(--canvas-l) + 0.20) 0 0);
+  --surface-dir: 1;
 
   --sf-fg:       oklch(0.93 0.0044 286.28);
   --sf-fg-dim:   oklch(0.60 0 0);
@@ -169,12 +165,8 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  /* Light surfaces count downward from near-white */
-  --sf-canvas:  oklch(0.98 0 0);
-  --sf-panel:   oklch(0.96 0 0);
-  --sf-card:    oklch(0.92 0 0);
-  --sf-fill:    oklch(0.87 0 0);
-  --sf-rim:     oklch(0.80 0 0);
+  --canvas-l: 0.98;
+  --surface-dir: -1;
 
   --sf-fg:       oklch(0.18 0 0);
   --sf-fg-dim:   oklch(0.45 0 0);
@@ -212,11 +204,8 @@
   :root:not([data-theme]) {
     color-scheme: light;
 
-    --sf-canvas:  oklch(0.98 0 0);
-    --sf-panel:   oklch(0.96 0 0);
-    --sf-card:    oklch(0.92 0 0);
-    --sf-fill:    oklch(0.87 0 0);
-    --sf-rim:     oklch(0.80 0 0);
+    --canvas-l: 0.98;
+    --surface-dir: -1;
 
     --sf-fg:       oklch(0.18 0 0);
     --sf-fg-dim:   oklch(0.45 0 0);
@@ -295,7 +284,20 @@ html {
    */
   .sf-panel   { @apply bg-panel rounded-md; }
   .sf-card    { @apply bg-card rounded-md; }
-  .sf-input   { @apply bg-card border border-fill rounded-md text-fg font-sans text-label-md focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-card; }
+  .sf-field,
+  .sf-input,
+  .sf-select {
+    @apply box-border bg-canvas border border-rim rounded-md text-fg font-sans text-label-md
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus
+           focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
+  }
+  .sf-input {
+    @apply h-10 w-full px-2 py-2 placeholder:text-fg-muted disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .sf-select {
+    @apply h-10 w-full cursor-pointer appearance-none py-2 pr-8 pl-2
+           disabled:cursor-not-allowed disabled:opacity-40;
+  }
   .sf-divider { @apply border-t border-card; }
   .sf-scrim   { @apply bg-overlay; }
 

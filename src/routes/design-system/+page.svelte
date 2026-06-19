@@ -23,8 +23,7 @@
   import StackProgressBar from "@primitives/display/ProgressBar.svelte";
   import ToggleSwitch from "@components/controls/Toggle.svelte";
   import InlineNoteCard from "@components/cards/InlineNote.svelte";
-  import HistoryNoteCard from "@components/cards/NoteCard.svelte";
-  import RecentNoteCard from "@components/cards/RecentNoteCard.svelte";
+  import NoteCard from "@components/cards/NoteCard.svelte";
   import SettingRow from "@components/cards/SettingRow.svelte";
   import FilterRow from "@components/cards/FilterRow.svelte";
   import UploadItem from "@components/cards/UploadItem.svelte";
@@ -83,10 +82,9 @@
   let showNoteDetail = $state(false);
   let pathPickerDemo = $state("~/Documents/ScribeFloat");
 
-  const sourceIconKinds = [
-    { kind: "dictate", label: "Dictate" },
-    { kind: "transcribe", label: "Upload" },
-    { kind: "scribe", label: "Scribe" },
+  const sourceIconOrigins = [
+    { origin: "mic", label: "Mic" },
+    { origin: "upload", label: "Upload" },
   ] as const;
 
   const catalogSections = [
@@ -114,14 +112,14 @@
 
   const demoNoteItem: HistoryListItem = {
     id: "demo-note-1",
-    kind: "dictate",
+    quick: true,
+    origin: "mic",
     created_at: new Date().toISOString(),
     title: "Team standup",
     model: "base",
     word_count: 342,
     duration_ms: 180_000,
     duration_secs: 180,
-    excerpt: "Discussed sprint priorities and blockers for the release.",
     tags: ["work", "meeting"],
     has_markdown: true,
     markdown_path: "/tmp/demo.md",
@@ -131,7 +129,8 @@
   const demoLegacyNoteItem: HistoryListItem = {
     ...demoNoteItem,
     id: "demo-note-2",
-    kind: "scribe",
+    quick: false,
+    origin: "upload",
     title: "Legacy import",
     source: "legacy",
     has_markdown: false,
@@ -430,13 +429,12 @@
       <div>
         <p class="sf-section-label text-fg-dim mb-3">SourceIcon</p>
         <p class="sf-body-md text-fg-muted mb-3">
-          Capture-method icons. <code class="text-brand">transcribe</code> kind maps to the
-          Upload Area in product copy.
+          Origin icons. <code class="text-brand">mic</code> for live recordings (Record and Dictate); <code class="text-brand">upload</code> for imported files.
         </p>
         <div class="flex flex-wrap gap-4">
-          {#each sourceIconKinds as { kind, label } (kind)}
+          {#each sourceIconOrigins as { origin, label } (origin)}
             <div class="flex flex-col items-center gap-2">
-              <SourceIcon {kind} />
+              <SourceIcon {origin} />
               <span class="sf-label-md text-fg-dim">{label}</span>
             </div>
           {/each}
@@ -739,25 +737,24 @@
     </h2>
     <div class="flex max-w-2xl flex-col gap-8">
       <div>
-        <p class="sf-section-label text-fg-dim mb-3">NoteCard — Notes Area list row</p>
-        <HistoryNoteCard
+        <p class="sf-section-label text-fg-dim mb-3">NoteCard</p>
+        <NoteCard
           item={demoNoteItem}
-          chip={{ label: "Approved", variant: "brand" }}
+          chip={{ label: "Record", variant: "brand" }}
           onselect={() => {}}
           oncopy={() => {}}
           onopen={() => {}}
           ondelete={() => {}}
         />
         <div class="mt-3">
-          <HistoryNoteCard
+          <NoteCard
             item={demoLegacyNoteItem}
-            chip={{ label: "Pending", variant: "muted" }}
+            chip={{ label: "Upload", variant: "focus" }}
           />
         </div>
-      </div>
-      <div>
-        <p class="sf-section-label text-fg-dim mb-3">RecentNoteCard — Home Area</p>
-        <RecentNoteCard item={demoNoteItem} onselect={() => {}} />
+        <div class="mt-3">
+          <NoteCard compact item={demoNoteItem} onselect={() => {}} />
+        </div>
       </div>
       <div>
         <p class="sf-section-label text-fg-dim mb-3">SettingRow</p>

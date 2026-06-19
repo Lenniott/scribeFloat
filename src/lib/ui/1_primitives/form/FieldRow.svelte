@@ -46,9 +46,6 @@
 
 	const fieldId = $derived(id ?? `field-${label.toLowerCase().replace(/\s+/g, '-')}`);
 
-	const selectClass =
-		'h-10 cursor-pointer rounded-md border border-rim bg-card py-2 pr-8 pl-2 sf-body-md text-fg disabled:cursor-not-allowed disabled:opacity-40';
-
 </script>
 
 {#if layout === 'horizontal'}
@@ -69,7 +66,7 @@
 		{#if mode === 'select'}
 			<select
 				id={fieldId}
-				class="{selectClass} min-w-40 max-w-56 truncate"
+				class="sf-select min-w-40 max-w-56 truncate"
 				bind:value
 				{disabled}
 				onchange={(e) => onchange?.((e.currentTarget as HTMLSelectElement).value)}
@@ -83,13 +80,13 @@
 			</select>
 		{:else}
 			<div class="flex min-w-0 max-w-full items-center gap-2 sm:max-w-md">
-				<code
+				<div
 					id={fieldId}
-					class="flex h-10 min-w-0 flex-1 items-center truncate rounded-md bg-panel px-2 py-2 sf-label-md text-fg"
+					class="sf-input flex min-w-0 flex-1 items-center truncate"
 					title={value}
 				>
 					{value || placeholder}
-				</code>
+				</div>
 				<Button variant="normal" {disabled} onclick={() => onButtonClick?.()}>{buttonLabel}</Button>
 			</div>
 		{/if}
@@ -108,7 +105,7 @@
 		{#if mode === 'select'}
 			<select
 				id={fieldId}
-				class={selectClass}
+				class="sf-select"
 				bind:value
 				{disabled}
 				onchange={(e) => onchange?.((e.currentTarget as HTMLSelectElement).value)}
@@ -122,13 +119,13 @@
 			</select>
 		{:else}
 			<div class="flex min-w-0 items-center gap-2">
-				<code
+				<div
 					id={fieldId}
-					class="flex h-10 min-w-0 flex-1 items-center truncate rounded-md bg-panel px-2 py-2 sf-label-md text-fg"
+					class="sf-input flex min-w-0 flex-1 items-center truncate"
 					title={value}
 				>
 					{value || placeholder}
-				</code>
+				</div>
 				<Button variant="normal" onclick={() => onButtonClick?.()}>{buttonLabel}</Button>
 			</div>
 		{/if}

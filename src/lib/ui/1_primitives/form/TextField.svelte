@@ -33,7 +33,7 @@
 			bind:value
 			{placeholder}
 			{disabled}
-			class="sf-input min-h-[80px] resize-y p-2 disabled:opacity-40 placeholder:text-fg-muted"
+			class="sf-input h-auto min-h-[80px] resize-y disabled:opacity-40"
 		></textarea>
 	{:else}
 		<input
@@ -42,7 +42,7 @@
 			bind:value
 			{placeholder}
 			{disabled}
-			class="sf-input h-10 p-2 disabled:opacity-40 placeholder:text-fg-muted"
+			class="sf-input disabled:opacity-40"
 		/>
 	{/if}
 </div>

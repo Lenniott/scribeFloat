@@ -577,7 +577,7 @@
                         await startRecording();
                       }
                     }}
-                    class="h-8 rounded-md border-0 border-b border-transparent bg-panel py-2 pr-8 pl-2 sf-body-md text-fg"
+                    class="sf-select"
                   >
                     {#each micOptions as opt (opt.value)}
                       <option value={opt.value}>{opt.label}</option>
@@ -595,7 +595,7 @@
                         selectedModelId = id;
                         await modelStore.select(id);
                       }}
-                      class="h-8 rounded-md border-0 border-b border-transparent bg-panel py-2 pr-8 pl-2 sf-body-md text-fg"
+                      class="sf-select"
                     >
                       {#each downloadedModelOptions as opt (opt.value)}
                         <option value={opt.value}>{opt.label}</option>

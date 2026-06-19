@@ -373,7 +373,7 @@
           <select
             id="transcribe-model"
             bind:value={selectedModelId}
-            class="sf-body-md h-10 rounded-md border border-rim bg-panel px-2 text-fg"
+            class="sf-select w-full"
           >
             <option value="">Select model</option>
             {#each downloadedModelOptions as option (option.value)}

@@ -35,8 +35,6 @@
 	</button>
 
 	<div class="my-3 border-t border-card"></div>
-
-	<p class="sf-section-label mb-2 px-2 text-fg-dim">Settings</p>
 	<div class="flex flex-col gap-0.5">
 		{#each SETTINGS_TABS as tab (tab.id)}
 			<NavItem

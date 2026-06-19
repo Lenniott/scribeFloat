@@ -41,7 +41,7 @@
 			id={fieldId}
 			type="text"
 			bind:value={path}
-			class="sf-input h-10 min-w-0 flex-1 p-2 placeholder:text-fg-muted"
+			class="sf-input min-w-0 flex-1"
 			onblur={() => onChange?.(path)}
 		/>
 		<Button variant="normal" onclick={choosePath}>Change</Button>

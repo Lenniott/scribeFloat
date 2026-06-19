@@ -68,7 +68,7 @@
     unlisteners = await modelStore.subscribe();
     await modelStore.refresh();
     dictateModelId = await invoke<string | null>(
-      "settings_get_dictate_model_id",
+      "settings_get_fast_model_id",
     ).catch(() => null);
     vadDownloaded = await invoke<boolean>("model_vad_status").catch(
       () => false,
@@ -102,7 +102,7 @@
     const modelId = value || null;
     dictateModelId = modelId;
     try {
-      await invoke("settings_set_dictate_model_id", { modelId });
+      await invoke("settings_set_fast_model_id", { modelId });
       showToastMessage(toastMessages.modelSelected);
     } catch (e) {
       modelStore.error = String(e);
@@ -167,14 +167,14 @@
     <SettingsSection title="Default models">
       <SettingsList>
         <SettingsRow
-          title="Default Scribe transcription model"
-          description="Used for recordings created in Scribe."
+          title="Refined model"
+          description="Used for long-form recordings (Record)."
           disabled={downloadedModels.length === 0}
         >
           {#snippet control()}
             <div class="w-full sm:w-56">
               <FieldRow
-                label="Default Scribe transcription model"
+                label="Refined model"
                 labelHidden={true}
                 id="scribe-model-select"
                 options={downloadedModels.map((m) => ({ value: m.id, label: m.label }))}
@@ -190,18 +190,18 @@
         </SettingsRow>
 
         <SettingsRow
-          title="Dictate transcription model override"
-          description="Leave as Scribe unless Dictate should use a separate model."
+          title="Fast model"
+          description="Used for quick capture (Dictate). Leave empty to use the refined model."
           disabled={downloadedModels.length === 0}
         >
           {#snippet control()}
             <div class="w-full sm:w-56">
               <FieldRow
-                label="Dictate transcription model override"
+                label="Fast model"
                 labelHidden={true}
                 id="dictate-model-select"
                 options={downloadedModels.map((m) => ({ value: m.id, label: m.label }))}
-                emptyOption={{ label: 'Same as Scribe' }}
+                emptyOption={{ label: 'Same as refined' }}
                 value={dictateModelId ?? ''}
                 onchange={onDictateModelChange}
                 disabled={downloadedModels.length === 0}
@@ -287,10 +287,10 @@
             {/if}
             <div class="flex items-center gap-2">
               {#if model.selected && model.downloaded}
-                <Chip variant="brand">scribe</Chip>
+                <Chip variant="brand">refined</Chip>
               {/if}
               {#if model.downloaded && (model.id === dictateModelId || (dictateModelId === null && model.selected))}
-                <Chip variant="focus">dictate</Chip>
+                <Chip variant="focus">fast</Chip>
               {/if}
             </div>
 

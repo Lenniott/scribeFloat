@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-svelte';
 	import HistoryDetailPane from '@sections/NoteDetailPane.svelte';
-	import NoteListCard from '@components/cards/NoteCard.svelte';
+	import NoteCard from '@components/cards/NoteCard.svelte';
 	import FilterSidePanel from '@sections/FilterPanel.svelte';
 	import ScrollablePanel from '@primitives/layout/ScrollBody.svelte';
 	import IconButton from '@components/controls/IconButton.svelte';
@@ -9,12 +9,12 @@
 	import type { HistoryListItem } from '@services/historyActions';
 	import { fetchTagVocabulary, type TagVocabularyEntry } from '@services/historyActions';
 
-	type CaptureFilter = 'all' | 'scribe' | 'dictate' | 'upload';
+	type CaptureFilter = 'all' | 'record' | 'quick' | 'upload';
 
 	const tabs: { id: CaptureFilter; label: string }[] = [
 		{ id: 'all', label: 'All' },
-		{ id: 'scribe', label: 'Scribe' },
-		{ id: 'dictate', label: 'Dictate' },
+		{ id: 'record', label: 'Record' },
+		{ id: 'quick', label: 'Quick' },
 		{ id: 'upload', label: 'Upload' },
 	];
 
@@ -46,11 +46,11 @@
 	const sourceFiltered = $derived(
 		activeTab === 'all'
 			? allItems
-			: activeTab === 'scribe'
-				? allItems.filter((item) => item.kind === 'scribe')
-				: activeTab === 'dictate'
-					? allItems.filter((item) => item.kind === 'dictate')
-					: allItems.filter((item) => item.kind === 'transcribe'),
+			: activeTab === 'record'
+				? allItems.filter((item) => !item.quick && item.origin === 'mic')
+				: activeTab === 'quick'
+					? allItems.filter((item) => item.quick)
+					: allItems.filter((item) => item.origin === 'upload'),
 	);
 
 	const filteredItems = $derived(
@@ -83,16 +83,16 @@
 	});
 
 	function emptyMessage(filter: CaptureFilter): string {
-		if (filter === 'scribe') return 'No Scribe notes yet.';
-		if (filter === 'dictate') return 'No dictations yet.';
+		if (filter === 'record') return 'No recorded notes yet.';
+		if (filter === 'quick') return 'No quick captures yet.';
 		if (filter === 'upload') return 'No uploads yet.';
 		return 'No notes yet.';
 	}
 
-	function chipForKind(kind: string): { label: string; variant: 'brand' | 'focus' | 'muted' } {
-		if (kind === 'dictate') return { label: 'Dictate', variant: 'focus' };
-		if (kind === 'transcribe') return { label: 'Upload', variant: 'focus' };
-		return { label: 'Scribe', variant: 'brand' };
+	function chipForItem(item: { quick: boolean; origin: string }): { label: string; variant: 'brand' | 'focus' | 'muted' } {
+		if (item.origin === 'upload') return { label: 'Upload', variant: 'focus' };
+		if (item.quick) return { label: 'Quick', variant: 'focus' };
+		return { label: 'Record', variant: 'brand' };
 	}
 
 	function navigateDetail(delta: -1 | 1) {
@@ -205,9 +205,9 @@
 					<div class="flex flex-col gap-2" role="list">
 						{#each filteredItems as item (item.id)}
 							<div role="listitem">
-								<NoteListCard
+								<NoteCard
 									{item}
-									chip={chipForKind(item.kind)}
+									chip={chipForItem(item)}
 									disabled={deleting}
 									onselect={() => (selectedItem = item)}
 									oncopy={() => oncopy(item)}

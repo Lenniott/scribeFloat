@@ -2,7 +2,7 @@ use crate::services::config::ConfigService;
 use crate::services::history::HistoryService;
 use crate::services::output::{self, OutputService};
 use crate::types::{
-    DashboardStats, HistoryItemSource, HistoryKind, HistoryListItem, HistoryRecord,
+    DashboardStats, HistoryItemSource, HistoryListItem, HistoryRecord, NoteOrigin,
     TagVocabularyEntry,
 };
 use std::collections::{HashMap, HashSet};
@@ -60,7 +60,8 @@ impl HistoryController {
                 }
                 items.push(HistoryListItem {
                     id: format!("{LEGACY_MD_PREFIX}{}", entry.path),
-                    kind: HistoryKind::Scribe,
+                    quick: false,
+                    origin: NoteOrigin::Mic,
                     created_at: entry.modified_at,
                     title: entry.title,
                     model: entry.model,
@@ -81,7 +82,8 @@ impl HistoryController {
             for entry in legacy_dictate {
                 items.push(HistoryListItem {
                     id: format!("{LEGACY_DICTATE_PREFIX}{}", entry.id),
-                    kind: HistoryKind::Dictate,
+                    quick: true,
+                    origin: NoteOrigin::Mic,
                     created_at: entry.timestamp,
                     title: short_title(&entry.text),
                     model: String::new(),
@@ -156,8 +158,8 @@ impl HistoryController {
             .get(&cfg.save_folder, id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "history record not found".to_string())?;
-        if record.kind == HistoryKind::Dictate {
-            return Err("dictate items are not exported to markdown".to_string());
+        if record.quick {
+            return Err("quick (dictate) items are not exported to markdown".to_string());
         }
 
         // Reserve a non-colliding filename. transcript_path derives the model slug from a path's
@@ -395,7 +397,7 @@ mod tests {
         )
         .unwrap();
 
-        let record = HistoryRecord::from_scribe(
+        let record = HistoryRecord::from_record(
             "Meeting".to_string(),
             "tiny".to_string(),
             seg("in: hello"),
@@ -450,7 +452,7 @@ mod tests {
             b"---\ntitle: 'Dupe'\nmodel: tiny\n---\n\n## Transcript\n\nhi\n",
         )
         .unwrap();
-        let record = HistoryRecord::from_scribe(
+        let record = HistoryRecord::from_record(
             "Dupe".to_string(),
             "tiny".to_string(),
             seg("hello"),
@@ -475,7 +477,7 @@ mod tests {
     #[test]
     fn render_markdown_returns_body_only_no_front_matter() {
         let f = fixture();
-        let rec = HistoryRecord::from_scribe(
+        let rec = HistoryRecord::from_record(
             "My Meeting".to_string(),
             "tiny".to_string(),
             seg("hello world"),

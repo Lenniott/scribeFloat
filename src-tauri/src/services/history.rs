@@ -224,7 +224,7 @@ impl HistoryService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{HistoryKind, Segment};
+    use crate::types::Segment;
 
     fn temp_folder() -> String {
         let dir =
@@ -403,6 +403,6 @@ mod tests {
             serde_json::from_str::<HistoryRecord>(line).expect("each line parses cleanly");
         }
         assert_eq!(svc.list(&folder).unwrap().len(), 16);
-        assert_eq!(svc.list(&folder).unwrap()[0].kind, HistoryKind::Dictate);
+        assert!(svc.list(&folder).unwrap()[0].quick);
     }
 }

@@ -85,7 +85,7 @@ struct Inner {
     transcription_wav_path: Option<PathBuf>,
 }
 
-pub struct ScribeController {
+pub struct RecordController {
     inner: Mutex<Inner>,
     /// Ensures `cancel`/`stop` never run while `start` is between `start_mic` and session commit
     /// (state still Idle but CPAL already recording — that used to make discard a no-op on streams).
@@ -98,7 +98,7 @@ pub struct ScribeController {
     app: AppHandle,
 }
 
-impl ScribeController {
+impl RecordController {
     pub fn new(
         audio: Arc<AudioService>,
         model: Arc<ModelService>,
@@ -817,7 +817,7 @@ impl ScribeController {
         } else {
             (None, None)
         };
-        let record = HistoryRecord::from_scribe(
+        let record = HistoryRecord::from_record(
             title.to_string(),
             model_name.clone(),
             segments.to_vec(),
@@ -1195,7 +1195,7 @@ fn mic_wav_path_for(session_dir: &Path) -> PathBuf {
     session_dir.join("mic.wav")
 }
 
-impl ScribeController {
+impl RecordController {
     fn write_session_manifest(
         &self,
         session_dir: &Path,
@@ -1333,12 +1333,12 @@ mod tests {
 
     #[test]
     fn start_guard_rejects_recording_and_transcribing_states() {
-        assert!(ScribeController::ensure_start_allowed(&ScribeState::Idle).is_ok());
-        assert!(ScribeController::ensure_start_allowed(&ScribeState::Done).is_ok());
-        assert!(ScribeController::ensure_start_allowed(&ScribeState::NoModel).is_ok());
+        assert!(RecordController::ensure_start_allowed(&ScribeState::Idle).is_ok());
+        assert!(RecordController::ensure_start_allowed(&ScribeState::Done).is_ok());
+        assert!(RecordController::ensure_start_allowed(&ScribeState::NoModel).is_ok());
 
-        assert!(ScribeController::ensure_start_allowed(&ScribeState::Recording).is_err());
-        assert!(ScribeController::ensure_start_allowed(&ScribeState::Transcribing).is_err());
+        assert!(RecordController::ensure_start_allowed(&ScribeState::Recording).is_err());
+        assert!(RecordController::ensure_start_allowed(&ScribeState::Transcribing).is_err());
     }
 
     #[test]
@@ -1386,7 +1386,7 @@ mod tests {
     #[test]
     fn cancel_requires_recording_state() {
         assert!(matches!(
-            ScribeController::ensure_start_allowed(&ScribeState::Error),
+            RecordController::ensure_start_allowed(&ScribeState::Error),
             Ok(())
         ));
         // Cancelling from non-recording states should be rejected at the controller level.
@@ -1398,7 +1398,7 @@ mod tests {
             ScribeState::Error,
         ] {
             assert!(
-                ScribeController::ensure_start_allowed(&state).is_ok(),
+                RecordController::ensure_start_allowed(&state).is_ok(),
                 "start should be allowed from {state:?}"
             );
         }

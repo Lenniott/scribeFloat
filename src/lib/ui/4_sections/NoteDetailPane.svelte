@@ -71,7 +71,7 @@
   let toastTimeout: ReturnType<typeof setTimeout> | null = null;
 
   const showExport = $derived(
-    item.source === "store" && item.kind !== "dictate" && !item.has_markdown,
+    item.source === "store" && !item.quick && !item.has_markdown,
   );
   const showOpenMd = $derived(item.has_markdown && !!item.markdown_path);
 

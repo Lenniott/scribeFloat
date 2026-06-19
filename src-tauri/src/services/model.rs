@@ -679,7 +679,7 @@ impl ModelService {
                     vad_requested,
                     &e,
                 );
-                Err(e.into())
+                Err(e)
             }
             Err(e) => Err(e.into()),
         }
@@ -693,6 +693,7 @@ impl ModelService {
             .contains(model_path)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn record_encode_failure(
         &self,
         source: &str,

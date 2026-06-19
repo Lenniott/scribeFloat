@@ -1,9 +1,3 @@
-export function kindLabel(kind: string): string {
-	if (kind === 'dictate') return 'Dictate';
-	if (kind === 'transcribe') return 'Upload';
-	return 'Scribe';
-}
-
 export function formatShortDate(iso: string): string {
 	const date = new Date(iso);
 	return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });

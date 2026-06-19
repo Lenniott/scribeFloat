@@ -401,7 +401,7 @@ impl TranscribeController {
             };
 
             // Persist the canonical record — always, regardless of the markdown toggle.
-            let record = HistoryRecord::from_transcribe(
+            let record = HistoryRecord::from_upload(
                 input.display_name.clone(),
                 model_name.to_string(),
                 segments.clone(),

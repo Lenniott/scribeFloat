@@ -612,13 +612,13 @@ pub struct ScribeTranscriptEntry {
 
 // ── History record store ────────────────────────────────────────────────────────
 
-/// Which capture flow produced a history record.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Where the audio came from. Drives SourceIcon. Defaults to `Mic` for legacy records.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum HistoryKind {
-    Scribe,
-    Dictate,
-    Transcribe,
+pub enum NoteOrigin {
+    #[default]
+    Mic,
+    Upload,
 }
 
 /// The canonical, source-of-truth record persisted to `{save_folder}/history.jsonl`.
@@ -627,7 +627,12 @@ pub enum HistoryKind {
 pub struct HistoryRecord {
     pub format_version: u8,
     pub id: String,
-    pub kind: HistoryKind,
+    /// True if captured via the fast/solo path (Dictate). Drives "quick" Chip and gates markdown export.
+    #[serde(default)]
+    pub quick: bool,
+    /// Where the audio came from. Drives SourceIcon.
+    #[serde(default)]
+    pub origin: NoteOrigin,
     /// RFC3339 UTC timestamp.
     pub created_at: String,
     pub title: String,
@@ -672,7 +677,10 @@ pub enum HistoryItemSource {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryListItem {
     pub id: String,
-    pub kind: HistoryKind,
+    #[serde(default)]
+    pub quick: bool,
+    #[serde(default)]
+    pub origin: NoteOrigin,
     pub created_at: String,
     pub title: String,
     pub model: String,
@@ -706,11 +714,7 @@ pub struct TagVocabularyEntry {
 }
 
 impl HistoryRecord {
-    /// Shared scaffolding: format version, fresh uuid, current UTC time, duration and
-    /// word count. `word_count` is computed via the same renderer the `.md` uses so the
-    /// store and any exported markdown never diverge.
     fn base(
-        kind: HistoryKind,
         title: String,
         model: String,
         segments: Vec<Segment>,
@@ -721,7 +725,8 @@ impl HistoryRecord {
         Self {
             format_version: 1,
             id: uuid::Uuid::new_v4().to_string(),
-            kind,
+            quick: false,
+            origin: NoteOrigin::Mic,
             created_at: chrono::Utc::now().to_rfc3339(),
             title,
             model,
@@ -739,11 +744,11 @@ impl HistoryRecord {
         }
     }
 
-    /// Build a Scribe record. `session_dir`/`audio_path` are set when `keep_wav` is on so
-    /// the History delete path can remove the kept audio. `markdown_path` is set when the
-    /// markdown toggle is on.
+    /// Build a Record (long-form in-app recording). `session_dir`/`audio_path` are set when
+    /// `keep_wav` is on so the History delete path can remove the kept audio. `markdown_path`
+    /// is set when the markdown toggle is on.
     #[allow(clippy::too_many_arguments)]
-    pub fn from_scribe(
+    pub fn from_record(
         title: String,
         model: String,
         segments: Vec<Segment>,
@@ -758,7 +763,6 @@ impl HistoryRecord {
     ) -> Self {
         let word_count = crate::services::output::count_words(&segments, rules, prefix);
         let mut rec = Self::base(
-            HistoryKind::Scribe,
             title,
             model,
             segments,
@@ -784,19 +788,14 @@ impl HistoryRecord {
             end_ms: duration_ms,
             text: text.to_string(),
         }];
-        Self::base(
-            HistoryKind::Dictate,
-            title,
-            model,
-            stored,
-            Vec::new(),
-            word_count,
-        )
+        let mut rec = Self::base(title, model, stored, Vec::new(), word_count);
+        rec.quick = true;
+        rec
     }
 
-    /// Build a Transcribe record from an imported audio file.
+    /// Build an Upload record from an imported audio file.
     #[allow(clippy::too_many_arguments)]
-    pub fn from_transcribe(
+    pub fn from_upload(
         title: String,
         model: String,
         segments: Vec<Segment>,
@@ -807,14 +806,8 @@ impl HistoryRecord {
         markdown_path: Option<String>,
     ) -> Self {
         let word_count = crate::services::output::count_words(&segments, rules, prefix);
-        let mut rec = Self::base(
-            HistoryKind::Transcribe,
-            title,
-            model,
-            segments,
-            Vec::new(),
-            word_count,
-        );
+        let mut rec = Self::base(title, model, segments, Vec::new(), word_count);
+        rec.origin = NoteOrigin::Upload;
         rec.dual_source = dual_source;
         rec.source_path = Some(source_path);
         rec.markdown_path = markdown_path;
@@ -825,7 +818,8 @@ impl HistoryRecord {
     pub fn to_list_item(&self) -> HistoryListItem {
         HistoryListItem {
             id: self.id.clone(),
-            kind: self.kind,
+            quick: self.quick,
+            origin: self.origin,
             created_at: self.created_at.clone(),
             title: self.title.clone(),
             model: self.model.clone(),
@@ -971,7 +965,7 @@ mod tests {
     }
 
     #[test]
-    fn from_scribe_sets_dual_source_duration_and_kept_audio() {
+    fn from_record_sets_dual_source_duration_and_kept_audio() {
         let segments = vec![
             Segment {
                 start_ms: 0,
@@ -984,7 +978,7 @@ mod tests {
                 text: "out: hello there".to_string(),
             },
         ];
-        let rec = HistoryRecord::from_scribe(
+        let rec = HistoryRecord::from_record(
             "Meeting".to_string(),
             "tiny".to_string(),
             segments,
@@ -997,7 +991,8 @@ mod tests {
             Some("/save/2026/sess/mic.wav".to_string()),
             None,
         );
-        assert_eq!(rec.kind, HistoryKind::Scribe);
+        assert!(!rec.quick);
+        assert_eq!(rec.origin, NoteOrigin::Mic);
         assert_eq!(rec.duration_ms, 5_000);
         assert!(rec.dual_source);
         assert!(rec.speaker_capture);
@@ -1007,13 +1002,13 @@ mod tests {
     }
 
     #[test]
-    fn from_scribe_can_distinguish_speaker_capture_enabled_from_dual_source_success() {
+    fn from_record_can_distinguish_speaker_capture_enabled_from_dual_source_success() {
         let segments = vec![Segment {
             start_ms: 0,
             end_ms: 2_000,
             text: "mic only".to_string(),
         }];
-        let rec = HistoryRecord::from_scribe(
+        let rec = HistoryRecord::from_record(
             "Call".to_string(),
             "tiny".to_string(),
             segments,
@@ -1038,7 +1033,8 @@ mod tests {
             text: "raw".to_string(),
         }];
         let rec = HistoryRecord::from_dictate(&segments, "hello there friend", "tiny".to_string());
-        assert_eq!(rec.kind, HistoryKind::Dictate);
+        assert!(rec.quick);
+        assert_eq!(rec.origin, NoteOrigin::Mic);
         assert_eq!(rec.word_count, 3);
         assert_eq!(rec.duration_ms, 2_000);
         assert_eq!(rec.segments[0].text, "hello there friend");
@@ -1046,13 +1042,13 @@ mod tests {
     }
 
     #[test]
-    fn from_transcribe_sets_source_path() {
+    fn from_upload_sets_source_path() {
         let segments = vec![Segment {
             start_ms: 0,
             end_ms: 3_000,
             text: "one two".to_string(),
         }];
-        let rec = HistoryRecord::from_transcribe(
+        let rec = HistoryRecord::from_upload(
             "clip".to_string(),
             "tiny".to_string(),
             segments,
@@ -1062,7 +1058,8 @@ mod tests {
             "/in/clip.mp3".to_string(),
             None,
         );
-        assert_eq!(rec.kind, HistoryKind::Transcribe);
+        assert!(!rec.quick);
+        assert_eq!(rec.origin, NoteOrigin::Upload);
         assert_eq!(rec.source_path.as_deref(), Some("/in/clip.mp3"));
         assert_eq!(rec.word_count, 2);
     }

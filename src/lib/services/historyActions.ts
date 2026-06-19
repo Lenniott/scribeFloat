@@ -5,7 +5,8 @@ import { loadTranscriptPreview } from '@services/historyTranscript';
 
 export type HistoryListItem = {
 	id: string;
-	kind: string;
+	quick: boolean;
+	origin: 'mic' | 'upload';
 	created_at: string;
 	title: string;
 	model: string;

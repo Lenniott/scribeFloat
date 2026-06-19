@@ -25,6 +25,7 @@ Lightweight captures of ideation and design sessions. Not decisions — decision
 |------|------|----------|
 | [2026-06-18-domain-modeling-and-doc-system.md](captured/2026-06-18-domain-modeling-and-doc-system.md) | 2026-06-18 | CONTEXT.md, ADR-0001–0005, stories 0014–0035 |
 | [2026-06-18-tooling-and-doc-system-design.md](captured/2026-06-18-tooling-and-doc-system-design.md) | 2026-06-18 | stories 0001–0013 |
+| [2026-06-19-notes-component-codemirror.md](captured/2026-06-19-notes-component-codemirror.md) | 2026-06-19 | ADR-0006–0009, stories 0044–0051 |
 
 ## Naming convention
 

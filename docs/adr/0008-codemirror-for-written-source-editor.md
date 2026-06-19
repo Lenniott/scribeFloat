@@ -11,19 +11,29 @@ The unified note editor (ADR-0006) requires a text editing surface for the `writ
 Alternatives considered:
 - **Plain `<textarea>`** — zero dependency, but no syntax highlighting, no markdown shortcuts, no line-height control for headings. Adequate for short input; poor for long-form writing.
 - **Tiptap / ProseMirror** — WYSIWYG with rich formatting UI. Hides markdown syntax from the user; requires a serialisation layer back to markdown for storage. Overkill and an abstraction mismatch for a markdown-native app.
-- **Milkdown** — similar to Tiptap; same concerns.
-- **CodeMirror 6** — code editor adapted for prose. Renders markdown source with syntax highlighting, heading font-size differentiation, and link detection. Stays in the markdown paradigm. Extensible (autocomplete, keybindings, fold). ~350 KB minified — acceptable inside a Tauri webview where the bundle is already loaded locally.
+- **Milkdown Crepe** — ProseMirror for the main editing surface (CM6 only for code blocks); full WYSIWYG. Same concerns as Tiptap.
+- **`@atomic-editor/editor`** — CodeMirror 6 with Obsidian-style inline live preview (markers hidden on non-focused lines). Ships headings, bold, italic, tables as decorations. Ruled out: brand-new solo project, maintenance risk, and the dependency complexity is not justified when CM6 decorations can be added incrementally in-house.
+- **CodeMirror 6** — code editor adapted for prose. Stays in the markdown paradigm. Extensible incrementally. ~350 KB minified — acceptable inside a Tauri webview where the bundle is already loaded locally.
 
 ## Decision
 
 We will use **CodeMirror 6** (`@codemirror/...` packages) as the editor for the `written` Source panel in the unified note editor.
 
 The initial integration uses:
-- `@codemirror/lang-markdown` for markdown language support and syntax highlighting
+- `@codemirror/lang-markdown` for markdown language support and GFM extensions (task lists, tables, strikethrough)
 - `@codemirror/view` + `@codemirror/state` for the editor core
+- `@codemirror/commands` for standard keyboard shortcuts (Mod-B bold, Mod-I italic, etc.)
 - The existing app theme tokens applied via a CodeMirror theme extension (no third-party CM theme)
 
-The editor operates in **source mode** — the user sees and types markdown syntax. There is no live preview toggle inside the editor panel; the transcript panel on the other side of the split serves as the "rendered output" anchor for the session.
+**Markdown styling approach — CSS-first, decorations added incrementally:**
+
+The editor starts with CSS applied to CodeMirror's syntax tokens (`.cmt-heading1`–`.cmt-heading6`, `.cmt-strong`, `.cmt-emphasis`, `.cmt-monospace`, `.cmt-quote`). This gives:
+- Headings: larger `font-size` and `font-weight`, `#` markers dimmed to `text-fg-dim`
+- Bold/italic: the text between markers is styled; markers stay visible
+- Code: monospace font, `bg-fill` background
+- Bullets and task list items: `lang-markdown` recognises GFM task lists; visual checkbox rendering is a later addition via CM6 `WidgetDecoration`
+
+Obsidian-style marker-hiding (hide `**` when cursor leaves the line) is **explicitly deferred** — it requires custom `ViewPlugin` work and is not part of the initial build. It can be added per-element type as standalone CM6 extension files without touching the storage or component layers.
 
 Content is stored as raw markdown in the Note's `written` Source.
 

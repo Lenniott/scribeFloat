@@ -36,7 +36,7 @@
 		bind:value
 		type="text"
 		{placeholder}
-		class="sf-headline-sm h-10 w-full max-w-md rounded-sm border border-rim bg-card px-2 text-fg outline-none"
+		class="sf-headline-sm h-10 w-full max-w-md rounded-sm border border-rim bg-card px-2 text-fg sf-focus-ring"
 		onblur={commit}
 		{onkeydown}
 	/>

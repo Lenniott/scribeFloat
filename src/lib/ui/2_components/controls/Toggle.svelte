@@ -40,7 +40,7 @@
 			id={switchId}
 			aria-checked={checked}
 			aria-labelledby={labelId}
-			class="relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border transition-colors disabled:opacity-40 {checked
+			class="relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border transition-colors disabled:opacity-40 sf-focus-ring {checked
 				? 'border-active bg-active'
 				: 'border-rim bg-card'}"
 			{disabled}
@@ -69,7 +69,7 @@
 		{id}
 		aria-checked={checked}
 		aria-label={ariaLabel}
-		class="relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border transition-colors disabled:opacity-40 {checked
+		class="relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border transition-colors disabled:opacity-40 sf-focus-ring {checked
 			? 'border-active bg-active'
 			: 'border-rim bg-panel'}"
 		{disabled}

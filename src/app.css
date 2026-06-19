@@ -321,3 +321,17 @@ html {
   }
 }
 
+
+/* CodeMirror markdown token styles */
+.cm-line .cmt-heading1 { font-size: 1.5rem; font-weight: 700; }
+.cm-line .cmt-heading2 { font-size: 1.25rem; font-weight: 700; }
+.cm-line .cmt-heading3 { font-size: 1.125rem; font-weight: 600; }
+.cm-line .cmt-heading4,
+.cm-line .cmt-heading5,
+.cm-line .cmt-heading6 { font-weight: 600; }
+.cmt-heading1, .cmt-heading2, .cmt-heading3 { color: var(--color-fg); }
+.cmt-strong { font-weight: 700; }
+.cmt-emphasis { font-style: italic; }
+.cmt-monospace { font-family: var(--font-mono); background: var(--color-bg-fill); border-radius: 2px; padding: 0 3px; }
+.cmt-quote { color: var(--color-fg-dim); border-left: 2px solid var(--color-border-card); padding-left: 0.5rem; }
+.cmt-processingInstruction, .cmt-meta { color: var(--color-fg-dim); }

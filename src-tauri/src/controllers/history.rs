@@ -36,6 +36,32 @@ impl HistoryController {
         })
     }
 
+    /// Create a new Written note record and persist it. Returns the new record id.
+    pub fn create_written_note(&self) -> Result<String, String> {
+        let title = format!("{}", chrono::Local::now().format("%H:%M %d/%m/%y"));
+        let record = crate::types::HistoryRecord::from_written(title);
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .append(&save_folder, record)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Update the written content of an existing note. Content is raw markdown.
+    pub fn save_written_content(&self, id: &str, content: &str) -> Result<(), String> {
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .update_written_content(&save_folder, id, content)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Update the title of a note record (log-structured update).
+    pub fn save_title(&self, id: &str, title: &str) -> Result<(), String> {
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .update_title(&save_folder, id, title)
+            .map_err(|e| e.to_string())
+    }
+
     /// Unified, deduped, newest-first list: store records ∪ legacy `.md` not already in the store
     /// ∪ legacy dictate entries.
     pub fn list(&self) -> Result<Vec<HistoryListItem>, String> {
@@ -156,8 +182,8 @@ impl HistoryController {
             .get(&cfg.save_folder, id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "history record not found".to_string())?;
-        if record.kind == HistoryKind::Dictate {
-            return Err("dictate items are not exported to markdown".to_string());
+        if matches!(record.kind, HistoryKind::Dictate | HistoryKind::Written) {
+            return Err("dictate and written items are not exported to markdown".to_string());
         }
 
         // Reserve a non-colliding filename. transcript_path derives the model slug from a path's

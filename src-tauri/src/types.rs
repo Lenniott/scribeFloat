@@ -619,6 +619,7 @@ pub enum HistoryKind {
     Scribe,
     Dictate,
     Transcribe,
+    Written,
 }
 
 /// The canonical, source-of-truth record persisted to `{save_folder}/history.jsonl`.
@@ -654,6 +655,9 @@ pub struct HistoryRecord {
     /// Primary kept audio file (e.g. `{session_dir}/mic.wav`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio_path: Option<String>,
+    /// Markdown text for the `written` Source. None for non-Written records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub written_content: Option<String>,
     /// Tombstone: a later line with `deleted = true` removes the record from the live view.
     #[serde(default)]
     pub deleted: bool,
@@ -735,6 +739,7 @@ impl HistoryRecord {
             markdown_path: None,
             session_dir: None,
             audio_path: None,
+            written_content: None,
             deleted: false,
         }
     }
@@ -819,6 +824,18 @@ impl HistoryRecord {
         rec.source_path = Some(source_path);
         rec.markdown_path = markdown_path;
         rec
+    }
+
+    /// Build a Written note record. Content starts empty — filled in via `update_written_content`.
+    pub fn from_written(title: String) -> Self {
+        Self::base(
+            HistoryKind::Written,
+            title,
+            String::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+        )
     }
 
     /// Project to the lightweight list item shown in History.
@@ -1065,5 +1082,25 @@ mod tests {
         assert_eq!(rec.kind, HistoryKind::Transcribe);
         assert_eq!(rec.source_path.as_deref(), Some("/in/clip.mp3"));
         assert_eq!(rec.word_count, 2);
+    }
+
+    #[test]
+    fn written_record_has_correct_kind() {
+        let rec = HistoryRecord::from_written("Title".into());
+        assert_eq!(rec.kind, HistoryKind::Written);
+        assert!(rec.segments.is_empty());
+        assert_eq!(rec.model, "");
+        assert_eq!(rec.duration_ms, 0);
+        assert_eq!(rec.word_count, 0);
+        assert!(rec.written_content.is_none());
+        assert!(!rec.id.is_empty());
+    }
+
+    #[test]
+    fn written_record_deserialises_without_written_content_field() {
+        let json = r#"{"format_version":1,"id":"abc","kind":"written","created_at":"2026-01-01T00:00:00Z","title":"T","model":"","segments":[],"notes":[],"duration_ms":0,"word_count":0}"#;
+        let rec: HistoryRecord = serde_json::from_str(json).expect("deserialise");
+        assert_eq!(rec.kind, HistoryKind::Written);
+        assert!(rec.written_content.is_none());
     }
 }

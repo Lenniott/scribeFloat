@@ -74,8 +74,7 @@
 	}
 
 	function openCapture() {
-		appState.captureVisitKey += 1;
-		appState.captureOpen = true;
+		void goto('/notes/new');
 	}
 
 	beforeNavigate(({ cancel, to }) => {

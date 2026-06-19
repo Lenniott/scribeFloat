@@ -103,3 +103,29 @@ pub fn history_tag_vocabulary(
 ) -> Result<Vec<TagVocabularyEntry>, AppError> {
     ctrl.tag_vocabulary().map_err(AppError::from)
 }
+
+#[tauri::command]
+pub fn note_create_empty(ctrl: State<'_, Arc<HistoryController>>) -> Result<String, AppError> {
+    ctrl.create_written_note().map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn note_save_written_content(
+    ctrl: State<'_, Arc<HistoryController>>,
+    id: String,
+    content: String,
+) -> Result<(), AppError> {
+    validate_id(&id)?;
+    ctrl.save_written_content(&id, &content)
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn note_save_title(
+    ctrl: State<'_, Arc<HistoryController>>,
+    id: String,
+    title: String,
+) -> Result<(), AppError> {
+    validate_id(&id)?;
+    ctrl.save_title(&id, &title).map_err(AppError::from)
+}

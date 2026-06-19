@@ -131,6 +131,36 @@ impl HistoryService {
         Ok(())
     }
 
+    /// Update the written content of a Written record (log-structured update).
+    /// Also recomputes word_count from the new content.
+    pub fn update_written_content(&self, save_folder: &str, id: &str, content: &str) -> Result<()> {
+        let mut inner = self.inner.lock().unwrap();
+        self.ensure_loaded(&mut inner, save_folder)?;
+        let Some(&idx) = inner.index.get(id) else {
+            return Ok(());
+        };
+        let mut updated = inner.records[idx].clone();
+        updated.written_content = Some(content.to_string());
+        updated.word_count = content.split_whitespace().count();
+        Self::append_line(save_folder, &updated)?;
+        inner.records[idx] = updated;
+        Ok(())
+    }
+
+    /// Update the title of a record (log-structured update).
+    pub fn update_title(&self, save_folder: &str, id: &str, title: &str) -> Result<()> {
+        let mut inner = self.inner.lock().unwrap();
+        self.ensure_loaded(&mut inner, save_folder)?;
+        let Some(&idx) = inner.index.get(id) else {
+            return Ok(());
+        };
+        let mut updated = inner.records[idx].clone();
+        updated.title = title.to_string();
+        Self::append_line(save_folder, &updated)?;
+        inner.records[idx] = updated;
+        Ok(())
+    }
+
     /// Tombstone a record. Returns the record as it was before deletion (so the caller can
     /// remove its derived artifacts), or `None` if the id is unknown or already deleted.
     pub fn delete(&self, save_folder: &str, id: &str) -> Result<Option<HistoryRecord>> {
@@ -321,6 +351,43 @@ mod tests {
         // Tombstone survives reload.
         let fresh = HistoryService::new();
         assert!(fresh.list(&folder).unwrap().is_empty());
+    }
+
+    #[test]
+    fn update_written_content_roundtrips() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let rec = crate::types::HistoryRecord::from_written("Draft".into());
+        let id = svc.append(&folder, rec).expect("append");
+
+        svc.update_written_content(&folder, &id, "# Hello\n\nWorld content here")
+            .expect("update");
+
+        let fresh = HistoryService::new();
+        let got = fresh.get(&folder, &id).unwrap().expect("present");
+        assert_eq!(
+            got.written_content.as_deref(),
+            Some("# Hello\n\nWorld content here")
+        );
+        // word_count recomputed from content
+        assert_eq!(got.word_count, 4);
+    }
+
+    #[test]
+    fn update_title_roundtrips() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let rec = crate::types::HistoryRecord::from_written("Old Title".into());
+        let id_val = rec.id.clone();
+        svc.append(&folder, rec).expect("append");
+
+        svc.update_title(&folder, &id_val, "new title")
+            .expect("update title");
+
+        let fresh = HistoryService::new();
+        let got = fresh.get(&folder, &id_val).unwrap().expect("present");
+        assert_eq!(got.title, "new title");
+        assert_eq!(got.id, id_val);
     }
 
     #[test]

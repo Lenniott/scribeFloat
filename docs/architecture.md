@@ -711,7 +711,7 @@ src/
 │   │   │   └── form/           TextField, FieldRow, Checkbox, SettingsSection
 │   │   ├── 2_components/       Single user action components (@components)
 │   │   │   ├── controls/       Button, IconButton, Toggle, EditableTitle, PathPicker, OptionGroup
-│   │   │   ├── cards/          NoteCard, InlineNote, RecentNoteCard, SettingRow, UploadItem, FilterRow
+│   │   │   ├── cards/          NoteCard, InlineNote, SettingRow, UploadItem, FilterRow
 │   │   │   ├── nav/            NavItem, AccordionRow
 │   │   │   └── indicators/     Toast, StatTile, StepIndicator, Waveform
 │   │   ├── 3_patterns/         Multi-component single-action flows (@patterns)

@@ -34,7 +34,7 @@ Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other a
 |---|---|---|
 | `Chip` | `1_primitives/display/Chip.svelte` | Small badge/label. Exports `ChipVariant` type (brand, focus, muted, active, warning). |
 | `Timestamp` | `1_primitives/display/Timestamp.svelte` | Formatted elapsed-time label (e.g. `2:23 PM`). |
-| `SourceIcon` | `1_primitives/display/SourceIcon.svelte` | Icon indicating the source kind of a note (mic, speaker, etc.). |
+| `SourceIcon` | `1_primitives/display/SourceIcon.svelte` | Icon indicating note origin. Prop `origin: 'mic' \| 'upload'`. `mic` = live recording (Record or Dictate); `upload` = imported file. |
 | `StatusDot` | `1_primitives/display/StatusDot.svelte` | Pulsing dot for recording state. Changes appearance for idle, recording, paused, error. |
 | `RecordingTimer` | `1_primitives/display/RecordingTimer.svelte` | Elapsed-time display. Shows formatted session time such as `00:00` from external state. |
 | `ProgressBar` | `1_primitives/display/ProgressBar.svelte` | Horizontal stacked-bar progress indicator. Supports `indeterminate` shimmer mode. |
@@ -69,9 +69,8 @@ Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other a
 
 | Component | Path | What it is |
 |---|---|---|
-| `NoteCard` | `2_components/cards/NoteCard.svelte` | Notes list row. Selectable title + icon actions (Copy, View, Open, Delete). |
-| `InlineNote` | `2_components/cards/InlineNote.svelte` | Inline note card. Displays note text + timestamp. Exports `Note` type. |
-| `RecentNoteCard` | `2_components/cards/RecentNoteCard.svelte` | Recent-note card for the Home screen. Compact title + metadata. |
+| `NoteCard` | `2_components/cards/NoteCard.svelte` | Note list row. Full mode: title + icon actions + metadata chips (Notes Area). `compact`: whole-card open (Home Area). |
+| `InlineNote` | `2_components/cards/InlineNote.svelte` | Inline note card (deprecated). Displays note text + timestamp. Exports `Note` type. |
 | `SettingRow` | `2_components/cards/SettingRow.svelte` | Single setting row in a settings list. Label + control slot. |
 | `UploadItem` | `2_components/cards/UploadItem.svelte` | Per-item row in the upload/transcribe queue. Shows progress + status + actions. |
 | `FilterRow` | `2_components/cards/FilterRow.svelte` | Checkbox row in the filter panel. Tag label + count. Uses `CheckboxControl`. |

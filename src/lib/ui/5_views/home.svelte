@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { listen } from '@tauri-apps/api/event';
 	import StatTile from '@components/indicators/StatTile.svelte';
-	import RecentNoteCard from '@components/cards/RecentNoteCard.svelte';
+	import NoteCard from '@components/cards/NoteCard.svelte';
 	import {
 		fetchDashboardStats,
 		type DashboardStats,
@@ -73,7 +73,7 @@
 	{:else}
 		<div class="flex flex-col gap-2.5">
 			{#each recentItems as item (item.id)}
-				<RecentNoteCard {item} onselect={() => onselect(item)} />
+				<NoteCard compact {item} onselect={() => onselect(item)} />
 			{/each}
 		</div>
 	{/if}

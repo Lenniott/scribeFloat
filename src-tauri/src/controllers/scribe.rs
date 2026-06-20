@@ -421,10 +421,10 @@ impl ScribeController {
             }
             inner.state = ScribeState::Transcribing;
             inner.transcription_abort = Some(Arc::clone(&abort_flag));
-            (
-                inner.session.take().expect("session exists when Recording"),
-                inner.notes.clone(),
-            )
+            let session = inner.session.take().ok_or_else(|| {
+                anyhow!("session missing in Recording state")
+            })?;
+            (session, inner.notes.clone())
         };
 
         // Stop capture before emitting TRANSCRIBING so the mic is never active while we are not Recording.
@@ -569,19 +569,35 @@ impl ScribeController {
             return Ok(());
         }
 
-        if let Err(e) =
-            self.write_outputs(&segments, &notes, title, &model_path, &config, &prepared)
-        {
-            let _ = self.write_session_manifest(
-                &prepared.session_dir,
-                SessionManifestState::Error,
-                "",
-                vec![],
-                None,
-                None,
-            );
-            return Err(e);
-        }
+        let (record_id, transcript_path) =
+            match self.write_outputs(&segments, &notes, title, &model_path, &config, &prepared) {
+                Ok(result) => result,
+                Err(e) => {
+                    // Mark the session as errored so the recovery scan can surface it.
+                    let _ = self.write_session_manifest(
+                        &prepared.session_dir,
+                        SessionManifestState::Error,
+                        "",
+                        vec![],
+                        None,
+                        None,
+                    );
+                    return Err(e);
+                }
+            };
+
+        self.clear_transcription_tracking();
+        self.transition(ScribeState::Done);
+        self.app
+            .emit(
+                "scribe://state-changed",
+                ScribeStateEvent {
+                    transcript_path,
+                    history_record_id: Some(record_id),
+                    ..ScribeStateEvent::new(ScribeState::Done)
+                },
+            )
+            .ok();
         Ok(())
     }
 
@@ -754,7 +770,10 @@ impl ScribeController {
         segments
     }
 
-    /// Write the transcript file, optionally delete WAVs, and emit the Done event.
+    /// Write the transcript file, persist the history record, and optionally delete WAVs.
+    /// Returns the record id on success; the caller is responsible for transitioning state
+    /// and emitting the Done event so that a history-write failure surfaces as an error
+    /// event rather than a silent Done with no record.
     fn write_outputs(
         &self,
         segments: &[Segment],
@@ -763,7 +782,7 @@ impl ScribeController {
         model_path: &Path,
         config: &Config,
         prepared: &PreparedAudio,
-    ) -> Result<()> {
+    ) -> Result<(String, Option<String>)> {
         let save_folder = PathBuf::from(&config.save_folder);
         let model_name = model_path
             .file_stem()
@@ -832,16 +851,11 @@ impl ScribeController {
                 .as_ref()
                 .map(|p| p.to_string_lossy().into_owned()),
         );
-        let record_id = match self.history.append(&config.save_folder, record) {
-            Ok(id) => {
-                self.app.emit("note://item-added", ()).ok();
-                Some(id)
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "failed to append scribe history record");
-                None
-            }
-        };
+        let record_id = self
+            .history
+            .append(&config.save_folder, record)
+            .map_err(|e| anyhow!("failed to persist scribe session: {e}"))?;
+        self.app.emit("note://item-added", ()).ok();
 
         if !segments.is_empty() {
             self.app
@@ -858,21 +872,8 @@ impl ScribeController {
         self.output
             .finalize_scribe_session(&prepared.session_dir, keep_audio)?;
 
-        self.clear_transcription_tracking();
-        self.transition(ScribeState::Done);
-        self.app
-            .emit(
-                "scribe://state-changed",
-                ScribeStateEvent {
-                    transcript_path: markdown_path
-                        .as_ref()
-                        .map(|p| p.to_string_lossy().into_owned()),
-                    history_record_id: record_id,
-                    ..ScribeStateEvent::new(ScribeState::Done)
-                },
-            )
-            .ok();
-        Ok(())
+        let transcript_path = markdown_path.map(|p| p.to_string_lossy().into_owned());
+        Ok((record_id, transcript_path))
     }
 
     pub fn get_include_timestamps(&self) -> bool {

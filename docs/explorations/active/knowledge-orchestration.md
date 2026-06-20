@@ -302,6 +302,16 @@ These are the next branches of the design tree to resolve, in dependency order:
 
 ---
 
+## Loose thoughts
+
+- **No collective label for child types.** When a user opens a Domain they see the types directly (Decisions, Stakeholders, etc.) — no intermediate "Knowledge" or "Entries" label needed. The type names are the navigation. "Project X → Decisions → card-layout-direction." The types speak for themselves.
+
+- **User-facing language.** The technical parent/child/agent model maps to: Domain (where it lives) → type name (what it is) → invisible agent. "User" as a parent becomes "You" or "Your profile" — personal not technical. Agents are never surfaced to the user.
+
+- **Time is a property, not a container.** Temporal status (Now, Upcoming, Scheduled, Backlog, Complete) is inferred from content by the agent — not filed by the user, not a folder in the structure. "Send prototype by Friday" → `status: upcoming`. No `knowledge/time/` folder.
+
+---
+
 ## Reference
 
 | Document | Relationship |

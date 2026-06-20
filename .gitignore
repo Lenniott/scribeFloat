@@ -14,3 +14,4 @@ vite.config.ts.timestamp-*
 /src-tauri/windows-resources/
 /src-tauri/bundled-models/
 /context.claude/worktrees/
+/.claude/worktrees/

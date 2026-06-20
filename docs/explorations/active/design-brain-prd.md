@@ -41,7 +41,9 @@ That reframe surfaces problems the current flat-list History UI doesn't solve:
 
 ## 3. The bet
 
-**Build one general engine, not a list of point features.** The MVP use cases are deliberately narrow — Tags and Keywords — but the mechanism underneath (Layer → Step → Flow) has to be general enough that Decisions, Actions, Stakeholders, Risks, and Projects are *configuration added later*, not re-architecture. The engine is a thin HTTP orchestration layer: it chunks transcripts, assembles prompts, calls a user-configured inference endpoint (Ollama or cloud API), and parses structured results back into the record store. If that pipeline reliably does bounded, single-purpose extraction (tag a transcript, pull keywords), the same pipeline is the path to the harder, higher-value jobs (decision logs, stakeholder artifacts) that deliver on the "design brain" promise — without ever touching the pipeline code again.
+**Build one general engine, not a list of point features.** The MVP use cases are deliberately narrow — Tags and Keywords — and the mechanism underneath (Layer → Step → Flow) delivers those reliably as a lightweight vocabulary-building layer: filter notes, link them together, provide routing signals for downstream processing.
+
+**Design evolution (see [`knowledge-orchestration.md`](knowledge-orchestration.md)):** Decisions, Actions, Stakeholders, and other knowledge types are *not* additional Layers in this engine. They are a separate second-level engine — the knowledge extraction layer — that uses the same underlying HTTP runner but writes to markdown files in the knowledge folder rather than HistoryRecord metadata. The Layer/Step/Flow engine's job is Tags and Keywords only. The bet that "the same pipeline is the path to decision logs and stakeholder artifacts" was directionally right (same HTTP runner, same prompt pattern) but wrong about storage and execution model — those are different enough to warrant a separate engine. The two-flow separation is the correct architecture: Flow 1 (Tags + Keywords, lightweight, runs on every note) feeds and enables Flow 2 (knowledge extraction, heavier, selective, runs after Flow 1 is approved).
 
 Three constraints carry through every layer of the design, because they're what make the bet safe to make incrementally:
 
@@ -53,7 +55,7 @@ Three constraints carry through every layer of the design, because they're what 
 
 ## 4. Object model
 
-Five hardcoded types. Tags, Keywords, Decisions, etc. are **not** types — they are default seed-data instances of Layer (+ their Step + Flow membership). The engine ships two seed Layers; everything else is user-created configuration.
+Five hardcoded types. Tags and Keywords are the two default seed Layers — they serve filtering, linking, and domain routing. **Decisions, Actions, Stakeholders, etc. are not Layers in this engine** — they live in the knowledge extraction layer (see [`knowledge-orchestration.md`](knowledge-orchestration.md)) and produce markdown files, not vocabulary items. Everything beyond Tags and Keywords in this engine is user-created configuration for additional lightweight vocabulary extraction.
 
 | Object | What it is |
 |---|---|

@@ -1,6 +1,6 @@
 # Knowledge Orchestration — Design Exploration
 
-> Status: **active exploration**. Decisions below are agreed in conversation and captured here to avoid living only in chat history. Open questions are explicitly marked.
+> Status: **active exploration — significant pivot recorded below**. Decisions below are agreed in conversation and captured here to avoid living only in chat history. Open questions are explicitly marked.
 > Prerequisite reading: [`knowledge-layer-intent.md`](knowledge-layer-intent.md), [`design-brain-prd.md`](design-brain-prd.md)
 
 ---
@@ -299,6 +299,75 @@ These are the next branches of the design tree to resolve, in dependency order:
 5. **Proactive surfacing** — the system should inject relevant context when a new session starts ("last time on this project: X was decided"). Where does this live architecturally — inside Float's per-session processing context, or as a separate pre-session step?
 
 6. **Voice query** — "what did we decide about onboarding" as a voice dictation that routes to a bounded knowledge query and returns a grounded short answer. This is not a search interface. How does it trigger and what does it return?
+
+---
+
+## Pivot — simplified architecture
+
+After designing the full knowledge layer (domain folders, 12 type agents, AGENTS.md hierarchy, routing orchestration), a simpler approach emerged that supersedes most of it.
+
+### Core principle
+
+**ScribeFloat is the capture and context layer. The user brings the capable model.**
+
+Users have access to capable AI elsewhere (Claude, ChatGPT, etc.) for synthesis, analysis, and document generation. ScribeFloat's job is not to synthesise knowledge — it is to produce well-structured, information-dense context that a capable model can work with. The division:
+
+```
+ScribeFloat                          →   User's AI of choice
+capture + tag + annotate + export    →   synthesise, analyse, write, decide
+```
+
+### What this replaces
+
+The knowledge layer (domain folders, 12 type agents, AGENTS.md maintenance, routing orchestration, proactive surfacing) is replaced by a much simpler pipeline:
+
+1. **Capture** — transcript, written notes, uploads (existing)
+2. **Tag + annotate** — Float Phase B adds tags and keywords, and for each tag writes *why* it was applied and what in the note relates to it (small addition to existing Step output)
+3. **Export context file on demand** — user requests a context file for one or more tags over a time window; system collates annotations + source quotes into one markdown file per tag; user takes it to their AI tool
+
+### Tag annotation
+
+When Float tags a note, it also writes a short annotation per tag:
+
+```
+tag: project-x
+annotation: Stakeholder meeting for Project X. Sarah approved card layout over list view.
+source: timestamp 00:23:14, grep "card-based agreed layout"
+```
+
+This annotation is stored alongside the tag on the HistoryRecord — not in a separate knowledge folder.
+
+### Context file extraction (on demand)
+
+User specifies: tags + time window. System:
+1. Finds all notes tagged with those tags in the window
+2. Pulls the annotation Float wrote for each note
+3. Pulls the quoted passage using the grep/timestamp reference
+4. Assembles one markdown file per tag:
+
+```markdown
+# project-x — context (last 3 months)
+
+## 2026-06-20 · stakeholder-call-sarah.md
+> "card-based agreed layout"
+Float: Stakeholder meeting for Project X. Sarah approved card layout over list view.
+
+## 2026-05-14 · design-review.md
+> "project x timeline unclear"
+Float: Team discussion flagged timeline uncertainty for Project X phase 2.
+```
+
+Deterministic assembly — no LLM call at extraction time. Fast, no hallucination risk. The LLM work already happened at tag time.
+
+### Context file storage
+
+Saved to `knowledge/exports/` with a datestamp. Not maintained artifacts — outputs the user grabs and takes elsewhere. The system doesn't need to know they exist after writing them.
+
+### What survives from the domain/type design
+
+The domain folder structure and AGENTS.md navigation is **deferred** — not abandoned. If the user ever wants to maintain structured artifacts long-term (a stakeholder directory, a running decision log), the folder structure is the right place for those. But that's a user-driven action, not something Float maintains automatically.
+
+The annotation format (timestamp + grep) and the source-type distinction (session-only vs context types, `decided` vs `referenced`) still apply to the tag annotation system.
 
 ---
 

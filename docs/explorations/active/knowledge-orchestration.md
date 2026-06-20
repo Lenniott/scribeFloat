@@ -7,11 +7,20 @@
 
 ## The problem
 
-Float Phase B (per-note extraction) builds a vocabulary. But vocabulary alone doesn't answer "what did we decide about onboarding six months ago?" or "who are the stakeholders on Project X?" The knowledge layer synthesises across notes over time into persistent, navigable, agent-readable documents.
+> A designer with ADHD does their best thinking out loud — in recordings, in conversations, while dictating. That thinking is real and good. But it evaporates. Decisions are not documented. Artefacts are hard to create because everything is bundled in memory after conversations. Priorities get missed. No preparation means no understanding of what stakeholders actually need — so the designer does it their way, not the way that makes sense.
 
-The persona this is built for: a UX engineer / AI experimenter with ADHD and time blindness. Doesn't write notes, doesn't document decisions — operates on gut. Strong instincts, weak evidence trail. Voice capture is the lowest-friction input that fits how their brain already works. The knowledge system must be **invisible to operate** (no filing, no curating) and **proactive to surface** (the user won't go looking).
+| Problem | ScribeFloat's answer |
+|---|---|
+| Thinking evaporates after conversations | Ambient capture — voice, no new habit required |
+| Decisions not documented | Float tags and annotates at capture time |
+| Can't prepare for stakeholders | Extract context file for relevant tags, take to AI |
+| Artefacts bundled in head, hard to produce | Extract context file, take to AI to produce the artefact |
+| Priorities missed | Starred tag logs surface what matters across all notes |
+| Artefacts speak designer's language not stakeholder's | Float captures exact stakeholder words via grep; context files carry that language to the AI producing the artefact |
 
-Success metric: time spent dictating and transcribing vs. typing. Any feature that requires typing, filing, or explicit organisation is a regression.
+**Design principle:** Float should prefer quoting over summarising. The annotation interprets (why this tag, why this matters). The grep preserves (exactly what was said). Interpretation without the quote is lossy. The quote without interpretation is noise.
+
+**Success metric:** time spent dictating and transcribing vs. typing. Any feature that requires typing, filing, or explicit organisation is a regression.
 
 ---
 

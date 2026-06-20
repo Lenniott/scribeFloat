@@ -733,7 +733,9 @@ impl DictateController {
                     },
                 )
                 .ok();
-            let session = inner.session.take().expect("session exists when Recording");
+            let session = inner.session.take().ok_or_else(|| {
+                anyhow!("session missing in Recording state")
+            })?;
             inner.processing_wav_path = Some(session.mic.wav_path().to_path_buf());
             session
         };
@@ -1302,6 +1304,18 @@ mod tests {
         t.on_key_down(down);
         t.on_key_up(Instant::now());
         assert!(matches!(t.state, DictateKeyState::AwaitingSecondTap { .. }));
+    }
+
+    /// AC 0048-1: A short first-press tap (key down then up within FIRST_PRESS_MAX_MS)
+    /// must return DictateAction::None — no recording starts on a single brief press.
+    #[test]
+    fn short_tap_returns_no_action() {
+        let mut t = DictateKeyTracker::new();
+        let down = ms_ago(FIRST_PRESS_MAX_MS as u64 - 50); // well within limit
+        let action_down = t.on_key_down(down);
+        let action_up = t.on_key_up(Instant::now());
+        assert_eq!(action_down, DictateAction::None);
+        assert_eq!(action_up, DictateAction::None);
     }
 
     #[test]

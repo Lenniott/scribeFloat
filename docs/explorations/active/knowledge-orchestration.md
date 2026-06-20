@@ -371,6 +371,44 @@ The annotation format (timestamp + grep) and the source-type distinction (sessio
 
 ---
 
+## Further simplifications
+
+### Tags and keywords merge into one concept
+
+Tags and keywords are the same thing — one list, one concept. Each tag:
+
+```
+tag
+  name
+  description        — what this tag means globally
+  logs[]
+    date
+    note_id          — which note
+    timestamp        — Whisper segment (primary jump point)
+    grep             — 2–4 words to locate the passage (not verbatim)
+    status           — starred | recent | archived
+```
+
+Status on logs: `starred` = user flagged as high signal; `archived` = deprioritised but kept; `recent` = automatic. When generating a context file, starred entries surface first.
+
+### CLI for terminal agent access
+
+If ScribeFloat exposes a CLI, terminal agents (Claude Code, etc.) can interact with the data directly — no proprietary extraction layer needed inside the app:
+
+```bash
+scribefloat tags list
+scribefloat context --tags project-x,sarah-acme --since 90d
+scribefloat notes read <id>
+```
+
+The agent provides intelligence; the CLI provides the interface. A terminal agent can read tag logs, pull passages, and produce whatever artifact it needs without ScribeFloat building its own extraction layer.
+
+**What Float's annotation still provides:** it runs at capture time, when context is fresh. A terminal agent reading a raw hour-long transcript months later has to re-derive what Float already noted. The grep + timestamp anchor is Float's durable contribution — the CLI just surfaces it.
+
+Architecture: Float annotates at capture time → CLI exposes the data → terminal agent does the work.
+
+---
+
 ## Loose thoughts
 
 - **No collective label for child types.** When a user opens a Domain they see the types directly (Decisions, Stakeholders, etc.) — no intermediate "Knowledge" or "Entries" label needed. The type names are the navigation. "Project X → Decisions → card-layout-direction." The types speak for themselves.

@@ -1,7 +1,7 @@
 ---
 id: "0050"
 title: Remove stale TODO comment and fix prewarm log level
-status: active
+status: complete
 priority: low
 ---
 

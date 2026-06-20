@@ -1,7 +1,7 @@
 ---
 id: "0046"
 title: Move cleanup_text regexes to LazyLock statics
-status: active
+status: complete
 priority: medium
 ---
 

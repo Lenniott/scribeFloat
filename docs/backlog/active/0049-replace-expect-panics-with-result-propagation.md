@@ -1,7 +1,7 @@
 ---
 id: "0049"
 title: Replace invariant .expect() calls with Result propagation
-status: active
+status: complete
 priority: low
 ---
 

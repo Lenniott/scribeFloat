@@ -1,7 +1,7 @@
 ---
 id: "0047"
 title: Split OutputService into focused sub-modules (SRP)
-status: active
+status: complete
 priority: medium
 ---
 

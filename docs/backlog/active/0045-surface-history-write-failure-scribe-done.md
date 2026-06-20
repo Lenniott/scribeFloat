@@ -1,7 +1,7 @@
 ---
 id: "0045"
 title: Surface history write failure in Scribe Done event
-status: active
+status: complete
 priority: medium
 ---
 

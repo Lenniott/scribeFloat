@@ -1,7 +1,7 @@
 ---
 id: "0044"
 title: Fix UTF-8 panic in dedup_exact_halves
-status: active
+status: complete
 priority: high
 ---
 

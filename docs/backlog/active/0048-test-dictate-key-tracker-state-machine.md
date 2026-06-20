@@ -1,7 +1,7 @@
 ---
 id: "0048"
 title: Add unit tests for DictateKeyTracker state machine
-status: active
+status: complete
 priority: medium
 ---
 

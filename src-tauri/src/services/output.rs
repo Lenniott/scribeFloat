@@ -9,7 +9,22 @@ use regex::Regex;
 use serde::Serialize;
 use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
+
+static CAPS_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\[[A-Z][A-Za-z_ ]*\]").expect("static regex")
+});
+
+static NOISE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)\[(silence|blank_audio|no_speech|music|applause|laughter|noise|inaudible)\]",
+    )
+    .expect("static regex")
+});
+
+static FUSION_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(#\w+?)(newline)").expect("static regex")
+});
 
 pub struct OutputService;
 
@@ -656,19 +671,13 @@ pub fn repair_wav_header_from_file_size(path: &Path) -> Result<u64> {
 fn cleanup_text(text: &str) -> String {
     // Strip uppercase-first Whisper bracket annotations: [BLANK_AUDIO], [Music], [Applause], etc.
     // Requires first char uppercase so user annotations like [note] are preserved.
-    let caps_re = Regex::new(r"\[[A-Z][A-Za-z_ ]*\]").expect("static regex");
-    let cleaned = caps_re.replace_all(text, "");
+    let cleaned = CAPS_RE.replace_all(text, "");
     // Also strip known lowercase Whisper noise tokens emitted by the VAD path.
     // Named list is explicit: [note] and other user annotations are not affected.
-    let noise_re = Regex::new(
-        r"(?i)\[(silence|blank_audio|no_speech|music|applause|laughter|noise|inaudible)\]",
-    )
-    .expect("static regex");
-    let cleaned = noise_re.replace_all(&cleaned, "");
+    let cleaned = NOISE_RE.replace_all(&cleaned, "");
     // Whisper sometimes fuses its native "#word" output with a following command word
     // (e.g. "hashtag cake new line" → "#cakenewline"). Split so replacement rules fire.
-    let fusion_re = Regex::new(r"(?i)(#\w+?)(newline)").expect("static regex");
-    let cleaned = fusion_re.replace_all(&cleaned, "$1 $2");
+    let cleaned = FUSION_RE.replace_all(&cleaned, "$1 $2");
     // Normalize internal whitespace
     let words: Vec<&str> = cleaned.split_whitespace().collect();
     words.join(" ")
@@ -717,22 +726,24 @@ fn dedup_consecutive_phrases(text: &str) -> String {
 /// When Whisper (or a double-paste bug) yields the same paragraph twice back-to-back, keep one copy.
 fn dedup_exact_halves(text: &str) -> String {
     let trimmed = text.trim();
-    if trimmed.len() < 40 {
-        return trimmed.to_string();
+    let char_count = trimmed.chars().count();
+    if char_count == 0 {
+        return text.to_string();
     }
-    let mid = trimmed.len() / 2;
-    let (first, second) = trimmed.split_at(mid);
-    let second = second.trim_start();
-    if first == second {
-        return first.trim().to_string();
+    // Use a character-count midpoint so split_at always lands on a char boundary,
+    // even when `trimmed` contains multi-byte UTF-8 characters (accents, emoji, etc.).
+    let mid_byte = trimmed
+        .char_indices()
+        .nth(char_count / 2)
+        .map(|(i, _)| i)
+        .unwrap_or(trimmed.len());
+    let first = &trimmed[..mid_byte];
+    let second = &trimmed[mid_byte..];
+    if first.trim() == second.trim() {
+        first.trim().to_string()
+    } else {
+        text.to_string()
     }
-    // Allow a single missing/extra space at the join (common when segments abut).
-    let a = first.trim();
-    let b = second.trim();
-    if a.len() >= 20 && b.starts_with(a) && b.len() <= a.len() + 2 {
-        return a.to_string();
-    }
-    trimmed.to_string()
 }
 
 /// If the transcript appears twice (Whisper hallucination on long audio), keep the first copy.
@@ -1959,5 +1970,27 @@ model: tiny\n\
             .scan_incomplete_scribe_sessions(&save_folder)
             .expect("scan");
         assert!(found.is_empty());
+    }
+
+    #[test]
+    fn dedup_exact_halves_empty() {
+        assert_eq!(dedup_exact_halves(""), "");
+    }
+
+    #[test]
+    fn dedup_exact_halves_ascii_dedup() {
+        assert_eq!(dedup_exact_halves("hello hello"), "hello");
+    }
+
+    #[test]
+    fn dedup_exact_halves_no_dedup() {
+        assert_eq!(dedup_exact_halves("hello world"), "hello world");
+    }
+
+    #[test]
+    fn dedup_exact_halves_non_ascii_no_panic() {
+        // "café " repeated — accent on e is multi-byte; must not panic
+        let result = dedup_exact_halves("café café");
+        assert_eq!(result, "café");
     }
 }

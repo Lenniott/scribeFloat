@@ -261,7 +261,7 @@ fn prewarm_dictate_window(app: &AppHandle) {
         Ok(())
     })();
     if let Err(err) = result {
-        tracing::debug!(error = %err, "failed to prewarm dictate window");
+        tracing::warn!(error = %err, "failed to prewarm dictate window");
     }
 }
 

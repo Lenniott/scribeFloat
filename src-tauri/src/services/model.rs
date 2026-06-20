@@ -37,7 +37,7 @@ pub struct ModelCatalogItem {
     pub rtfx: Option<u32>,
     /// Verified lowercase-hex SHA-256 of the model file. When `Some`, the download is
     /// rejected unless the bytes hash to this value (see `verify_sha256`). When `None`,
-    /// the download is accepted unverified — fill these in (TODO(S1)) to enable pinning.
+    /// the download is accepted unverified.
     pub sha256: Option<&'static str>,
 }
 

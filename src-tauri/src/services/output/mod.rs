@@ -6,12 +6,13 @@ use anyhow::{anyhow, Context, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+mod cleanup;
 mod dedup;
 mod legacy;
 mod render;
+mod replacements;
 mod session;
 pub mod wav;
-mod text;
 
 pub use render::{count_words, render_transcript_body, render_transcript_markdown};
 pub use wav::{repair_wav_header_from_file_size, sync_wav_header, write_streaming_wav_placeholder};
@@ -80,14 +81,14 @@ impl OutputService {
     ) -> String {
         let joined = segments
             .iter()
-            .map(|s| text::cleanup_text(s.text.trim()))
+            .map(|s| cleanup::cleanup_text(s.text.trim()))
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
             .join(" ");
         let deduped = dedup::dedup_repeated_block(
             &dedup::dedup_consecutive_phrases(&dedup::dedup_exact_halves(&joined)),
         );
-        text::apply_replacements(&deduped, rules, &ReplacementScope::Dictate, prefix)
+        replacements::apply_replacements(&deduped, rules, &ReplacementScope::Dictate, prefix)
     }
 
     /// Render segments as markdown and write. Verifies file is non-empty before returning Ok.

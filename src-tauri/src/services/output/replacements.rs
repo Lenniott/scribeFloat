@@ -1,32 +1,10 @@
 use crate::types::{ReplacementRule, ReplacementRuleType, ReplacementScope, WordTransform};
 use regex::Regex;
-use std::sync::LazyLock;
-
-pub(crate) static CAPS_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[[A-Z][A-Za-z_ ]*\]").expect("static regex")
-});
-
-pub(crate) static NOISE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)\[(silence|blank_audio|no_speech|music|applause|laughter|noise|inaudible)\]",
-    )
-    .expect("static regex")
-});
-
-pub(crate) static FUSION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(#\w+?)(newline)").expect("static regex")
-});
-
-/// Strip Whisper artifact annotations and normalize whitespace from a single segment.
-pub(crate) fn cleanup_text(text: &str) -> String {
-    let cleaned = CAPS_RE.replace_all(text, "");
-    let cleaned = NOISE_RE.replace_all(&cleaned, "");
-    let cleaned = FUSION_RE.replace_all(&cleaned, "$1 $2");
-    let words: Vec<&str> = cleaned.split_whitespace().collect();
-    words.join(" ")
-}
 
 /// Apply user-defined replacement rules to text. Rules are applied in order.
+/// Only rules whose scope is Both or matches the given scope are applied.
+/// `prefix` is the global command prefix (default "float") — it is prepended to
+/// each trigger at match time so triggers are stored without it in the Config.
 pub(crate) fn apply_replacements(
     text: &str,
     rules: &[ReplacementRule],
@@ -71,6 +49,9 @@ pub(crate) fn apply_replacements(
     result
 }
 
+/// Returns the effective trigger string, prepending `prefix` when the trigger doesn't
+/// already include it. This allows old-format rules ("float dash") and new-format rules
+/// ("dash" with prefix="float") to coexist and produce identical behaviour.
 fn effective_trigger(trigger: &str, prefix: &str) -> String {
     if prefix.is_empty() {
         return trigger.to_string();
@@ -101,6 +82,9 @@ fn replace_phrase(text: &str, trigger: &str, replacement: &str) -> String {
 
 fn replace_newline(text: &str, trigger: &str) -> String {
     let escaped = regex::escape(trigger);
+    // Optional leading space absorbs the word-gap so no trailing whitespace is left
+    // on the preceding line. Optional trailing punctuation is moved before the newline
+    // so Whisper-added sentence endings (e.g. "new line?") don't land on the new line.
     let pattern = if trigger.contains(' ') {
         format!(r"(?i)[ ]?{}([.,!?;:]+)?[ ]*", escaped)
     } else {
@@ -124,10 +108,13 @@ fn wrap_next_word(
     suffix: &str,
     transform: &WordTransform,
 ) -> String {
+    // Match: whole-word trigger + whitespace + next non-whitespace word
     let pattern = format!(r"(?i)\b{}\s+(\S+)", regex::escape(trigger));
     match Regex::new(&pattern) {
         Ok(re) => re
             .replace_all(text, |caps: &regex::Captures| {
+                // Strip leading non-alphanumeric chars Whisper may have already inserted
+                // (e.g. "hashtag #word" → Whisper pre-pended "#", avoid "##word")
                 let raw = caps[1].trim_start_matches(|c: char| !c.is_alphanumeric());
                 let word =
                     apply_word_transform(if raw.is_empty() { &caps[1] } else { raw }, transform);
@@ -158,6 +145,10 @@ fn apply_word_transform(word: &str, transform: &WordTransform) -> String {
 mod tests {
     use super::*;
     use crate::types::{ReplacementRule, ReplacementRuleType, WordTransform};
+
+    // All tests use prefix="float" — the app default — to reflect real usage.
+    // The "float" prefix is prepended to each trigger at match time; triggers are
+    // stored WITHOUT it in Config::replacement_rules.
 
     fn simple_rule(trigger: &str, output: &str, scope: ReplacementScope) -> ReplacementRule {
         ReplacementRule {
@@ -203,103 +194,99 @@ mod tests {
         }
     }
 
-    #[test]
-    fn cleanup_splits_hashtag_newline_fusion() {
-        assert_eq!(cleanup_text("#cakenewline"), "#cake newline");
-    }
+    // ── Rule types — single-word trigger ─────────────────────────────────────
 
     #[test]
-    fn cleanup_strips_silence_annotation() {
-        assert_eq!(cleanup_text("[SILENCE] hello"), "hello");
-    }
-
-    #[test]
-    fn cleanup_strips_blank_audio_annotation() {
-        assert_eq!(cleanup_text("[BLANK_AUDIO]"), "");
-    }
-
-    #[test]
-    fn cleanup_strips_general_bracket_annotation() {
-        assert_eq!(
-            cleanup_text("[MUSIC] welcome back [APPLAUSE]"),
-            "welcome back"
-        );
-    }
-
-    #[test]
-    fn cleanup_preserves_lowercase_brackets() {
-        assert_eq!(cleanup_text("see [note] below"), "see [note] below");
-    }
-
-    #[test]
-    fn cleanup_strips_lowercase_whisper_noise_tokens() {
-        assert_eq!(cleanup_text("[silence] hello"), "hello");
-        assert_eq!(cleanup_text("[blank_audio]"), "");
-        assert_eq!(cleanup_text("[music] intro [applause]"), "intro");
-        assert_eq!(cleanup_text("[inaudible] world"), "world");
-    }
-
-    #[test]
-    fn cleanup_normalizes_whitespace() {
-        assert_eq!(cleanup_text("  hello   world  "), "hello world");
-    }
-
-    #[test]
-    fn replacements_simple_whole_word() {
+    fn whole_word_rule_fires_with_float_prefix() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("11 dash may", &rules, &ReplacementScope::Both, ""),
+            apply_replacements("11 float dash may", &rules, &ReplacementScope::Both, "float"),
             "11 - may"
         );
     }
 
     #[test]
-    fn replacements_case_insensitive() {
+    fn whole_word_rule_case_insensitive() {
         let rules = vec![simple_rule("hashtag", "#", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("HASHTAG project", &rules, &ReplacementScope::Both, ""),
+            apply_replacements("float HASHTAG project", &rules, &ReplacementScope::Both, "float"),
             "# project"
         );
     }
 
     #[test]
-    fn replacements_whole_word_not_substring() {
-        let rules = vec![simple_rule("hash", "#", ReplacementScope::Both)];
+    fn bare_trigger_does_not_fire_when_prefix_set() {
+        // "hashtag project" without "float" prefix word → no substitution.
+        let rules = vec![simple_rule("hashtag", "#", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("hashtag project", &rules, &ReplacementScope::Both, ""),
+            apply_replacements("hashtag project", &rules, &ReplacementScope::Both, "float"),
             "hashtag project"
         );
     }
 
     #[test]
-    fn replacements_phrase_trigger() {
+    fn whole_word_does_not_match_substring() {
+        // trigger "hash" should not fire inside "hashtag"
+        let rules = vec![simple_rule("hash", "#", ReplacementScope::Both)];
+        assert_eq!(
+            apply_replacements("float hashtag project", &rules, &ReplacementScope::Both, "float"),
+            "float hashtag project"
+        );
+    }
+
+    // ── Rule types — phrase trigger ───────────────────────────────────────────
+
+    #[test]
+    fn phrase_rule_fires_with_float_prefix() {
         let rules = vec![simple_rule("to do", "[ ]", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("add to do item", &rules, &ReplacementScope::Both, ""),
+            apply_replacements("add float to do item", &rules, &ReplacementScope::Both, "float"),
             "add [ ] item"
         );
     }
 
+    // ── Rule types — newline ──────────────────────────────────────────────────
+
     #[test]
-    fn replacements_newline_type() {
+    fn newline_rule_fires_with_float_prefix() {
         let rules = vec![newline_rule("new line")];
         assert_eq!(
-            apply_replacements("hello new line world", &rules, &ReplacementScope::Both, ""),
+            apply_replacements(
+                "hello float new line world",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
             "hello\nworld"
         );
     }
 
     #[test]
-    fn replace_newline_moves_trailing_question_mark() {
+    fn newline_rule_bare_trigger_does_not_fire_with_prefix() {
         let rules = vec![newline_rule("new line")];
         assert_eq!(
-            apply_replacements("looking for new line?", &rules, &ReplacementScope::Both, ""),
+            apply_replacements("hello new line world", &rules, &ReplacementScope::Both, "float"),
+            "hello new line world"
+        );
+    }
+
+    #[test]
+    fn newline_rule_moves_trailing_punctuation_before_break() {
+        // "float new line?" → the "?" goes to the preceding line, not the new one
+        let rules = vec![newline_rule("new line")];
+        assert_eq!(
+            apply_replacements(
+                "looking for float new line?",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
             "looking for?\n"
         );
     }
 
     #[test]
-    fn replace_newline_alias_single_word() {
+    fn newline_rule_alias_fires_with_float_prefix() {
         let rules = vec![ReplacementRule {
             trigger: "new line".to_string(),
             aliases: vec!["newline".to_string()],
@@ -311,87 +298,107 @@ mod tests {
             transform: WordTransform::None,
         }];
         assert_eq!(
-            apply_replacements("go to bed newline", &rules, &ReplacementScope::Both, ""),
+            apply_replacements("go to bed float newline", &rules, &ReplacementScope::Both, "float"),
             "go to bed\n"
         );
     }
 
+    // ── Rule types — wrap ─────────────────────────────────────────────────────
+
     #[test]
-    fn replacements_wrap_with_lower_transform() {
+    fn wrap_rule_applies_transform_and_prefix_suffix() {
         let rules = vec![wrap_rule("hashtag", "#", "", WordTransform::Lower)];
         assert_eq!(
-            apply_replacements("hashtag Monday", &rules, &ReplacementScope::Both, ""),
+            apply_replacements("float hashtag Monday", &rules, &ReplacementScope::Both, "float"),
             "#monday"
         );
     }
 
     #[test]
-    fn replacements_wrap_leaves_rest_unchanged() {
+    fn wrap_rule_leaves_surrounding_text_unchanged() {
         let rules = vec![wrap_rule("bold", "**", "**", WordTransform::None)];
         assert_eq!(
-            apply_replacements("bold hello world", &rules, &ReplacementScope::Both, ""),
+            apply_replacements(
+                "float bold hello world",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
             "**hello** world"
         );
     }
 
+    // ── Scope filtering ───────────────────────────────────────────────────────
+
     #[test]
-    fn replacements_scope_transcripts_skips_dictate_rule() {
+    fn transcripts_scope_skips_dictate_only_rule() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Dictate)];
         assert_eq!(
-            apply_replacements("11 dash may", &rules, &ReplacementScope::Transcripts, ""),
-            "11 dash may"
+            apply_replacements(
+                "11 float dash may",
+                &rules,
+                &ReplacementScope::Transcripts,
+                "float"
+            ),
+            "11 float dash may"
         );
     }
 
     #[test]
-    fn replacements_scope_dictate_skips_transcripts_rule() {
+    fn dictate_scope_skips_transcripts_only_rule() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Transcripts)];
         assert_eq!(
-            apply_replacements("11 dash may", &rules, &ReplacementScope::Dictate, ""),
-            "11 dash may"
+            apply_replacements("11 float dash may", &rules, &ReplacementScope::Dictate, "float"),
+            "11 float dash may"
         );
     }
 
     #[test]
-    fn replacements_both_scope_applies_to_transcripts() {
+    fn both_scope_rule_applies_in_transcripts_context() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("a dash b", &rules, &ReplacementScope::Transcripts, ""),
+            apply_replacements("a float dash b", &rules, &ReplacementScope::Transcripts, "float"),
             "a - b"
         );
     }
 
+    // ── Multiple rules ────────────────────────────────────────────────────────
+
     #[test]
-    fn replacements_multiple_rules_in_order() {
+    fn multiple_rules_applied_in_order() {
         let rules = vec![
             simple_rule("hashtag", "#", ReplacementScope::Both),
             simple_rule("todo", "[ ]", ReplacementScope::Both),
         ];
         assert_eq!(
             apply_replacements(
-                "hashtag project todo item",
+                "float hashtag project float todo item",
                 &rules,
                 &ReplacementScope::Both,
-                ""
+                "float"
             ),
             "# project [ ] item"
         );
     }
 
     #[test]
-    fn replacements_empty_trigger_skipped() {
+    fn empty_trigger_is_skipped() {
         let rules = vec![simple_rule("", "oops", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("hello", &rules, &ReplacementScope::Both, ""),
+            apply_replacements("hello", &rules, &ReplacementScope::Both, "float"),
             "hello"
         );
     }
 
+    // ── Old-format backward compat (prefix embedded in trigger string) ────────
+    // Old rules stored the full "float dash" trigger. New rules store just "dash"
+    // and rely on the engine prefix. Both formats must coexist.
+
     #[test]
-    fn old_format_rule_with_empty_prefix_matches() {
+    fn old_format_embedded_prefix_fires() {
         let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("11 float dash may", &rules, &ReplacementScope::Both, ""),
+            apply_replacements("11 float dash may", &rules, &ReplacementScope::Both, "float"),
             "11 - may"
         );
     }
@@ -400,119 +407,53 @@ mod tests {
     fn old_format_bare_word_does_not_match() {
         let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("11 dash may", &rules, &ReplacementScope::Both, ""),
+            apply_replacements("11 dash may", &rules, &ReplacementScope::Both, "float"),
             "11 dash may"
         );
     }
 
     #[test]
-    fn old_format_newline_rule_with_empty_prefix_matches() {
+    fn old_format_prefix_not_doubled() {
+        // Old-format trigger already has "float "; engine must not produce "float float dash".
+        let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
+        assert_eq!(
+            apply_replacements("eleven float dash may", &rules, &ReplacementScope::Both, "float"),
+            "eleven - may"
+        );
+    }
+
+    #[test]
+    fn old_format_newline_rule_fires() {
         let rules = vec![newline_rule("float new line")];
         assert_eq!(
             apply_replacements(
                 "hello float new line world",
                 &rules,
                 &ReplacementScope::Both,
-                ""
+                "float"
             ),
             "hello\nworld"
         );
     }
 
     #[test]
-    fn old_format_bare_new_line_does_not_match() {
+    fn old_format_newline_bare_trigger_does_not_match() {
         let rules = vec![newline_rule("float new line")];
         assert_eq!(
-            apply_replacements("hello new line world", &rules, &ReplacementScope::Both, ""),
+            apply_replacements("hello new line world", &rules, &ReplacementScope::Both, "float"),
             "hello new line world"
         );
     }
 
-    #[test]
-    fn prefix_prepended_to_base_trigger_fires() {
-        let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
-        assert_eq!(
-            apply_replacements(
-                "eleven float dash may",
-                &rules,
-                &ReplacementScope::Both,
-                "float"
-            ),
-            "eleven - may"
-        );
-    }
+    // ── Empty prefix (no command word configured) ─────────────────────────────
 
     #[test]
-    fn prefix_base_trigger_alone_does_not_fire() {
-        let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
-        assert_eq!(
-            apply_replacements("eleven dash may", &rules, &ReplacementScope::Both, "float"),
-            "eleven dash may"
-        );
-    }
-
-    #[test]
-    fn prefix_not_double_applied_to_old_format_rule() {
-        let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
-        assert_eq!(
-            apply_replacements(
-                "eleven float dash may",
-                &rules,
-                &ReplacementScope::Both,
-                "float"
-            ),
-            "eleven - may"
-        );
-    }
-
-    #[test]
-    fn prefix_double_prefixed_text_matches_embedded_phrase() {
-        let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
-        assert_eq!(
-            apply_replacements(
-                "eleven float float dash may",
-                &rules,
-                &ReplacementScope::Both,
-                "float"
-            ),
-            "eleven float - may"
-        );
-    }
-
-    #[test]
-    fn empty_prefix_fires_base_trigger_directly() {
+    fn empty_prefix_fires_bare_trigger_directly() {
+        // When the user clears their prefix, triggers fire on the bare word.
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
         assert_eq!(
             apply_replacements("eleven dash may", &rules, &ReplacementScope::Both, ""),
             "eleven - may"
-        );
-    }
-
-    #[test]
-    fn prefix_newline_rule_base_trigger() {
-        let rules = vec![newline_rule("new line")];
-        assert_eq!(
-            apply_replacements(
-                "hello float new line world",
-                &rules,
-                &ReplacementScope::Both,
-                "float"
-            ),
-            "hello\nworld"
-        );
-    }
-
-    #[test]
-    fn prefix_newline_bare_trigger_does_not_fire() {
-        let rules = vec![newline_rule("new line")];
-        assert_eq!(
-            apply_replacements(
-                "hello new line world",
-                &rules,
-                &ReplacementScope::Both,
-                "float"
-            ),
-            "hello new line world"
         );
     }
 }

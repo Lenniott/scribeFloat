@@ -1,7 +1,8 @@
 use crate::types::{Note, ReplacementRule, ReplacementScope, Segment};
 
 use super::dedup::{dedup_consecutive_phrases, dedup_repeated_block};
-use super::text::{apply_replacements, cleanup_text};
+use super::cleanup::cleanup_text;
+use super::replacements::apply_replacements;
 
 fn speaker_source_prefix(text: &str) -> &'static str {
     if text.starts_with("in: ") {

@@ -14,8 +14,8 @@ mod replacements;
 mod session;
 pub mod wav;
 
-pub use render::{count_words, render_transcript_body, render_transcript_markdown};
-pub use wav::{repair_wav_header_from_file_size, sync_wav_header, write_streaming_wav_placeholder};
+pub use render::{count_words, render_transcript_body};
+pub use wav::{sync_wav_header, write_streaming_wav_placeholder};
 
 pub struct OutputService;
 
@@ -450,7 +450,7 @@ mod tests {
         svc.write_transcript(&segments, &[], "T", "tiny", false, &[], "", &file)
             .expect("write");
         let on_disk = std::fs::read_to_string(&file).expect("read");
-        let pure = render_transcript_markdown(&segments, &[], "T", "tiny", false, &[], "");
+        let pure = render::render_transcript_markdown(&segments, &[], "T", "tiny", false, &[], "");
         assert_eq!(on_disk, pure);
     }
 

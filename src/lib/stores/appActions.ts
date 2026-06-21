@@ -74,7 +74,20 @@ export async function executeDelete(item: HistoryListItem) {
 	}
 }
 
+function isEditorNote(item: HistoryListItem): boolean {
+	return (
+		item.source === 'store' &&
+		!item.id.startsWith('md::') &&
+		!item.id.startsWith('dictate::')
+	);
+}
+
 export function openNoteDetail(item: HistoryListItem) {
+	if (isEditorNote(item)) {
+		appState.selectedItem = null;
+		void goto(`/notes/${item.id}`);
+		return;
+	}
 	appState.selectedItem = item;
 	void goto('/notes');
 }

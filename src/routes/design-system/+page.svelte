@@ -128,7 +128,7 @@
   });
 </script>
 
-<main class="mx-auto min-h-screen bg-canvas text-left p-4">
+<div class="mx-auto flex h-full flex-col overflow-y-auto p-4 text-left">
   <a href="/">scribe</a>
   <header class="mb-14 max-w-2xl">
     <p class="font-mono text-label-sm tracking-stamped text-fg/50 uppercase">
@@ -720,7 +720,7 @@
       </div>
     </div>
   </section>
-</main>
+</div>
 
 <style>
   /* Subtle recording tint — keeps fg-on-panel contrast, softer than solid destructive */

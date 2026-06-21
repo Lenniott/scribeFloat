@@ -1,4 +1,6 @@
 <script lang="ts">
+	import CheckboxControl from '@primitives/form/CheckboxControl.svelte';
+
 	let {
 		checked = $bindable(false),
 		disabled = false,
@@ -8,6 +10,7 @@
 		value = "on",
 		"aria-label": ariaLabel,
 		class: className = "",
+		onchange,
 	}: {
 		checked?: boolean;
 		disabled?: boolean;
@@ -17,29 +20,26 @@
 		value?: string;
 		"aria-label"?: string;
 		class?: string;
+		onchange?: (next: boolean) => void;
 	} = $props();
+
+	const fieldId = $derived(
+		id ?? (label ? `checkbox-${label.toLowerCase().replace(/\s+/g, "-")}` : undefined),
+	);
 </script>
 
 <label
-	for={id}
 	class={`inline-flex items-center gap-2 text-fg ${disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer"} ${className}`.trim()}
 >
-	<input
-		type="checkbox"
-		{id}
-		{name}
-		{value}
+	<CheckboxControl
+		id={fieldId}
 		bind:checked
 		{disabled}
-		aria-label={ariaLabel}
-		class="peer sr-only focus:ring-0"
+		{name}
+		{value}
+		aria-label={label ? undefined : ariaLabel}
+		{onchange}
 	/>
-	<span
-		aria-hidden="true"
-		class="relative inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-rim bg-panel text-transparent transition-colors peer-checked:border-brand peer-checked:bg-brand peer-checked:text-on-brand peer-focus:ring-2 peer-focus:ring-warning peer-focus:ring-offset-2 peer-focus:ring-offset-panel peer-focus:rounded-sm"
-	>
-		<span class="sf-label-sm leading-none">✓</span>
-	</span>
 	{#if label}
 		<span class="sf-body-md">{label}</span>
 	{/if}

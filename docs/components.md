@@ -45,7 +45,7 @@ Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other a
 |---|---|---|
 | `TextField` | `1_primitives/form/TextField.svelte` | Text input with a label. Used for mic name, speaker name, etc. |
 | `FieldRow` | `1_primitives/form/FieldRow.svelte` | Labelled config field row. Renders label + control in a consistent layout. |
-| `Checkbox` | `1_primitives/form/Checkbox.svelte` | Standard checkbox with accessible label. |
+| `CheckboxControl` | `1_primitives/form/CheckboxControl.svelte` | Checkbox box only (peer input + visual). Composed by `Checkbox`, `FilterRow`, etc. |
 | `SettingsSection` | `1_primitives/form/SettingsSection.svelte` | Titled section container for settings screen groups. |
 
 ---
@@ -59,6 +59,8 @@ Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other a
 | `Button` | `2_components/controls/Button.svelte` | Primary action button. Five variants: primary, destructive, ghost, normal, active. |
 | `IconButton` | `2_components/controls/IconButton.svelte` | Compact icon-only button. Fewer variants than `Button` (primary, destructive, normal). |
 | `Toggle` | `2_components/controls/Toggle.svelte` | On/off switch. Used for speaker enablement and export options. |
+| `Checkbox` | `2_components/controls/Checkbox.svelte` | Checkbox with label. Uses `CheckboxControl` primitive. |
+| `CheckboxGroup` | `2_components/controls/CheckboxGroup.svelte` | Fieldset wrapper for related checkbox rows (e.g. tag filters). |
 | `EditableTitle` | `2_components/controls/EditableTitle.svelte` | Inline editable title field. Starts as plain text; switches to input on focus. |
 | `PathPicker` | `2_components/controls/PathPicker.svelte` | Path value + Change button. Triggers a file-picker callback. |
 | `OptionGroup` | `2_components/controls/OptionGroup.svelte` | Small grouped radio/segmented selector. Used for model size, theme, etc. |
@@ -72,14 +74,13 @@ Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other a
 | `RecentNoteCard` | `2_components/cards/RecentNoteCard.svelte` | Recent-note card for the Home screen. Compact title + metadata. |
 | `SettingRow` | `2_components/cards/SettingRow.svelte` | Single setting row in a settings list. Label + control slot. |
 | `UploadItem` | `2_components/cards/UploadItem.svelte` | Per-item row in the upload/transcribe queue. Shows progress + status + actions. |
-| `FilterRow` | `2_components/cards/FilterRow.svelte` | Checkbox row in the filter panel. Tag label + checkbox. |
+| `FilterRow` | `2_components/cards/FilterRow.svelte` | Checkbox row in the filter panel. Tag label + count. Uses `CheckboxControl`. |
 
 ### Nav
 
 | Component | Path | What it is |
 |---|---|---|
-| `NavButton` | `2_components/nav/NavButton.svelte` | Route navigation button. Used for top-level app navigation. |
-| `NavItem` | `2_components/nav/NavItem.svelte` | Sidebar navigation item. Icon + label + optional badge chip. |
+| `NavItem` | `2_components/nav/NavItem.svelte` | Sidebar navigation item. Icon + label + optional badge chip. Used in App and Settings sidebars. |
 | `AccordionRow` | `2_components/nav/AccordionRow.svelte` | One collapsible accordion section. Must be used inside `Accordion`. |
 
 ### Indicators

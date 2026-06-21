@@ -32,7 +32,7 @@
 	} = $props();
 
 	const base =
-		"inline-flex shrink-0 cursor-pointer leading-none items-center justify-center gap-2 transition-[opacity,background-color,color] disabled:pointer-events-none disabled:opacity-40";
+		"inline-flex shrink-0 cursor-pointer leading-none items-center justify-center gap-2 transition-[opacity,background-color,color] disabled:pointer-events-none disabled:opacity-40 sf-focus-ring";
 
 	const variantClass: Record<Variant, string> = {
 		primary: "bg-brand text-on-brand hover:bg-brand-hover hover:text-on-brand-hover",
@@ -47,8 +47,8 @@
 		{ padWithIcon: string; padPlain: string; text: string; icon: string }
 	> = {
 		normal: {
-			padWithIcon: "pl-3.5 pr-4 h-10",
-			padPlain: "px-4 h-10",
+			padWithIcon: "pl-3.5 pr-4 h-9",
+			padPlain: "px-4 h-9",
 			text: "sf-label-md",
 			icon: "size-4",
 		},

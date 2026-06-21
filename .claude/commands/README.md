@@ -25,7 +25,8 @@ The PostToolUse hook (`.cursor/hooks/skills-sync.sh`) runs this automatically wh
 
 | Skill | Purpose |
 |-------|---------|
-| `design-skill/` | Design tokens + UX playbook (`query.py`) |
+| `ux-principles/` | UX principles, design intent, interaction patterns (markdown progressive disclosure) |
+| `design-skill/` | Design tokens + UX playbook legacy (`query.py`) — being superseded by `ux-principles/` |
 | `ui-enforcement/` | Typography, color, layout/scroll rules for frontend |
 | `ui-taxonomy/` | UI taxonomy reference |
 | `commit-curator/` | Git commit / branch hygiene workflows |

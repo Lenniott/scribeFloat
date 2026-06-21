@@ -72,11 +72,7 @@ fn replace_newline(text: &str, trigger: &str) -> String {
     // Optional leading space absorbs the word-gap so no trailing whitespace is left
     // on the preceding line. Optional trailing punctuation is moved before the newline
     // so Whisper-added sentence endings (e.g. "new line?") don't land on the new line.
-    let pattern = if trigger.contains(' ') {
-        format!(r"(?i)[ ]?{}([.,!?;:]+)?[ ]*", escaped)
-    } else {
-        format!(r"(?i)[ ]?\b{}\b([.,!?;:]+)?[ ]*", escaped)
-    };
+    let pattern = format!(r"(?i)[ ]?{}\b([.,!?;:]+)?[ ]*", escaped);
     match Regex::new(&pattern) {
         Ok(re) => re
             .replace_all(text, |caps: &regex::Captures| {
@@ -245,6 +241,21 @@ mod tests {
                 "float"
             ),
             "hello\nworld"
+        );
+    }
+
+    #[test]
+    fn newline_rule_does_not_match_partial_word() {
+        // "float new lines" must not fire — "line" is a substring of "lines"
+        let rules = vec![newline_rule("new line")];
+        assert_eq!(
+            apply_replacements(
+                "float new lines are great",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
+            "float new lines are great"
         );
     }
 

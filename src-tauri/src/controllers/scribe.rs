@@ -75,6 +75,18 @@ enum ProgressMessage {
     Finished,
 }
 
+/// Transcript payload held after note-editor recording completes, until `note_attach_transcript`.
+pub struct PendingAttach {
+    pub segments: Vec<Segment>,
+    pub notes: Vec<Note>,
+    pub model: String,
+    pub speaker_capture: bool,
+    pub dual_source: bool,
+    pub session_dir: Option<String>,
+    pub audio_path: Option<String>,
+    pub markdown_path: Option<String>,
+}
+
 struct Inner {
     state: ScribeState,
     session: Option<ActiveSession>,
@@ -83,6 +95,10 @@ struct Inner {
     transcription_abort: Option<Arc<AtomicBool>>,
     /// Set once `mic.wav` is written during transcription (for abort UX).
     transcription_wav_path: Option<PathBuf>,
+    /// When set, the next completed recording attaches to this note instead of creating a Scribe record.
+    attach_note_id: Option<String>,
+    /// Cached transcript from the most recent note-editor recording stop.
+    pending_attach: Option<PendingAttach>,
 }
 
 pub struct ScribeController {
@@ -114,6 +130,8 @@ impl ScribeController {
                 notes: Vec::new(),
                 transcription_abort: None,
                 transcription_wav_path: None,
+                attach_note_id: None,
+                pending_attach: None,
             }),
             capture_sync: Mutex::new(()),
             audio,
@@ -307,6 +325,16 @@ impl ScribeController {
         });
     }
 
+    /// Route the next completed recording to attach onto a note instead of creating a Scribe history record.
+    pub fn set_attach_note(&self, note_id: Option<String>) {
+        self.lock().attach_note_id = note_id;
+    }
+
+    /// Take the cached transcript from the most recent note-editor recording.
+    pub fn take_pending_attach(&self) -> Option<PendingAttach> {
+        self.lock().pending_attach.take()
+    }
+
     /// Transition RECORDING → IDLE. Discards the audio buffer and removes the
     /// session directory if no files were written into it yet.
     pub fn cancel(&self) -> Result<()> {
@@ -320,6 +348,7 @@ impl ScribeController {
             inner.session = None;
             inner.state = ScribeState::Idle;
             inner.notes.clear();
+            inner.attach_note_id = None;
             self.emit_state(&inner);
             session
         };
@@ -826,22 +855,38 @@ impl ScribeController {
             &config.replacement_prefix,
             speaker_capture,
             dual_source,
-            session_dir,
-            audio_path,
+            session_dir.clone(),
+            audio_path.clone(),
             markdown_path
                 .as_ref()
                 .map(|p| p.to_string_lossy().into_owned()),
         );
-        let record_id = match self.history.append(&config.save_folder, record) {
-            Ok(id) => {
-                self.app.emit("note://item-added", ()).ok();
-                Some(id)
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "failed to append scribe history record");
-                None
-            }
-        };
+
+        let attach_note_id = self.lock().attach_note_id.take();
+        let mut history_record_id: Option<String> = None;
+        if attach_note_id.is_some() {
+            self.lock().pending_attach = Some(PendingAttach {
+                segments: segments.to_vec(),
+                notes: notes.to_vec(),
+                model: model_name,
+                speaker_capture,
+                dual_source,
+                session_dir,
+                audio_path,
+                markdown_path: record.markdown_path.clone(),
+            });
+        } else {
+            history_record_id = match self.history.append(&config.save_folder, record) {
+                Ok(id) => {
+                    self.app.emit("note://item-added", ()).ok();
+                    Some(id)
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to append scribe history record");
+                    None
+                }
+            };
+        }
 
         if !segments.is_empty() {
             self.app
@@ -867,7 +912,7 @@ impl ScribeController {
                     transcript_path: markdown_path
                         .as_ref()
                         .map(|p| p.to_string_lossy().into_owned()),
-                    history_record_id: record_id,
+                    history_record_id,
                     ..ScribeStateEvent::new(ScribeState::Done)
                 },
             )

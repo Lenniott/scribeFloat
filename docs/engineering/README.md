@@ -15,6 +15,7 @@ Focused reference files for agents doing building sessions. Each file covers one
 | [platform-rules.md](platform-rules.md) | Touching macOS threading, audio drain, paste behaviour, or anything in `platform/` | You discover a new main-thread constraint, change the drain logic, or add a platform adapter |
 | [debugging.md](debugging.md) | Investigating a bug — find the right file to start in | You find a symptom not in the table, or a starting point turns out to be wrong |
 | [config-rules.md](config-rules.md) | Adding or changing a field in `Config` (`types.rs`) | Config schema or save behaviour changes |
+| [history-storage.md](history-storage.md) | Changing note persistence, autosave, jsonl vs sidecar | jsonl append rules, sidecar layout, or hydration change |
 
 ---
 

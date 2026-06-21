@@ -53,6 +53,15 @@ pub fn scribe_destroy_window(app: tauri::AppHandle) -> Result<(), AppError> {
 }
 
 #[tauri::command]
+pub fn scribe_set_attach_note(
+    ctrl: State<'_, Arc<ScribeController>>,
+    note_id: Option<String>,
+) -> Result<(), AppError> {
+    ctrl.set_attach_note(note_id);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn scribe_cancel(ctrl: State<'_, Arc<ScribeController>>) -> Result<(), AppError> {
     ctrl.cancel().map_err(AppError::from)
 }

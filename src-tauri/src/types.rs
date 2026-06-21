@@ -840,6 +840,12 @@ impl HistoryRecord {
 
     /// Project to the lightweight list item shown in History.
     pub fn to_list_item(&self) -> HistoryListItem {
+        let excerpt = if self.kind == HistoryKind::Written {
+            excerpt_from_written_content(self.written_content.as_deref())
+                .or_else(|| excerpt_from_segments(&self.segments))
+        } else {
+            excerpt_from_segments(&self.segments)
+        };
         HistoryListItem {
             id: self.id.clone(),
             kind: self.kind,
@@ -849,7 +855,7 @@ impl HistoryRecord {
             word_count: self.word_count,
             duration_ms: self.duration_ms,
             duration_secs: self.duration_ms / 1000,
-            excerpt: excerpt_from_segments(&self.segments),
+            excerpt,
             tags: Vec::new(),
             has_markdown: self.markdown_path.is_some(),
             markdown_path: self.markdown_path.clone(),
@@ -865,12 +871,23 @@ fn excerpt_from_segments(segments: &[Segment]) -> Option<String> {
         .iter()
         .map(|s| s.text.trim())
         .find(|t| !t.is_empty())?;
-    let flat: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    truncate_excerpt(&text.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+fn excerpt_from_written_content(content: Option<&str>) -> Option<String> {
+    let text = content?.trim();
+    if text.is_empty() {
+        return None;
+    }
+    truncate_excerpt(text)
+}
+
+fn truncate_excerpt(flat: &str) -> Option<String> {
     if flat.is_empty() {
         return None;
     }
     if flat.chars().count() <= EXCERPT_MAX_CHARS {
-        Some(flat)
+        Some(flat.to_string())
     } else {
         let truncated: String = flat.chars().take(EXCERPT_MAX_CHARS).collect();
         Some(format!("{truncated}…"))

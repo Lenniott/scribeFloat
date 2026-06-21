@@ -17,15 +17,16 @@ After any change under `skills/`:
 bash skills/build.sh
 ```
 
-The PostToolUse hook (`.cursor/hooks/skills-sync.sh`) runs this automatically when you edit files in `skills/`, `CLAUDE.md`, or `AGENTS.md`.
+The PostToolUse hook (`.cursor/hooks/skills-sync.sh`) runs this automatically when you edit files in `skills/`.
 
-`build.sh` also keeps `AGENTS.md` ↔ `CLAUDE.md` in sync (newer file wins).
+Agent instructions live in **`AGENTS.md`** (canonical). **`CLAUDE.md`** is a Claude Code entry point that points there — edit `AGENTS.md` only.
 
 ## Skills in this repo
 
 | Skill | Purpose |
 |-------|---------|
-| `design-skill/` | Design tokens + UX playbook (`query.py`) |
+| `ux-principles/` | UX principles, design intent, interaction patterns (markdown progressive disclosure) |
+| `design-skill/` | Design tokens + UX playbook legacy (`query.py`) — being superseded by `ux-principles/` |
 | `ui-enforcement/` | Typography, color, layout/scroll rules for frontend |
 | `ui-taxonomy/` | UI taxonomy reference |
 | `commit-curator/` | Git commit / branch hygiene workflows |

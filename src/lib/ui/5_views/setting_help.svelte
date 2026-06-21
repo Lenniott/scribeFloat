@@ -4,6 +4,7 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import type { UpdateCheckResult } from '@utils/types';
   import Button from "@components/controls/Button.svelte";
+  import NavButton from "@components/nav/NavButton.svelte";
   import Toast from "@components/indicators/Toast.svelte";
   import type { ToastState } from "@components/indicators/Toast.svelte";
   import SettingsList from "@sections/SettingList.svelte";
@@ -14,6 +15,8 @@
     formatHotkeyForDisplay,
     isWindows,
   } from '@utils/platform';
+  import { goto } from "$app/navigation";
+
 
   type UpdateState =
     | "idle"
@@ -408,6 +411,7 @@
             >Send a tip</a
           >
         </p>
+        <NavButton onclick={() => goto(`/design-system`)}>Go to Design System</NavButton>
       </div>
     </div>
   </div>

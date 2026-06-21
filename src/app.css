@@ -332,6 +332,8 @@ html {
 .cmt-heading1, .cmt-heading2, .cmt-heading3 { color: var(--color-fg); }
 .cmt-strong { font-weight: 700; }
 .cmt-emphasis { font-style: italic; }
-.cmt-monospace { font-family: var(--font-mono); background: var(--color-bg-fill); border-radius: 2px; padding: 0 3px; }
-.cmt-quote { color: var(--color-fg-dim); border-left: 2px solid var(--color-border-card); padding-left: 0.5rem; }
+.cmt-strikethrough { text-decoration: line-through; color: var(--color-fg-dim); }
+.cmt-link { color: var(--color-brand); text-decoration: underline; }
+.cmt-monospace { font-family: var(--font-mono); background: var(--color-fill); border-radius: 2px; padding: 0 3px; }
+.cmt-quote { color: var(--color-fg-dim); border-left: 2px solid var(--color-card); padding-left: 0.5rem; }
 .cmt-processingInstruction, .cmt-meta { color: var(--color-fg-dim); }

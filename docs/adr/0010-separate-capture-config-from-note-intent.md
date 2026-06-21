@@ -1,4 +1,4 @@
-# ADR-0006: Separate Capture Configuration from Note Intent
+# ADR-0010: Separate Capture Configuration from Note Intent
 
 ## Status
 

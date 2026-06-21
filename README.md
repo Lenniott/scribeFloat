@@ -59,17 +59,49 @@ cargo tauri dev
 # Production build
 cargo tauri build
 
-# Run unit tests
-cargo test -p scribefloat
-
 # Lint (must pass before committing)
-cargo clippy -- -D warnings
+cd src-tauri && cargo clippy -- -D warnings
 
 # Fast type check without linking
-cargo check
+cd src-tauri && cargo check
 ```
 
 If `cargo tauri dev` fails with a missing asset error, verify that frontend HTML files under `src/ui/panels/` exist and that `npm install` has been run.
+
+---
+
+## Running tests
+
+### Rust (backend)
+
+The Rust crate lives in `src-tauri/` (there is no root `Cargo.toml`). Run commands from that directory, or pass `--manifest-path src-tauri/Cargo.toml` from the repo root.
+
+Most tests run without hardware and match what CI executes:
+
+```bash
+cd src-tauri && cargo test
+```
+
+Some tests are marked `#[ignore]` because they need a real microphone or macOS loopback audio device. They are skipped in CI and in environments without hardware:
+
+```bash
+# Hardware-gated tests only (requires mic; loopback tests require macOS)
+cd src-tauri && cargo test -- --ignored
+
+# Run everything, including hardware-gated tests
+cd src-tauri && cargo test -- --include-ignored
+```
+
+Currently gated: `mic_session_*` (real mic, any OS), `loopback_session_*` (macOS speaker capture).
+
+### Frontend
+
+```bash
+npm test              # run Vitest once
+npm run test:watch    # watch mode
+```
+
+Before committing, also run `cd src-tauri && cargo clippy -- -D warnings` (see [Building from source](#building-from-source)).
 
 ---
 
@@ -284,7 +316,7 @@ macOS builds require Xcode command line tools; signed/notarized builds need loca
 **Windows contributors are especially welcome.** Most day-to-day development happens on macOS, so we rely on Windows users to test releases, report bugs, and fix Windows-specific issues (permissions, audio devices, paste, installers, and anything under `src-tauri/src/platform/`). You do not need to own the whole app — reproducible bug reports, small fixes, and “this broke on my machine” PRs are all valuable.
 
 1. Read `docs/architecture.md` before touching any Rust code
-2. Run `cargo clippy -- -D warnings` and `cargo test -p scribefloat` before committing
+2. Run the checks in [Running tests](#running-tests) and `cargo clippy -- -D warnings` before committing
 3. If you add a new `#[tauri::command]`, register it in `lib.rs` and validate any user-supplied strings before passing to a controller
 4. `#[cfg(target_os)]` checks belong only in `src-tauri/src/platform/` — never in commands, controllers, or services
 

@@ -1330,7 +1330,31 @@ fn preload_path_for_config(config: &Config, model: &ModelService) -> PathBuf {
 mod tests {
     use super::*;
     use crate::services::model::SMALL_MODEL_FILENAME;
+    use hound::{SampleFormat, WavSpec, WavWriter};
     use std::path::PathBuf;
+
+    fn write_test_wav_16k(path: &PathBuf, samples: &[f32]) {
+        let spec = WavSpec {
+            channels: 1,
+            sample_rate: WHISPER_SAMPLE_RATE,
+            bits_per_sample: 16,
+            sample_format: SampleFormat::Int,
+        };
+        let mut writer = WavWriter::create(path, spec).expect("create test wav");
+        for &s in samples {
+            writer
+                .write_sample((s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
+                .expect("write sample");
+        }
+        writer.finalize().expect("finalize test wav");
+    }
+
+    fn temp_test_dir() -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("scribe-tests-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
     #[test]
     fn start_guard_rejects_recording_and_transcribing_states() {
@@ -1675,5 +1699,73 @@ mod tests {
         }];
         let filtered = filter_hallucination_phrases(segs);
         assert_eq!(filtered.len(), 1);
+    }
+
+    // ── load_speaker_segments (disk I/O layer) ────────────────────────────────
+    // These tests close the gap between the in-memory assemble_speaker_pcm tests
+    // and real hardware: they write real 16 kHz WAV files to a temp dir and verify
+    // that load_speaker_segments reads them back correctly before assembly.
+
+    #[test]
+    fn load_speaker_segments_reads_pcm_from_disk() {
+        let dir = temp_test_dir();
+        let wav_path = dir.join("seg0.wav");
+        let dc = vec![0.5f32; WHISPER_SAMPLE_RATE as usize]; // 1 second of DC
+        write_test_wav_16k(&wav_path, &dc);
+
+        let captured = vec![CapturedSpeakerSegment {
+            start_ms: 0,
+            wav_path,
+        }];
+        let loaded = load_speaker_segments(&captured).expect("load");
+
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].start_ms, 0);
+        assert_eq!(loaded[0].pcm_16k.len(), WHISPER_SAMPLE_RATE as usize);
+        assert!(
+            loaded[0].pcm_16k.iter().any(|s| s.abs() > 0.1),
+            "expected non-silent pcm"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_and_assemble_pipeline_places_pcm_at_correct_offset() {
+        // 3-second session; 1 second of audio starting at t=1000 ms
+        let dir = temp_test_dir();
+        let wav_path = dir.join("seg0.wav");
+        let one_sec = WHISPER_SAMPLE_RATE as usize;
+        write_test_wav_16k(&wav_path, &vec![0.8f32; one_sec]);
+
+        let captured = vec![CapturedSpeakerSegment {
+            start_ms: 1_000,
+            wav_path,
+        }];
+        let loaded = load_speaker_segments(&captured).expect("load");
+        let assembled = assemble_speaker_pcm(&loaded, 3_000);
+
+        assert_eq!(assembled.len(), 3 * one_sec);
+        assert!(
+            assembled[..one_sec].iter().all(|s| s.abs() < 1e-5),
+            "first second should be silence"
+        );
+        assert!(
+            assembled[one_sec..2 * one_sec].iter().any(|s| s.abs() > 0.1),
+            "second second should have audio"
+        );
+        assert!(
+            assembled[2 * one_sec..].iter().all(|s| s.abs() < 1e-5),
+            "third second should be silence"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_speaker_segments_missing_file_returns_error() {
+        let captured = vec![CapturedSpeakerSegment {
+            start_ms: 0,
+            wav_path: PathBuf::from("/nonexistent/path/seg.wav"),
+        }];
+        assert!(load_speaker_segments(&captured).is_err());
     }
 }

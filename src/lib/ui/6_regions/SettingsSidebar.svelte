@@ -1,7 +1,15 @@
 <script lang="ts">
-	import { ArrowLeft } from 'lucide-svelte';
-	import NavButton from '@components/nav/NavButton.svelte';
+	import { ArrowLeft, CircleHelp, Cpu, Replace, Shield, SlidersHorizontal } from 'lucide-svelte';
+	import NavItem from '@components/nav/NavItem.svelte';
 	import { SETTINGS_TABS, type SettingsTab } from '@sections/settingsTypes';
+
+	const SETTINGS_TAB_ICONS = {
+		general: SlidersHorizontal,
+		permissions: Shield,
+		models: Cpu,
+		replacements: Replace,
+		help: CircleHelp,
+	} as const satisfies Record<SettingsTab, typeof SlidersHorizontal>;
 
 	let {
 		activeTab,
@@ -31,9 +39,12 @@
 	<p class="sf-section-label mb-2 px-2 text-fg-dim">Settings</p>
 	<div class="flex flex-col gap-0.5">
 		{#each SETTINGS_TABS as tab (tab.id)}
-			<NavButton active={activeTab === tab.id} onclick={() => ontabchange(tab.id)}>
-				{tab.label}
-			</NavButton>
+			<NavItem
+				label={tab.label}
+				icon={SETTINGS_TAB_ICONS[tab.id]}
+				active={activeTab === tab.id}
+				onclick={() => ontabchange(tab.id)}
+			/>
 		{/each}
 	</div>
 </aside>

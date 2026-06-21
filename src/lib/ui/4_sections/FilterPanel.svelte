@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { X, Tag } from 'lucide-svelte';
 	import IconButton from '@components/controls/IconButton.svelte';
+	import CheckboxGroup from '@components/controls/CheckboxGroup.svelte';
 	import FilterCheckboxRow from '@components/cards/FilterRow.svelte';
 	import ScrollablePanel from '@primitives/layout/ScrollBody.svelte';
 	import type { TagVocabularyEntry } from '@services/historyActions';
@@ -41,7 +42,7 @@
 					No vocabulary yet — approve a Float result to populate this layer.
 				</p>
 			{:else}
-				<div class="flex flex-col gap-1">
+				<CheckboxGroup>
 					{#each vocabulary as entry (entry.name)}
 						<FilterCheckboxRow
 							label={entry.name}
@@ -50,7 +51,7 @@
 							onchange={(next) => ontoggle(entry.name, next)}
 						/>
 					{/each}
-				</div>
+				</CheckboxGroup>
 			{/if}
 		</div>
 	</ScrollablePanel>

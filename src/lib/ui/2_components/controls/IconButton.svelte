@@ -32,7 +32,7 @@
 	} = $props();
 
 	const base =
-		"inline-flex shrink-0 items-center justify-center rounded-md cursor-pointer transition-[opacity,background-color,color] disabled:pointer-events-none disabled:opacity-40";
+		"inline-flex shrink-0 items-center justify-center rounded-md cursor-pointer transition-[opacity,background-color,color] disabled:pointer-events-none disabled:opacity-40 sf-focus-ring";
 
 	const variantClass: Record<Variant, string> = {
 		primary: "bg-brand text-on-brand hover:bg-brand-hover hover:text-on-brand-hover",

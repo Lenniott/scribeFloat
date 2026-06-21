@@ -63,10 +63,25 @@ python3 skills/design-skill/query.py search "X"    # search both
 
 ```bash
 cargo tauri dev                    # Start dev build
-cargo test -p scribefloat          # Unit tests
+cargo test -p scribefloat          # Unit tests (no hardware required)
 cargo clippy -- -D warnings        # Must pass before committing
 cargo check                        # Fast compile check
 ```
+
+### Hardware-gated tests
+
+Some tests are marked `#[ignore]` because they require a real mic or macOS
+loopback device. They are **skipped in CI and virtual environments** — do not
+run them there. On a developer machine with hardware:
+
+```bash
+cargo test -p scribefloat -- --ignored          # hardware-gated tests only
+cargo test -p scribefloat -- --include-ignored  # everything
+```
+
+Currently gated: `mic_session_*` (real mic, any OS), `loopback_session_*`
+(macOS speaker capture). Do **not** add `#[ignore]` to tests that can run
+without hardware — use it only when the test genuinely requires a device.
 
 ---
 

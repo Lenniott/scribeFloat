@@ -26,7 +26,7 @@
 	} = $props();
 
 	const base =
-		'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left sf-label-md transition-colors';
+		'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left sf-label-md transition-colors sf-focus-ring';
 
 	let classes = $derived(
 		[

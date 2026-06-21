@@ -13,6 +13,7 @@
 	import SettingsSidebar from '@regions/SettingsSidebar.svelte';
 	import Toast from '@components/indicators/Toast.svelte';
 	import Button from '@components/controls/Button.svelte';
+	import Checkbox from '@components/controls/Checkbox.svelte';
 	import Modal from '@primitives/layout/Modal.svelte';
 	import CaptureView from '@views/capture.svelte';
 	import DictateView from '@views/dictate.svelte';
@@ -187,10 +188,11 @@
 	>
 		{#snippet footer()}
 			<div class="flex w-full items-center gap-4">
-				<label class="mr-auto flex cursor-pointer items-center gap-2 sf-label-sm text-fg-dim">
-					<input type="checkbox" bind:checked={appState.skipDeleteConfirm} />
-					Don't ask again this session
-				</label>
+				<Checkbox
+					class="mr-auto"
+					label="Don't ask again this session"
+					bind:checked={appState.skipDeleteConfirm}
+				/>
 				<div class="flex gap-3">
 					<Button
 						variant="normal"

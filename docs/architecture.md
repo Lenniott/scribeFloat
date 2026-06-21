@@ -712,7 +712,7 @@ src/
 │   │   ├── 2_components/       Single user action components (@components)
 │   │   │   ├── controls/       Button, IconButton, Toggle, EditableTitle, PathPicker, OptionGroup
 │   │   │   ├── cards/          NoteCard, InlineNote, RecentNoteCard, SettingRow, UploadItem, FilterRow
-│   │   │   ├── nav/            NavButton, NavItem, AccordionRow
+│   │   │   ├── nav/            NavItem, AccordionRow
 │   │   │   └── indicators/     Toast, StatTile, StepIndicator, Waveform
 │   │   ├── 3_patterns/         Multi-component single-action flows (@patterns)
 │   │   │   └── Accordion, NoteComposer, NoteList, UploadQueue

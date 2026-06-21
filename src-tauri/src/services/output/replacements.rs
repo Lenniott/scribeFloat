@@ -28,12 +28,7 @@ pub(crate) fn apply_replacements(
         for trigger in &triggers {
             result = match rule.rule_type {
                 ReplacementRuleType::Simple => {
-                    let replacement = rule.output.as_str();
-                    if trigger.contains(' ') {
-                        replace_phrase(&result, trigger, replacement)
-                    } else {
-                        replace_whole_word(&result, trigger, replacement)
-                    }
+                    replace_whole_word(&result, trigger, rule.output.as_str())
                 }
                 ReplacementRuleType::Newline => replace_newline(&result, trigger),
                 ReplacementRuleType::Wrap => wrap_next_word(
@@ -66,14 +61,6 @@ fn effective_trigger(trigger: &str, prefix: &str) -> String {
 
 fn replace_whole_word(text: &str, trigger: &str, replacement: &str) -> String {
     let pattern = format!(r"(?i)\b{}\b", regex::escape(trigger));
-    match Regex::new(&pattern) {
-        Ok(re) => re.replace_all(text, replacement).into_owned(),
-        Err(_) => text.to_string(),
-    }
-}
-
-fn replace_phrase(text: &str, trigger: &str, replacement: &str) -> String {
-    let pattern = format!(r"(?i){}", regex::escape(trigger));
     match Regex::new(&pattern) {
         Ok(re) => re.replace_all(text, replacement).into_owned(),
         Err(_) => text.to_string(),

@@ -110,7 +110,9 @@ Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other a
 | Component | Path | What it is |
 |---|---|---|
 | `FilterPanel` | `4_sections/FilterPanel.svelte` | Tag-filter side panel. Vocabulary list of `FilterRow` items + active filter count. |
-| `NoteDetailPane` | `4_sections/NoteDetailPane.svelte` | Fullscreen transcript + metadata detail pane (was `HistoryDetailPane`). |
+| `NoteDetailPane` | `4_sections/NoteDetailPane.svelte` | Fullscreen transcript + metadata detail pane (legacy + read-only store items). |
+| `RecordingStrip` | `4_sections/RecordingStrip.svelte` | Persistent scribe recording chrome in the note editor. Props: `noteId`, `ontranscriptready`. |
+| `TranscriptPanel` | `4_sections/TranscriptPanel.svelte` | Read-only HTML transcript panel. Props: `noteId`. |
 | `SettingList` | `4_sections/SettingList.svelte` | Scrollable container for `SettingRow` items. |
 | `SettingsPanel` | `4_sections/SettingsPanel.svelte` | Full settings area. Routes active tab to the correct setting screen. |
 
@@ -144,7 +146,7 @@ Route-level view components. Imported by `src/routes/` pages. Live at `src/lib/u
 |---|---|---|
 | `home.svelte` | `5_views/home.svelte` | Home area: recent notes + stats. |
 | `notes.svelte` | `5_views/notes.svelte` | Notes list + detail pane. |
-| `note-editor.svelte` | `5_views/note-editor.svelte` | Unified note editor at `/notes/[id]`. Props: `id`. Two-panel shell: header (← Notes + `EditableTitle`), recording chrome placeholder, left panel (written source / `MarkdownEditor`), right panel (transcript output, story 0047). Title autosaves at 500 ms; content autosaves at 800 ms. |
+| `note-editor.svelte` | `5_views/note-editor.svelte` | Unified note editor at `/notes/[id]`. Written panel (always) + optional transcript/metadata side panels. `RecordingStrip` + `TranscriptPanel`. Autosave dirty-checks before IPC; body/title persist to `.notes/{id}/` sidecars (see `docs/engineering/history-storage.md`). |
 | `capture.svelte` | `5_views/capture.svelte` | Scribe capture overlay (recording → processing). |
 | `transcribe.svelte` | `5_views/transcribe.svelte` | Upload/transcribe workflow. |
 | `dictate.svelte` | `5_views/dictate.svelte` | Floating Dictate HUD (separate Tauri window). |

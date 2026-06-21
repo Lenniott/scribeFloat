@@ -381,7 +381,7 @@ graph TB
 
 ### History Service
 
-Owns the structured record store at `{save_folder}/history.jsonl` — an append-only, one-compact-JSON-object-per-line log. Every transcript-bearing flow (Scribe, Dictate, Transcribe) appends a record here on completion. Updates (`set_markdown_path`) and deletes (tombstone `deleted = true`) also append a new line for the same id; the loader does last-writer-wins by id. Startup `compact()` rewrites the live set atomically (temp file + rename). Mirrors `OutputService`'s stateless-with-folder style: save_folder is passed per call and the cache reloads when the folder changes.
+Owns the structured record store at `{save_folder}/history.jsonl` — append-only for **capture lifecycle** events (new record, attach transcript, export path, delete tombstone). Editor title and written body are **not** appended; they live in `{save_folder}/.notes/{id}/` via `note_sidecar` and are hydrated on load. See `docs/engineering/history-storage.md`. Startup `compact()` rewrites the live jsonl set atomically.
 
 ```mermaid
 graph TB
@@ -414,7 +414,7 @@ graph TB
 
 **Component notes:**
 - **Appender**: appends a new JSON object line to `history.jsonl` for a completed session. Called by ScribeController, DictateController, and TranscribeController on every successful completion — independent of whether a `.md` file was written
-- **Updater**: `set_markdown_path` appends a new line for an existing id (sets the `markdown_path` field). The loader's last-writer-wins semantics mean the updated record supersedes the original
+- **Updater**: `set_markdown_path` and `update_segments` append a new line for an existing id (structural/capture changes). Title and written body updates use `note_sidecar` instead — see `docs/engineering/history-storage.md`
 - **Tombstone**: `delete` appends a line with `deleted = true` for the id. The loader excludes tombstoned records from the live set
 - **Loader**: reads all lines, groups by id, and returns the last-written record per id, excluding any with `deleted = true`
 - **Compactor**: `compact()` runs at startup — rewrites only the live (non-tombstoned) records to a temp file, then renames it over `history.jsonl`. Keeps the file from growing unboundedly

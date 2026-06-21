@@ -262,6 +262,46 @@ Unified read-only and management view across all transcript-bearing flows.
 
 ---
 
+## 6. Note editor (`/notes/[id]`)
+
+Unified editor for store records (written, scribe, dictate with segments). Legacy `md::` / `dictate::` items stay on the list + `NoteDetailPane` read-only path.
+
+### 6a. Create
+
+1. User clicks **+ New Note** → `/notes/new` → `note_create_empty` appends one **written** line to `history.jsonl`
+2. Redirect to `/notes/[id]`
+
+### 6b. Load
+
+1. `history_get_detail` returns the record; `HistoryService` hydrates `.notes/{id}/written.md` and `meta.json` when present
+
+### 6c. Autosave (editor)
+
+1. CodeMirror debounce (~800 ms) → `note_save_written_content` only if body changed (dirty-check in UI)
+2. Title debounce (~500 ms) → `note_save_title` only if title changed
+3. Backend overwrites sidecar files — **no new jsonl line**
+
+### 6d. Attach transcript (recording strip)
+
+1. `RecordingStrip` → `scribe_*` commands → on completion `note_attach_transcript`
+2. `update_segments` **appends** one jsonl line (capture event)
+
+### 6e. Delete
+
+1. Same as §5e; also removes `{save_folder}/.notes/{id}/`
+
+### 6f. Leave guard (navigate away)
+
+1. `note-editor.svelte` registers `appState.noteLeaveGuard`; `+layout.svelte` `beforeNavigate` and sidebar navigation call it when leaving `/notes/[id]`
+2. **While recording** (`RecordingStrip` `phase === 'recording'`): navigate immediately — recording continues in background; note is not deleted
+3. **`note_is_empty`** (no written body, no segments, default title unchanged) **and no metadata** → `history_delete` silently, then navigate
+4. **Empty with metadata** (tags/keywords/layers in sidecar, no body or transcript) → “Discard empty note?” modal; Discard deletes, Keep cancels navigation
+5. **Otherwise** → navigate; note persists
+
+Logic lives in `src/lib/services/noteLeaveGuard.ts` (Vitest-covered).
+
+---
+
 ## WAV lifecycle summary
 
 Default save folder: `~/Documents/transcripts_scribefloat/` (configurable in Settings → General).

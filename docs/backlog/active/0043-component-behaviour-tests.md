@@ -6,9 +6,15 @@ status: active
 
 # Add behaviour tests for UI components
 
-The codebase has Vitest + @testing-library/svelte configured and one example test (`DictatePracticeStep.test.ts`). No other components have tests. Add behaviour-focused tests (not snapshots) for the components most likely to regress: interactive controls, card actions, and the Accordion pattern.
+The codebase has Vitest + @testing-library/svelte configured. Covered today:
 
-## What to cover
+- `DictatePracticeStep.test.ts` — onboarding dictate step
+- `noteLeaveGuard.test.ts` — note editor leave-guard decision tree (0049)
+- `modelDownload.test.ts`, `types.test.ts`
+
+`vitest.config.ts` aliases match `svelte.config.js` so component tests resolve `@patterns`, `@sections`, etc.
+
+## What to cover next
 
 **ui/controls/** — Button, IconButton, Toggle, OptionGroup
 - Renders with correct variant/size class

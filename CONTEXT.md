@@ -1,7 +1,7 @@
 # ScribeFloat — Domain Glossary
 
 > Canonical terms for this codebase. When code and this glossary disagree, fix one of them.
-> Implementation details belong in `CLAUDE.md` or `docs/architecture.md` — not here.
+> Implementation details belong in `AGENTS.md` or `docs/architecture.md` — not here.
 
 ---
 

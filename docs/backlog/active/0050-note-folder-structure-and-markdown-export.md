@@ -13,6 +13,12 @@ Depends on: 0049 (note lifecycle, where `note_create_empty` is the creation poin
 
 ---
 
+## Interim storage (until this story ships)
+
+Editor autosave currently uses `{save_folder}/.notes/{uuid}/written.md` + `meta.json` via `services/note_sidecar.rs`. **0050 replaces** that layout with ADR-0007 folder names and optional `note.md` export — migrate paths in `note_sidecar`, do not add a third layout.
+
+---
+
 ## Backend
 
 ### 1. Add `md5` crate to `src-tauri/Cargo.toml`

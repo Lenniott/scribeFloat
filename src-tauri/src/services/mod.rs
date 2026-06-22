@@ -1,6 +1,7 @@
 pub mod audio;
 pub mod config;
 pub mod history;
+pub mod note_sidecar;
 pub mod hotkeys;
 pub mod model;
 pub mod output;

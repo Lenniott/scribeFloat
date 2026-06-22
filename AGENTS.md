@@ -24,6 +24,7 @@ Pull only the docs relevant to the task. Do not load everything.
 ```
 docs/architecture.md                    ← System diagrams (C4), component maps, module map
 docs/engineering/layer-rules.md         ← Adding a feature or IPC command; layer ownership rules
+docs/engineering/history-storage.md     ← Note jsonl vs sidecar persistence, autosave
 docs/engineering/async-rules.md         ← Controller threading, state machines, Whisper paths
 docs/engineering/platform-rules.md      ← macOS threading, audio drain, paste behaviour
 docs/engineering/debugging.md           ← Bug investigation table, Whisper debugging

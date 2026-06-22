@@ -6,3 +6,4 @@ export { default as CheckboxGroup } from './CheckboxGroup.svelte';
 export { default as EditableTitle } from './EditableTitle.svelte';
 export { default as PathPicker } from './PathPicker.svelte';
 export { default as OptionGroup, type Option as OptionItem } from './OptionGroup.svelte';
+export { default as MarkdownEditor } from './MarkdownEditor.svelte';

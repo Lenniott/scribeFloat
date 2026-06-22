@@ -1,6 +1,7 @@
 export function kindLabel(kind: string): string {
 	if (kind === 'dictate') return 'Dictate';
 	if (kind === 'transcribe') return 'Upload';
+	if (kind === 'written') return 'Written';
 	return 'Scribe';
 }
 

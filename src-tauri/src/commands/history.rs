@@ -1,7 +1,8 @@
 use crate::controllers::history::HistoryController;
+use crate::controllers::scribe::ScribeController;
 use crate::types::{AppError, DashboardStats, HistoryListItem, HistoryRecord, TagVocabularyEntry};
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 fn validate_id(id: &str) -> Result<(), AppError> {
     if id.trim().is_empty() {
@@ -102,4 +103,90 @@ pub fn history_tag_vocabulary(
     ctrl: State<'_, Arc<HistoryController>>,
 ) -> Result<Vec<TagVocabularyEntry>, AppError> {
     ctrl.tag_vocabulary().map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn note_create_empty(
+    ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
+) -> Result<String, AppError> {
+    let id = ctrl.create_written_note().map_err(AppError::from)?;
+    app.emit("note://item-added", ()).ok();
+    Ok(id)
+}
+
+#[tauri::command]
+pub fn note_save_written_content(
+    ctrl: State<'_, Arc<HistoryController>>,
+    id: String,
+    content: String,
+) -> Result<(), AppError> {
+    validate_id(&id)?;
+    ctrl.save_written_content(&id, &content)
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn note_save_title(
+    ctrl: State<'_, Arc<HistoryController>>,
+    id: String,
+    title: String,
+) -> Result<(), AppError> {
+    validate_id(&id)?;
+    ctrl.save_title(&id, &title).map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn note_is_empty(
+    ctrl: State<'_, Arc<HistoryController>>,
+    id: String,
+) -> Result<bool, AppError> {
+    validate_id(&id)?;
+    ctrl.is_empty(&id).map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn note_has_metadata(
+    ctrl: State<'_, Arc<HistoryController>>,
+    id: String,
+) -> Result<bool, AppError> {
+    validate_id(&id)?;
+    ctrl.has_metadata(&id).map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn note_attach_transcript(
+    history: State<'_, Arc<HistoryController>>,
+    scribe: State<'_, Arc<ScribeController>>,
+    app: AppHandle,
+    id: String,
+) -> Result<(), AppError> {
+    validate_id(&id)?;
+    let pending = scribe
+        .take_pending_attach()
+        .ok_or_else(|| AppError::InvalidInput("no transcript ready to attach".to_string()))?;
+    history
+        .attach_transcript(
+            &id,
+            pending.segments,
+            pending.notes,
+            pending.model,
+            pending.speaker_capture,
+            pending.dual_source,
+            pending.session_dir,
+            pending.audio_path,
+            pending.markdown_path,
+        )
+        .map_err(AppError::from)?;
+    app.emit("note://item-added", ()).ok();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn note_render_transcript_html(
+    ctrl: State<'_, Arc<HistoryController>>,
+    id: String,
+) -> Result<String, AppError> {
+    validate_id(&id)?;
+    ctrl.render_transcript_html(&id).map_err(AppError::from)
 }

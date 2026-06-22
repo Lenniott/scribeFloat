@@ -36,6 +36,108 @@ impl HistoryController {
         })
     }
 
+    /// Create a new Written note record and persist it. Returns the new record id.
+    pub fn create_written_note(&self) -> Result<String, String> {
+        let title = format!("{}", chrono::Local::now().format("%H:%M %d/%m/%y"));
+        let record = crate::types::HistoryRecord::from_written(title);
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .append(&save_folder, record)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Update the written content of an existing note. Content is raw markdown.
+    pub fn save_written_content(&self, id: &str, content: &str) -> Result<(), String> {
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .update_written_content(&save_folder, id, content)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Update the title of a note record (log-structured update).
+    pub fn save_title(&self, id: &str, title: &str) -> Result<(), String> {
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .update_title(&save_folder, id, title)
+            .map_err(|e| e.to_string())
+    }
+
+    /// True when the note has no written body, no transcript segments, and an unmodified default title.
+    pub fn is_empty(&self, id: &str) -> Result<bool, String> {
+        let save_folder = self.config.get().save_folder;
+        let record = self
+            .history
+            .get(&save_folder, id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("note not found: {id}"))?;
+        Ok(crate::services::note_sidecar::record_is_empty(&record))
+    }
+
+    /// True when tags, keywords, or layer_item_ids are set in the note sidecar.
+    pub fn has_metadata(&self, id: &str) -> Result<bool, String> {
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .get(&save_folder, id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("note not found: {id}"))?;
+        let meta = crate::services::note_sidecar::read_meta(&save_folder, id)
+            .unwrap_or_default();
+        Ok(crate::services::note_sidecar::meta_has_editor_metadata(&meta))
+    }
+
+    /// Persist tags to the note sidecar (used by metadata UI and tests).
+    pub fn update_tags(&self, id: &str, tags: Vec<String>) -> Result<(), String> {
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .get(&save_folder, id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("note not found: {id}"))?;
+        crate::services::note_sidecar::write_tags(&save_folder, id, tags)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Attach transcript segments from a completed recording onto an existing note.
+    pub fn attach_transcript(
+        &self,
+        id: &str,
+        segments: Vec<crate::types::Segment>,
+        notes: Vec<crate::types::Note>,
+        model: String,
+        speaker_capture: bool,
+        dual_source: bool,
+        session_dir: Option<String>,
+        audio_path: Option<String>,
+        markdown_path: Option<String>,
+    ) -> Result<(), String> {
+        let cfg = self.config.get();
+        self.history
+            .update_segments(
+                &cfg.save_folder,
+                id,
+                segments,
+                notes,
+                model,
+                speaker_capture,
+                dual_source,
+                session_dir,
+                audio_path,
+                markdown_path,
+                &cfg.replacement_rules,
+                &cfg.replacement_prefix,
+            )
+            .map_err(|e| e.to_string())
+    }
+
+    /// Render transcript markdown as HTML for the note editor Transcript panel.
+    pub fn render_transcript_html(&self, id: &str) -> Result<String, String> {
+        use pulldown_cmark::{html, Options, Parser};
+        let markdown = self.render_markdown(id)?;
+        let parser = Parser::new_ext(&markdown, Options::all());
+        let mut html_output = String::new();
+        html::push_html(&mut html_output, parser);
+        Ok(html_output)
+    }
+
     /// Unified, deduped, newest-first list: store records ∪ legacy `.md` not already in the store
     /// ∪ legacy dictate entries.
     pub fn list(&self) -> Result<Vec<HistoryListItem>, String> {
@@ -45,6 +147,15 @@ impl HistoryController {
             .history
             .list_summaries(&save_folder)
             .map_err(|e| e.to_string())?;
+        tracing::debug!(
+            save_folder = %save_folder,
+            store_count = store.len(),
+            scribe = store.iter().filter(|r| r.kind == HistoryKind::Scribe).count(),
+            dictate = store.iter().filter(|r| r.kind == HistoryKind::Dictate).count(),
+            transcribe = store.iter().filter(|r| r.kind == HistoryKind::Transcribe).count(),
+            written = store.iter().filter(|r| r.kind == HistoryKind::Written).count(),
+            "history_list store records"
+        );
         let known_markdown: HashSet<String> = store
             .iter()
             .filter_map(|r| r.markdown_path.clone())
@@ -156,8 +267,8 @@ impl HistoryController {
             .get(&cfg.save_folder, id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "history record not found".to_string())?;
-        if record.kind == HistoryKind::Dictate {
-            return Err("dictate items are not exported to markdown".to_string());
+        if matches!(record.kind, HistoryKind::Dictate | HistoryKind::Written) {
+            return Err("dictate and written items are not exported to markdown".to_string());
         }
 
         // Reserve a non-colliding filename. transcript_path derives the model slug from a path's
@@ -513,6 +624,28 @@ mod tests {
     }
 
     #[test]
+    fn render_transcript_html_contains_paragraph_tag() {
+        let f = fixture();
+        let rec = HistoryRecord::from_scribe(
+            "Hello".to_string(),
+            "tiny".to_string(),
+            seg("Hello world"),
+            Vec::<Note>::new(),
+            &[],
+            "",
+            false,
+            false,
+            None,
+            None,
+            None,
+        );
+        let id = f.history.append(&f.save_folder, rec).unwrap();
+        let html = f.ctrl.render_transcript_html(&id).unwrap();
+        assert!(html.contains("<p>"));
+        assert!(html.contains("Hello world"));
+    }
+
+    #[test]
     fn list_includes_legacy_dictate_entries() {
         let f = fixture();
         let json =
@@ -531,5 +664,37 @@ mod tests {
         assert_eq!(legacy.len(), 1);
         assert_eq!(legacy[0].id, "dictate::d1");
         assert_eq!(legacy[0].word_count, 3);
+    }
+
+    #[test]
+    fn is_empty_returns_true_for_fresh_note() {
+        let f = fixture();
+        let id = f.ctrl.create_written_note().unwrap();
+        assert!(f.ctrl.is_empty(&id).unwrap());
+    }
+
+    #[test]
+    fn is_empty_returns_false_after_content_added() {
+        let f = fixture();
+        let id = f.ctrl.create_written_note().unwrap();
+        f.history
+            .update_written_content(&f.save_folder, &id, "hello")
+            .unwrap();
+        assert!(!f.ctrl.is_empty(&id).unwrap());
+    }
+
+    #[test]
+    fn has_metadata_returns_false_for_fresh_note() {
+        let f = fixture();
+        let id = f.ctrl.create_written_note().unwrap();
+        assert!(!f.ctrl.has_metadata(&id).unwrap());
+    }
+
+    #[test]
+    fn has_metadata_returns_true_after_tags_set() {
+        let f = fixture();
+        let id = f.ctrl.create_written_note().unwrap();
+        f.ctrl.update_tags(&id, vec!["tag1".into()]).unwrap();
+        assert!(f.ctrl.has_metadata(&id).unwrap());
     }
 }

@@ -1,7 +1,7 @@
 ---
 id: "0044"
 title: Build unified note editor view at /notes/[id]
-status: active
+status: done
 adr: ADR-0006, ADR-0009
 ---
 

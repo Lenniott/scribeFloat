@@ -190,6 +190,8 @@ graph TB
         layout["+layout.svelte\nApp shell: sidebar + TitleBar +\ncapture overlay + toast + modal"]
         home_r["+page.svelte\nHome"]
         notes_r["notes/+page.svelte\nNotes"]
+        notes_new_r["notes/new/+page.svelte\nCreate Written note → redirect"]
+        notes_id_r["notes/[id]/+page.svelte\nNote editor"]
         upload_r["upload/+page.svelte\nUpload"]
         settings_r["settings/+page.svelte\nSettings"]
     end
@@ -197,6 +199,7 @@ graph TB
     subgraph views["Views — src/lib/5_views/"]
         home_v["home.svelte\nRecent notes + stats"]
         notes_v["notes.svelte\nList + detail"]
+        note_editor_v["note-editor.svelte\nUnified note editor:\nheader + two-panel shell"]
         capture_v["capture.svelte\nScribe overlay"]
         transcribe_v["transcribe.svelte\nFile import queue"]
         setting_tabs["setting_general.svelte\nsetting_models.svelte\nsetting_permissions.svelte\nsetting_replace.svelte\nsetting_help.svelte"]
@@ -226,6 +229,8 @@ graph TB
     layout --> capture_v
     home_r --> home_v
     notes_r --> notes_v
+    notes_new_r --> note_editor_v
+    notes_id_r --> note_editor_v
     upload_r --> transcribe_v
     settings_r --> settings_panel
     notes_v --> detail_pane
@@ -376,7 +381,7 @@ graph TB
 
 ### History Service
 
-Owns the structured record store at `{save_folder}/history.jsonl` — an append-only, one-compact-JSON-object-per-line log. Every transcript-bearing flow (Scribe, Dictate, Transcribe) appends a record here on completion. Updates (`set_markdown_path`) and deletes (tombstone `deleted = true`) also append a new line for the same id; the loader does last-writer-wins by id. Startup `compact()` rewrites the live set atomically (temp file + rename). Mirrors `OutputService`'s stateless-with-folder style: save_folder is passed per call and the cache reloads when the folder changes.
+Owns the structured record store at `{save_folder}/history.jsonl` — append-only for **capture lifecycle** events (new record, attach transcript, export path, delete tombstone). Editor title and written body are **not** appended; they live in `{save_folder}/.notes/{id}/` via `note_sidecar` and are hydrated on load. See `docs/engineering/history-storage.md`. Startup `compact()` rewrites the live jsonl set atomically.
 
 ```mermaid
 graph TB
@@ -409,7 +414,7 @@ graph TB
 
 **Component notes:**
 - **Appender**: appends a new JSON object line to `history.jsonl` for a completed session. Called by ScribeController, DictateController, and TranscribeController on every successful completion — independent of whether a `.md` file was written
-- **Updater**: `set_markdown_path` appends a new line for an existing id (sets the `markdown_path` field). The loader's last-writer-wins semantics mean the updated record supersedes the original
+- **Updater**: `set_markdown_path` and `update_segments` append a new line for an existing id (structural/capture changes). Title and written body updates use `note_sidecar` instead — see `docs/engineering/history-storage.md`
 - **Tombstone**: `delete` appends a line with `deleted = true` for the id. The loader excludes tombstoned records from the live set
 - **Loader**: reads all lines, groups by id, and returns the last-written record per id, excluding any with `deleted = true`
 - **Compactor**: `compact()` runs at startup — rewrites only the live (non-tombstoned) records to a temp file, then renames it over `history.jsonl`. Keeps the file from growing unboundedly
@@ -671,7 +676,7 @@ src-tauri/src/
 │   ├── scribe.rs               scribe_start, scribe_stop, scribe_cancel, scribe_state
 │   ├── transcribe.rs           transcribe_add, transcribe_start, transcribe_cancel
 │   ├── dictate.rs              dictate_start, dictate_stop
-│   ├── history.rs              history_list, history_get_detail, history_render_markdown, history_export_markdown, history_delete, history_read_legacy
+│   ├── history.rs              history_list, history_get_detail, history_render_markdown, history_export_markdown, history_delete, history_read_legacy, note_create_empty, note_save_written_content, note_save_title
 │   ├── model.rs                model_list, model_download, model_delete, model_select
 │   └── settings.rs             config_get, config_update, permissions_status, open_settings, settings_get/set_save_transcripts_as_markdown
 │

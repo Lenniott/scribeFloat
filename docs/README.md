@@ -1,6 +1,6 @@
 # Docs index
 
-Human-readable documentation. Load only what your session needs — see `CLAUDE.md` for the session-type reading lists.
+Human-readable documentation. Load only what your session needs — see `AGENTS.md` for the session-type reading lists.
 
 ---
 

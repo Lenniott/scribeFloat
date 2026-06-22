@@ -53,11 +53,31 @@
 		return 'home';
 	}
 
+	function isNoteEditorPath(pathname: string): boolean {
+		const match = pathname.match(/^\/notes\/([^/]+)$/);
+		return match !== null && match[1] !== 'new';
+	}
+
+	function runNoteLeaveGuard(proceed: () => void) {
+		if (appState.noteLeaveGuard) {
+			appState.noteLeaveGuard(
+				() => {
+					noteLeaveApproved = true;
+					proceed();
+				},
+				() => {},
+			);
+			return;
+		}
+		proceed();
+	}
+
 	const viewParam = browser ? new URLSearchParams(window.location.search).get('view') : null;
 	// Main shell uses ?view=history (Tauri); only dictate/onboarding are satellite windows.
 	const isSatelliteWindow = viewParam === 'onboarding' || viewParam === 'dictate';
 
 	let previousPath = $state('/');
+	let noteLeaveApproved = false;
 
 	const currentRoute = $derived(pathnameToRoute(page.url.pathname));
 	const isSettingsRoute = $derived(page.url.pathname.startsWith('/settings'));
@@ -71,12 +91,15 @@
 			});
 			return;
 		}
+		if (isNoteEditorPath(page.url.pathname)) {
+			runNoteLeaveGuard(() => void goto(path));
+			return;
+		}
 		void goto(path);
 	}
 
 	function openCapture() {
-		appState.captureVisitKey += 1;
-		appState.captureOpen = true;
+		void goto('/notes/new');
 	}
 
 	beforeNavigate(({ cancel, to }) => {
@@ -86,6 +109,30 @@
 				appState.captureOpen = false;
 				void goto(to.url.pathname);
 			});
+			return;
+		}
+		if (
+			to &&
+			isNoteEditorPath(page.url.pathname) &&
+			to.url.pathname !== page.url.pathname &&
+			appState.noteLeaveGuard &&
+			!noteLeaveApproved
+		) {
+			cancel();
+			const dest = `${to.url.pathname}${to.url.search}`;
+			appState.noteLeaveGuard(
+				() => {
+					noteLeaveApproved = true;
+					void goto(dest).finally(() => {
+						noteLeaveApproved = false;
+					});
+				},
+				() => {},
+			);
+			return;
+		}
+		if (noteLeaveApproved) {
+			noteLeaveApproved = false;
 		}
 		if (to?.url.pathname.startsWith('/settings') && !page.url.pathname.startsWith('/settings')) {
 			previousPath = page.url.pathname;

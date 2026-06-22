@@ -1,7 +1,7 @@
 ---
 id: "0048"
 title: Transcript panel in unified note editor
-status: active
+status: done
 adr: ADR-0006
 ---
 

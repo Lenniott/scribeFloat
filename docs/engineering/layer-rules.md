@@ -34,7 +34,7 @@ IPC: JS calls `invoke('command_name', { args })` → Rust `#[tauri::command]` in
 
 | Owner | What it owns |
 |---|---|
-| `HistoryService` | Structured record store (`{save_folder}/history.jsonl`): append, compact, tombstone delete. Every transcript-bearing flow always appends a record here on completion. |
+| `HistoryService` | Capture log (`{save_folder}/history.jsonl`): append on create/transcript/export/delete, compact, tombstone. Editor title/body → `note_sidecar` (`.notes/{id}/`), not jsonl. |
 | `OutputService` | Markdown rendering (pure free functions) and durable file I/O: `.md` writes (opt-in via `save_transcripts_as_markdown`), session manifests, post-transcription cleanup, dictate failure salvage, legacy reads, delete primitives. Dictate never writes `.md`. |
 | `AudioService` | Opens audio streams and streams capture to checkpointed temp/session WAV files (16 kHz writer thread). Do not accumulate PCM in controllers. |
 | `PermissionsService` | The only code that checks OS permissions. |
@@ -83,5 +83,5 @@ struct WindowsAdapter;
 2. Decide which layer it belongs to (controller, service, or platform adapter).
 3. If it requires OS-specific behaviour, define a trait in `platform/mod.rs` and implement it per platform. The controller calls the trait, never the concrete type.
 4. If it writes durable transcript **files** (`.md`, WAV cleanup, manifests), route through `OutputService`.
-5. If it appends or updates the structured session **record** (`history.jsonl`), route through `HistoryService` (controllers orchestrate; never append JSONL from the frontend).
+5. If it appends a capture **event** to `history.jsonl`, route through `HistoryService`. Editor title/body/metadata sidecars go through `note_sidecar` via `HistoryService` update methods — never append jsonl from the frontend.
 6. If it needs config, add a field to `Config` in `types.rs` with a `#[serde(default)]` so existing config files keep loading.

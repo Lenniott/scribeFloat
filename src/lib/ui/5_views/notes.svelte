@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-svelte';
 	import HistoryDetailPane from '@sections/NoteDetailPane.svelte';
 	import NoteListCard from '@components/cards/NoteCard.svelte';
@@ -9,14 +10,32 @@
 	import type { HistoryListItem } from '@services/historyActions';
 	import { fetchTagVocabulary, type TagVocabularyEntry } from '@services/historyActions';
 
-	type CaptureFilter = 'all' | 'scribe' | 'dictate' | 'upload';
+	type CaptureFilter = 'all' | 'scribe' | 'dictate' | 'upload' | 'written';
 
 	const tabs: { id: CaptureFilter; label: string }[] = [
 		{ id: 'all', label: 'All' },
 		{ id: 'scribe', label: 'Scribe' },
 		{ id: 'dictate', label: 'Dictate' },
 		{ id: 'upload', label: 'Upload' },
+		{ id: 'written', label: 'Written' },
 	];
+
+	function isEditorNote(item: HistoryListItem): boolean {
+		return (
+			item.source === 'store' &&
+			!item.id.startsWith('md::') &&
+			!item.id.startsWith('dictate::')
+		);
+	}
+
+	function openNote(item: HistoryListItem) {
+		if (isEditorNote(item)) {
+			selectedItem = null;
+			void goto(`/notes/${item.id}`);
+			return;
+		}
+		selectedItem = item;
+	}
 
 	let {
 		allItems,
@@ -50,7 +69,9 @@
 				? allItems.filter((item) => item.kind === 'scribe')
 				: activeTab === 'dictate'
 					? allItems.filter((item) => item.kind === 'dictate')
-					: allItems.filter((item) => item.kind === 'transcribe'),
+					: activeTab === 'written'
+						? allItems.filter((item) => item.kind === 'written')
+						: allItems.filter((item) => item.kind === 'transcribe'),
 	);
 
 	const filteredItems = $derived(
@@ -86,12 +107,14 @@
 		if (filter === 'scribe') return 'No Scribe notes yet.';
 		if (filter === 'dictate') return 'No dictations yet.';
 		if (filter === 'upload') return 'No uploads yet.';
+		if (filter === 'written') return 'No written notes yet.';
 		return 'No notes yet.';
 	}
 
 	function chipForKind(kind: string): { label: string; variant: 'brand' | 'focus' | 'muted' } {
 		if (kind === 'dictate') return { label: 'Dictate', variant: 'focus' };
 		if (kind === 'transcribe') return { label: 'Upload', variant: 'focus' };
+		if (kind === 'written') return { label: 'Written', variant: 'muted' };
 		return { label: 'Scribe', variant: 'brand' };
 	}
 
@@ -162,7 +185,7 @@
 					<div>
 						<h1 class="sf-headline-sm text-fg">Notes</h1>
 						<p class="mt-0.5 sf-body-md text-fg-dim">
-							Every Scribe, Dictate, and Upload session.
+							Every note — Scribe, Dictate, Upload, and written.
 						</p>
 					</div>
 					<Button
@@ -209,7 +232,7 @@
 									{item}
 									chip={chipForKind(item.kind)}
 									disabled={deleting}
-									onselect={() => (selectedItem = item)}
+									onselect={() => openNote(item)}
 									oncopy={() => oncopy(item)}
 									onopen={item.has_markdown && item.markdown_path
 										? () => onopen(item)

@@ -619,6 +619,7 @@ pub enum HistoryKind {
     Scribe,
     Dictate,
     Transcribe,
+    Written,
 }
 
 /// The canonical, source-of-truth record persisted to `{save_folder}/history.jsonl`.
@@ -654,6 +655,9 @@ pub struct HistoryRecord {
     /// Primary kept audio file (e.g. `{session_dir}/mic.wav`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio_path: Option<String>,
+    /// Markdown text for the `written` Source. None for non-Written records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub written_content: Option<String>,
     /// Tombstone: a later line with `deleted = true` removes the record from the live view.
     #[serde(default)]
     pub deleted: bool,
@@ -735,6 +739,7 @@ impl HistoryRecord {
             markdown_path: None,
             session_dir: None,
             audio_path: None,
+            written_content: None,
             deleted: false,
         }
     }
@@ -821,8 +826,26 @@ impl HistoryRecord {
         rec
     }
 
+    /// Build a Written note record. Content starts empty — filled in via `update_written_content`.
+    pub fn from_written(title: String) -> Self {
+        Self::base(
+            HistoryKind::Written,
+            title,
+            String::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+        )
+    }
+
     /// Project to the lightweight list item shown in History.
     pub fn to_list_item(&self) -> HistoryListItem {
+        let excerpt = if self.kind == HistoryKind::Written {
+            excerpt_from_written_content(self.written_content.as_deref())
+                .or_else(|| excerpt_from_segments(&self.segments))
+        } else {
+            excerpt_from_segments(&self.segments)
+        };
         HistoryListItem {
             id: self.id.clone(),
             kind: self.kind,
@@ -832,7 +855,7 @@ impl HistoryRecord {
             word_count: self.word_count,
             duration_ms: self.duration_ms,
             duration_secs: self.duration_ms / 1000,
-            excerpt: excerpt_from_segments(&self.segments),
+            excerpt,
             tags: Vec::new(),
             has_markdown: self.markdown_path.is_some(),
             markdown_path: self.markdown_path.clone(),
@@ -848,12 +871,23 @@ fn excerpt_from_segments(segments: &[Segment]) -> Option<String> {
         .iter()
         .map(|s| s.text.trim())
         .find(|t| !t.is_empty())?;
-    let flat: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    truncate_excerpt(&text.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+fn excerpt_from_written_content(content: Option<&str>) -> Option<String> {
+    let text = content?.trim();
+    if text.is_empty() {
+        return None;
+    }
+    truncate_excerpt(text)
+}
+
+fn truncate_excerpt(flat: &str) -> Option<String> {
     if flat.is_empty() {
         return None;
     }
     if flat.chars().count() <= EXCERPT_MAX_CHARS {
-        Some(flat)
+        Some(flat.to_string())
     } else {
         let truncated: String = flat.chars().take(EXCERPT_MAX_CHARS).collect();
         Some(format!("{truncated}…"))
@@ -1065,5 +1099,25 @@ mod tests {
         assert_eq!(rec.kind, HistoryKind::Transcribe);
         assert_eq!(rec.source_path.as_deref(), Some("/in/clip.mp3"));
         assert_eq!(rec.word_count, 2);
+    }
+
+    #[test]
+    fn written_record_has_correct_kind() {
+        let rec = HistoryRecord::from_written("Title".into());
+        assert_eq!(rec.kind, HistoryKind::Written);
+        assert!(rec.segments.is_empty());
+        assert_eq!(rec.model, "");
+        assert_eq!(rec.duration_ms, 0);
+        assert_eq!(rec.word_count, 0);
+        assert!(rec.written_content.is_none());
+        assert!(!rec.id.is_empty());
+    }
+
+    #[test]
+    fn written_record_deserialises_without_written_content_field() {
+        let json = r#"{"format_version":1,"id":"abc","kind":"written","created_at":"2026-01-01T00:00:00Z","title":"T","model":"","segments":[],"notes":[],"duration_ms":0,"word_count":0}"#;
+        let rec: HistoryRecord = serde_json::from_str(json).expect("deserialise");
+        assert_eq!(rec.kind, HistoryKind::Written);
+        assert!(rec.written_content.is_none());
     }
 }

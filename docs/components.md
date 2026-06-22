@@ -64,6 +64,7 @@ Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other a
 | `EditableTitle` | `2_components/controls/EditableTitle.svelte` | Inline editable title field. Starts as plain text; switches to input on focus. |
 | `PathPicker` | `2_components/controls/PathPicker.svelte` | Path value + Change button. Triggers a file-picker callback. |
 | `OptionGroup` | `2_components/controls/OptionGroup.svelte` | Small grouped radio/segmented selector. Used for model size, theme, etc. |
+| `MarkdownEditor` | `2_components/controls/MarkdownEditor.svelte` | CodeMirror 6 markdown editor. Props: `value` (bindable), `onchange`. Mounts a CM instance with design-token theme, line wrapping, and placeholder. No IPC — delegates saves to the parent view. |
 
 ### Cards
 
@@ -110,7 +111,9 @@ Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other a
 | Component | Path | What it is |
 |---|---|---|
 | `FilterPanel` | `4_sections/FilterPanel.svelte` | Tag-filter side panel. Vocabulary list of `FilterRow` items + active filter count. |
-| `NoteDetailPane` | `4_sections/NoteDetailPane.svelte` | Fullscreen transcript + metadata detail pane (was `HistoryDetailPane`). |
+| `NoteDetailPane` | `4_sections/NoteDetailPane.svelte` | Fullscreen transcript + metadata detail pane (legacy + read-only store items). |
+| `RecordingStrip` | `4_sections/RecordingStrip.svelte` | Persistent scribe recording chrome in the note editor. Props: `noteId`, `ontranscriptready`. |
+| `TranscriptPanel` | `4_sections/TranscriptPanel.svelte` | Read-only HTML transcript panel. Props: `noteId`. |
 | `SettingList` | `4_sections/SettingList.svelte` | Scrollable container for `SettingRow` items. |
 | `SettingsPanel` | `4_sections/SettingsPanel.svelte` | Full settings area. Routes active tab to the correct setting screen. |
 
@@ -133,3 +136,20 @@ Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other a
 | `AppSidebar` | `6_regions/AppSidebar.svelte` | Left nav sidebar with route icons. Exports `AppRoute` type. |
 | `SettingsSidebar` | `6_regions/SettingsSidebar.svelte` | Settings-mode left sidebar with tab nav and back button. |
 | `TitleBar` | `6_regions/TitleBar.svelte` | Top title bar chrome. Houses the New Note button and recording state indicator. |
+
+---
+
+## Views
+
+Route-level view components. Imported by `src/routes/` pages. Live at `src/lib/ui/5_views/` → `@views`.
+
+| View | Path | What it is |
+|---|---|---|
+| `home.svelte` | `5_views/home.svelte` | Home area: recent notes + stats. |
+| `notes.svelte` | `5_views/notes.svelte` | Notes list + detail pane. |
+| `note-editor.svelte` | `5_views/note-editor.svelte` | Unified note editor at `/notes/[id]`. Written panel (always) + optional transcript/metadata side panels. `RecordingStrip` + `TranscriptPanel`. Autosave dirty-checks before IPC; body/title persist to `.notes/{id}/` sidecars (see `docs/engineering/history-storage.md`). |
+| `capture.svelte` | `5_views/capture.svelte` | Scribe capture overlay (recording → processing). |
+| `transcribe.svelte` | `5_views/transcribe.svelte` | Upload/transcribe workflow. |
+| `dictate.svelte` | `5_views/dictate.svelte` | Floating Dictate HUD (separate Tauri window). |
+| `onboarding.svelte` | `5_views/onboarding.svelte` | Onboarding flow (separate Tauri window). |
+| `setting_*.svelte` | `5_views/setting_*.svelte` | Individual settings tab content (general, models, permissions, replace, help). |

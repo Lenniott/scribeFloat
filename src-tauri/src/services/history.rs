@@ -1,3 +1,4 @@
+use crate::services::note_sidecar;
 use crate::types::{HistoryListItem, HistoryRecord};
 use anyhow::{Context, Result};
 use std::collections::HashMap;
@@ -7,10 +8,8 @@ use std::sync::{Arc, Mutex};
 
 /// Owns the canonical structured record store: `{save_folder}/history.jsonl`.
 ///
-/// On disk it is an append-only, one-compact-JSON-object-per-line log. Updates
-/// (`set_markdown_path`, `delete`) append a new full line for the same `id`; the loader
-/// keeps a last-writer-wins index so the newest line for an id wins, and `deleted = true`
-/// removes the record from the live view. Startup `compact` rewrites the live set.
+/// Capture lifecycle events append to the log; editor title/body use [`note_sidecar`].
+/// See `docs/engineering/history-storage.md`.
 ///
 /// Mirrors `OutputService`'s stateless-with-folder style: the save folder is passed per
 /// call. When it changes the in-memory cache is reloaded for the new folder (no migration).
@@ -74,6 +73,9 @@ impl HistoryService {
                 }
             }
         }
+        for record in inner.records.iter_mut() {
+            note_sidecar::hydrate_record(save_folder, record);
+        }
         Ok(())
     }
 
@@ -131,6 +133,82 @@ impl HistoryService {
         Ok(())
     }
 
+    /// Update written body text — overwrites `{save_folder}/.notes/{id}/written.md` in place.
+    /// Does not append to `history.jsonl` (high-frequency editor autosave).
+    pub fn update_written_content(&self, save_folder: &str, id: &str, content: &str) -> Result<()> {
+        let mut inner = self.inner.lock().unwrap();
+        self.ensure_loaded(&mut inner, save_folder)?;
+        let Some(&idx) = inner.index.get(id) else {
+            return Ok(());
+        };
+        note_sidecar::write_written(save_folder, id, content)?;
+        let mut updated = inner.records[idx].clone();
+        updated.written_content = Some(content.to_string());
+        updated.word_count = content.split_whitespace().count();
+        inner.records[idx] = updated;
+        Ok(())
+    }
+
+    /// Update display title — overwrites `{save_folder}/.notes/{id}/meta.json` in place.
+    /// Does not append to `history.jsonl` (editor metadata, not a new capture event).
+    pub fn update_title(&self, save_folder: &str, id: &str, title: &str) -> Result<()> {
+        let mut inner = self.inner.lock().unwrap();
+        self.ensure_loaded(&mut inner, save_folder)?;
+        let Some(&idx) = inner.index.get(id) else {
+            return Ok(());
+        };
+        if inner.records[idx].title == title {
+            return Ok(());
+        }
+        note_sidecar::write_meta_title(save_folder, id, title)?;
+        inner.records[idx].title = title.to_string();
+        Ok(())
+    }
+
+    /// Attach transcript segments to an existing note (log-structured update).
+    pub fn update_segments(
+        &self,
+        save_folder: &str,
+        id: &str,
+        segments: Vec<crate::types::Segment>,
+        notes: Vec<crate::types::Note>,
+        model: String,
+        speaker_capture: bool,
+        dual_source: bool,
+        session_dir: Option<String>,
+        audio_path: Option<String>,
+        markdown_path: Option<String>,
+        rules: &[crate::types::ReplacementRule],
+        prefix: &str,
+    ) -> Result<()> {
+        let mut inner = self.inner.lock().unwrap();
+        self.ensure_loaded(&mut inner, save_folder)?;
+        let Some(&idx) = inner.index.get(id) else {
+            return Ok(());
+        };
+        let mut updated = inner.records[idx].clone();
+        updated.segments = segments;
+        updated.notes = notes;
+        updated.model = model;
+        updated.speaker_capture = speaker_capture;
+        updated.dual_source = dual_source;
+        updated.session_dir = session_dir;
+        updated.audio_path = audio_path;
+        if markdown_path.is_some() {
+            updated.markdown_path = markdown_path;
+        }
+        updated.duration_ms = updated
+            .segments
+            .last()
+            .map(|s| s.end_ms.max(0) as i64)
+            .unwrap_or(0);
+        updated.word_count =
+            crate::services::output::count_words(&updated.segments, rules, prefix);
+        Self::append_line(save_folder, &updated)?;
+        inner.records[idx] = updated;
+        Ok(())
+    }
+
     /// Tombstone a record. Returns the record as it was before deletion (so the caller can
     /// remove its derived artifacts), or `None` if the id is unknown or already deleted.
     pub fn delete(&self, save_folder: &str, id: &str) -> Result<Option<HistoryRecord>> {
@@ -147,6 +225,7 @@ impl HistoryService {
         tombstone.deleted = true;
         Self::append_line(save_folder, &tombstone)?;
         inner.records[idx] = tombstone;
+        note_sidecar::remove_note_dir(save_folder, id);
         Ok(Some(before))
     }
 
@@ -224,6 +303,7 @@ impl HistoryService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::note_sidecar;
     use crate::types::{HistoryKind, Segment};
 
     fn temp_folder() -> String {
@@ -321,6 +401,142 @@ mod tests {
         // Tombstone survives reload.
         let fresh = HistoryService::new();
         assert!(fresh.list(&folder).unwrap().is_empty());
+    }
+
+    #[test]
+    fn delete_removes_sidecar_directory() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let rec = crate::types::HistoryRecord::from_written("Sidecar".into());
+        let id = svc.append(&folder, rec).expect("append");
+        svc.update_written_content(&folder, &id, "body").unwrap();
+        svc.update_title(&folder, &id, "renamed").unwrap();
+        assert!(note_sidecar::note_dir(&folder, &id).exists());
+
+        svc.delete(&folder, &id).unwrap();
+        assert!(!note_sidecar::note_dir(&folder, &id).exists());
+    }
+
+    #[test]
+    fn update_written_content_roundtrips() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let rec = crate::types::HistoryRecord::from_written("Draft".into());
+        let id = svc.append(&folder, rec).expect("append");
+
+        svc.update_written_content(&folder, &id, "# Hello\n\nWorld content here")
+            .expect("update");
+
+        let fresh = HistoryService::new();
+        let got = fresh.get(&folder, &id).unwrap().expect("present");
+        assert_eq!(
+            got.written_content.as_deref(),
+            Some("# Hello\n\nWorld content here")
+        );
+        // word_count recomputed from content ("#", "Hello", "World", "content", "here")
+        assert_eq!(got.word_count, 5);
+    }
+
+    #[test]
+    fn update_written_content_does_not_append_jsonl_lines() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let rec = crate::types::HistoryRecord::from_written("Draft".into());
+        let id = svc.append(&folder, rec).expect("append");
+        let path = HistoryService::store_path(&folder);
+        let lines_after_create = std::fs::read_to_string(&path).unwrap().lines().count();
+
+        for i in 0..5 {
+            svc.update_written_content(&folder, &id, &format!("edit {i}"))
+                .expect("update");
+        }
+
+        let lines_after_edits = std::fs::read_to_string(&path).unwrap().lines().count();
+        assert_eq!(
+            lines_after_create, lines_after_edits,
+            "written autosave must not append history.jsonl lines"
+        );
+        assert!(note_sidecar::written_path(&folder, &id).exists());
+    }
+
+    #[test]
+    fn update_title_roundtrips() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let rec = crate::types::HistoryRecord::from_written("Old Title".into());
+        let id_val = rec.id.clone();
+        svc.append(&folder, rec).expect("append");
+
+        svc.update_title(&folder, &id_val, "new title")
+            .expect("update title");
+
+        let fresh = HistoryService::new();
+        let got = fresh.get(&folder, &id_val).unwrap().expect("present");
+        assert_eq!(got.title, "new title");
+        assert_eq!(got.id, id_val);
+        assert!(note_sidecar::meta_path(&folder, &id_val).exists());
+    }
+
+    #[test]
+    fn update_title_does_not_append_jsonl_lines() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let rec = crate::types::HistoryRecord::from_written("Old Title".into());
+        let id = svc.append(&folder, rec).expect("append");
+        let path = HistoryService::store_path(&folder);
+        let lines_after_create = std::fs::read_to_string(&path).unwrap().lines().count();
+
+        for title in ["alpha", "beta", "gamma"] {
+            svc.update_title(&folder, &id, title).expect("update title");
+        }
+
+        let lines_after_edits = std::fs::read_to_string(&path).unwrap().lines().count();
+        assert_eq!(
+            lines_after_create, lines_after_edits,
+            "title edits must not append history.jsonl lines"
+        );
+    }
+
+    #[test]
+    fn update_segments_roundtrips() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let rec = crate::types::HistoryRecord::from_written("Draft".into());
+        let id = svc.append(&folder, rec).expect("append");
+        let segments = vec![
+            Segment {
+                start_ms: 0,
+                end_ms: 1_000,
+                text: "Hello".into(),
+            },
+            Segment {
+                start_ms: 1_000,
+                end_ms: 2_500,
+                text: "world".into(),
+            },
+        ];
+
+        svc.update_segments(
+            &folder,
+            &id,
+            segments,
+            vec![],
+            "base".into(),
+            false,
+            false,
+            None,
+            None,
+            None,
+            &[],
+            "",
+        )
+        .expect("update segments");
+
+        let fresh = HistoryService::new();
+        let got = fresh.get(&folder, &id).unwrap().expect("present");
+        assert_eq!(got.segments.len(), 2);
+        assert!(got.duration_ms > 0);
+        assert_eq!(got.model, "base");
     }
 
     #[test]

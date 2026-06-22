@@ -45,10 +45,15 @@ impl InferenceService {
 
     async fn list_models_ollama(&self, endpoint: &str) -> Result<Vec<FloatModelInfo>> {
         // Ollama native API: GET /api/tags
-        // Response: { "models": [{ "name": "llama3.2:3b", "size": ..., ... }] }
+        // Response: { "models": [{ "name": "llama3.2:3b", "model": "llama3.2:3b", ... }] }
+        // Both `name` and `model` fields are present in recent Ollama versions; older versions
+        // returned only `model`. Read both and fall back to whichever is populated.
         #[derive(Deserialize)]
         struct OllamaModel {
-            name: String,
+            #[serde(default)]
+            name: Option<String>,
+            #[serde(default)]
+            model: Option<String>,
         }
         #[derive(Deserialize)]
         struct OllamaTagsResponse {
@@ -78,9 +83,10 @@ impl InferenceService {
         Ok(body
             .models
             .into_iter()
-            .map(|m| FloatModelInfo {
-                label: m.name.clone(),
-                id: m.name,
+            .filter_map(|m| {
+                let id = m.name.filter(|s| !s.is_empty())
+                    .or_else(|| m.model.filter(|s| !s.is_empty()))?;
+                Some(FloatModelInfo { label: id.clone(), id })
             })
             .collect())
     }
@@ -131,11 +137,12 @@ impl InferenceService {
             .into_iter()
             .filter(|m| {
                 if filter_chat_models {
-                    // Keep only chat/completions-capable models; skip embeddings, TTS, etc.
+                    // Keep only chat/completions-capable models; skip non-chat model types.
                     !m.id.contains("embed")
                         && !m.id.contains("tts")
                         && !m.id.contains("dall-e")
                         && !m.id.contains("whisper")
+                        && !m.id.contains("moderation")
                 } else {
                     true
                 }
@@ -168,7 +175,8 @@ impl InferenceService {
         }
 
         let key = api_key.ok_or_else(|| anyhow!("Anthropic requires an API key"))?;
-        let url = format!("{endpoint}/v1/models");
+        // ?limit=1000 fetches all models in one request (default page size is 20).
+        let url = format!("{endpoint}/v1/models?limit=1000");
 
         let resp = self
             .client

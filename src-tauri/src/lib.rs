@@ -573,6 +573,12 @@ pub fn run() {
 
             let update = services::update::UpdateService::new();
 
+            let inference = Arc::new(services::inference::InferenceService::new());
+            let float_ctrl = controllers::float::FloatController::new(
+                Arc::clone(&inference),
+                Arc::clone(&config),
+            );
+
             app.manage(model); // shared model service
             app.manage(config); // shared config service
             app.manage(model_ctrl); // model command orchestration
@@ -581,6 +587,7 @@ pub fn run() {
             app.manage(Arc::clone(&dictate_ctrl)); // for dictate commands
             app.manage(Arc::clone(&transcribe_ctrl)); // for transcribe commands
             app.manage(history_ctrl); // for history commands
+            app.manage(float_ctrl); // for float commands
             app.manage(update);
 
             dictate_ctrl.start_key_listener();
@@ -758,6 +765,11 @@ pub fn run() {
             commands::transcribe::transcribe_open_output,
             commands::transcribe::transcribe_show_window,
             commands::update::update_check,
+            commands::float::float_get_config,
+            commands::float::float_set_config,
+            commands::float::float_clear_api_key,
+            commands::float::float_list_models,
+            commands::float::float_test_connection,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

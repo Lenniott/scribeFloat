@@ -122,6 +122,28 @@ pub struct Config {
     /// truth. Dictate never writes `.md` regardless of this flag.
     #[serde(default)]
     pub save_transcripts_as_markdown: bool,
+
+    // ── Float inference ───────────────────────────────────────────────────────
+
+    /// Which inference backend Float uses. Defaults to Ollama (local, no key required).
+    #[serde(default)]
+    pub float_provider: FloatProvider,
+
+    /// Base URL for the inference endpoint (no trailing slash).
+    /// Ollama default: http://localhost:11434
+    /// Leave at default when using Ollama; change only for cloud providers or custom deployments.
+    #[serde(default = "default_float_endpoint_url")]
+    pub float_endpoint_url: String,
+
+    /// API key for cloud providers (OpenAI, Anthropic). Not used for Ollama.
+    #[serde(default)]
+    pub float_api_key: Option<String>,
+
+    /// Model name Float uses for inference.
+    /// Examples: "llama3.2:3b" (Ollama), "gpt-4o-mini" (OpenAI), "claude-haiku-4-5-20251001" (Anthropic).
+    /// None = Float is not ready to run — user must pick a model before flows execute.
+    #[serde(default)]
+    pub float_model: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -141,6 +163,10 @@ pub struct GeneralSettingsUpdate {
     pub save_transcripts_as_markdown: bool,
     pub theme_mode: String,
     pub open_with_app_path: Option<String>,
+}
+
+fn default_float_endpoint_url() -> String {
+    "http://localhost:11434".to_string()
 }
 
 impl Default for Config {
@@ -167,6 +193,10 @@ impl Default for Config {
             replacement_rules: default_replacement_rules(),
             replacement_prefix: default_replacement_prefix(),
             save_transcripts_as_markdown: false,
+            float_provider: FloatProvider::Ollama,
+            float_endpoint_url: default_float_endpoint_url(),
+            float_api_key: None,
+            float_model: None,
         }
     }
 }
@@ -1120,4 +1150,64 @@ mod tests {
         assert_eq!(rec.kind, HistoryKind::Written);
         assert!(rec.written_content.is_none());
     }
+}
+
+// ── Float inference types ─────────────────────────────────────────────────────
+
+/// Which inference backend Float uses for LLM calls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum FloatProvider {
+    /// Local Ollama daemon (http://localhost:11434 by default). No API key required.
+    #[default]
+    Ollama,
+    /// OpenAI API (https://api.openai.com). Requires api key.
+    OpenAi,
+    /// Anthropic API (https://api.anthropic.com). Requires api key.
+    Anthropic,
+    /// Any OpenAI-compatible endpoint. User supplies the base URL and optional key.
+    Custom,
+}
+
+impl FloatProvider {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "ollama" => Ok(Self::Ollama),
+            "openai" => Ok(Self::OpenAi),
+            "anthropic" => Ok(Self::Anthropic),
+            "custom" => Ok(Self::Custom),
+            other => Err(format!("unsupported float provider `{other}`")),
+        }
+    }
+
+    /// Default base URL for this provider.
+    pub fn default_endpoint(&self) -> &'static str {
+        match self {
+            Self::Ollama => "http://localhost:11434",
+            Self::OpenAi => "https://api.openai.com",
+            Self::Anthropic => "https://api.anthropic.com",
+            Self::Custom => "http://localhost:11434",
+        }
+    }
+}
+
+/// A model available from the configured inference provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FloatModelInfo {
+    /// The model identifier to pass in inference requests (e.g. "llama3.2:3b", "gpt-4o-mini").
+    pub id: String,
+    /// Human-readable label. Falls back to `id` when the provider returns no display name.
+    pub label: String,
+}
+
+/// The full Float configuration, returned by `float_get_config`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FloatConfig {
+    pub provider: FloatProvider,
+    pub endpoint_url: String,
+    /// API key present flag — the key itself is never sent to the frontend.
+    pub has_api_key: bool,
+    pub model: Option<String>,
+    /// True when provider + endpoint + model are all set and Float is ready to run.
+    pub ready: bool,
 }

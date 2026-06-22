@@ -21,13 +21,9 @@ Depends on: 0044 (shell). Can be built in parallel with 0045 and 0046.
 pub struct HistoryRecord {
     // ... existing fields ...
 
-    /// Tags assigned by the user.
+    /// Tags assigned by the user or Float.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
-
-    /// Keywords extracted or assigned by the user.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub keywords: Vec<String>,
 
     /// Float Layer Item IDs checked for this note.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -43,7 +39,6 @@ Follow the exact `set_markdown_path` pattern (lines 121–132) for each:
 
 ```rust
 pub fn update_tags(&self, save_folder: &str, id: &str, tags: Vec<String>) -> Result<()>
-pub fn update_keywords(&self, save_folder: &str, id: &str, keywords: Vec<String>) -> Result<()>
 pub fn update_layer_items(&self, save_folder: &str, id: &str, ids: Vec<String>) -> Result<()>
 ```
 
@@ -53,7 +48,6 @@ Each clones the record, replaces the relevant field, appends the new line, updat
 
 ```rust
 pub fn set_tags(&self, id: &str, tags: Vec<String>) -> Result<(), String>
-pub fn set_keywords(&self, id: &str, keywords: Vec<String>) -> Result<(), String>
 pub fn set_layer_items(&self, id: &str, ids: Vec<String>) -> Result<(), String>
 ```
 
@@ -70,13 +64,6 @@ pub fn note_set_tags(
 ) -> Result<(), AppError>
 
 #[tauri::command]
-pub fn note_set_keywords(
-    ctrl: State<'_, Arc<HistoryController>>,
-    id: String,
-    keywords: Vec<String>,
-) -> Result<(), AppError>
-
-#[tauri::command]
 pub fn note_set_layer_items(
     ctrl: State<'_, Arc<HistoryController>>,
     id: String,
@@ -88,15 +75,14 @@ All validate `id` with `validate_id`, then delegate to controller. Follow `histo
 
 ### 5. Register in `src-tauri/src/lib.rs`
 
-Add all three commands to `tauri::generate_handler![]`.
+Add both commands to `tauri::generate_handler![]`.
 
 ### 6. Tests
 
 In `src-tauri/src/services/history.rs` tests:
 
 - `update_tags_roundtrips` — append a Written record, call `update_tags` with `["alpha", "beta"]`, reload from disk, assert `record.tags == ["alpha", "beta"]`.
-- `update_keywords_roundtrips` — same pattern for keywords.
-- `old_record_without_tags_deserialises_to_empty` — JSON string without `tags`/`keywords`/`layer_item_ids` deserialises with all three as empty vecs.
+- `old_record_without_tags_deserialises_to_empty` — JSON string without `tags`/`layer_item_ids` deserialises with both as empty vecs.
 
 ---
 
@@ -138,7 +124,6 @@ Structure (follows `FilterPanel` shell pattern):
   </header>
   <ScrollBody>
     <!-- Tags section -->
-    <!-- Keywords section -->
     <!-- Float Layer Items section -->
   </ScrollBody>
 </aside>
@@ -156,8 +141,6 @@ Structure (follows `FilterPanel` shell pattern):
 </section>
 ```
 
-**Keywords section:** same pattern, no suggestions (or reuse tag vocabulary).
-
 **Float Layer Items section:**
 - Load available Layer Items from `invoke<LayerVocabulary>('float_get_vocabulary')` (existing or add if needed)
 - Render as a checklist of `<label><input type="checkbox"> {item.label}</label>` items, grouped by Layer
@@ -169,17 +152,15 @@ Structure (follows `FilterPanel` shell pattern):
 onMount(async () => {
   const record = await invoke<HistoryRecord>('history_get_detail', { id: noteId });
   tags = record.tags ?? [];
-  keywords = record.keywords ?? [];
   selectedLayerItemIds = record.layer_item_ids ?? [];
   tagVocabulary = await invoke<string[]>('history_tag_vocabulary').then(v => v.map(e => e.value));
 });
 ```
 
-**Autosave helpers:**
+**Autosave helper:**
 ```ts
-async function saveField(field: 'tags' | 'keywords', v: string[]) {
-  const cmd = field === 'tags' ? 'note_set_tags' : 'note_set_keywords';
-  await invoke(cmd, { id: noteId, [field]: v });
+async function saveTags(v: string[]) {
+  await invoke('note_set_tags', { id: noteId, tags: v });
 }
 ```
 
@@ -210,6 +191,6 @@ Add: `export { default as NoteMetaSidebar } from './NoteMetaSidebar.svelte';`
 - `cargo clippy -- -D warnings` passes
 - Tags can be added by typing and pressing Enter; they render as chips
 - Tags can be removed by clicking the chip's remove button
-- Tags and keywords autosave on change (verify by reopening note)
+- Tags autosave on change (verify by reopening note)
 - Float Layer Items checklist renders when layers exist; shows empty state otherwise
-- Old notes (without `tags`/`keywords`/`layer_item_ids`) load without error
+- Old notes (without `tags`/`layer_item_ids`) load without error

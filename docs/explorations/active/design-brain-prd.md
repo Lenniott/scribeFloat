@@ -41,9 +41,9 @@ That reframe surfaces problems the current flat-list History UI doesn't solve:
 
 ## 3. The bet
 
-**Build one general engine, not a list of point features.** The MVP use cases are deliberately narrow — Tags and Keywords — and the mechanism underneath (Layer → Step → Flow) delivers those reliably as a lightweight vocabulary-building layer: filter notes, link them together, provide routing signals for downstream processing.
+**Build one general engine, not a list of point features.** The MVP use case is deliberately narrow — Tags — and the mechanism underneath (Layer → Step → Flow) delivers that reliably as a lightweight vocabulary-building layer: filter notes, link them together, provide routing signals for downstream processing.
 
-**Design evolution (see [`knowledge-orchestration.md`](knowledge-orchestration.md)):** Decisions, Actions, Stakeholders, and other knowledge types are *not* additional Layers in this engine. They are a separate second-level engine — the knowledge extraction layer — that uses the same underlying HTTP runner but writes to markdown files in the knowledge folder rather than HistoryRecord metadata. The Layer/Step/Flow engine's job is Tags and Keywords only. The bet that "the same pipeline is the path to decision logs and stakeholder artifacts" was directionally right (same HTTP runner, same prompt pattern) but wrong about storage and execution model — those are different enough to warrant a separate engine. The two-flow separation is the correct architecture: Flow 1 (Tags + Keywords, lightweight, runs on every note) feeds and enables Flow 2 (knowledge extraction, heavier, selective, runs after Flow 1 is approved).
+**Design evolution (see [`knowledge-orchestration.md`](knowledge-orchestration.md)):** Decisions, Actions, Stakeholders, and other knowledge types are *not* additional Layers in this engine. They are a separate second-level engine — the knowledge extraction layer — that uses the same underlying HTTP runner but writes to markdown files in the knowledge folder rather than HistoryRecord metadata. The Layer/Step/Flow engine's job is Tags only (Keywords and Tags have been merged — see ADR-0011). The bet that "the same pipeline is the path to decision logs and stakeholder artifacts" was directionally right (same HTTP runner, same prompt pattern) but wrong about storage and execution model — those are different enough to warrant a separate engine. The two-flow separation is the correct architecture: Flow 1 (Tags, lightweight, runs on every note) feeds and enables Flow 2 (knowledge extraction, heavier, selective, runs after Flow 1 is approved).
 
 Three constraints carry through every layer of the design, because they're what make the bet safe to make incrementally:
 
@@ -55,7 +55,7 @@ Three constraints carry through every layer of the design, because they're what 
 
 ## 4. Object model
 
-Five hardcoded types. Tags and Keywords are the two default seed Layers — they serve filtering, linking, and domain routing. **Decisions, Actions, Stakeholders, etc. are not Layers in this engine** — they live in the knowledge extraction layer (see [`knowledge-orchestration.md`](knowledge-orchestration.md)) and produce markdown files, not vocabulary items. Everything beyond Tags and Keywords in this engine is user-created configuration for additional lightweight vocabulary extraction.
+Five hardcoded types. **Tags is the single default seed Layer** — it serves filtering, linking, and domain routing. Keywords have been merged into Tags (see ADR-0011). **Decisions, Actions, Stakeholders, etc. are not Layers in this engine** — they live in the knowledge extraction layer (see [`knowledge-orchestration.md`](knowledge-orchestration.md)) and produce markdown files, not vocabulary items. Everything beyond Tags in this engine is user-created configuration for additional lightweight vocabulary extraction.
 
 | Object | What it is |
 |---|---|
@@ -90,7 +90,7 @@ Flow is always assembled manually (pick existing Steps, set trigger, order them)
 ## 5. User stories
 
 **Capture & organize**
-- As a designer, I want tags and keywords to appear on a session without doing anything, so that organization doesn't cost me extra effort on top of recording.
+- As a designer, I want tags to appear on a session without doing anything, so that organization doesn't cost me extra effort on top of recording.
 - As a designer, I want a wrong tag to be a one-tap fix, not a form, so that correcting the AI is cheaper than living with the mistake.
 - As a designer, I want new tags to reuse existing vocabulary instead of inventing near-duplicates ("navbar" vs "navigation-bar"), so my tag list stays meaningful over time.
 
@@ -122,9 +122,8 @@ flowchart TD
     D -- yes --> E[Flow-run enqueued — global queue, depth unbounded]
     E --> F[Queue worker picks up run\nconcurrency = 1, app-wide]
     F --> G[Step 1: chunk transcript on segment boundaries\nrun Tags step — HTTP call to inference endpoint]
-    G --> H[Step 2: run Keywords step — HTTP call to inference endpoint]
-    H --> I[Write results to record metadata,\nstatus = draft]
-    I --> J[History card status chip flips\nfrom Analyzing… to showing tags/keywords]
+    G --> H[Write results to record metadata,\nstatus = draft]
+    H --> I[History card status chip flips\nfrom Analyzing… to showing tags]
     J --> K[User opens transcript, reviews draft result,\nedits items as needed, approves]
 ```
 
@@ -190,7 +189,7 @@ flowchart TD
     B --> C[Select an item, e.g. 'onboarding']
     C --> D[See every transcript linked to it]
     D --> E[Jump to transcript-level view]
-    note1[This view is generic over layer —\nbuilt once, works for Tags, Keywords,\nand later Projects with zero extra UI work]
+    note1[This view is generic over layer —\nbuilt once, works for Tags\nand later user-defined layers with zero extra UI work]
 ```
 
 ---
@@ -210,7 +209,7 @@ C4Context
     System_Ext(ollama, "Ollama (local daemon)", "User-managed. Runs any GGUF-compatible model locally. Exposes OpenAI-compatible API at localhost:11434. Separate process — no shared GPU state with Whisper.")
     System_Ext(cloud_api, "Cloud inference API", "Optional. OpenAI, Anthropic, or any OpenAI-compatible endpoint. User provides endpoint URL + API key in settings.")
 
-    Rel(user, scribefloat, "reviews and approves AI-drafted tags, keywords, and future layers")
+    Rel(user, scribefloat, "reviews and approves AI-drafted tags and future layers")
     Rel(scribefloat, ollama, "POST /v1/chat/completions — local, zero-latency, user's model choice")
     Rel(scribefloat, cloud_api, "POST /v1/chat/completions — opt-in, user-supplied key")
 ```
@@ -227,7 +226,7 @@ C4Container
     Container_Boundary(brain, "Float Engine — new") {
         Container(queue, "Enrichment Queue", "Rust / Tokio", "Global FIFO. One flow-run in flight at a time. Simplicity default — not a GPU-lock constraint.")
         Container(flow_engine, "Flow Engine", "Rust", "Runs a flow's ordered steps against one transcript; writes results back through HistoryService")
-        Container(layer_registry, "Layer Registry", "Rust", "Defines layers: unique list, per-item description, render type. Tags + Keywords ship as defaults")
+        Container(layer_registry, "Layer Registry", "Rust", "Defines layers: unique list, per-item description, render type. Tags ships as the default seed layer")
         Container(chunker, "Chunker", "Rust", "Shared service — splits transcript on Segment timestamp boundaries (speaker turn / pause gap), not raw token count")
         Container(inference_client, "InferenceClient", "Rust / reqwest", "HTTP client for OpenAI-compatible /v1/chat/completions. Endpoint URL + optional API key from Config. No model management, no GPU lifecycle.")
     }
@@ -245,6 +244,7 @@ C4Container
 ### 7.3 Level 3 notes (not a full diagram yet — call out before the spike)
 
 - `InferenceClient` reads `float_endpoint_url` and `float_api_key` from `Config`. Both have `#[serde(default)]` so existing config files load cleanly — endpoint defaults to `http://localhost:11434` (Ollama).
+- The on-creation flow runs **one step** (Tags). Keywords no longer exist as a separate step or layer (ADR-0011).
 - Structured output reliability: request JSON mode (most providers support `response_format: { type: "json_object" }`) or use a fenced-JSON prompt pattern with a parse-and-retry step rather than grammar-constrained decoding.
 - `Chunker` is shared infrastructure, not something each Step reimplements — this was explicitly flagged as a risk if left per-step.
 - Render types are a small, fixed catalog (chip-list, plain-list, item+description, task-list) that the UI knows how to draw; a new Layer picks from this catalog rather than commissioning new UI.
@@ -283,4 +283,4 @@ This is a UI decision only — it does not depend on the engine shipping. Implem
 | Status chip on History card | Existing Whisper `on_tick`-per-segment progress pattern |
 | Metadata storage | Extends `HistoryRecord` (`src-tauri/src/types.rs:627`) — additive fields, not a new store |
 | Transcript-level view | Extends History detail screen — must respect `docs/history-ui-review.md` layout contracts |
-| Tag/keyword grounding without embeddings | Inlining the existing vocabulary as plain text in the prompt, within the 128K context budget |
+| Tag grounding without embeddings | Inlining the existing tag vocabulary as plain text in the prompt, within the 128K context budget |

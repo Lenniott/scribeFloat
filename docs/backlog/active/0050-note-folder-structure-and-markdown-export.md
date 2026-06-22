@@ -95,7 +95,6 @@ Steps:
 title: '{title}'
 created: '{created_at}'
 tags: [{comma-separated tags}]
-keywords: [{comma-separated keywords}]
 model: {model}
 duration_seconds: {duration_ms / 1000.0}
 word_count: {word_count}
@@ -115,7 +114,7 @@ For the transcript section, call `self.render_markdown(id)?` (existing method). 
 **When to call `write_note_markdown`:** from the controller methods that mutate note content:
 - `update_written_content` → call `write_note_markdown` after the service update
 - `attach_transcript` (story 0046) → call `write_note_markdown` after segments are updated
-- `set_tags` / `set_keywords` / `set_layer_items` (story 0047) → call `write_note_markdown` after each
+- `set_tags` / `set_layer_items` (story 0047) → call `write_note_markdown` after each
 
 Do NOT add `write_note_markdown` to the IPC layer — it is an internal side effect of content mutations.
 

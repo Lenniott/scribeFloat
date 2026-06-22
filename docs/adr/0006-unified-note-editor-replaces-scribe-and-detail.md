@@ -14,7 +14,7 @@ We will replace both surfaces with a single unified note editor routed at `/note
 
 **Layout — three panels, any two visible at once:**
 - **Left panel:** Written source editor (CodeMirror) or transcript viewer — switchable via tab control at the top of the left column
-- **Right panel:** Metadata sidebar — tags, keywords, Float Layer Item assignments — same visual pattern as `FilterPanel`
+- **Right panel:** Metadata sidebar — tags, Float Layer Item assignments — same visual pattern as `FilterPanel`
 - **Default pair:** editor + metadata when no transcript exists; transcript + metadata when no written content exists (nudges the user toward metadata entry in both cases)
 - **Recording chrome:** persistent strip above the panels — waveform, status dot, elapsed timer, and a gear icon that opens a settings popover (mic selection, model, speaker capture toggle, timestamps toggle)
 

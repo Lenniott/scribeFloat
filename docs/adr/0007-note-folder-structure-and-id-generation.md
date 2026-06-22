@@ -32,7 +32,7 @@ HHMM_DD-MM-YY_first_seven_title_words_XXXXXX
 
 **Audio retention:** Staging WAV files are retained inside the Note folder after processing (not deleted). The current `keep_wavs` setting is superseded for notes that use this folder structure — all audio is kept.
 
-**Markdown export:** When auto-save-to-markdown is enabled, the rendered note (written source + transcript body, YAML frontmatter with metadata) is written to `note.md` inside the Note folder. The YAML frontmatter includes title, tags, keywords, creation timestamp, word count, model, and duration.
+**Markdown export:** When auto-save-to-markdown is enabled, the rendered note (written source + transcript body, YAML frontmatter with metadata) is written to `note.md` inside the Note folder. The YAML frontmatter includes title, tags, creation timestamp, word count, model, and duration.
 
 ## Consequences
 

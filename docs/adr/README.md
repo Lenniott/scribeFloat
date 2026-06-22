@@ -12,3 +12,4 @@
 | ADR-0008 | [0008-codemirror-for-written-source-editor.md](0008-codemirror-for-written-source-editor.md) | CodeMirror 6 for the written source editor panel; source-mode markdown only |
 | ADR-0009 | [0009-note-lifecycle-immediate-create-autosave-discard-if-empty.md](0009-note-lifecycle-immediate-create-autosave-discard-if-empty.md) | Note created immediately on open; autosaved; silently discarded if empty on leave |
 | ADR-0010 | [0010-separate-capture-config-from-note-intent.md](0010-separate-capture-config-from-note-intent.md) | Capture is intake configuration only; "quick" is the only capture-derived Note property in the UI |
+| ADR-0011 | [0011-tags-replace-tags-and-keywords.md](0011-tags-replace-tags-and-keywords.md) | Keywords removed; Tags is the single vocabulary concept; each Tag carries per-note annotation logs written by Float |

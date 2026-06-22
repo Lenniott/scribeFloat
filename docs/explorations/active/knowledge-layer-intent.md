@@ -7,7 +7,7 @@
 
 ## The problem Float doesn't solve
 
-Float extracts structured data *from* individual transcripts — tags, keywords, decisions. It builds a vocabulary you can filter by. That's an index.
+Float extracts structured data *from* individual transcripts — tags and decisions. It builds a vocabulary you can filter by. That's an index.
 
 What it doesn't do is *synthesise across* transcripts over time. After 40 user research sessions, you don't have a user persona — you have 40 filtered records. After six months of project recordings, you don't have a project arc — you have a dated list. The knowledge is latent in the corpus; nothing assembles it.
 
@@ -28,7 +28,7 @@ Examples in the context of a designer's recording habit:
 | **Working style** | Personal dictation and reflection recordings | Patterns recur across new sessions |
 | **User quotes library** | Any session where a user was present | A new user session is approved |
 | **Decision log** | Sessions where Decisions layer was approved | A new decision is added to a project's record |
-| **Domain vocabulary** | Keywords layer vocabulary, accumulated over time | New terms are approved into the vocabulary |
+| **Domain vocabulary** | Tags vocabulary, accumulated over time | New tags are approved into the vocabulary |
 
 The common shape: a document with a structured header (source records, type, last updated) and a free-form body that a person writes, edits, and signs off on.
 
@@ -38,7 +38,7 @@ The common shape: a document with a structured header (source records, type, las
 
 Float is a prerequisite, not a replacement. The two do different jobs:
 
-**Float (extraction):** Per-transcript, bottom-up. Runs prompts against one transcript, produces structured vocabulary (tags, keywords, decisions). Builds the index.
+**Float (extraction):** Per-transcript, bottom-up. Runs prompts against one transcript, produces structured vocabulary (tags, decisions). Builds the index.
 
 **Knowledge layer (synthesis):** Cross-transcript, top-down. Uses Float's vocabulary to find relevant transcripts, then produces a document artifact. The artifact is the deliverable.
 
@@ -50,7 +50,7 @@ Float's vocabulary tells you which transcripts are relevant to synthesise from. 
 
 Three things that are absent today and would need to exist:
 
-1. **Retrieval.** Synthesising across 30 recordings doesn't fit in one LLM call. You need to select relevant transcript chunks, not whole documents. Float's tag/keyword index is a start; semantic search (embeddings) is the full answer. Deferred until the index proves insufficient.
+1. **Retrieval.** Synthesising across 30 recordings doesn't fit in one LLM call. You need to select relevant transcript chunks, not whole documents. Float's tag index (with per-note annotation logs) is a start; semantic search (embeddings) is the full answer. Deferred until the index proves insufficient.
 
 2. **Artifact storage.** Float stores vocabulary as term lists on `HistoryRecord`. An artifact is a document — different shape, different store, different editing model. Likely: markdown files with structured frontmatter, separate from `history.jsonl`.
 
@@ -71,10 +71,10 @@ Three things that are absent today and would need to exist:
 
 In rough dependency order:
 
-1. Float Phase B ships — vocabulary accumulates, tags and keywords are being approved on real transcripts
+1. Float Phase B ships — vocabulary accumulates, tags are being approved on real transcripts
 2. In-app text editor exists — some component that can display and edit a markdown document
 3. Artifact store is defined — even a stub data model (`artifacts/` folder + index) that the dashboard can reference
-4. Enough vocabulary density — synthesis quality degrades if the corpus is thin; this only becomes useful once a user has meaningful tag/keyword coverage across dozens of sessions
+4. Enough vocabulary density — synthesis quality degrades if the corpus is thin; this only becomes useful once a user has meaningful tag coverage across dozens of sessions
 
 The dashboard can lay groundwork for steps 2 and 3 without Float being live — the editor and the artifact store slot structure are Phase A-compatible additions.
 

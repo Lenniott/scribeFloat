@@ -156,7 +156,7 @@ For uploads without Whisper timestamps (PDF, URL, video): `grep` only, no `times
 **Wrong model:** one agent per domain × type = combinatorial explosion (5 domains × 12 types = 60 agents before the user adds anything custom).
 
 **Right model:**
-- **1 routing agent** — classifies a note to one or more domains using Float's tag/keyword output; builds a confidence score; determines which domain folders exist or need creating
+- **1 routing agent** — classifies a note to one or more domains using Float's approved tags; builds a confidence score; determines which domain folders exist or need creating
 - **12 type agents** — one per information type, domain-agnostic; each knows how to extract its type from any note; domain is a routing parameter
 - **Scripts** — handle all file/index maintenance
 
@@ -189,19 +189,19 @@ Three Sources on one Note. Critically, Sources stay **labeled by type** — they
 [PDF markdown content...]
 ```
 
-### Phase 2a — Tags + Keywords (lightweight, runs on every note)
+### Phase 2a — Tags (lightweight, runs on every note)
 
-The `on-creation` Flow triggers the Tags + Keywords step. These are a **linking and filtering layer** — lightweight vocabulary that helps organise notes, link them together, and provides the domain routing signal for Phase 3. This is not where Decisions or other knowledge types live.
+The `on-creation` Flow triggers the Tags step. Tags are the **linking and filtering layer** — lightweight vocabulary that helps organise notes, link them together, and provides the domain routing signal for Phase 3. This is not where Decisions or other knowledge types live. Keywords no longer exist as a separate concept — see ADR-0011 and the "Further simplifications" section below.
 
-Status = `draft`. **User approves.** Nothing in Phase 2b runs until approved — approved tags and keywords are the routing signal. Running knowledge extraction against unvalidated output compounds errors.
+Status = `draft`. **User approves.** Nothing in Phase 2b runs until approved — approved tags are the routing signal. Running knowledge extraction against unvalidated output compounds errors.
 
 ### Phase 2b — Domain routing (uses approved tags as signal)
 
-See Phase 3 below. Tags/Keywords feed this step directly.
+See Phase 3 below. Tags feed this step directly.
 
 ### Phase 3 — Routing + Knowledge extraction (separate flow, selective)
 
-The routing agent reads approved tags + keywords, cross-references against `knowledge/AGENTS.md`, scores domain confidence:
+The routing agent reads approved tags, cross-references against `knowledge/AGENTS.md`, scores domain confidence:
 
 ```
 "project-x"    → 94%  (tag in vocabulary, stakeholder name matched)
@@ -263,11 +263,11 @@ Each agent outputs the minimal JSON schema; scripts handle file creation and AGE
 
 Two flows, both built on the same underlying runner:
 
-**Flow 1 — Tags + Keywords** (per-note, lightweight, always on)
+**Flow 1 — Tags** (per-note, lightweight, always on)
 ```
 Layer definition + prompt
 → Step runner (HTTP call to inference endpoint)
-→ Vocabulary items on HistoryRecord (draft → approved)
+→ Tags with per-note annotation logs on HistoryRecord (draft → approved)
 → Feeds domain routing signal
 ```
 
@@ -279,12 +279,12 @@ Type definition + prompt
 → Script → markdown file + AGENTS.md update
 ```
 
-Tags and Keywords are **not** knowledge types — they are the index that makes knowledge extraction possible. Decisions, Actions, Stakeholders, etc. live in Flow 2, not Flow 1. This was blurred in the design-brain-prd.md which listed Decisions alongside Tags/Keywords as Layer types — that framing is superseded here.
+Tags are **not** a knowledge type — they are the index that makes knowledge extraction possible. Decisions, Actions, Stakeholders, etc. live in Flow 2, not Flow 1. This was blurred in the design-brain-prd.md which listed Decisions alongside Tags/Keywords as Layer types — that framing is superseded here.
 
 The runner is the same HTTP inference client in both cases. Storage differs: HistoryRecord metadata for Flow 1, markdown files for Flow 2.
 
 ScribeFloat ships with defaults at both levels:
-- Flow 1 defaults: Tags, Keywords
+- Flow 1 defaults: Tags (one step; Keywords merged into Tags — ADR-0011)
 - Flow 2 defaults: the 12 type agents (Decisions, Actions, Stakeholders, etc.)
 
 A user adding a custom knowledge type — "Risks", "Open Source References" — defines a prompt describing what to extract. No new code, just configuration.
@@ -331,7 +331,7 @@ capture + tag + annotate + export    →   synthesise, analyse, write, decide
 The knowledge layer (domain folders, 12 type agents, AGENTS.md maintenance, routing orchestration, proactive surfacing) is replaced by a much simpler pipeline:
 
 1. **Capture** — transcript, written notes, uploads (existing)
-2. **Tag + annotate** — Float Phase B adds tags and keywords, and for each tag writes *why* it was applied and what in the note relates to it (small addition to existing Step output)
+2. **Tag + annotate** — Float Phase B tags the note and for each tag writes *why* it was applied and what in the note relates to it, anchored by a Whisper timestamp and grep pattern (the tag's log entry for this note)
 3. **Export context file on demand** — user requests a context file for one or more tags over a time window; system collates annotations + source quotes into one markdown file per tag; user takes it to their AI tool
 
 ### Tag annotation

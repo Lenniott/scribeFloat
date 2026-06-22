@@ -46,9 +46,7 @@
 
 	const fieldId = $derived(id ?? `field-${label.toLowerCase().replace(/\s+/g, '-')}`);
 
-	const selectClass =
-		'h-10 cursor-pointer rounded-md border border-rim bg-card py-2 pr-8 pl-2 sf-body-md text-fg disabled:cursor-not-allowed disabled:opacity-40';
-
+	const selectClass = 'sf-select';
 </script>
 
 {#if layout === 'horizontal'}

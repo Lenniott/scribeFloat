@@ -7,6 +7,7 @@
 	import RecordingTimer from '@primitives/display/RecordingTimer.svelte';
 	import IconButton from '@components/controls/IconButton.svelte';
 	import ToggleSwitch from '@components/controls/Toggle.svelte';
+	import FieldRow from '@primitives/form/FieldRow.svelte';
 	import { Trash2, Settings2 } from 'lucide-svelte';
 
 	type StripPhase = 'idle' | 'recording' | 'transcribing';
@@ -216,20 +217,17 @@
 			/>
 			{#if settingsOpen}
 				<div
-					class="absolute right-0 top-full z-50 mt-1 w-64 rounded-md border border-fill bg-card p-3 shadow-lg"
+					class="absolute right-0 top-full z-50 mt-1 w-64 rounded-md border border-fill bg-card p-3 shadow-lg space-y-4"
 					role="group"
 					aria-label="Recording settings"
 				>
-					<label class="sf-field-label mb-1 block text-fg-dim" for="recording-strip-mic">Microphone</label>
-					<select
+					<FieldRow
+						label="Microphone"
 						id="recording-strip-mic"
-						class="mb-3 w-full rounded border border-fill bg-panel px-2 py-1.5 sf-body-md text-fg"
+						mode="select"
+						options={micOptions}
 						bind:value={selectedMic}
-					>
-						{#each micOptions as opt (opt.value)}
-							<option value={opt.value}>{opt.label}</option>
-						{/each}
-					</select>
+					/>
 					<ToggleSwitch
 						label="Speaker capture"
 						checked={captureSpeaker}
@@ -238,16 +236,14 @@
 							void invoke('scribe_toggle_speaker_capture', { enabled: v });
 						}}
 					/>
-					<div class="mt-2">
-						<ToggleSwitch
-							label="Timestamps"
-							checked={includeTimestamps}
-							onchange={(v) => {
-								includeTimestamps = v;
-								void invoke('scribe_set_include_timestamps', { enabled: v });
-							}}
-						/>
-					</div>
+					<ToggleSwitch
+						label="Timestamps"
+						checked={includeTimestamps}
+						onchange={(v) => {
+							includeTimestamps = v;
+							void invoke('scribe_set_include_timestamps', { enabled: v });
+						}}
+					/>
 				</div>
 			{/if}
 		</div>

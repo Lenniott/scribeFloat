@@ -296,6 +296,13 @@ html {
   .sf-panel   { @apply bg-panel rounded-md; }
   .sf-card    { @apply bg-card rounded-md; }
   .sf-input   { @apply bg-card border border-fill rounded-md text-fg font-sans text-label-md; }
+  .sf-select  {
+    @apply h-10 w-full cursor-pointer appearance-none rounded-md border border-rim bg-card py-2 pl-2 pr-8 font-sans text-body-md font-light text-fg outline-none disabled:cursor-not-allowed disabled:opacity-40;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='oklch(0.55 0 0)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 1rem;
+  }
   .sf-divider { @apply border-t border-card; }
   .sf-scrim   { @apply bg-overlay; }
 

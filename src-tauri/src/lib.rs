@@ -751,6 +751,7 @@ pub fn run() {
             commands::history::note_save_title,
             commands::history::note_is_empty,
             commands::history::note_has_metadata,
+            commands::history::note_set_tags,
             commands::history::note_attach_transcript,
             commands::history::note_render_transcript_html,
             commands::transcribe::transcribe_inspect_inputs,

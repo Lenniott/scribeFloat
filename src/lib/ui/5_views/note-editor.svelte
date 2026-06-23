@@ -168,10 +168,6 @@
 		}, 800);
 	}
 
-	async function goBackToNotes() {
-		void goto('/notes');
-	}
-
 	async function onTranscriptReady() {
 		try {
 			const record = await invoke<HistoryRecord>('history_get_detail', { id });
@@ -186,18 +182,14 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden bg-panel">
-	<div class="flex shrink-0 items-center gap-3 border-b border-card px-4 py-2">
-		<button
-			type="button"
-			class="sf-label-md shrink-0 text-fg-dim hover:text-fg"
-			onclick={goBackToNotes}
-		>
-			← Notes
-		</button>
+	<div class="flex shrink-0 items-center border-b border-card px-4 py-2">
+		<div class="flex items-center gap-2 flex-1">
 		<EditableTitle bind:value={title} placeholder="Untitled note" />
+		</div>
+		<RecordingStrip noteId={id} bind:recordingActive ontranscriptready={onTranscriptReady} />
 	</div>
 
-	<RecordingStrip noteId={id} bind:recordingActive ontranscriptready={onTranscriptReady} />
+
 
 	<div
 		class="flex shrink-0 items-center gap-2 border-b border-card px-4 py-2"

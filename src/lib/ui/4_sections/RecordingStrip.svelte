@@ -9,6 +9,7 @@
 	import ToggleSwitch from '@components/controls/Toggle.svelte';
 	import FieldRow from '@primitives/form/FieldRow.svelte';
 	import { Trash2, Settings2 } from 'lucide-svelte';
+  import { Button } from '../2_components';
 
 	type StripPhase = 'idle' | 'recording' | 'transcribing';
 
@@ -200,11 +201,11 @@
 <svelte:window onclick={handleWindowClick} />
 
 {#if phase === 'idle'}
-	<div class="flex min-h-10 shrink-0 items-center gap-3 border-b border-card px-4">
-		<button type="button" class="sf-label-md text-fg hover:text-brand" onclick={startRecording}>
-			Start Recording
-		</button>
-		<div class="relative ml-auto" bind:this={settingsAnchor}>
+	<div class="flex min-h-10 shrink-0 items-center gap-2">
+		<Button variant="primary" onclick={startRecording}>
+			Record
+		</Button>
+		<div class="relative" bind:this={settingsAnchor}>
 			<IconButton
 				aria-label="Recording settings"
 				icon={Settings2}
@@ -252,13 +253,13 @@
 		{/if}
 	</div>
 {:else if phase === 'recording'}
-	<div class="flex min-h-14 shrink-0 items-center gap-3 border-b border-card px-4">
+	<div class="flex min-h-14 shrink-0 items-center gap-2">
 		<Waveform micLevel={audioLevel} speakerLevel={speakerLevel} speakerEnabled={speakerEnabledForWaveform} size="small" />
 		<StatusDot status="recording" />
 		<RecordingTimer {elapsedSeconds} />
-		<button type="button" class="sf-label-md text-fg hover:text-brand" onclick={stopAndSave}>
+		<Button variant="normal" onclick={stopAndSave}>
 			Stop &amp; Save
-		</button>
+		</Button>
 		<IconButton
 			aria-label="Discard recording"
 			icon={Trash2}
@@ -268,7 +269,7 @@
 		/>
 	</div>
 {:else}
-	<div class="flex min-h-10 shrink-0 items-center gap-3 border-b border-card px-4">
+	<div class="flex min-h-10 shrink-0 items-center gap-2">
 		<p class="sf-body-md text-fg-dim">Transcribing…</p>
 	</div>
 {/if}

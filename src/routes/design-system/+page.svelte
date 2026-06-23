@@ -65,7 +65,6 @@
   let selectValue = $state("a");
   let textA = $state("");
   let titleDemo = $state("Editable title");
-  let pathDemo = $state("~/example/path");
   let hotkeyDemo = $state("Cmd+Shift+H");
   let optionDemo = $state("one");
   let notesDemo = $state<Note[]>([
@@ -593,8 +592,10 @@
       Form
     </h2>
     <div
-      class="flex max-w-md flex-col gap-6 bg-card p-6 rounded-md"
+      class="flex max-w-md flex-col gap-8 bg-card p-6 rounded-md"
     >
+      <div class="flex flex-col gap-4">
+        <p class="sf-section-label text-fg-dim">Text &amp; choice</p>
       <ConfigField
         label="ConfigField (select)"
         mode="select"
@@ -619,13 +620,9 @@
         ]}
         bind:selected={optionDemo}
       />
-      <ConfigField
-        label="ConfigField (path)"
-        mode="action"
-        bind:value={pathDemo}
-        buttonLabel="Change"
-        onButtonClick={() => {}}
-      />
+      </div>
+      <div class="flex flex-col gap-4">
+        <p class="sf-section-label text-fg-dim">Value + action button</p>
       <ConfigField
         label="ConfigField (hotkey)"
         mode="action"
@@ -633,11 +630,12 @@
         buttonLabel="Capture"
         onButtonClick={() => {}}
       />
-      <div>
-        <p class="sf-section-label text-fg-dim mb-2">EditableTitleField</p>
-        <EditableTitleField bind:value={titleDemo} />
-      </div>
       <PathPicker label="PathPicker" bind:path={pathPickerDemo} />
+      </div>
+      <div class="flex flex-col gap-4">
+        <p class="sf-section-label text-fg-dim">Page title (headline typography, not a form field)</p>
+      <EditableTitleField bind:value={titleDemo} />
+      </div>
     </div>
   </section>
 
@@ -874,10 +872,16 @@
       <div>
         <p class="sf-section-label text-fg-dim mb-3">TitleBar — App Region</p>
         <p class="sf-body-md text-fg-muted mb-3">
-          Scribe capture opens via New Note. Dictate is a persistent title-bar action.
+          Scribe capture opens via New Note. Dictate is a persistent title-bar action. Note
+          editor shows a back button top-left.
         </p>
-        <div class="overflow-hidden rounded-md border border-rim">
-          <TitleBar onNewNote={() => {}} />
+        <div class="flex flex-col gap-3">
+          <div class="overflow-hidden rounded-md border border-rim">
+            <TitleBar onNewNote={() => {}} />
+          </div>
+          <div class="overflow-hidden rounded-md border border-rim">
+            <TitleBar onNewNote={() => {}} onBack={() => {}} backLabel="Notes" />
+          </div>
         </div>
       </div>
       <div>

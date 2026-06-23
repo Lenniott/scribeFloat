@@ -47,6 +47,8 @@
 	const fieldId = $derived(id ?? `field-${label.toLowerCase().replace(/\s+/g, '-')}`);
 
 	const selectClass = 'sf-select';
+	const actionValueClass =
+		'sf-input flex h-10 min-w-0 flex-1 items-center truncate disabled:opacity-40';
 </script>
 
 {#if layout === 'horizontal'}
@@ -81,13 +83,15 @@
 			</select>
 		{:else}
 			<div class="flex min-w-0 max-w-full items-center gap-2 sm:max-w-md">
-				<code
+				<div
 					id={fieldId}
-					class="flex h-10 min-w-0 flex-1 items-center truncate rounded-md bg-panel px-2 py-2 sf-label-md text-fg"
+					role="textbox"
+					aria-readonly="true"
+					class={actionValueClass}
 					title={value}
 				>
 					{value || placeholder}
-				</code>
+				</div>
 				<Button variant="normal" {disabled} onclick={() => onButtonClick?.()}>{buttonLabel}</Button>
 			</div>
 		{/if}
@@ -120,13 +124,15 @@
 			</select>
 		{:else}
 			<div class="flex min-w-0 items-center gap-2">
-				<code
+				<div
 					id={fieldId}
-					class="flex h-10 min-w-0 flex-1 items-center truncate rounded-md bg-panel px-2 py-2 sf-label-md text-fg"
+					role="textbox"
+					aria-readonly="true"
+					class={actionValueClass}
 					title={value}
 				>
 					{value || placeholder}
-				</code>
+				</div>
 				<Button variant="normal" onclick={() => onButtonClick?.()}>{buttonLabel}</Button>
 			</div>
 		{/if}

@@ -8,14 +8,9 @@
 	import SettingReplace from '@views/setting_replace.svelte';
 	import ScrollablePanel from '@primitives/layout/ScrollBody.svelte';
 	import { isWindows } from '@utils/platform';
+	import { appState } from '@stores/appState.svelte';
 	import { appErrorMessage, type PermissionStatus, type ModelListItem } from '@utils/types';
 	import type { SettingsTab } from './settingsTypes';
-
-	let {
-		activeTab = $bindable<SettingsTab>('general'),
-	}: {
-		activeTab?: SettingsTab;
-	} = $props();
 
 	let permissionsKnown = $state(false);
 	let modelKnown = $state(false);
@@ -58,7 +53,7 @@
 	}
 
 	function goToTab(tab: SettingsTab) {
-		activeTab = tab;
+		appState.settingsTab = tab;
 	}
 
 	onMount(async () => {
@@ -128,24 +123,24 @@
 		</div>
 	{/if}
 
-	{#if activeTab === 'models'}
+	{#if appState.settingsTab === 'models'}
 		<div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
 			<SettingModels bind:ready={modelReady} />
 		</div>
 	{:else}
 		<ScrollablePanel class="bg-card p-4">
-			{#if activeTab === 'general'}
+			{#if appState.settingsTab === 'general'}
 				<SettingGeneral
 					{savedSpeakerDeviceName}
 					{blackholeDetected}
 					{speakerCaptureRequiresDeviceName}
 					onSpeakerConfigSaved={onSpeakerConfigSaved}
 				/>
-			{:else if activeTab === 'permissions'}
+			{:else if appState.settingsTab === 'permissions'}
 				<SettingPermissions bind:ready={permissionsReady} micOnly={isWindows} />
-			{:else if activeTab === 'replacements'}
+			{:else if appState.settingsTab === 'replacements'}
 				<SettingReplace />
-			{:else}
+			{:else if appState.settingsTab === 'help'}
 				<SettingHelp />
 			{/if}
 		</ScrollablePanel>

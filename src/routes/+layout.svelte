@@ -81,6 +81,7 @@
 
 	const currentRoute = $derived(pathnameToRoute(page.url.pathname));
 	const isSettingsRoute = $derived(page.url.pathname.startsWith('/settings'));
+	const showNoteBack = $derived(isNoteEditorPath(page.url.pathname));
 
 	function guardedNavigate(next: AppRoute) {
 		const path = ROUTE_PATHS[next];
@@ -198,7 +199,11 @@
 	<DictateView />
 {:else}
 	<div class="flex h-screen flex-col overflow-hidden bg-canvas">
-		<ShellTitleBar onNewNote={openCapture} />
+		<ShellTitleBar
+			onNewNote={openCapture}
+			onBack={showNoteBack ? () => void goto('/notes') : undefined}
+			backLabel="Notes"
+		/>
 		<div class="flex min-h-0 flex-1 overflow-hidden">
 			{#if isSettingsRoute}
 				<SettingsSidebar

@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import { listen } from '@tauri-apps/api/event';
-	import { Mic, PenLine, Square } from 'lucide-svelte';
+	import { ArrowLeft, Mic, PenLine, Square } from 'lucide-svelte';
 	import Button from '@components/controls/Button.svelte';
 	import RecordingStatusDot from '@primitives/display/StatusDot.svelte';
 
@@ -14,8 +14,12 @@
 
 	let {
 		onNewNote,
+		onBack,
+		backLabel = 'Notes',
 	}: {
 		onNewNote?: () => void;
+		onBack?: () => void;
+		backLabel?: string;
 	} = $props();
 
 	let dictateState = $state<DictateState>('IDLE');
@@ -39,12 +43,16 @@
 	});
 </script>
 
-<header
-	class="flex h-10 shrink-0 items-center justify-between border-b border-card bg-panel px-4"
-	data-tauri-drag-region
->
-	<p class="sf-label-md text-fg-dim" data-tauri-drag-region>ScribeFloat</p>
-	<div class="flex items-center gap-2">
+<header class="flex h-10 shrink-0 items-center border-b border-card bg-panel px-4">
+	<div class="flex shrink-0 items-center">
+		{#if onBack}
+			<Button variant="ghost" size="small" icon={ArrowLeft} onclick={onBack}>
+				{backLabel}
+			</Button>
+		{/if}
+	</div>
+	<div class="flex-1" data-tauri-drag-region></div>
+	<div class="flex shrink-0 items-center gap-2">
 		{#if isRecording}
 			<RecordingStatusDot status="recording" pulseWhileRecording={false} />
 		{/if}

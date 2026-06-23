@@ -24,7 +24,7 @@
 		<p class="sf-label-sm text-fg-muted">{description}</p>
 	{/if}
 	<div
-		class="inline-flex max-w-full rounded-md gap-1"
+		class="inline-flex max-w-full rounded-md border border-rim bg-card p-0.5 gap-0.5"
 		role="radiogroup"
 		aria-label={label}
 	>
@@ -32,8 +32,8 @@
 			<label
 				class="flex cursor-pointer items-center justify-center rounded-sm px-3 py-1.5 sf-label-md transition-colors sf-focus-ring {selected ===
 				opt.value
-					? 'bg-active text-on-active'
-					: 'text-fg hover:bg-panel'}"
+					? 'bg-rim text-fg'
+					: 'text-fg-dim hover:bg-fill hover:text-fg'}"
 			>
 				<input
 					type="radio"

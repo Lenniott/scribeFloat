@@ -155,6 +155,16 @@ pub fn note_has_metadata(
 }
 
 #[tauri::command]
+pub fn note_set_tags(
+    ctrl: State<'_, Arc<HistoryController>>,
+    id: String,
+    tags: Vec<String>,
+) -> Result<(), AppError> {
+    validate_id(&id)?;
+    ctrl.update_tags(&id, tags).map_err(AppError::from)
+}
+
+#[tauri::command]
 pub fn note_attach_transcript(
     history: State<'_, Arc<HistoryController>>,
     scribe: State<'_, Arc<ScribeController>>,

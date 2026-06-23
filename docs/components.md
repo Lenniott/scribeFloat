@@ -135,7 +135,7 @@ Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other a
 |---|---|---|
 | `AppSidebar` | `6_regions/AppSidebar.svelte` | Left nav sidebar with route icons. Exports `AppRoute` type. |
 | `SettingsSidebar` | `6_regions/SettingsSidebar.svelte` | Settings-mode left sidebar with tab nav and back button. |
-| `TitleBar` | `6_regions/TitleBar.svelte` | Top title bar chrome. Houses the New Note button and recording state indicator. |
+| `TitleBar` | `6_regions/TitleBar.svelte` | Top title bar chrome. Optional back button (note editor), New Note, Dictate, and recording state indicator. |
 
 ---
 

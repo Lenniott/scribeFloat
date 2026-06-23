@@ -47,14 +47,14 @@
 		{ padWithIcon: string; padPlain: string; text: string; icon: string }
 	> = {
 		normal: {
-			padWithIcon: "pl-3.5 pr-4 h-9",
+			padWithIcon: "pl-3.5 pr-4 h-10",
 			padPlain: "px-4 h-9",
 			text: "sf-label-md",
 			icon: "size-4",
 		},
 		small: {
-			padWithIcon: "px-2.5 h-6",
-			padPlain: "px-2.5 h-6",
+			padWithIcon: "px-2.5 h-7",
+			padPlain: "px-2.5 h-7",
 			text: "sf-label-sm",
 			icon: "size-3.5",
 		},

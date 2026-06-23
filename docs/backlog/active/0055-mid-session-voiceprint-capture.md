@@ -113,19 +113,22 @@ State transitions:
 
 ### Name dialog
 
-After a successful stop:
+After a successful stop, shows an auto-fill name field — same pattern as the enrollment flow (story 0054):
 
 ```
-┌──────────────────────────────────┐
-│  Who was that?                   │
-│                                  │
-│  [ Alice                      ] │
-│                                  │
-│  [Cancel]          [Save]        │
-└──────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│  Who was that?                           │
+│                                          │
+│  [ Alice                             ]   │  ← auto-fill: existing profile names
+│    ┌─ You                             ┐  │
+│    │  Alice                           │  │  ← dropdown of existing profiles
+│    └──────────────────────────────────┘  │
+│                                          │
+│  [Cancel]                    [Save]      │
+└──────────────────────────────────────────┘
 ```
 
-Default name: "Other". On save, profile is committed and state icon in toolbar → ✓ (complete). Icon resets to the capture button after 3 s.
+Default text: `"Other"` if no profiles exist, or the most-recently-used profile name. Selecting an existing profile adds this clip to it (improves accuracy); typing a new name creates a profile. On save, the profile is committed and the state icon in the toolbar → ✓ (complete). Icon resets to the idle capture button after 3 s.
 
 ### State icon sequence
 

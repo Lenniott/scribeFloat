@@ -45,10 +45,12 @@ We will implement a **binary-extensible speaker verification engine** using `she
 
 **Embedding units:** Whisper segments. Each segment already has `[start_ms, end_ms]`; the PCM slice is extracted from the session buffer, resampled to 16 kHz mono if needed, and fed to the embedding extractor. No additional chunking layer.
 
-**Enrollment sources (in priority order):**
-1. **Auto-enrollment from Dictate** — solo voice recordings are 100% the user's voice; silently accumulate embeddings, update the rolling mean profile in the background.
-2. **Manual onboarding flow** — guided capture across microphone / distance combinations.
-3. **Mid-session capture** — a capture button in Record mode lets the user grab a voiceprint while another person is speaking; VAD purity gating ensures quality (minimum 5 s of clean speech, 10 s preferred).
+**Enrollment sources:**
+- **First-time onboarding** — guided clip capture on first launch; same flow for every profile (user or others).
+- **Mid-session capture** — a capture button in Record mode lets the user grab a voiceprint while another person is speaking; VAD purity gating ensures quality (minimum 5 s of clean speech, 10 s preferred).
+- **Settings → Voice** — add more prints to any existing profile at any time to improve accuracy across distances and microphones.
+
+The enrollment UX is identical for all profiles. The name field is always an auto-fill: pick an existing profile (to add another clip to it) or type a new name. "You" and "Alice" enroll via the same flow.
 
 **Profile store:** JSON file per user at `~/.scribefloat/voiceprints/<profile-name>.json`, keyed by mic device ID so distance/mic variation is handled automatically.
 
@@ -68,7 +70,7 @@ The user's display label defaults to `"You"` and is configurable via `user_displ
 - Binary verification is dramatically simpler than full diarization (no clustering, no speaker count estimation).
 - Zero network dependency — all inference runs locally on the user's machine.
 - Naturally extensible to N named stakeholder profiles without changing the core identify algorithm.
-- Auto-enrollment from Dictate sessions gives the user a working voiceprint with zero onboarding friction.
+- Unified enrollment UX for all profiles (user and others) reduces cognitive overhead.
 - The threshold is empirically calibrated via `tools/voice-probe` and is user-adjustable.
 
 **Harder:**

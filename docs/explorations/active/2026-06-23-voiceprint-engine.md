@@ -77,29 +77,29 @@ sequenceDiagram
 
 ## Enrollment Data Flow
 
-How voiceprints are built and stored across enrollment sources.
+How voiceprints are built and stored. Enrollment works the same way for every profile — "you" and "others" use identical UX. The name field is always an auto-fill so clips can be added to an existing profile rather than always creating a new one.
 
 ```mermaid
 flowchart LR
     subgraph Sources
-        D[Dictate session\nsolo voice only]
-        OB[Onboarding flow\nmic + distance combos]
+        OB[Onboarding\nfirst-time or manual]
         MS[Mid-session capture\nRecord mode button]
+        SET[Settings → Voice\nAdd print to profile]
     end
 
     subgraph Processing
         VAD[VAD purity check\n≥5s clean speech]
         EMB2[Embed\nsherpa-onnx]
-        AVG[Mean L2-normalise\nrolling average]
+        AVG[Rolling mean L2-normalise\nadd to existing profile OR create new]
     end
 
     subgraph Store
-        JSON["Profile JSON\n~/.scribefloat/voiceprints/\n{name}.json\nkeyed by mic device ID"]
+        JSON["Profile JSON\n~/.scribefloat/voiceprints/\n{name}.json"]
     end
 
-    D -->|background| VAD
     OB -->|guided| VAD
     MS -->|gated| VAD
+    SET -->|inline clip| VAD
     VAD --> EMB2
     EMB2 --> AVG
     AVG --> JSON
@@ -226,61 +226,55 @@ I think we should wait. The audit might surface things...
 
 ## User Journeys
 
-### Journey 1 — Zero onboarding (auto-enrolled from Dictate)
+### Journey 1 — First-time onboarding
 
-1. User captures their first Dictate note (solo voice, no other speakers).
-2. In the background, `VoiceprintService` detects no other profiles exist for this mic; accumulates the embedding silently.
-3. After 3 Dictate sessions (~30 s total enrolled speech), the user profile is considered stable.
-4. User records a meeting with Record mode.
-5. Transcript arrives segmented: **[You]** and **[Other]** blocks already labelled — no configuration needed.
-6. First time this renders, a toast: *"Speaker labels are on. Adjust in Settings → Voice."*
+1. On first launch, user is prompted to enroll their voice.
+2. Picks "Built-in microphone", speaks naturally for 10 s.
+3. VAD purity bar stays green; counter reaches Optimal (gold).
+4. Name auto-fill shows — default "You". User confirms.
+5. Post-enrollment screen: *"More prints = better accuracy. Add more in Settings → Voice."*
+6. Next Record session transcribes with **[You]** and **[Other]** blocks.
 
-### Journey 2 — Manual onboarding (power user, multiple mics)
+### Journey 2 — Adding more prints for accuracy
 
-1. User opens Settings → Voice → "Enroll my voice".
-2. Selects "Built-in microphone".
-3. Guided through 3 recording passes: close / normal / slightly back.
-4. VAD purity bar confirms each clip is clean; 10 s per pass.
-5. Profile saved with mic device ID as key.
-6. User repeats for "External USB microphone".
-7. Going forward, the engine picks the profile matching the active mic automatically.
+1. After a distant-mic session, some of the user's speech is labelled **[Other]**.
+2. User opens Settings → Voice → "You" profile (1 clip).
+3. Taps "+ Add print" → enrollment flow with name pre-filled as "You" (locked).
+4. Records from further away; VAD confirms clean. Saved.
+5. Profile now shows "2 clips". Accuracy at distance improves.
 
 ### Journey 3 — Mid-session stakeholder capture
 
 1. User is in a Record session. A new person (Alice) starts talking.
 2. User taps the **Capture voiceprint** button in the recording toolbar.
 3. Icon shows Pending (clock). VAD purity bar appears — green as Alice speaks clearly.
-4. At 5 s: counter turns green — safe to release. At 10 s: counter turns gold — optimal.
-5. User holds until 10 s; taps Stop. Popover: "Name this speaker?" → user types "Alice".
-6. Profile saved mid-session with timestamp.
-7. After the meeting, the full session is transcribed. **Retroactive application**: all segments from the full recording (including before the capture) are labelled against all profiles including Alice's.
+4. At 5 s: counter turns green — safe to stop. At 10 s: counter turns gold — optimal.
+5. User holds until 10 s; taps Stop. Name auto-fill appears — user types "Alice" (new profile).
+6. Profile saved mid-session.
+7. After the meeting, the full session is transcribed. **Retroactive application**: all segments including those before the capture are labelled against Alice's profile.
 8. Transcript shows **[You]** / **[Alice]** / **[Other]** blocks.
 
 ### Journey 4 — Bad capture, retry
 
 1. During mid-session capture, another speaker interrupts Alice.
 2. VAD purity bar goes amber (mixed speech detected).
-3. At 5 s, the purity indicator shows red — capture is impure.
+3. At 5 s, purity is red — capture rejected on stop.
 4. State icon → Failed. "Try again" affordance appears.
-5. User waits for Alice to be alone, taps "Try again".
-6. Buffer clears; capture restarts cleanly.
+5. User waits for Alice to be alone, taps "Try again". Buffer clears; capture restarts.
 
 ### Journey 5 — Threshold tuning
 
-1. User notices some of their own speech is being labelled **[Other]**.
+1. User notices some of their own speech is labelled **[Other]**.
 2. Opens Settings → Voice → similarity threshold slider.
-3. Slider currently at 0.75; user lowers to 0.65.
-4. Retroactively re-labels the current session: **[You]** blocks expand.
-5. User is satisfied; saves setting.
+3. Lowers from 0.75 to 0.65.
+4. Next transcription: **[You]** blocks expand.
 
-### Journey 6 — Named stakeholder management
+### Journey 6 — Profile management
 
-1. User has accumulated profiles for Alice and Bob from past sessions.
-2. Opens Settings → Voice → Enrolled profiles list.
-3. Sees: "You (Built-in mic)", "You (USB mic)", "Alice", "Bob".
-4. Renames "Bob" to "Bob (CEO)".
-5. Deletes a stale profile "Unknown 1".
-6. All future transcripts use updated names retroactively on re-label.
+1. User opens Settings → Voice. Sees "You (3 clips)", "Alice (1 clip)", "Bob (2 clips)".
+2. Renames "Bob" to "Bob (CEO)".
+3. Deletes a stale "Unknown" profile.
+4. Taps "+ Add print" on "Alice" — records her at a different distance. Alice now 2 clips.
 
 ---
 
@@ -288,9 +282,8 @@ I think we should wait. The audit might surface things...
 
 - **ADR-0011** — `docs/adr/0011-voiceprint-engine-binary-speaker-verification.md`
 - **Story 0052** — VoiceprintService core Rust service
-- **Story 0053** — Auto-enroll user voice from Dictate sessions
-- **Story 0054** — Voice profile onboarding UI (manual enrollment)
+- **Story 0054** — Voice profile onboarding and enrollment flow (unified; name auto-fill)
 - **Story 0055** — Mid-session voiceprint capture during Record mode
 - **Story 0056** — Speaker-labelled transcript format and renderer
-- **Story 0057** — Named stakeholder profile management UI
+- **Story 0057** — Voiceprint profile manager in settings (list, add print, rename, delete)
 - **Story 0058** — Config fields: `user_display_name`, `voice_similarity_threshold`

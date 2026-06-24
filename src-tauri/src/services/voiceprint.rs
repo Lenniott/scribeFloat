@@ -8,7 +8,7 @@ use tokio::io::AsyncWriteExt;
 
 pub const VOICEPRINT_MODEL_FILE: &str = "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx";
 const VOICEPRINT_MODEL_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx";
-const EMBEDDING_DIM: usize = 256;
+const EMBEDDING_DIM: usize = 192;
 
 pub struct VoiceprintService {
     model_path: PathBuf,

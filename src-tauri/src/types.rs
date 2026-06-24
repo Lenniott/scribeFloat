@@ -370,6 +370,14 @@ pub struct Segment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpeakerBlock {
+    pub label: String,
+    pub start_ms: Option<u64>,
+    pub end_ms: Option<u64>,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
     pub id: String,
     pub text: String,
@@ -713,6 +721,8 @@ pub struct HistoryRecord {
     pub model: String,
     /// Raw merged segments (preserving `in:`/`out:` speaker labels) — re-renderable.
     pub segments: Vec<Segment>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub speaker_blocks: Vec<SpeakerBlock>,
     #[serde(default)]
     pub notes: Vec<Note>,
     pub duration_ms: i64,
@@ -808,6 +818,7 @@ impl HistoryRecord {
             title,
             model,
             segments,
+            speaker_blocks: Vec::new(),
             notes,
             duration_ms,
             word_count,

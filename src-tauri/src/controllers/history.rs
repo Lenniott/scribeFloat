@@ -80,9 +80,10 @@ impl HistoryController {
             .get(&save_folder, id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("note not found: {id}"))?;
-        let meta = crate::services::note_sidecar::read_meta(&save_folder, id)
-            .unwrap_or_default();
-        Ok(crate::services::note_sidecar::meta_has_editor_metadata(&meta))
+        let meta = crate::services::note_sidecar::read_meta(&save_folder, id).unwrap_or_default();
+        Ok(crate::services::note_sidecar::meta_has_editor_metadata(
+            &meta,
+        ))
     }
 
     /// Persist tags to the note sidecar (used by metadata UI and tests).
@@ -92,8 +93,7 @@ impl HistoryController {
             .get(&save_folder, id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("note not found: {id}"))?;
-        crate::services::note_sidecar::write_tags(&save_folder, id, tags)
-            .map_err(|e| e.to_string())
+        crate::services::note_sidecar::write_tags(&save_folder, id, tags).map_err(|e| e.to_string())
     }
 
     /// Attach transcript segments from a completed recording onto an existing note.
@@ -248,12 +248,20 @@ impl HistoryController {
             .ok_or_else(|| "history record not found".to_string())?;
         // Return only the paragraph-grouped body text — no YAML front matter, no headings.
         // The full .md format is reserved for export (history_export_markdown).
-        Ok(output::render_transcript_body(
-            &record.segments,
-            cfg.include_timestamps,
-            &cfg.replacement_rules,
-            &cfg.replacement_prefix,
-        ))
+        if record.speaker_blocks.is_empty() {
+            Ok(output::render_transcript_body(
+                &record.segments,
+                cfg.include_timestamps,
+                &cfg.replacement_rules,
+                &cfg.replacement_prefix,
+            ))
+        } else {
+            Ok(output::render_speaker_blocks_body(
+                &record.speaker_blocks,
+                &cfg.replacement_rules,
+                &cfg.replacement_prefix,
+            ))
+        }
     }
 
     /// Export a store record to a `.md` file on demand and record the path. Dictate never exports.
@@ -279,8 +287,8 @@ impl HistoryController {
             .output
             .transcript_path(&save_folder, &model_path, &record.title);
 
-        self.output
-            .write_transcript(
+        if record.speaker_blocks.is_empty() {
+            self.output.write_transcript(
                 &record.segments,
                 &record.notes,
                 &record.title,
@@ -290,7 +298,17 @@ impl HistoryController {
                 &cfg.replacement_prefix,
                 &dest,
             )
-            .map_err(|e| e.to_string())?;
+        } else {
+            self.output.write_speaker_blocks_transcript(
+                &record.speaker_blocks,
+                &record.title,
+                &record.model,
+                &cfg.replacement_rules,
+                &cfg.replacement_prefix,
+                &dest,
+            )
+        }
+        .map_err(|e| e.to_string())?;
 
         let dest_str = dest.to_string_lossy().into_owned();
         self.history

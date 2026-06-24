@@ -579,6 +579,7 @@ pub fn run() {
                 Arc::clone(&output),
                 Arc::clone(&history),
                 Arc::clone(&config),
+                Arc::clone(&voiceprint),
                 app.handle().clone(),
             );
 

@@ -1,4 +1,4 @@
-use crate::types::{VoiceprintModelDownloadEvent, VoiceprintProfile};
+use crate::types::{Segment, SpeakerBlock, VoiceprintModelDownloadEvent, VoiceprintProfile};
 use anyhow::{anyhow, Context, Result};
 use sherpa_onnx::{SpeakerEmbeddingExtractor, SpeakerEmbeddingExtractorConfig};
 use std::path::{Path, PathBuf};
@@ -351,6 +351,60 @@ pub fn profile_summary(profile: &VoiceprintProfile) -> crate::types::VoiceprintP
         sample_count: profile.sample_count,
         updated_at: profile.updated_at.to_rfc3339(),
     }
+}
+
+pub fn label_segments(
+    segments: &[Segment],
+    session_pcm: &[f32],
+    sample_rate: u32,
+    voiceprint_svc: &VoiceprintService,
+    threshold: f32,
+) -> Result<Vec<SpeakerBlock>> {
+    let profiles = voiceprint_svc.load_profiles()?;
+    if profiles.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut blocks = Vec::new();
+    for segment in segments {
+        let start_ms = segment.start_ms.max(0) as u64;
+        let end_ms = segment.end_ms.max(segment.start_ms).max(0) as u64;
+        let start = ((start_ms as u128 * sample_rate as u128) / 1000) as usize;
+        let end = ((end_ms as u128 * sample_rate as u128) / 1000) as usize;
+        let slice = session_pcm.get(start.min(session_pcm.len())..end.min(session_pcm.len()));
+        let label = match slice {
+            Some(pcm) if pcm.len() >= sample_rate as usize * 2 => {
+                let embedding = voiceprint_svc.embed(pcm, sample_rate)?;
+                voiceprint_svc.identify_with_threshold(&embedding, &profiles, threshold)
+            }
+            _ => "Other".to_string(),
+        };
+        blocks.push(SpeakerBlock {
+            label,
+            start_ms: Some(start_ms),
+            end_ms: Some(end_ms),
+            text: segment.text.clone(),
+        });
+    }
+    Ok(merge_blocks(blocks))
+}
+
+pub fn merge_blocks(blocks: Vec<SpeakerBlock>) -> Vec<SpeakerBlock> {
+    let mut merged: Vec<SpeakerBlock> = Vec::new();
+    for block in blocks {
+        if let Some(last) = merged.last_mut().filter(|last| last.label == block.label) {
+            last.end_ms = block.end_ms.or(last.end_ms);
+            if !block.text.trim().is_empty() {
+                if !last.text.ends_with(' ') && !last.text.is_empty() {
+                    last.text.push(' ');
+                }
+                last.text.push_str(block.text.trim());
+            }
+        } else {
+            merged.push(block);
+        }
+    }
+    merged
 }
 
 pub fn slugify(value: &str) -> String {

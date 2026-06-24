@@ -172,7 +172,7 @@ impl VoiceprintService {
                 }
             }
         }
-        profiles.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        profiles.sort_by_key(|profile| profile.name.to_lowercase());
         Ok(profiles)
     }
 

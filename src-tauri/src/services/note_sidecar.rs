@@ -70,6 +70,7 @@ fn write_meta(save_folder: &str, id: &str, meta: &NoteSidecarMeta) -> Result<()>
 }
 
 /// Persist tags (and any existing meta fields) without touching jsonl.
+#[allow(dead_code)]
 pub fn write_tags(save_folder: &str, id: &str, tags: Vec<String>) -> Result<()> {
     ensure_dir(save_folder, id)?;
     let mut meta = read_meta(save_folder, id).unwrap_or_default();

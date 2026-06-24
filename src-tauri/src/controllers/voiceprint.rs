@@ -106,9 +106,6 @@ impl VoiceprintController {
 
     pub fn start_clip(&self, mic_device_id: String, app: AppHandle) -> Result<String, String> {
         let mic_device_id = mic_device_id.trim().to_string();
-        if mic_device_id.is_empty() {
-            return Err("microphone device is required".to_string());
-        }
         std::fs::create_dir_all(&self.clips_dir)
             .map_err(|e| format!("failed to create voiceprint clip dir: {e}"))?;
 
@@ -126,7 +123,11 @@ impl VoiceprintController {
         let session = self
             .audio
             .start_mic(
-                Some(&mic_device_id),
+                if mic_device_id.is_empty() {
+                    None
+                } else {
+                    Some(&mic_device_id)
+                },
                 false,
                 wav_path.clone(),
                 Some(on_level),
@@ -144,11 +145,35 @@ impl VoiceprintController {
                     mic_device_id,
                     wav_path,
                     started_at,
+                    counters: Arc::clone(&counters),
                     status_active: Arc::clone(&status_active),
                 },
             );
         spawn_status_emitter(app, clip_id.clone(), counters, started_at, status_active);
         Ok(clip_id)
+    }
+
+    pub fn start_session_capture(&self, app: AppHandle) -> Result<String, String> {
+        let mic_device_id = self.config.get().preferred_input_device.unwrap_or_default();
+        self.start_clip(mic_device_id, app)
+    }
+
+    pub fn clip_status(&self, clip_id: String) -> Result<VoiceprintClipStatus, String> {
+        let clip_id = normalize_clip_id(&clip_id)?;
+        let active_clips = self.active_clips.lock().unwrap_or_else(|p| p.into_inner());
+        let active = active_clips
+            .get(&clip_id)
+            .ok_or_else(|| format!("voiceprint clip `{clip_id}` is not recording"))?;
+        let counters = *active.counters.lock().unwrap_or_else(|p| p.into_inner());
+        let duration_s = active.started_at.elapsed().as_secs_f32();
+        let purity = counters.purity();
+        let speech_s = duration_s * purity;
+        Ok(VoiceprintClipStatus {
+            clip_id,
+            speech_s,
+            purity,
+            state: clip_state(speech_s, purity),
+        })
     }
 
     pub fn stop_clip(&self, clip_id: String) -> Result<VoiceprintClipResult, String> {
@@ -313,6 +338,7 @@ struct ActiveClip {
     mic_device_id: String,
     wav_path: PathBuf,
     started_at: Instant,
+    counters: Arc<Mutex<ClipCounters>>,
     status_active: Arc<AtomicBool>,
 }
 

@@ -1,6 +1,7 @@
 use crate::controllers::voiceprint::VoiceprintController;
 use crate::types::{
-    AppError, VoiceprintClipResult, VoiceprintModelStatus, VoiceprintProfileSummary,
+    AppError, SessionCaptureStart, SessionCaptureStatus, VoiceprintClipResult,
+    VoiceprintModelStatus, VoiceprintProfileSummary,
 };
 use std::sync::Arc;
 use tauri::{AppHandle, State};
@@ -86,4 +87,51 @@ pub fn voiceprint_discard_clip(
     clip_id: String,
 ) -> Result<(), AppError> {
     ctrl.discard_clip(clip_id).map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn session_capture_start(
+    ctrl: State<'_, Arc<VoiceprintController>>,
+    app: AppHandle,
+) -> Result<SessionCaptureStart, AppError> {
+    ctrl.start_session_capture(app)
+        .map(|capture_id| SessionCaptureStart { capture_id })
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn session_capture_status(
+    ctrl: State<'_, Arc<VoiceprintController>>,
+    capture_id: String,
+) -> Result<SessionCaptureStatus, AppError> {
+    ctrl.clip_status(capture_id)
+        .map(|status| SessionCaptureStatus {
+            capture_id: status.clip_id,
+            speech_s: status.speech_s,
+            purity: status.purity,
+            state: status.state,
+        })
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn session_capture_stop(
+    ctrl: State<'_, Arc<VoiceprintController>>,
+    capture_id: String,
+    profile_name: String,
+) -> Result<VoiceprintClipResult, AppError> {
+    let result = ctrl.stop_clip(capture_id.clone()).map_err(AppError::from)?;
+    if result.accepted {
+        ctrl.commit_clip(capture_id, profile_name)
+            .map_err(AppError::from)?;
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn session_capture_cancel(
+    ctrl: State<'_, Arc<VoiceprintController>>,
+    capture_id: String,
+) -> Result<(), AppError> {
+    ctrl.discard_clip(capture_id).map_err(AppError::from)
 }

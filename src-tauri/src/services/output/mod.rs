@@ -134,7 +134,7 @@ impl OutputService {
         let word_count = body.split_whitespace().count();
         let mut md = String::new();
         md.push_str("---\n");
-        md.push_str(&format!("title: '{}'\n", title.replace('\'', "'")));
+        md.push_str(&format!("title: '{}'\n", title.replace('\'', "''")));
         md.push_str(&format!("word_count: {word_count}\n"));
         md.push_str(&format!("model: {model_name}\n"));
         md.push_str("---\n\n## Transcript\n\n");

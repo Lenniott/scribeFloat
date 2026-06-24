@@ -150,7 +150,7 @@ pub fn render_transcript_markdown(
 
     let mut md = String::new();
     md.push_str("---\n");
-    md.push_str(&format!("title: '{}'\n", title.replace('\'', "'")));
+    md.push_str(&format!("title: '{}'\n", title.replace('\'', "''")));
     md.push_str(&format!("duration_seconds: {:.1}\n", duration_seconds));
     md.push_str(&format!("word_count: {word_count}\n"));
     md.push_str(&format!("token_estimate: {token_estimate}\n"));

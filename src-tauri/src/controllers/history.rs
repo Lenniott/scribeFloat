@@ -87,6 +87,7 @@ impl HistoryController {
     }
 
     /// Persist tags to the note sidecar (used by metadata UI and tests).
+    #[allow(dead_code)]
     pub fn update_tags(&self, id: &str, tags: Vec<String>) -> Result<(), String> {
         let save_folder = self.config.get().save_folder;
         self.history
@@ -97,6 +98,7 @@ impl HistoryController {
     }
 
     /// Attach transcript segments from a completed recording onto an existing note.
+    #[allow(clippy::too_many_arguments)]
     pub fn attach_transcript(
         &self,
         id: &str,

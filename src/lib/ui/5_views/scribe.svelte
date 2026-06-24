@@ -477,6 +477,10 @@
       resetCaptureState();
       return;
     }
+    // Don't cancel while stop-and-save is in progress; commit_clip would lose the pending clip.
+    if (captureSaving) {
+      return;
+    }
     const id = captureId;
     resetCaptureState();
     await invoke("session_capture_cancel", { captureId: id }).catch(() => {});

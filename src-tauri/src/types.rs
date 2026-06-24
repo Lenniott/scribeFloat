@@ -122,6 +122,15 @@ pub struct Config {
     /// truth. Dictate never writes `.md` regardless of this flag.
     #[serde(default)]
     pub save_transcripts_as_markdown: bool,
+
+    /// Display name for the user in speaker-labelled transcripts. Default: "You".
+    #[serde(default = "default_user_display_name")]
+    pub user_display_name: String,
+
+    /// Cosine similarity gate for voiceprint matching. Default: 0.75.
+    /// Lower values are more inclusive; higher values are stricter.
+    #[serde(default = "default_voice_similarity_threshold")]
+    pub voice_similarity_threshold: f32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -167,8 +176,18 @@ impl Default for Config {
             replacement_rules: default_replacement_rules(),
             replacement_prefix: default_replacement_prefix(),
             save_transcripts_as_markdown: false,
+            user_display_name: default_user_display_name(),
+            voice_similarity_threshold: default_voice_similarity_threshold(),
         }
     }
+}
+
+fn default_user_display_name() -> String {
+    "You".to_string()
+}
+
+fn default_voice_similarity_threshold() -> f32 {
+    0.75
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

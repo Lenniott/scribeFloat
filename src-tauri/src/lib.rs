@@ -567,6 +567,7 @@ pub fn run() {
                 Arc::clone(&output),
                 Arc::clone(&permissions),
                 Arc::clone(&audio),
+                Arc::clone(&voiceprint),
             );
             if let Err(err) = settings_ctrl.rehydrate_hotkeys() {
                 tracing::debug!(error = %err, "hotkey rehydration skipped");
@@ -777,6 +778,10 @@ pub fn run() {
             commands::settings::settings_delete_replacement_rule,
             commands::settings::settings_get_replacement_prefix,
             commands::settings::settings_set_replacement_prefix,
+            commands::settings::settings_get_user_display_name,
+            commands::settings::settings_set_user_display_name,
+            commands::settings::settings_get_voice_similarity_threshold,
+            commands::settings::settings_set_voice_similarity_threshold,
             commands::dictate::dictate_cancel,
             commands::dictate::dictate_dismiss,
             commands::dictate::dictate_get_history,

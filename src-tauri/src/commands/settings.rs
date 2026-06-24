@@ -344,3 +344,34 @@ pub fn settings_set_replacement_prefix(
 ) -> Result<(), String> {
     ctrl.set_replacement_prefix(prefix)
 }
+
+#[tauri::command]
+pub fn settings_get_user_display_name(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<String, AppError> {
+    Ok(ctrl.get_user_display_name())
+}
+
+#[tauri::command]
+pub fn settings_set_user_display_name(
+    ctrl: State<'_, Arc<SettingsController>>,
+    name: String,
+) -> Result<(), AppError> {
+    ctrl.set_user_display_name(name).map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn settings_get_voice_similarity_threshold(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<f32, AppError> {
+    Ok(ctrl.get_voice_similarity_threshold())
+}
+
+#[tauri::command]
+pub fn settings_set_voice_similarity_threshold(
+    ctrl: State<'_, Arc<SettingsController>>,
+    threshold: f32,
+) -> Result<(), AppError> {
+    ctrl.set_voice_similarity_threshold(threshold)
+        .map_err(AppError::from)
+}

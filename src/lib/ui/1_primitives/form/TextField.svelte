@@ -8,6 +8,7 @@
 		multiline = false,
 		labelHidden = false,
 		description,
+		onblur,
 	}: {
 		label: string;
 		value?: string;
@@ -17,6 +18,7 @@
 		multiline?: boolean;
 		labelHidden?: boolean;
 		description?: string;
+		onblur?: (event: FocusEvent) => void;
 	} = $props();
 
 	const fieldId = $derived(id ?? `field-${label.toLowerCase().replace(/\s+/g, "-")}`);
@@ -33,6 +35,7 @@
 			bind:value
 			{placeholder}
 			{disabled}
+			onblur={onblur}
 			class="sf-input min-h-[80px] resize-y p-2 disabled:opacity-40 placeholder:text-fg-muted"
 		></textarea>
 	{:else}
@@ -42,6 +45,7 @@
 			bind:value
 			{placeholder}
 			{disabled}
+			onblur={onblur}
 			class="sf-input h-10 p-2 disabled:opacity-40 placeholder:text-fg-muted"
 		/>
 	{/if}

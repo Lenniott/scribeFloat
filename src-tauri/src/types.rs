@@ -525,6 +525,32 @@ pub struct VoiceprintModelDownloadEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceprintClipState {
+    Pending,
+    Recording,
+    Safe,
+    Optimal,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintClipStatus {
+    pub clip_id: String,
+    pub speech_s: f32,
+    pub purity: f32,
+    pub state: VoiceprintClipState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintClipResult {
+    pub duration_s: f32,
+    pub speech_s: f32,
+    pub purity: f32,
+    pub accepted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionStatus {
     pub kind: String,
     pub granted: bool,

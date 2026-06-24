@@ -1,5 +1,7 @@
 use crate::controllers::voiceprint::VoiceprintController;
-use crate::types::{AppError, VoiceprintModelStatus, VoiceprintProfileSummary};
+use crate::types::{
+    AppError, VoiceprintClipResult, VoiceprintModelStatus, VoiceprintProfileSummary,
+};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
@@ -49,4 +51,39 @@ pub fn voiceprint_download_model(
     Arc::clone(&ctrl)
         .download_model(app)
         .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn voiceprint_start_clip(
+    ctrl: State<'_, Arc<VoiceprintController>>,
+    app: AppHandle,
+    mic_device_id: String,
+) -> Result<String, AppError> {
+    ctrl.start_clip(mic_device_id, app).map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn voiceprint_stop_clip(
+    ctrl: State<'_, Arc<VoiceprintController>>,
+    clip_id: String,
+) -> Result<VoiceprintClipResult, AppError> {
+    ctrl.stop_clip(clip_id).map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn voiceprint_commit_clip(
+    ctrl: State<'_, Arc<VoiceprintController>>,
+    clip_id: String,
+    profile_name: String,
+) -> Result<(), AppError> {
+    ctrl.commit_clip(clip_id, profile_name)
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn voiceprint_discard_clip(
+    ctrl: State<'_, Arc<VoiceprintController>>,
+    clip_id: String,
+) -> Result<(), AppError> {
+    ctrl.discard_clip(clip_id).map_err(AppError::from)
 }

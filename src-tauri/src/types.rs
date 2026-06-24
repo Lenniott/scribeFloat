@@ -564,6 +564,7 @@ pub enum VoiceprintClipState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceprintClipStatus {
     pub clip_id: String,
+    pub duration_s: f32,
     pub speech_s: f32,
     pub purity: f32,
     pub state: VoiceprintClipState,

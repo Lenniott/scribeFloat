@@ -1,15 +1,46 @@
+use crate::services::audio::{read_wav_mono_f32, AudioService, MicSession, WHISPER_SAMPLE_RATE};
+use crate::services::config::ConfigService;
+use crate::services::model::ModelService;
 use crate::services::voiceprint::{profile_summary, VoiceprintService};
-use crate::types::{VoiceprintModelStatus, VoiceprintProfileSummary};
+use crate::types::{
+    Config, VoiceprintClipResult, VoiceprintClipState, VoiceprintClipStatus, VoiceprintModelStatus,
+    VoiceprintProfileSummary,
+};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 
 pub struct VoiceprintController {
     service: Arc<VoiceprintService>,
+    audio: Arc<AudioService>,
+    model: Arc<ModelService>,
+    config: Arc<ConfigService>,
+    clips_dir: PathBuf,
+    active_clips: Mutex<HashMap<String, ActiveClip>>,
+    pending_clips: Mutex<HashMap<String, PendingClip>>,
 }
 
 impl VoiceprintController {
-    pub fn new(service: Arc<VoiceprintService>) -> Arc<Self> {
-        Arc::new(Self { service })
+    pub fn new(
+        service: Arc<VoiceprintService>,
+        audio: Arc<AudioService>,
+        model: Arc<ModelService>,
+        config: Arc<ConfigService>,
+        clips_dir: PathBuf,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            service,
+            audio,
+            model,
+            config,
+            clips_dir,
+            active_clips: Mutex::new(HashMap::new()),
+            pending_clips: Mutex::new(HashMap::new()),
+        })
     }
 
     pub fn list_profiles(&self) -> Result<Vec<VoiceprintProfileSummary>, String> {
@@ -72,11 +103,312 @@ impl VoiceprintController {
         });
         Ok(())
     }
+
+    pub fn start_clip(&self, mic_device_id: String, app: AppHandle) -> Result<String, String> {
+        let mic_device_id = mic_device_id.trim().to_string();
+        if mic_device_id.is_empty() {
+            return Err("microphone device is required".to_string());
+        }
+        std::fs::create_dir_all(&self.clips_dir)
+            .map_err(|e| format!("failed to create voiceprint clip dir: {e}"))?;
+
+        let clip_id = uuid::Uuid::new_v4().to_string();
+        let wav_path = self.clips_dir.join(format!("{clip_id}.wav"));
+        let counters = Arc::new(Mutex::new(ClipCounters::default()));
+        let counters_for_audio = Arc::clone(&counters);
+        let on_level = Arc::new(move |level: f32| {
+            let mut counters = counters_for_audio.lock().unwrap_or_else(|p| p.into_inner());
+            counters.total_frames += 1;
+            if level >= 0.04 {
+                counters.speech_frames += 1;
+            }
+        });
+        let session = self
+            .audio
+            .start_mic(
+                Some(&mic_device_id),
+                false,
+                wav_path.clone(),
+                Some(on_level),
+            )
+            .map_err(|e| e.to_string())?;
+        let started_at = Instant::now();
+        let status_active = Arc::new(AtomicBool::new(true));
+        self.active_clips
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(
+                clip_id.clone(),
+                ActiveClip {
+                    session,
+                    mic_device_id,
+                    wav_path,
+                    started_at,
+                    status_active: Arc::clone(&status_active),
+                },
+            );
+        spawn_status_emitter(app, clip_id.clone(), counters, started_at, status_active);
+        Ok(clip_id)
+    }
+
+    pub fn stop_clip(&self, clip_id: String) -> Result<VoiceprintClipResult, String> {
+        let clip_id = normalize_clip_id(&clip_id)?;
+        let active = self
+            .active_clips
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&clip_id)
+            .ok_or_else(|| format!("voiceprint clip `{clip_id}` is not recording"))?;
+        active.status_active.store(false, Ordering::SeqCst);
+
+        let wav_path = active
+            .session
+            .stop_and_finalize()
+            .map_err(|e| format!("failed to stop voiceprint clip: {e}"))?;
+        let duration_s = active.started_at.elapsed().as_secs_f32();
+        let pcm = read_wav_mono_f32(&wav_path)
+            .map_err(|e| format!("failed to read voiceprint clip: {e}"))?;
+        let (speech_s, purity) = self.measure_vad_purity(&pcm, duration_s)?;
+        let accepted = purity >= 0.5 && speech_s >= 5.0;
+
+        if accepted {
+            let embedding = self
+                .service
+                .embed(&pcm, WHISPER_SAMPLE_RATE)
+                .map_err(|e| e.to_string())?;
+            self.pending_clips
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .insert(
+                    clip_id,
+                    PendingClip {
+                        embedding,
+                        mic_device_id: active.mic_device_id,
+                        wav_path,
+                    },
+                );
+        } else {
+            let _ = std::fs::remove_file(&wav_path);
+        }
+
+        Ok(VoiceprintClipResult {
+            duration_s,
+            speech_s,
+            purity,
+            accepted,
+        })
+    }
+
+    pub fn commit_clip(&self, clip_id: String, profile_name: String) -> Result<(), String> {
+        let clip_id = normalize_clip_id(&clip_id)?;
+        let profile_name = profile_name.trim();
+        if profile_name.is_empty() {
+            return Err("profile name cannot be empty".to_string());
+        }
+        let pending = self
+            .pending_clips
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&clip_id)
+            .ok_or_else(|| format!("voiceprint clip `{clip_id}` is not ready to save"))?;
+
+        let (mut profile, existing) = match self
+            .service
+            .profile_for_name(profile_name)
+            .map_err(|e| e.to_string())?
+        {
+            Some(profile) => (profile, true),
+            None => (
+                self.service
+                    .new_profile(
+                        profile_name,
+                        Some(pending.mic_device_id.clone()),
+                        pending.embedding.clone(),
+                    )
+                    .map_err(|e| e.to_string())?,
+                false,
+            ),
+        };
+
+        if existing {
+            self.service
+                .update_profile_embedding(&mut profile, &pending.embedding)
+                .map_err(|e| e.to_string())?;
+            if profile.mic_device_id.is_none() {
+                profile.mic_device_id = Some(pending.mic_device_id.clone());
+            }
+        }
+        self.service
+            .save_profile(&profile)
+            .map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(pending.wav_path);
+        Ok(())
+    }
+
+    pub fn discard_clip(&self, clip_id: String) -> Result<(), String> {
+        let clip_id = normalize_clip_id(&clip_id)?;
+        if let Some(active) = self
+            .active_clips
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&clip_id)
+        {
+            let wav_path = active.wav_path.clone();
+            active.status_active.store(false, Ordering::SeqCst);
+            let _ = active.session.stop_and_finalize();
+            let _ = std::fs::remove_file(wav_path);
+        }
+        if let Some(pending) = self
+            .pending_clips
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&clip_id)
+        {
+            let _ = std::fs::remove_file(pending.wav_path);
+        }
+        Ok(())
+    }
+
+    fn measure_vad_purity(&self, pcm: &[f32], duration_s: f32) -> Result<(f32, f32), String> {
+        let vad_path = self.model.vad_model_path();
+        if !self.model.model_available(&vad_path) {
+            return Err("Silero VAD model is required for voiceprint enrollment".to_string());
+        }
+
+        let model_path = resolve_voiceprint_model_path(&self.config.get(), &self.model);
+        if !self.model.model_available(&model_path) {
+            return Err(
+                "a Whisper transcription model is required before enrolling a voiceprint"
+                    .to_string(),
+            );
+        }
+
+        let segments = self
+            .model
+            .transcribe_pcm_with_progress(
+                &model_path,
+                pcm,
+                Some(vad_path.as_path()),
+                None,
+                "voiceprint/enroll-vad",
+                |_| {},
+            )
+            .map_err(|e| format!("failed to run VAD purity check: {e}"))?;
+        let speech_s = segments
+            .iter()
+            .map(|segment| (segment.end_ms - segment.start_ms).max(0) as f32 / 1000.0)
+            .sum::<f32>()
+            .min(duration_s.max(0.0));
+        let purity = if duration_s > 0.0 {
+            (speech_s / duration_s).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        Ok((speech_s, purity))
+    }
+}
+
+struct ActiveClip {
+    session: MicSession,
+    mic_device_id: String,
+    wav_path: PathBuf,
+    started_at: Instant,
+    status_active: Arc<AtomicBool>,
+}
+
+struct PendingClip {
+    embedding: Vec<f32>,
+    mic_device_id: String,
+    wav_path: PathBuf,
+}
+
+#[derive(Clone, Copy, Default)]
+struct ClipCounters {
+    speech_frames: u32,
+    total_frames: u32,
+}
+
+impl ClipCounters {
+    fn purity(self) -> f32 {
+        if self.total_frames == 0 {
+            0.0
+        } else {
+            self.speech_frames as f32 / self.total_frames as f32
+        }
+    }
+}
+
+fn spawn_status_emitter(
+    app: AppHandle,
+    clip_id: String,
+    counters: Arc<Mutex<ClipCounters>>,
+    started_at: Instant,
+    status_active: Arc<AtomicBool>,
+) {
+    tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
+        while status_active.load(Ordering::SeqCst) {
+            interval.tick().await;
+            let counters = *counters.lock().unwrap_or_else(|p| p.into_inner());
+            let duration_s = started_at.elapsed().as_secs_f32();
+            let purity = counters.purity();
+            let speech_s = duration_s * purity;
+            let state = clip_state(speech_s, purity);
+            let _ = app.emit(
+                "voiceprint://clip-status",
+                VoiceprintClipStatus {
+                    clip_id: clip_id.clone(),
+                    speech_s,
+                    purity,
+                    state,
+                },
+            );
+        }
+    });
+}
+
+fn clip_state(speech_s: f32, purity: f32) -> VoiceprintClipState {
+    if purity < 0.01 {
+        VoiceprintClipState::Pending
+    } else if speech_s >= 10.0 {
+        VoiceprintClipState::Optimal
+    } else if speech_s >= 5.0 {
+        VoiceprintClipState::Safe
+    } else {
+        VoiceprintClipState::Recording
+    }
+}
+
+fn normalize_clip_id(value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        Err("voiceprint clip id is required".to_string())
+    } else {
+        Ok(trimmed.to_string())
+    }
+}
+
+fn resolve_voiceprint_model_path(config: &Config, model: &ModelService) -> PathBuf {
+    if let Some(model_id) = &config.selected_model_id {
+        if let Some(path) = model.model_path_for_id(model_id) {
+            if model.model_available(&path) {
+                return path;
+            }
+        }
+    }
+    if let Some(path) = &config.scribe_model_path {
+        let path = PathBuf::from(path);
+        if model.model_available(&path) {
+            return path;
+        }
+    }
+    model.default_model_path()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::config::ConfigService;
     use crate::services::voiceprint::VOICEPRINT_MODEL_FILE;
     use std::path::PathBuf;
 
@@ -95,7 +427,15 @@ mod tests {
             0.75,
         )
         .unwrap();
-        let ctrl = VoiceprintController::new(Arc::new(svc));
+        let config = ConfigService::load(root.join("config.json")).unwrap();
+        let model = ModelService::new(root.join("models"));
+        let ctrl = VoiceprintController::new(
+            Arc::new(svc),
+            AudioService::new(),
+            model,
+            config,
+            root.join("clips"),
+        );
 
         assert!(ctrl.list_profiles().unwrap().is_empty());
     }

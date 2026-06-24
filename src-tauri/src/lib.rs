@@ -526,7 +526,25 @@ pub fn run() {
                     }
                 }
             }
+            let vad_dest = models_dir.join(services::model::VAD_MODEL_FILENAME);
+            if !vad_dest.exists() {
+                if let Ok(resource_dir) = app.path().resource_dir() {
+                    let bundled = resource_dir.join(services::model::VAD_MODEL_FILENAME);
+                    if bundled.is_file() {
+                        let _ = std::fs::copy(&bundled, &vad_dest);
+                    }
+                }
+            }
             let model = services::model::ModelService::new(models_dir);
+            if !model.vad_model_available() {
+                let model_bg = Arc::clone(&model);
+                let app_bg = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(err) = model_bg.download_vad_model(&app_bg).await {
+                        tracing::warn!(error = %err, "startup VAD preparation failed");
+                    }
+                });
+            }
             let voiceprint = Arc::new(services::voiceprint::VoiceprintService::new(
                 &data_dir
                     .join("models")
@@ -536,8 +554,13 @@ pub fn run() {
             )?);
             let model_ctrl =
                 controllers::model::ModelController::new(Arc::clone(&model), Arc::clone(&config));
-            let voiceprint_ctrl =
-                controllers::voiceprint::VoiceprintController::new(Arc::clone(&voiceprint));
+            let voiceprint_ctrl = controllers::voiceprint::VoiceprintController::new(
+                Arc::clone(&voiceprint),
+                Arc::clone(&audio),
+                Arc::clone(&model),
+                Arc::clone(&config),
+                data_dir.join("voiceprint_clips"),
+            );
             let settings_ctrl = controllers::settings::SettingsController::new(
                 Arc::clone(&config),
                 Arc::clone(&hotkeys),
@@ -705,6 +728,10 @@ pub fn run() {
             commands::voiceprint::voiceprint_rename_profile,
             commands::voiceprint::voiceprint_model_status,
             commands::voiceprint::voiceprint_download_model,
+            commands::voiceprint::voiceprint_start_clip,
+            commands::voiceprint::voiceprint_stop_clip,
+            commands::voiceprint::voiceprint_commit_clip,
+            commands::voiceprint::voiceprint_discard_clip,
             commands::settings::settings_get_output_path,
             commands::settings::settings_set_output_path,
             commands::settings::settings_get_hotkeys,

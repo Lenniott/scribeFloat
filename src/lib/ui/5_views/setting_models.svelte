@@ -49,19 +49,10 @@
   let dictateModelId = $state<string | null>(null);
 
   let vadDownloaded = $state(false);
-  let vadDownloading = $state(false);
 
   $effect(() => {
     if (!readyHydrated) return;
     ready = hasReadyModel;
-  });
-
-  $effect(() => {
-    const progress = modelStore.progressByModel["vad"] ?? 0;
-    if (progress >= 1 && vadDownloading) {
-      vadDownloading = false;
-      vadDownloaded = true;
-    }
   });
 
   onMount(async () => {
@@ -120,27 +111,6 @@
       clearToast();
       toastTimeout = null;
     }, 2000);
-  }
-
-  async function downloadVad() {
-    clearToast();
-    vadDownloading = true;
-    try {
-      await invoke("model_vad_download");
-    } catch (e) {
-      modelStore.error = String(e);
-      vadDownloading = false;
-    }
-  }
-
-  async function removeVad() {
-    clearToast();
-    try {
-      await invoke("model_vad_remove");
-      vadDownloaded = false;
-    } catch (e) {
-      modelStore.error = String(e);
-    }
   }
 
   function progressPct(modelId: string): number {
@@ -215,23 +185,17 @@
     <SettingsSection title="Voice activity detection">
       <SettingsList>
         <SettingsRow
-          title="Silero VAD · 2 MB"
-          description="Skips silence mid-recording. Reduces hallucinations."
+          title="Silero VAD"
+          description="Included voice activity detection for silence skipping and voiceprint quality checks."
         >
           {#snippet control()}
             {#if vadDownloaded}
-              <IconButton
-                icon={Trash2}
-                variant="destructive"
-                size="small"
-                aria-label="Remove Silero VAD model"
-                onclick={() => void removeVad()}
-              />
+              <Chip variant="focus">included</Chip>
             {:else}
               {@const vadPct = Math.round(
                 (modelStore.progressByModel["vad"] ?? 0) * 100,
               )}
-              {#if vadDownloading && vadPct > 0 && vadPct < 100}
+              {#if vadPct > 0 && vadPct < 100}
                 <div class="flex items-center gap-2">
                   <div class="h-0.5 w-20 overflow-hidden rounded-sm bg-fill">
                     <div
@@ -243,16 +207,8 @@
                     {vadPct}%
                   </p>
                 </div>
-              {:else if vadDownloading}
-                <p class="sf-label-sm text-fg-dim">Starting…</p>
               {:else}
-                <IconButton
-                  icon={Download}
-                  variant="normal"
-                  size="small"
-                  aria-label="Install Silero VAD model"
-                  onclick={() => void downloadVad()}
-                />
+                <p class="sf-label-sm text-fg-dim">Prepared automatically</p>
               {/if}
             {/if}
           {/snippet}

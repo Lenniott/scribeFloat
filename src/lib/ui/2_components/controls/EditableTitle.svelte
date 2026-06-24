@@ -43,7 +43,7 @@
 {:else}
 	<button
 		type="button"
-		class="sf-headline-sm h-10 w-full max-w-full cursor-text truncate rounded-sm px-2 text-left text-fg"
+		class="sf-headline-sm h-10 w-full max-w-md cursor-text truncate rounded-sm px-2 text-left text-fg"
 		onclick={beginEdit}
 	>
 		{value || placeholder}

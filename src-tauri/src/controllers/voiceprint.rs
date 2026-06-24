@@ -170,6 +170,7 @@ impl VoiceprintController {
         let speech_s = duration_s * purity;
         Ok(VoiceprintClipStatus {
             clip_id,
+            duration_s,
             speech_s,
             purity,
             state: clip_state(speech_s, purity),
@@ -398,6 +399,7 @@ fn spawn_status_emitter(
                 "voiceprint://clip-status",
                 VoiceprintClipStatus {
                     clip_id: clip_id.clone(),
+                    duration_s,
                     speech_s,
                     purity,
                     state,

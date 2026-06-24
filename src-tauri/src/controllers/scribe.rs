@@ -5,10 +5,12 @@ use crate::services::{
     history::HistoryService,
     model::ModelService,
     output::OutputService,
+    voiceprint::{label_segments, VoiceprintService},
 };
 use crate::types::{
     Config, HistoryRecord, Note, ProcessingStage, RecoverySessionInfo, ScribeState,
     ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest, SessionManifestState,
+    SpeakerBlock,
 };
 use anyhow::{anyhow, Result};
 use serde_json::json;
@@ -111,6 +113,7 @@ pub struct ScribeController {
     output: Arc<OutputService>,
     history: Arc<HistoryService>,
     config: Arc<ConfigService>,
+    voiceprint: Arc<VoiceprintService>,
     app: AppHandle,
 }
 
@@ -121,6 +124,7 @@ impl ScribeController {
         output: Arc<OutputService>,
         history: Arc<HistoryService>,
         config: Arc<ConfigService>,
+        voiceprint: Arc<VoiceprintService>,
         app: AppHandle,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -139,6 +143,7 @@ impl ScribeController {
             output,
             history,
             config,
+            voiceprint,
             app,
         })
     }
@@ -450,9 +455,10 @@ impl ScribeController {
             }
             inner.state = ScribeState::Transcribing;
             inner.transcription_abort = Some(Arc::clone(&abort_flag));
-            let session = inner.session.take().ok_or_else(|| {
-                anyhow!("session missing in Recording state")
-            })?;
+            let session = inner
+                .session
+                .take()
+                .ok_or_else(|| anyhow!("session missing in Recording state"))?;
             (session, inner.notes.clone())
         };
 
@@ -598,22 +604,30 @@ impl ScribeController {
             return Ok(());
         }
 
-        let (history_record_id, transcript_path) =
-            match self.write_outputs(&segments, &notes, title, &model_path, &config, &prepared) {
-                Ok(result) => result,
-                Err(e) => {
-                    // Mark the session as errored so the recovery scan can surface it.
-                    let _ = self.write_session_manifest(
-                        &prepared.session_dir,
-                        SessionManifestState::Error,
-                        "",
-                        vec![],
-                        None,
-                        None,
-                    );
-                    return Err(e);
-                }
-            };
+        let speaker_blocks = self.label_speaker_blocks(&segments, &prepared, &config);
+        let (history_record_id, transcript_path) = match self.write_outputs(
+            &segments,
+            &speaker_blocks,
+            &notes,
+            title,
+            &model_path,
+            &config,
+            &prepared,
+        ) {
+            Ok(result) => result,
+            Err(e) => {
+                // Mark the session as errored so the recovery scan can surface it.
+                let _ = self.write_session_manifest(
+                    &prepared.session_dir,
+                    SessionManifestState::Error,
+                    "",
+                    vec![],
+                    None,
+                    None,
+                );
+                return Err(e);
+            }
+        };
 
         self.clear_transcription_tracking();
         self.transition(ScribeState::Done);
@@ -799,6 +813,27 @@ impl ScribeController {
         segments
     }
 
+    fn label_speaker_blocks(
+        &self,
+        segments: &[Segment],
+        prepared: &PreparedAudio,
+        config: &Config,
+    ) -> Vec<SpeakerBlock> {
+        match label_segments(
+            segments,
+            &prepared.pcm_16k,
+            WHISPER_SAMPLE_RATE,
+            &self.voiceprint,
+            config.voice_similarity_threshold,
+        ) {
+            Ok(blocks) => blocks,
+            Err(err) => {
+                tracing::warn!(error = %err, "speaker labelling skipped");
+                Vec::new()
+            }
+        }
+    }
+
     /// Write the transcript file, persist the history record, and optionally delete WAVs.
     /// Returns the record id on success; the caller is responsible for transitioning state
     /// and emitting the Done event so that a history-write failure surfaces as an error
@@ -806,6 +841,7 @@ impl ScribeController {
     fn write_outputs(
         &self,
         segments: &[Segment],
+        speaker_blocks: &[SpeakerBlock],
         notes: &[Note],
         title: &str,
         model_path: &Path,
@@ -836,16 +872,27 @@ impl ScribeController {
             )
             .ok();
         if let Some(dest) = markdown_path.as_ref() {
-            self.output.write_transcript(
-                segments,
-                notes,
-                title,
-                &model_name,
-                config.include_timestamps,
-                &config.replacement_rules,
-                &config.replacement_prefix,
-                dest,
-            )?;
+            if speaker_blocks.is_empty() {
+                self.output.write_transcript(
+                    segments,
+                    notes,
+                    title,
+                    &model_name,
+                    config.include_timestamps,
+                    &config.replacement_rules,
+                    &config.replacement_prefix,
+                    dest,
+                )?;
+            } else {
+                self.output.write_speaker_blocks_transcript(
+                    speaker_blocks,
+                    title,
+                    &model_name,
+                    &config.replacement_rules,
+                    &config.replacement_prefix,
+                    dest,
+                )?;
+            }
         }
 
         // Persist the canonical history record — always, regardless of the markdown toggle.
@@ -880,6 +927,8 @@ impl ScribeController {
                 .as_ref()
                 .map(|p| p.to_string_lossy().into_owned()),
         );
+        let mut record = record;
+        record.speaker_blocks = speaker_blocks.to_vec();
 
         let attach_note_id = self.lock().attach_note_id.take();
         let history_record_id = if attach_note_id.is_some() {
@@ -1396,8 +1445,7 @@ mod tests {
     }
 
     fn temp_test_dir() -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("scribe-tests-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("scribe-tests-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -1796,7 +1844,9 @@ mod tests {
             "first second should be silence"
         );
         assert!(
-            assembled[one_sec..2 * one_sec].iter().any(|s| s.abs() > 0.1),
+            assembled[one_sec..2 * one_sec]
+                .iter()
+                .any(|s| s.abs() > 0.1),
             "second second should have audio"
         );
         assert!(

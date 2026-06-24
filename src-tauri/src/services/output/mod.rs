@@ -1,6 +1,6 @@
 use crate::types::{
     DictateHistoryEntry, Note, RecoverySessionInfo, ReplacementRule, ReplacementScope,
-    ScribeTranscriptEntry, Segment, SessionManifest,
+    ScribeTranscriptEntry, Segment, SessionManifest, SpeakerBlock,
 };
 use anyhow::{anyhow, Context, Result};
 use std::path::{Path, PathBuf};
@@ -14,7 +14,7 @@ mod replacements;
 mod session;
 pub mod wav;
 
-pub use render::{count_words, render_transcript_body};
+pub use render::{count_words, render_speaker_blocks_body, render_transcript_body};
 pub use wav::{sync_wav_header, write_streaming_wav_placeholder};
 
 pub struct OutputService;
@@ -85,9 +85,9 @@ impl OutputService {
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
             .join(" ");
-        let deduped = dedup::dedup_repeated_block(
-            &dedup::dedup_consecutive_phrases(&dedup::dedup_exact_halves(&joined)),
-        );
+        let deduped = dedup::dedup_repeated_block(&dedup::dedup_consecutive_phrases(
+            &dedup::dedup_exact_halves(&joined),
+        ));
         replacements::apply_replacements(&deduped, rules, &ReplacementScope::Dictate, prefix)
     }
 
@@ -116,6 +116,33 @@ impl OutputService {
         std::fs::write(dest, &md).context("failed to write transcript")?;
         if std::fs::metadata(dest)?.len() == 0 {
             return Err(anyhow!("transcript was written empty"));
+        }
+        Ok(dest.to_path_buf())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn write_speaker_blocks_transcript(
+        &self,
+        blocks: &[SpeakerBlock],
+        title: &str,
+        model_name: &str,
+        rules: &[ReplacementRule],
+        prefix: &str,
+        dest: &Path,
+    ) -> Result<PathBuf> {
+        let body = render::render_speaker_blocks_body(blocks, rules, prefix);
+        let word_count = body.split_whitespace().count();
+        let mut md = String::new();
+        md.push_str("---\n");
+        md.push_str(&format!("title: '{}'\n", title.replace('\'', "'")));
+        md.push_str(&format!("word_count: {word_count}\n"));
+        md.push_str(&format!("model: {model_name}\n"));
+        md.push_str("---\n\n## Transcript\n\n");
+        md.push_str(&body);
+        md.push('\n');
+        std::fs::write(dest, &md).context("failed to write speaker transcript")?;
+        if std::fs::metadata(dest)?.len() == 0 {
+            return Err(anyhow!("speaker transcript was written empty"));
         }
         Ok(dest.to_path_buf())
     }
@@ -233,7 +260,10 @@ impl OutputService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Note, ReplacementRule, ReplacementRuleType, ReplacementScope, Segment, SessionManifest, SessionManifestState, WordTransform};
+    use crate::types::{
+        Note, ReplacementRule, ReplacementRuleType, ReplacementScope, Segment, SessionManifest,
+        SessionManifestState, WordTransform,
+    };
 
     fn simple_rule(trigger: &str, output: &str, scope: ReplacementScope) -> ReplacementRule {
         ReplacementRule {
@@ -249,22 +279,19 @@ mod tests {
     }
 
     fn temp_file(name: &str) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("output-mod-tests-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("output-mod-tests-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         dir.join(name)
     }
 
     fn temp_dir() -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("output-mod-tests-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("output-mod-tests-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         dir
     }
 
     fn temp_save_folder() -> String {
-        let dir =
-            std::env::temp_dir().join(format!("output-mod-tests-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("output-mod-tests-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         dir.to_string_lossy().to_string()
     }
@@ -365,9 +392,21 @@ mod tests {
         let svc = OutputService;
         let file = temp_file("dual-source-newlines.md");
         let segments = vec![
-            Segment { start_ms: 0, end_ms: 1_000, text: "in: yeah".to_string() },
-            Segment { start_ms: 1_200, end_ms: 3_000, text: "out: Hello there.".to_string() },
-            Segment { start_ms: 3_100, end_ms: 4_000, text: "out: How are you?".to_string() },
+            Segment {
+                start_ms: 0,
+                end_ms: 1_000,
+                text: "in: yeah".to_string(),
+            },
+            Segment {
+                start_ms: 1_200,
+                end_ms: 3_000,
+                text: "out: Hello there.".to_string(),
+            },
+            Segment {
+                start_ms: 3_100,
+                end_ms: 4_000,
+                text: "out: How are you?".to_string(),
+            },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write");
@@ -387,9 +426,21 @@ mod tests {
         let svc = OutputService;
         let file = temp_file("dual-source-compact.md");
         let segments = vec![
-            Segment { start_ms: 0, end_ms: 1_000, text: "in: yeah".to_string() },
-            Segment { start_ms: 2_000, end_ms: 4_000, text: "out: Thanks for sharing.".to_string() },
-            Segment { start_ms: 5_000, end_ms: 6_000, text: "in: Absolutely.".to_string() },
+            Segment {
+                start_ms: 0,
+                end_ms: 1_000,
+                text: "in: yeah".to_string(),
+            },
+            Segment {
+                start_ms: 2_000,
+                end_ms: 4_000,
+                text: "out: Thanks for sharing.".to_string(),
+            },
+            Segment {
+                start_ms: 5_000,
+                end_ms: 6_000,
+                text: "in: Absolutely.".to_string(),
+            },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write");
@@ -409,8 +460,16 @@ mod tests {
         let svc = OutputService;
         let file = temp_file("single-source-separator.md");
         let segments = vec![
-            Segment { start_ms: 0, end_ms: 2_000, text: "First thought.".to_string() },
-            Segment { start_ms: 12_000, end_ms: 14_000, text: "Second thought.".to_string() },
+            Segment {
+                start_ms: 0,
+                end_ms: 2_000,
+                text: "First thought.".to_string(),
+            },
+            Segment {
+                start_ms: 12_000,
+                end_ms: 14_000,
+                text: "Second thought.".to_string(),
+            },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write");
@@ -426,8 +485,16 @@ mod tests {
         let svc = OutputService;
         let file = temp_file("single-source-merge.md");
         let segments = vec![
-            Segment { start_ms: 0, end_ms: 500, text: "Hello".to_string() },
-            Segment { start_ms: 700, end_ms: 1_200, text: "world.".to_string() },
+            Segment {
+                start_ms: 0,
+                end_ms: 500,
+                text: "Hello".to_string(),
+            },
+            Segment {
+                start_ms: 700,
+                end_ms: 1_200,
+                text: "world.".to_string(),
+            },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write");

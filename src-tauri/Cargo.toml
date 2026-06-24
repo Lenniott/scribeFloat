@@ -45,6 +45,7 @@ enigo = "0.6"
 symphonia = { version = "0.5", features = ["aac", "flac", "isomp4", "mp3", "ogg", "pcm", "vorbis", "wav"] }
 regex = "1"
 sha2 = "0.10"
+sherpa-onnx = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Used directly for sysctlbyname in lib::log_system_info; pinned loose to match the
@@ -59,4 +60,3 @@ whisper-rs = { version = "0.16", features = ["openblas", "openmp"] }
 
 [dev-dependencies]
 tempfile = "3"
-

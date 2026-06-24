@@ -527,8 +527,17 @@ pub fn run() {
                 }
             }
             let model = services::model::ModelService::new(models_dir);
+            let voiceprint = Arc::new(services::voiceprint::VoiceprintService::new(
+                &data_dir
+                    .join("models")
+                    .join(services::voiceprint::VOICEPRINT_MODEL_FILE),
+                &data_dir.join("voiceprints"),
+                0.75,
+            )?);
             let model_ctrl =
                 controllers::model::ModelController::new(Arc::clone(&model), Arc::clone(&config));
+            let voiceprint_ctrl =
+                controllers::voiceprint::VoiceprintController::new(Arc::clone(&voiceprint));
             let settings_ctrl = controllers::settings::SettingsController::new(
                 Arc::clone(&config),
                 Arc::clone(&hotkeys),
@@ -574,8 +583,10 @@ pub fn run() {
             let update = services::update::UpdateService::new();
 
             app.manage(model); // shared model service
+            app.manage(voiceprint); // shared voiceprint service
             app.manage(config); // shared config service
             app.manage(model_ctrl); // model command orchestration
+            app.manage(voiceprint_ctrl); // voiceprint command orchestration
             app.manage(settings_ctrl); // settings orchestration
             app.manage(ctrl); // for scribe commands
             app.manage(Arc::clone(&dictate_ctrl)); // for dictate commands
@@ -688,6 +699,12 @@ pub fn run() {
             commands::model::model_vad_status,
             commands::model::model_vad_download,
             commands::model::model_vad_remove,
+            commands::voiceprint::voiceprint_list_profiles,
+            commands::voiceprint::voiceprint_list_profile_names,
+            commands::voiceprint::voiceprint_delete_profile,
+            commands::voiceprint::voiceprint_rename_profile,
+            commands::voiceprint::voiceprint_model_status,
+            commands::voiceprint::voiceprint_download_model,
             commands::settings::settings_get_output_path,
             commands::settings::settings_set_output_path,
             commands::settings::settings_get_hotkeys,

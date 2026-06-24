@@ -492,6 +492,39 @@ pub struct ModelListItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintProfile {
+    pub name: String,
+    pub slug: String,
+    pub mic_device_id: Option<String>,
+    pub embedding: Vec<f32>,
+    pub sample_count: u32,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintProfileSummary {
+    pub slug: String,
+    pub name: String,
+    pub mic_device_id: Option<String>,
+    pub mic_device_label: Option<String>,
+    pub sample_count: u32,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintModelStatus {
+    pub downloaded: bool,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintModelDownloadEvent {
+    pub progress: f32,
+    pub bytes_downloaded: u64,
+    pub total_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionStatus {
     pub kind: String,
     pub granted: bool,

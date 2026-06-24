@@ -166,6 +166,7 @@ impl HistoryService {
     }
 
     /// Attach transcript segments to an existing note (log-structured update).
+    #[allow(clippy::too_many_arguments)]
     pub fn update_segments(
         &self,
         save_folder: &str,
@@ -200,7 +201,7 @@ impl HistoryService {
         updated.duration_ms = updated
             .segments
             .last()
-            .map(|s| s.end_ms.max(0) as i64)
+            .map(|s| s.end_ms.max(0))
             .unwrap_or(0);
         updated.word_count =
             crate::services::output::count_words(&updated.segments, rules, prefix);

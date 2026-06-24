@@ -570,6 +570,19 @@ pub struct VoiceprintClipStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionCaptureStart {
+    pub capture_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionCaptureStatus {
+    pub capture_id: String,
+    pub speech_s: f32,
+    pub purity: f32,
+    pub state: VoiceprintClipState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceprintClipResult {
     pub duration_s: f32,
     pub speech_s: f32,

@@ -838,6 +838,7 @@ impl ScribeController {
     /// Returns the record id on success; the caller is responsible for transitioning state
     /// and emitting the Done event so that a history-write failure surfaces as an error
     /// event rather than a silent Done with no record.
+    #[allow(clippy::too_many_arguments)]
     fn write_outputs(
         &self,
         segments: &[Segment],

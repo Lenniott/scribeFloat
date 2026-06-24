@@ -9,6 +9,7 @@
   import AccordionItem from "@components/nav/AccordionRow.svelte";
   import Button from "@components/controls/Button.svelte";
   import IconButton from "@components/controls/IconButton.svelte";
+  import TextField from "@primitives/form/TextField.svelte";
   import Modal from "@primitives/layout/Modal.svelte";
   import RecordingStatusDot from "@primitives/display/StatusDot.svelte";
   import RecordingTimer from "@primitives/display/RecordingTimer.svelte";
@@ -21,9 +22,12 @@
   import PanelFooter from "@primitives/layout/PanelFooter.svelte";
   import { createModelDownloadStore } from "$lib/stores/modelDownload.svelte";
   import Bin from "lucide-svelte/icons/trash-2";
+  import CheckCircle from "lucide-svelte/icons/check-circle-2";
   import Cog from "lucide-svelte/icons/settings-2";
+  import Clock from "lucide-svelte/icons/clock-3";
+  import MicPlus from "lucide-svelte/icons/mic-vocal";
   import type { Note } from "@components/cards/InlineNote.svelte";
-  import type { PermissionStatus } from '@utils/types';
+  import { appErrorMessage, type PermissionStatus } from '@utils/types';
   import { isWindows } from '@utils/platform';
 
   type Props = {
@@ -125,6 +129,47 @@
   let recoverySessions = $state<RecoverySessionInfo[]>([]);
   let dismissedRecoveryDirs = $state<string[]>([]);
 
+  type CaptureState = "idle" | "recording" | "failed" | "saved";
+  type CaptureQualityState = "pending" | "recording" | "safe" | "optimal" | "failed";
+  type CaptureStatus = {
+    clip_id?: string;
+    capture_id?: string;
+    speech_s: number;
+    purity: number;
+    state: CaptureQualityState;
+  };
+  type CaptureStart = {
+    capture_id: string;
+  };
+  type CaptureResult = {
+    duration_s: number;
+    speech_s: number;
+    purity: number;
+    accepted: boolean;
+  };
+  let captureState = $state<CaptureState>("idle");
+  let captureQualityState = $state<CaptureQualityState>("pending");
+  let captureId = $state("");
+  let captureSpeechS = $state(0);
+  let capturePurity = $state(0);
+  let captureProfileName = $state("Other");
+  let captureProfileNames = $state<string[]>([]);
+  let captureError = $state("");
+  let captureSaving = $state(false);
+  let captureResetTimer: ReturnType<typeof setTimeout> | null = null;
+  const capturePurityPct = $derived(Math.round(capturePurity * 100));
+  const captureProgressPct = $derived(Math.min(100, Math.round((captureSpeechS / 10) * 100)));
+  const captureSafeToStop = $derived(captureSpeechS >= 5 && capturePurity >= 0.5);
+  const captureStatusText = $derived(
+    captureQualityState === "optimal"
+      ? "Optimal"
+      : captureQualityState === "safe"
+        ? "Safe to stop"
+        : captureSpeechS > 0
+          ? "Keep listening"
+          : "Waiting for speech",
+  );
+
   async function loadRecoverySessions() {
     const sessions = await invoke<RecoverySessionInfo[]>(
       "scribe_list_recovery_sessions",
@@ -198,6 +243,7 @@
       case "IDLE":
         phase = "idle";
         stopTimer();
+        void cancelActiveCapture();
         micLevelRaw = 0;
         speakerLevelRaw = 0;
         void reloadSpeakerCaptureSettings();
@@ -209,6 +255,7 @@
       case "TRANSCRIBING":
         phase = "idle";
         stopTimer();
+        void cancelActiveCapture();
         micLevelRaw = 0;
         speakerLevelRaw = 0;
         void reloadSpeakerCaptureSettings();
@@ -216,6 +263,7 @@
       case "DONE":
         phase = "idle";
         stopTimer();
+        void cancelActiveCapture();
         micLevelRaw = 0;
         speakerLevelRaw = 0;
         void reloadSpeakerCaptureSettings();
@@ -223,6 +271,7 @@
       case "NO_MODEL":
         phase = "no_model";
         stopTimer();
+        void cancelActiveCapture();
         micLevelRaw = 0;
         speakerLevelRaw = 0;
         break;
@@ -230,6 +279,7 @@
         phase = "error";
         errorMessage = p.error ?? "Unknown error";
         stopTimer();
+        void cancelActiveCapture();
         micLevelRaw = 0;
         speakerLevelRaw = 0;
         break;
@@ -328,6 +378,7 @@
   }
 
   async function stopAndSave() {
+    await cancelActiveCapture();
     stopTimer();
     micLevelRaw = 0;
     speakerLevelRaw = 0;
@@ -336,6 +387,7 @@
 
   /** Stops capture on the backend; throws if the backend was not recording. */
   async function cancel() {
+    await cancelActiveCapture();
     stopTimer();
     notes = [];
     elapsedSeconds = 0;
@@ -367,6 +419,7 @@
   }
 
   async function recordAgain() {
+    await cancelActiveCapture();
     notes = [];
     elapsedSeconds = 0;
     errorMessage = "";
@@ -395,6 +448,92 @@
         recordedAtMs: created.recorded_at_ms,
       },
     ];
+  }
+
+  function applyCaptureStatus(status: CaptureStatus) {
+    const eventId = status.capture_id ?? status.clip_id;
+    if (!eventId || eventId !== captureId) return;
+    captureSpeechS = status.speech_s;
+    capturePurity = status.purity;
+    captureQualityState = status.state;
+  }
+
+  function resetCaptureState() {
+    if (captureResetTimer) {
+      clearTimeout(captureResetTimer);
+      captureResetTimer = null;
+    }
+    captureState = "idle";
+    captureQualityState = "pending";
+    captureId = "";
+    captureSpeechS = 0;
+    capturePurity = 0;
+    captureError = "";
+    captureSaving = false;
+  }
+
+  async function cancelActiveCapture() {
+    if (!captureId) {
+      resetCaptureState();
+      return;
+    }
+    const id = captureId;
+    resetCaptureState();
+    await invoke("session_capture_cancel", { captureId: id }).catch(() => {});
+  }
+
+  async function startSpeakerCapture() {
+    if (phase !== "recording" || captureState === "recording") return;
+    if (captureId) {
+      await invoke("session_capture_cancel", { captureId }).catch(() => {});
+      captureId = "";
+    }
+    captureError = "";
+    captureSpeechS = 0;
+    capturePurity = 0;
+    captureQualityState = "pending";
+    captureProfileNames = await invoke<string[]>("voiceprint_list_profile_names").catch(() => []);
+    captureProfileName = captureProfileNames.at(-1) ?? "Other";
+    try {
+      const started = await invoke<CaptureStart>("session_capture_start");
+      captureId = started.capture_id;
+      captureState = "recording";
+    } catch (e) {
+      captureState = "failed";
+      captureError = `Could not start capture: ${appErrorMessage(e)}`;
+    }
+  }
+
+  async function stopSpeakerCapture() {
+    const name = captureProfileName.trim();
+    if (!captureId || !name) {
+      captureError = "Speaker name is required.";
+      return;
+    }
+    captureSaving = true;
+    captureError = "";
+    try {
+      const result = await invoke<CaptureResult>("session_capture_stop", {
+        captureId,
+        profileName: name,
+      });
+      captureSpeechS = result.speech_s;
+      capturePurity = result.purity;
+      if (!result.accepted) {
+        captureState = "failed";
+        captureError = "Too noisy or too short. Try again.";
+        captureId = "";
+        return;
+      }
+      captureState = "saved";
+      captureId = "";
+      captureResetTimer = setTimeout(resetCaptureState, 3000);
+    } catch (e) {
+      captureState = "failed";
+      captureError = `Could not save capture: ${appErrorMessage(e)}`;
+    } finally {
+      captureSaving = false;
+    }
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -455,7 +594,10 @@
     const ulSpeakerSaved = await listen("settings://speaker-capture-saved", () => {
       void reloadSpeakerCaptureSettings();
     });
-    unlisteners = [ul1, ul2, ulSpeaker, ulSpeakerUnavailable, ulSpeakerSaved];
+    const ulCaptureStatus = await listen<CaptureStatus>("voiceprint://clip-status", (e) => {
+      applyCaptureStatus(e.payload);
+    });
+    unlisteners = [ul1, ul2, ulSpeaker, ulSpeakerUnavailable, ulSpeakerSaved, ulCaptureStatus];
     if (!embedded) {
       const ulClose = await listen("scribe://native-close-requested", () => {
         void handleNativeCloseRequested();
@@ -485,6 +627,7 @@
     unlisteners.forEach((u) => u());
     unlistenFocus?.();
     modelUnlisteners.forEach((u) => u());
+    void cancelActiveCapture();
     stopTimer();
   });
 </script>
@@ -676,6 +819,120 @@
                   aria-label="Discard recording"
                   onclick={() => (discardConfirmOpen = true)}
                 />
+                <div class="relative">
+                  <IconButton
+                    variant="normal"
+                    size="normal"
+                    icon={captureState === "saved" ? CheckCircle : captureState === "recording" ? Clock : MicPlus}
+                    iconExtraClass={captureState === "saved" ? "text-success" : captureState === "recording" ? "animate-pulse" : ""}
+                    aria-label="Capture speaker voiceprint"
+                    disabled={captureSaving}
+                    onclick={() => {
+                      if (captureState === "idle" || captureState === "failed") {
+                        void startSpeakerCapture();
+                      }
+                    }}
+                  />
+                  {#if captureState === "recording" || captureState === "failed"}
+                    <div class="absolute bottom-12 left-0 z-20 w-72 rounded-md border border-rim bg-panel p-3 shadow-lg">
+                      <div class="mb-3 flex items-center justify-between gap-3">
+                        <p class="sf-label-md text-fg">
+                          {captureState === "failed" ? "Capture failed" : "Capturing voiceprint"}
+                        </p>
+                        <span class="sf-label-sm text-fg-dim">{captureStatusText}</span>
+                      </div>
+
+                      {#if captureError}
+                        <p class="mb-3 rounded-md border border-destructive/40 bg-fill px-2 py-1.5 sf-label-sm text-destructive">
+                          {captureError}
+                        </p>
+                      {/if}
+
+                      <div class="space-y-3">
+                        <div>
+                          <div class="mb-1 flex justify-between sf-label-sm text-fg-dim">
+                            <span>VAD purity</span>
+                            <span>{capturePurityPct}%</span>
+                          </div>
+                          <div class="h-1.5 overflow-hidden rounded-sm bg-fill">
+                            <div
+                              class="h-full bg-brand transition-[width] duration-200"
+                              style={`width:${capturePurityPct}%`}
+                            ></div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div class="mb-1 flex justify-between sf-label-sm text-fg-dim">
+                            <span>Speech</span>
+                            <span>{captureSpeechS.toFixed(1)}s</span>
+                          </div>
+                          <div class="h-1.5 overflow-hidden rounded-sm bg-fill">
+                            <div
+                              class="h-full bg-success transition-[width] duration-200"
+                              style={`width:${captureProgressPct}%`}
+                            ></div>
+                          </div>
+                          <div class="mt-1 grid grid-cols-3 sf-label-sm text-fg-muted">
+                            <span>0s</span>
+                            <span class="text-center">5s safe</span>
+                            <span class="text-right">10s optimal</span>
+                          </div>
+                        </div>
+
+                        <TextField
+                          label="Speaker name"
+                          bind:value={captureProfileName}
+                          placeholder="Other"
+                          disabled={captureSaving}
+                        />
+                        {#if captureProfileNames.length > 0}
+                          <div class="flex flex-wrap gap-1">
+                            {#each captureProfileNames as name (name)}
+                              <button
+                                type="button"
+                                class="rounded-md border border-rim px-2 py-1 sf-label-sm text-fg-dim hover:bg-fill"
+                                onclick={() => (captureProfileName = name)}
+                              >
+                                {name}
+                              </button>
+                            {/each}
+                          </div>
+                        {/if}
+                      </div>
+
+                      <div class="mt-3 flex justify-between gap-2">
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          disabled={captureSaving}
+                          onclick={cancelActiveCapture}
+                        >
+                          Cancel
+                        </Button>
+                        {#if captureState === "failed"}
+                          <Button
+                            variant="normal"
+                            size="small"
+                            disabled={captureSaving}
+                            onclick={startSpeakerCapture}
+                          >
+                            Retry
+                          </Button>
+                        {:else}
+                          <Button
+                            variant="primary"
+                            size="small"
+                            disabled={captureSaving || !captureSafeToStop}
+                            onclick={stopSpeakerCapture}
+                          >
+                            Stop & Save
+                          </Button>
+                        {/if}
+                      </div>
+                    </div>
+                  {/if}
+                </div>
                 <div class="ml-auto flex items-center gap-2">
                   <RecordingStatusDot status="recording" />
                   <RecordingTimer class="text-md" {elapsedSeconds} />

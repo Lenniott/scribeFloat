@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { runNoteLeaveGuard } from './noteLeaveGuard';
+import type { NoteLeaveInvoke } from './noteLeaveGuard';
 
 function handlers() {
 	return {
@@ -29,7 +30,7 @@ describe('runNoteLeaveGuard', () => {
 		const invoke = vi.fn(async (cmd: string) => {
 			if (cmd === 'note_is_empty') return true;
 			if (cmd === 'note_has_metadata') return false;
-		});
+		}) as unknown as NoteLeaveInvoke;
 		const onEmptyDeleted = vi.fn();
 
 		await runNoteLeaveGuard(
@@ -47,7 +48,7 @@ describe('runNoteLeaveGuard', () => {
 		const invoke = vi.fn(async (cmd: string) => {
 			if (cmd === 'note_is_empty') return true;
 			if (cmd === 'note_has_metadata') return true;
-		});
+		}) as unknown as NoteLeaveInvoke;
 
 		await runNoteLeaveGuard({ id: 'n1', recordingActive: false, invoke }, h);
 
@@ -61,7 +62,7 @@ describe('runNoteLeaveGuard', () => {
 		const invoke = vi.fn(async (cmd: string) => {
 			if (cmd === 'note_is_empty') return false;
 			if (cmd === 'note_has_metadata') return false;
-		});
+		}) as unknown as NoteLeaveInvoke;
 
 		await runNoteLeaveGuard({ id: 'n1', recordingActive: false, invoke }, h);
 

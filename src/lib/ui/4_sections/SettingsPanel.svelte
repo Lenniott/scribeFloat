@@ -4,6 +4,7 @@
 	import SettingGeneral from '@views/setting_general.svelte';
 	import SettingPermissions from '@views/setting_permissions.svelte';
 	import SettingModels from '@views/setting_models.svelte';
+	import SettingVoice from '@views/setting_voice.svelte';
 	import SettingHelp from '@views/setting_help.svelte';
 	import SettingReplace from '@views/setting_replace.svelte';
 	import ScrollablePanel from '@primitives/layout/ScrollBody.svelte';
@@ -138,6 +139,8 @@
 				/>
 			{:else if appState.settingsTab === 'permissions'}
 				<SettingPermissions bind:ready={permissionsReady} micOnly={isWindows} />
+			{:else if appState.settingsTab === 'voice'}
+				<SettingVoice />
 			{:else if appState.settingsTab === 'replacements'}
 				<SettingReplace />
 			{:else if appState.settingsTab === 'help'}

@@ -22,15 +22,21 @@ A secondary problem: the designer's accumulated context spans multiple concurren
 
 A UX or product designer who works across multiple concurrent projects and relationships. They think out loud — in calls, in dictation, in informal conversations — and they capture that thinking through ScribeFloat. They are not primarily a note-taker; they are a practitioner whose work produces artifacts: research surveys, job roles, design briefs, stakeholder decks, specs.
 
+This designer has ADHD. That is not incidental — it shapes every part of the problem. Their best thinking happens out loud, in the moment: in calls, in dictation, in conversation. That thinking is real and good. But it evaporates. Decisions are not documented. Artifacts are hard to produce because everything is bundled in memory after the conversation ends. Priorities get missed. Without preparation, they go into stakeholder meetings without a clear picture of what the stakeholder actually needs — and they design their way, not the way that makes sense.
+
+Time is not experienced as a reliable organising axis. "Last Tuesday" is meaningless; "the call where we realised the onboarding was broken" is vivid. The corpus is experienced as a web of connected moments, not a timeline. Chronological surfaces fight how this person thinks.
+
+Attention is concurrent and non-linear. Multiple projects, clients, personal threads, and open questions are all active simultaneously. The problem is not just "how do I work on one thing" — it is "how do I even know which thread needs attention right now."
+
 Characteristics:
-- Works with stakeholders (directors, clients, research participants) whose intent and language matters and needs to be preserved, not paraphrased
-- Runs structured research processes (surveys, interviews, synthesis) where the output must be traceable back to source material
-- Uses AI models as working partners for drafting and refining artifacts — not just as search tools
-- Carries multiple active concerns simultaneously: project A, client B, a hiring process, a personal design direction
-- Does not manage a knowledge base — has no habit of filing, tagging, or organising after the fact; any system that requires upfront organisation will fail
+- Works with stakeholders (directors, clients, research participants) whose intent and language must be preserved, not paraphrased — exact words carry meaning that summaries lose
+- Runs structured research processes (surveys, interviews, synthesis) where outputs must be traceable to source material
+- Uses AI models as working partners for drafting and refining artifacts
+- Carries many active concerns simultaneously; threads go quiet without resolution and the gap goes unnoticed until it surfaces as a problem
+- Does not manage a knowledge base — any system requiring upfront organisation, filing, or tagging will be abandoned
 
 What they are not:
-- A researcher who treats their notes as a database
+- A researcher who treats notes as a database
 - A manager running a team with shared documentation
 - Someone who enjoys system maintenance
 

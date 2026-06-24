@@ -43,6 +43,7 @@
 			bind:value
 			{placeholder}
 			{disabled}
+			onblur={onblur}
 			class="sf-input min-h-[80px] resize-y p-2 disabled:opacity-40 placeholder:text-fg-muted"
 		></textarea>
 	{:else if suffix}

@@ -25,8 +25,14 @@
 	let editingSlug = $state('');
 	let editingName = $state('');
 	let confirmingDelete = $state('');
+	let userDisplayName = $state('You');
+	let savedUserDisplayName = $state('You');
+	let threshold = $state(0.75);
+	let thresholdSaveTimer: ReturnType<typeof setTimeout> | undefined;
 
-	onMount(refresh);
+	onMount(async () => {
+		await Promise.all([refresh(), loadVoiceSettings()]);
+	});
 
 	async function refresh() {
 		loadError = '';
@@ -34,6 +40,20 @@
 			profiles = await invoke<ProfileSummary[]>('voiceprint_list_profiles');
 		} catch (e) {
 			loadError = `Could not load voiceprints: ${appErrorMessage(e)}`;
+		}
+	}
+
+	async function loadVoiceSettings() {
+		try {
+			const [name, nextThreshold] = await Promise.all([
+				invoke<string>('settings_get_user_display_name'),
+				invoke<number>('settings_get_voice_similarity_threshold'),
+			]);
+			userDisplayName = name;
+			savedUserDisplayName = name;
+			threshold = nextThreshold;
+		} catch (e) {
+			actionError = `Could not load voice settings: ${appErrorMessage(e)}`;
 		}
 	}
 
@@ -97,6 +117,41 @@
 	async function finishEnrollment() {
 		enrolling = null;
 		await refresh();
+	}
+
+	async function saveUserDisplayName() {
+		const name = userDisplayName.trim();
+		if (!name) {
+			userDisplayName = savedUserDisplayName;
+			actionError = 'Display name cannot be empty.';
+			return;
+		}
+		actionError = '';
+		try {
+			await invoke('settings_set_user_display_name', { name });
+			userDisplayName = name;
+			savedUserDisplayName = name;
+		} catch (e) {
+			userDisplayName = savedUserDisplayName;
+			actionError = `Could not save display name: ${appErrorMessage(e)}`;
+		}
+	}
+
+	function onThresholdInput(event: Event) {
+		threshold = Number((event.currentTarget as HTMLInputElement).value);
+		if (thresholdSaveTimer) clearTimeout(thresholdSaveTimer);
+		thresholdSaveTimer = setTimeout(() => {
+			void saveThreshold();
+		}, 300);
+	}
+
+	async function saveThreshold() {
+		actionError = '';
+		try {
+			await invoke('settings_set_voice_similarity_threshold', { threshold });
+		} catch (e) {
+			actionError = `Could not save matching sensitivity: ${appErrorMessage(e)}`;
+		}
 	}
 </script>
 
@@ -195,6 +250,51 @@
 					{/each}
 				</SettingsList>
 			{/if}
+		</SettingsSection>
+
+		<SettingsSection title="Speaker labels">
+			<SettingsList>
+				<SettingsRow
+					title="Your display name"
+					description={`This name appears in transcripts as [${userDisplayName || 'You'}].`}
+				>
+					{#snippet control()}
+						<div class="w-full sm:w-56">
+							<TextField
+								label="Your display name"
+								bind:value={userDisplayName}
+								labelHidden
+								onblur={() => void saveUserDisplayName()}
+							/>
+						</div>
+					{/snippet}
+				</SettingsRow>
+
+				<SettingsRow
+					title="Speaker matching sensitivity"
+					description="Lower is more inclusive. Higher only labels very confident matches."
+				>
+					{#snippet control()}
+						<div class="flex w-full min-w-56 flex-col gap-1">
+							<div class="flex items-center justify-between sf-meta-sm text-fg-dim">
+								<span>Inclusive</span>
+								<span>{threshold.toFixed(2)}</span>
+								<span>Strict</span>
+							</div>
+							<input
+								type="range"
+								min="0"
+								max="1"
+								step="0.05"
+								value={threshold}
+								class="w-full accent-brand"
+								oninput={onThresholdInput}
+								aria-label="Speaker matching sensitivity"
+							/>
+						</div>
+					{/snippet}
+				</SettingsRow>
+			</SettingsList>
 		</SettingsSection>
 	</section>
 {/if}

@@ -3,6 +3,7 @@ use crate::services::config::ConfigService;
 use crate::services::hotkeys::HotkeyService;
 use crate::services::output::OutputService;
 use crate::services::permissions::PermissionsService;
+use crate::services::voiceprint::VoiceprintService;
 use crate::types::{
     GeneralSettingsUpdate, PermissionStatus, ReplacementRule, ReplacementRuleType, ThemeMode,
 };
@@ -36,6 +37,7 @@ pub struct SettingsController {
     output: Arc<OutputService>,
     permissions: Arc<PermissionsService>,
     audio: Arc<AudioService>,
+    voiceprint: Arc<VoiceprintService>,
 }
 
 impl SettingsController {
@@ -45,6 +47,7 @@ impl SettingsController {
         output: Arc<OutputService>,
         permissions: Arc<PermissionsService>,
         audio: Arc<AudioService>,
+        voiceprint: Arc<VoiceprintService>,
     ) -> Arc<Self> {
         Arc::new(Self {
             config,
@@ -52,6 +55,7 @@ impl SettingsController {
             output,
             permissions,
             audio,
+            voiceprint,
         })
     }
 
@@ -452,6 +456,35 @@ impl SettingsController {
             .update(|cfg| cfg.replacement_prefix = prefix)
             .map_err(|e| format!("failed to persist replacement prefix: {e}"))
     }
+
+    pub fn get_user_display_name(&self) -> String {
+        self.config.get().user_display_name
+    }
+
+    pub fn set_user_display_name(&self, name: String) -> Result<(), String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("user display name cannot be empty".to_string());
+        }
+        self.config
+            .update(|cfg| cfg.user_display_name = name.to_string())
+            .map_err(|e| format!("failed to persist user display name: {e}"))
+    }
+
+    pub fn get_voice_similarity_threshold(&self) -> f32 {
+        self.config.get().voice_similarity_threshold
+    }
+
+    pub fn set_voice_similarity_threshold(&self, threshold: f32) -> Result<(), String> {
+        if !(0.0..=1.0).contains(&threshold) {
+            return Err("voice similarity threshold must be between 0.0 and 1.0".to_string());
+        }
+        self.config
+            .update(|cfg| cfg.voice_similarity_threshold = threshold)
+            .map_err(|e| format!("failed to persist voice similarity threshold: {e}"))?;
+        self.voiceprint.set_threshold(threshold);
+        Ok(())
+    }
 }
 
 fn normalize_output_path(output: &OutputService, path: &str) -> Result<String, String> {
@@ -531,6 +564,7 @@ fn validate_rule(rule: &ReplacementRule) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::services::hotkeys::HotkeyRegistrar;
+    use crate::services::voiceprint::VOICEPRINT_MODEL_FILE;
     use std::sync::Mutex;
 
     struct MockHotkeyRegistrar {
@@ -565,11 +599,22 @@ mod tests {
         });
         let hotkeys = HotkeyService::new(registrar);
         SettingsController::new(
-            config,
+            Arc::clone(&config),
             hotkeys,
             crate::services::output::OutputService::new(),
             PermissionsService::new(),
             AudioService::new(),
+            Arc::new(
+                VoiceprintService::new(
+                    &std::env::temp_dir().join(VOICEPRINT_MODEL_FILE),
+                    &std::env::temp_dir().join(format!(
+                        "scribefloat-settings-voiceprints-{}",
+                        uuid::Uuid::new_v4()
+                    )),
+                    config.get().voice_similarity_threshold,
+                )
+                .unwrap(),
+            ),
         )
     }
 
@@ -899,6 +944,33 @@ mod tests {
             .expect("save general settings");
 
         assert!(!ctrl.get_scribe_capture_speaker());
+    }
+
+    #[test]
+    fn voiceprint_settings_validate_and_persist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("config.json");
+        let config = ConfigService::load(config_path.clone()).unwrap();
+        let ctrl = make_controller(config, None);
+
+        ctrl.set_user_display_name("  Ben  ".to_string()).unwrap();
+        ctrl.set_voice_similarity_threshold(0.9).unwrap();
+
+        let reloaded = ConfigService::load(config_path).unwrap();
+        let cfg = reloaded.get();
+        assert_eq!(cfg.user_display_name, "Ben");
+        assert_eq!(cfg.voice_similarity_threshold, 0.9);
+    }
+
+    #[test]
+    fn voiceprint_settings_reject_invalid_values() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
+        let ctrl = make_controller(config, None);
+
+        assert!(ctrl.set_user_display_name("   ".to_string()).is_err());
+        assert!(ctrl.set_voice_similarity_threshold(-0.1).is_err());
+        assert!(ctrl.set_voice_similarity_threshold(1.1).is_err());
     }
 
     #[cfg(target_os = "windows")]

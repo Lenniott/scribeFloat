@@ -57,6 +57,16 @@
 
   onMount(async () => {
     unlisteners = await modelStore.subscribe();
+    const { listen } = await import("@tauri-apps/api/event");
+    const unlistenVad = await listen<{ model_id: string; progress: number }>(
+      "model://download-progress",
+      (e) => {
+        if (e.payload.model_id === "vad" && e.payload.progress >= 1) {
+          vadDownloaded = true;
+        }
+      },
+    );
+    unlisteners.push(unlistenVad);
     await modelStore.refresh();
     dictateModelId = await invoke<string | null>(
       "settings_get_dictate_model_id",

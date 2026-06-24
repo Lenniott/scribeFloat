@@ -194,13 +194,18 @@ impl VoiceprintController {
         let pcm = read_wav_mono_f32(&wav_path)
             .map_err(|e| format!("failed to read voiceprint clip: {e}"))?;
         let (speech_s, purity) = self.measure_vad_purity(&pcm, duration_s)?;
-        let accepted = purity >= 0.5 && speech_s >= 5.0;
+        // Use a slightly relaxed threshold to buffer against the live amplitude
+        // metric overestimating speech relative to Whisper VAD.
+        let accepted = purity >= 0.45 && speech_s >= 4.5;
 
         if accepted {
             let embedding = self
                 .service
                 .embed(&pcm, WHISPER_SAMPLE_RATE)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| {
+                    let _ = std::fs::remove_file(&wav_path);
+                    e.to_string()
+                })?;
             self.pending_clips
                 .lock()
                 .unwrap_or_else(|p| p.into_inner())
@@ -237,37 +242,46 @@ impl VoiceprintController {
             .remove(&clip_id)
             .ok_or_else(|| format!("voiceprint clip `{clip_id}` is not ready to save"))?;
 
-        let (mut profile, existing) = match self
-            .service
-            .profile_for_name(profile_name)
-            .map_err(|e| e.to_string())?
-        {
-            Some(profile) => (profile, true),
-            None => (
-                self.service
-                    .new_profile(
-                        profile_name,
-                        Some(pending.mic_device_id.clone()),
-                        pending.embedding.clone(),
-                    )
-                    .map_err(|e| e.to_string())?,
-                false,
-            ),
-        };
+        let PendingClip {
+            embedding,
+            mic_device_id,
+            wav_path,
+        } = pending;
 
-        if existing {
-            self.service
-                .update_profile_embedding(&mut profile, &pending.embedding)
-                .map_err(|e| e.to_string())?;
-            if profile.mic_device_id.is_none() {
-                profile.mic_device_id = Some(pending.mic_device_id.clone());
+        let result: Result<(), String> = (|| {
+            let (mut profile, existing) = match self
+                .service
+                .profile_for_name(profile_name)
+                .map_err(|e| e.to_string())?
+            {
+                Some(profile) => (profile, true),
+                None => (
+                    self.service
+                        .new_profile(
+                            profile_name,
+                            Some(mic_device_id.clone()),
+                            embedding.clone(),
+                        )
+                        .map_err(|e| e.to_string())?,
+                    false,
+                ),
+            };
+
+            if existing {
+                self.service
+                    .update_profile_embedding(&mut profile, &embedding)
+                    .map_err(|e| e.to_string())?;
+                if profile.mic_device_id.is_none() {
+                    profile.mic_device_id = Some(mic_device_id.clone());
+                }
             }
-        }
-        self.service
-            .save_profile(&profile)
-            .map_err(|e| e.to_string())?;
-        let _ = std::fs::remove_file(pending.wav_path);
-        Ok(())
+            self.service
+                .save_profile(&profile)
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        })();
+        let _ = std::fs::remove_file(&wav_path);
+        result
     }
 
     pub fn discard_clip(&self, clip_id: String) -> Result<(), String> {

@@ -64,11 +64,15 @@ pub fn voiceprint_start_clip(
 }
 
 #[tauri::command]
-pub fn voiceprint_stop_clip(
+pub async fn voiceprint_stop_clip(
     ctrl: State<'_, Arc<VoiceprintController>>,
     clip_id: String,
 ) -> Result<VoiceprintClipResult, AppError> {
-    ctrl.stop_clip(clip_id).map_err(AppError::from)
+    let ctrl = Arc::clone(&ctrl);
+    tauri::async_runtime::spawn_blocking(move || ctrl.stop_clip(clip_id))
+        .await
+        .map_err(|e| AppError::from(e.to_string()))?
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -115,17 +119,22 @@ pub fn session_capture_status(
 }
 
 #[tauri::command]
-pub fn session_capture_stop(
+pub async fn session_capture_stop(
     ctrl: State<'_, Arc<VoiceprintController>>,
     capture_id: String,
     profile_name: String,
 ) -> Result<VoiceprintClipResult, AppError> {
-    let result = ctrl.stop_clip(capture_id.clone()).map_err(AppError::from)?;
-    if result.accepted {
-        ctrl.commit_clip(capture_id, profile_name)
-            .map_err(AppError::from)?;
-    }
-    Ok(result)
+    let ctrl = Arc::clone(&ctrl);
+    tauri::async_runtime::spawn_blocking(move || -> Result<VoiceprintClipResult, String> {
+        let result = ctrl.stop_clip(capture_id.clone())?;
+        if result.accepted {
+            ctrl.commit_clip(capture_id, profile_name)?;
+        }
+        Ok(result)
+    })
+    .await
+    .map_err(|e| AppError::from(e.to_string()))?
+    .map_err(AppError::from)
 }
 
 #[tauri::command]

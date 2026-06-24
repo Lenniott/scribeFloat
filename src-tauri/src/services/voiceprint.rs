@@ -45,7 +45,7 @@ impl VoiceprintService {
 
     #[allow(dead_code)]
     pub fn set_threshold(&self, threshold: f32) {
-        *self.threshold.write().unwrap_or_else(|p| p.into_inner()) = clamp_threshold(threshold);
+        *self.threshold.write().unwrap_or_else(|p| p.into_inner()) = threshold;
     }
 
     pub async fn download_model(&self, app: &AppHandle) -> Result<()> {
@@ -374,8 +374,15 @@ pub fn label_segments(
         let slice = session_pcm.get(start.min(session_pcm.len())..end.min(session_pcm.len()));
         let label = match slice {
             Some(pcm) if pcm.len() >= sample_rate as usize * 2 => {
-                let embedding = voiceprint_svc.embed(pcm, sample_rate)?;
-                voiceprint_svc.identify_with_threshold(&embedding, &profiles, threshold)
+                match voiceprint_svc.embed(pcm, sample_rate) {
+                    Ok(embedding) => {
+                        voiceprint_svc.identify_with_threshold(&embedding, &profiles, threshold)
+                    }
+                    Err(err) => {
+                        tracing::debug!(error = %err, "embed failed for segment, labelling Other");
+                        "Other".to_string()
+                    }
+                }
             }
             _ => "Other".to_string(),
         };

@@ -100,7 +100,7 @@
 
 	onDestroy(() => {
 		unlisten?.();
-		if (clipId && step !== 'done') {
+		if (clipId && step !== 'done' && step !== 'saving') {
 			void invoke('voiceprint_discard_clip', { clipId }).catch(() => {});
 		}
 	});
@@ -115,6 +115,7 @@
 			await invoke('voiceprint_download_model');
 		} catch (e) {
 			error = `Could not start voiceprint model download: ${appErrorMessage(e)}`;
+		} finally {
 			stop();
 		}
 	}
@@ -133,6 +134,7 @@
 			await invoke('model_vad_download');
 		} catch (e) {
 			error = `Could not prepare voice activity detection: ${appErrorMessage(e)}`;
+		} finally {
 			stop();
 		}
 	}
@@ -179,13 +181,15 @@
 		}
 		error = '';
 		step = 'saving';
+		const id = clipId;
+		clipId = '';
 		try {
-			await invoke('voiceprint_commit_clip', { clipId, profileName: name });
-			clipId = '';
+			await invoke('voiceprint_commit_clip', { clipId: id, profileName: name });
 			step = 'done';
 			if (!isFirstTime) onNext();
 		} catch (e) {
 			error = `Could not save voiceprint: ${appErrorMessage(e)}`;
+			clipId = id;
 			step = 'naming';
 		}
 	}

@@ -550,7 +550,7 @@ pub fn run() {
                     .join("models")
                     .join(services::voiceprint::VOICEPRINT_MODEL_FILE),
                 &data_dir.join("voiceprints"),
-                0.75,
+                config.get().voice_similarity_threshold,
             )?);
             let model_ctrl =
                 controllers::model::ModelController::new(Arc::clone(&model), Arc::clone(&config));

@@ -15,3 +15,5 @@ vite.config.ts.timestamp-*
 /src-tauri/bundled-models/
 /context.claude/worktrees/
 /.claude/worktrees/
+/tools
+.cursor/*.log

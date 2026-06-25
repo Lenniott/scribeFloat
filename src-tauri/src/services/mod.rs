@@ -8,3 +8,4 @@ pub mod output;
 pub mod permissions;
 pub mod transcribe_input;
 pub mod update;
+pub mod voiceprint;

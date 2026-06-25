@@ -1,0 +1,13 @@
+[package]
+name = "voice-probe"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "voice-probe"
+path = "src/main.rs"
+
+[dependencies]
+sherpa-onnx = "1"
+hound = "3.5"
+anyhow = "1"

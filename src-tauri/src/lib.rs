@@ -526,15 +526,51 @@ pub fn run() {
                     }
                 }
             }
+            let vad_dest = models_dir.join(services::model::VAD_MODEL_FILENAME);
+            if !vad_dest.exists() {
+                if let Ok(resource_dir) = app.path().resource_dir() {
+                    let bundled = resource_dir.join(services::model::VAD_MODEL_FILENAME);
+                    if bundled.is_file() {
+                        let _ = std::fs::copy(&bundled, &vad_dest);
+                    }
+                }
+            }
             let model = services::model::ModelService::new(models_dir);
+            if model.vad_model_needs_redownload() {
+                if model.vad_model_available() && !model.vad_model_integrity_ok() {
+                    tracing::warn!("VAD model failed integrity check — re-downloading");
+                    let _ = std::fs::remove_file(model.vad_model_path());
+                }
+                let model_bg = Arc::clone(&model);
+                let app_bg = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(err) = model_bg.download_vad_model(&app_bg).await {
+                        tracing::warn!(error = %err, "startup VAD preparation failed");
+                    }
+                });
+            }
+            let voiceprint = Arc::new(services::voiceprint::VoiceprintService::new(
+                &data_dir
+                    .join("models")
+                    .join(services::voiceprint::VOICEPRINT_MODEL_FILE),
+                &data_dir.join("voiceprints"),
+                config.get().voice_similarity_threshold,
+            )?);
             let model_ctrl =
                 controllers::model::ModelController::new(Arc::clone(&model), Arc::clone(&config));
+            let voiceprint_ctrl = controllers::voiceprint::VoiceprintController::new(
+                Arc::clone(&voiceprint),
+                Arc::clone(&audio),
+                Arc::clone(&config),
+                data_dir.join("voiceprint_clips"),
+            );
             let settings_ctrl = controllers::settings::SettingsController::new(
                 Arc::clone(&config),
                 Arc::clone(&hotkeys),
                 Arc::clone(&output),
                 Arc::clone(&permissions),
                 Arc::clone(&audio),
+                Arc::clone(&voiceprint),
             );
             if let Err(err) = settings_ctrl.rehydrate_hotkeys() {
                 tracing::debug!(error = %err, "hotkey rehydration skipped");
@@ -546,6 +582,7 @@ pub fn run() {
                 Arc::clone(&output),
                 Arc::clone(&history),
                 Arc::clone(&config),
+                Arc::clone(&voiceprint),
                 app.handle().clone(),
             );
 
@@ -574,8 +611,10 @@ pub fn run() {
             let update = services::update::UpdateService::new();
 
             app.manage(model); // shared model service
+            app.manage(voiceprint); // shared voiceprint service
             app.manage(config); // shared config service
             app.manage(model_ctrl); // model command orchestration
+            app.manage(voiceprint_ctrl); // voiceprint command orchestration
             app.manage(settings_ctrl); // settings orchestration
             app.manage(ctrl); // for scribe commands
             app.manage(Arc::clone(&dictate_ctrl)); // for dictate commands
@@ -688,6 +727,20 @@ pub fn run() {
             commands::model::model_vad_status,
             commands::model::model_vad_download,
             commands::model::model_vad_remove,
+            commands::voiceprint::voiceprint_list_profiles,
+            commands::voiceprint::voiceprint_list_profile_names,
+            commands::voiceprint::voiceprint_delete_profile,
+            commands::voiceprint::voiceprint_rename_profile,
+            commands::voiceprint::voiceprint_model_status,
+            commands::voiceprint::voiceprint_download_model,
+            commands::voiceprint::voiceprint_start_clip,
+            commands::voiceprint::voiceprint_stop_clip,
+            commands::voiceprint::voiceprint_commit_clip,
+            commands::voiceprint::voiceprint_discard_clip,
+            commands::voiceprint::session_capture_start,
+            commands::voiceprint::session_capture_status,
+            commands::voiceprint::session_capture_stop,
+            commands::voiceprint::session_capture_cancel,
             commands::settings::settings_get_output_path,
             commands::settings::settings_set_output_path,
             commands::settings::settings_get_hotkeys,
@@ -733,6 +786,10 @@ pub fn run() {
             commands::settings::settings_delete_replacement_rule,
             commands::settings::settings_get_replacement_prefix,
             commands::settings::settings_set_replacement_prefix,
+            commands::settings::settings_get_user_display_name,
+            commands::settings::settings_set_user_display_name,
+            commands::settings::settings_get_voice_similarity_threshold,
+            commands::settings::settings_set_voice_similarity_threshold,
             commands::dictate::dictate_cancel,
             commands::dictate::dictate_dismiss,
             commands::dictate::dictate_get_history,

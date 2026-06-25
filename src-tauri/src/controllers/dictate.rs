@@ -568,20 +568,17 @@ impl DictateController {
         Ok(())
     }
 
-    /// Eagerly load the configured model into the shared context cache while recording.
-    /// Mirrors `ScribeController::spawn_record_start_preload`.
+    /// Warm the model file in the OS page cache while recording. Does not create a
+    /// `WhisperContext` — loading Metal during capture races with stop-and-transcribe.
     fn spawn_record_start_preload(&self) {
         let cfg = self.config.get();
         let path = preload_path_for_dictate(&cfg, &self.model);
         if !self.model.model_available(&path) {
             return;
         }
-        let model = Arc::clone(&self.model);
         tauri::async_runtime::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
-                if let Err(e) = model.get_or_load_context(&path) {
-                    tracing::debug!(error = %e, "dictate record-start model preload failed");
-                }
+                ModelService::warm_model_file_on_disk(&path);
             })
             .await;
         });
@@ -808,11 +805,8 @@ impl DictateController {
             return Ok(false);
         }
 
-        let vad_path = self.model.vad_model_path();
-        let vad = self
-            .model
-            .model_available(&vad_path)
-            .then_some(vad_path.as_path());
+        let vad_path_buf = self.model.vad_path_for_pcm(pcm_16k.len());
+        let vad = vad_path_buf.as_deref();
         let app_clone = self.app.clone();
         let segments = match self.model.transcribe_pcm_with_progress(
             &model_path,

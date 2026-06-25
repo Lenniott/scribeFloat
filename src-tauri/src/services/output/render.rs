@@ -1,4 +1,4 @@
-use crate::types::{Note, ReplacementRule, ReplacementScope, Segment};
+use crate::types::{Note, ReplacementRule, ReplacementScope, Segment, SpeakerBlock};
 
 use super::dedup::{dedup_consecutive_phrases, dedup_repeated_block};
 use super::cleanup::cleanup_text;
@@ -95,6 +95,39 @@ pub fn count_words(segments: &[Segment], rules: &[ReplacementRule], prefix: &str
         .count()
 }
 
+fn format_speaker_time(ms: Option<u64>) -> Option<String> {
+    ms.map(|value| {
+        let total = value / 1000;
+        format!("{:02}:{:02}", total / 60, total % 60)
+    })
+}
+
+pub fn render_speaker_blocks_body(
+    blocks: &[SpeakerBlock],
+    rules: &[ReplacementRule],
+    prefix: &str,
+) -> String {
+    let mut out = String::new();
+    for (index, block) in blocks.iter().enumerate() {
+        if block.text.trim().is_empty() {
+            continue;
+        }
+        if index > 0 {
+            out.push_str("\n\n---\n\n");
+        }
+        out.push_str(&format!("**[{}]**", block.label));
+        if let (Some(start), Some(end)) = (
+            format_speaker_time(block.start_ms),
+            format_speaker_time(block.end_ms),
+        ) {
+            out.push_str(&format!(" · {start}–{end}"));
+        }
+        out.push_str("\n\n");
+        out.push_str(block.text.trim());
+    }
+    apply_replacements(&out, rules, &ReplacementScope::Transcripts, prefix)
+}
+
 /// Render a complete transcript markdown document (YAML front matter + `## Transcript` +
 /// optional `## Notes`, trailing newline). Pure: performs no file I/O.
 pub fn render_transcript_markdown(
@@ -117,7 +150,7 @@ pub fn render_transcript_markdown(
 
     let mut md = String::new();
     md.push_str("---\n");
-    md.push_str(&format!("title: '{}'\n", title.replace('\'', "'")));
+    md.push_str(&format!("title: '{}'\n", title.replace('\'', "''")));
     md.push_str(&format!("duration_seconds: {:.1}\n", duration_seconds));
     md.push_str(&format!("word_count: {word_count}\n"));
     md.push_str(&format!("token_estimate: {token_estimate}\n"));

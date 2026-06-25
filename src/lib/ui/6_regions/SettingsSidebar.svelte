@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ArrowLeft, CircleHelp, Cpu, Replace, Shield, SlidersHorizontal } from 'lucide-svelte';
+	import { ArrowLeft, CircleHelp, Cpu, MicVocal, Replace, Shield, SlidersHorizontal } from 'lucide-svelte';
 	import NavItem from '@components/nav/NavItem.svelte';
 	import { SETTINGS_TABS, type SettingsTab } from '@sections/settingsTypes';
 
@@ -7,6 +7,7 @@
 		general: SlidersHorizontal,
 		permissions: Shield,
 		models: Cpu,
+		voice: MicVocal,
 		replacements: Replace,
 		help: CircleHelp,
 	} as const satisfies Record<SettingsTab, typeof SlidersHorizontal>;

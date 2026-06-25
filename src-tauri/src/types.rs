@@ -122,6 +122,15 @@ pub struct Config {
     /// truth. Dictate never writes `.md` regardless of this flag.
     #[serde(default)]
     pub save_transcripts_as_markdown: bool,
+
+    /// Display name for the user in speaker-labelled transcripts. Default: "You".
+    #[serde(default = "default_user_display_name")]
+    pub user_display_name: String,
+
+    /// Cosine similarity gate for voiceprint matching. Default: 0.75.
+    /// Lower values are more inclusive; higher values are stricter.
+    #[serde(default = "default_voice_similarity_threshold")]
+    pub voice_similarity_threshold: f32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -167,8 +176,18 @@ impl Default for Config {
             replacement_rules: default_replacement_rules(),
             replacement_prefix: default_replacement_prefix(),
             save_transcripts_as_markdown: false,
+            user_display_name: default_user_display_name(),
+            voice_similarity_threshold: default_voice_similarity_threshold(),
         }
     }
+}
+
+fn default_user_display_name() -> String {
+    "You".to_string()
+}
+
+fn default_voice_similarity_threshold() -> f32 {
+    0.75
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -351,6 +370,14 @@ pub struct Segment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpeakerBlock {
+    pub label: String,
+    pub start_ms: Option<u64>,
+    pub end_ms: Option<u64>,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
     pub id: String,
     pub text: String,
@@ -489,6 +516,79 @@ pub struct ModelListItem {
     pub size_mb: u32,
     pub wer: f32,
     pub rtfx: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintProfile {
+    pub name: String,
+    pub slug: String,
+    pub mic_device_id: Option<String>,
+    pub embedding: Vec<f32>,
+    pub sample_count: u32,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintProfileSummary {
+    pub slug: String,
+    pub name: String,
+    pub mic_device_id: Option<String>,
+    pub mic_device_label: Option<String>,
+    pub sample_count: u32,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintModelStatus {
+    pub downloaded: bool,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintModelDownloadEvent {
+    pub progress: f32,
+    pub bytes_downloaded: u64,
+    pub total_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceprintClipState {
+    Pending,
+    Recording,
+    Safe,
+    Optimal,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintClipStatus {
+    pub clip_id: String,
+    pub duration_s: f32,
+    pub speech_s: f32,
+    pub purity: f32,
+    pub state: VoiceprintClipState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionCaptureStart {
+    pub capture_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionCaptureStatus {
+    pub capture_id: String,
+    pub speech_s: f32,
+    pub purity: f32,
+    pub state: VoiceprintClipState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintClipResult {
+    pub duration_s: f32,
+    pub speech_s: f32,
+    pub purity: f32,
+    pub accepted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -635,6 +735,8 @@ pub struct HistoryRecord {
     pub model: String,
     /// Raw merged segments (preserving `in:`/`out:` speaker labels) — re-renderable.
     pub segments: Vec<Segment>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub speaker_blocks: Vec<SpeakerBlock>,
     #[serde(default)]
     pub notes: Vec<Note>,
     pub duration_ms: i64,
@@ -730,6 +832,7 @@ impl HistoryRecord {
             title,
             model,
             segments,
+            speaker_blocks: Vec::new(),
             notes,
             duration_ms,
             word_count,

@@ -166,11 +166,13 @@ impl HistoryService {
     }
 
     /// Attach transcript segments to an existing note (log-structured update).
+    #[allow(clippy::too_many_arguments)]
     pub fn update_segments(
         &self,
         save_folder: &str,
         id: &str,
         segments: Vec<crate::types::Segment>,
+        speaker_blocks: Vec<crate::types::SpeakerBlock>,
         notes: Vec<crate::types::Note>,
         model: String,
         speaker_capture: bool,
@@ -187,8 +189,23 @@ impl HistoryService {
             return Ok(());
         };
         let mut updated = inner.records[idx].clone();
-        updated.segments = segments;
-        updated.notes = notes;
+        let offset_ms = updated.duration_ms.max(0);
+        updated.segments.extend(segments.into_iter().map(|mut segment| {
+            segment.start_ms = segment.start_ms.saturating_add(offset_ms);
+            segment.end_ms = segment.end_ms.saturating_add(offset_ms);
+            segment
+        }));
+        updated
+            .speaker_blocks
+            .extend(speaker_blocks.into_iter().map(|mut block| {
+                block.start_ms = block.start_ms.map(|ms| ms.saturating_add(offset_ms as u64));
+                block.end_ms = block.end_ms.map(|ms| ms.saturating_add(offset_ms as u64));
+                block
+            }));
+        updated.notes.extend(notes.into_iter().map(|mut note| {
+            note.recorded_at_ms = note.recorded_at_ms.saturating_add(offset_ms as u64);
+            note
+        }));
         updated.model = model;
         updated.speaker_capture = speaker_capture;
         updated.dual_source = dual_source;
@@ -200,7 +217,7 @@ impl HistoryService {
         updated.duration_ms = updated
             .segments
             .last()
-            .map(|s| s.end_ms.max(0) as i64)
+            .map(|s| s.end_ms.max(0))
             .unwrap_or(0);
         updated.word_count =
             crate::services::output::count_words(&updated.segments, rules, prefix);
@@ -521,6 +538,7 @@ mod tests {
             &id,
             segments,
             vec![],
+            vec![],
             "base".into(),
             false,
             false,
@@ -537,6 +555,74 @@ mod tests {
         assert_eq!(got.segments.len(), 2);
         assert!(got.duration_ms > 0);
         assert_eq!(got.model, "base");
+    }
+
+    #[test]
+    fn update_segments_appends_when_called_twice() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let rec = crate::types::HistoryRecord::from_written("Draft".into());
+        let id = svc.append(&folder, rec).expect("append");
+
+        svc.update_segments(
+            &folder,
+            &id,
+            vec![Segment {
+                start_ms: 0,
+                end_ms: 1_000,
+                text: "first".into(),
+            }],
+            vec![],
+            vec![crate::types::Note {
+                id: "note-1".into(),
+                text: "marker".into(),
+                recorded_at_ms: 500,
+            }],
+            "base".into(),
+            false,
+            false,
+            None,
+            None,
+            None,
+            &[],
+            "",
+        )
+        .expect("first attach");
+
+        svc.update_segments(
+            &folder,
+            &id,
+            vec![Segment {
+                start_ms: 0,
+                end_ms: 2_000,
+                text: "second".into(),
+            }],
+            vec![],
+            vec![crate::types::Note {
+                id: "note-2".into(),
+                text: "second marker".into(),
+                recorded_at_ms: 250,
+            }],
+            "base".into(),
+            false,
+            false,
+            None,
+            None,
+            None,
+            &[],
+            "",
+        )
+        .expect("second attach");
+
+        let got = svc.get(&folder, &id).unwrap().expect("present");
+        assert_eq!(got.segments.len(), 2);
+        assert_eq!(got.segments[0].text, "first");
+        assert_eq!(got.segments[1].text, "second");
+        assert_eq!(got.segments[1].start_ms, 1_000);
+        assert_eq!(got.segments[1].end_ms, 3_000);
+        assert_eq!(got.notes.len(), 2);
+        assert_eq!(got.notes[1].recorded_at_ms, 1_250);
+        assert_eq!(got.duration_ms, 3_000);
     }
 
     #[test]

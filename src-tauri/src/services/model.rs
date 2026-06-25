@@ -16,6 +16,13 @@ use whisper_rs::{
 /// ggml's own scaling curve — adding threads beyond that on speech-length audio is a wash.
 const MAX_INFERENCE_THREADS: usize = 8;
 
+/// Absolute minimum PCM length passed to Whisper (100 ms at 16 kHz).
+pub const MIN_PCM_SAMPLES_16K: usize = 1_600;
+
+/// Silero VAD on shorter clips often strips all speech; the encoder then fails with
+/// `GenericError(-6)` even though the model and PCM shape are valid.
+const VAD_MIN_PCM_SAMPLES: usize = 32_000;
+
 pub const SMALL_MODEL_FILENAME: &str = "ggml-small.en-q5_1.bin";
 
 pub const VAD_MODEL_FILENAME: &str = "ggml-silero-v6.2.0.bin";
@@ -217,6 +224,67 @@ impl ModelService {
 
     pub fn vad_model_available(&self) -> bool {
         self.model_available(&self.vad_model_path())
+    }
+
+    /// Whether the on-disk VAD file matches the catalog SHA-256.
+    pub fn vad_model_integrity_ok(&self) -> bool {
+        let path = self.vad_model_path();
+        if !self.vad_model_available() {
+            return false;
+        }
+        let Some(expected) = VAD_MODEL_SHA256 else {
+            return true;
+        };
+        file_sha256_hex(&path)
+            .map(|actual| actual == expected.to_ascii_lowercase())
+            .unwrap_or(false)
+    }
+
+    /// True when VAD is missing or fails the integrity check (stale manual download).
+    pub fn vad_model_needs_redownload(&self) -> bool {
+        !self.vad_model_available() || !self.vad_model_integrity_ok()
+    }
+
+    /// VAD model path when the file is present, passes integrity, and PCM is long enough
+    /// for Silero trimming without starving the encoder.
+    pub fn vad_path_for_pcm(&self, pcm_samples: usize) -> Option<PathBuf> {
+        if pcm_samples < VAD_MIN_PCM_SAMPLES {
+            return None;
+        }
+        self.vad_path_for_inference()
+    }
+
+    /// VAD model path when the file is present and passes the catalog SHA-256 check.
+    pub fn vad_path_for_inference(&self) -> Option<PathBuf> {
+        (self.vad_model_available() && self.vad_model_integrity_ok()).then(|| self.vad_model_path())
+    }
+
+    /// Whether a catalog Whisper model on disk matches its published SHA-256.
+    /// Custom/non-catalog paths skip verification and only require a non-empty file.
+    pub fn whisper_model_integrity_ok(&self, model_path: &Path) -> bool {
+        if !self.model_available(model_path) {
+            return false;
+        }
+        let Some(expected) = self.catalog_sha256_for_path(model_path) else {
+            return true;
+        };
+        file_sha256_hex(model_path)
+            .map(|actual| actual == expected.to_ascii_lowercase())
+            .unwrap_or(false)
+    }
+
+    pub fn whisper_model_bytes(&self, model_path: &Path) -> u64 {
+        std::fs::metadata(model_path)
+            .map(|m| m.len())
+            .unwrap_or(0)
+    }
+
+    fn catalog_sha256_for_path(&self, model_path: &Path) -> Option<&'static str> {
+        let name = model_path.file_name()?.to_str()?;
+        MODEL_CATALOG
+            .iter()
+            .find(|item| item.file_name == name)
+            .and_then(|item| item.sha256)
     }
 
     pub async fn download_vad_model(&self, app: &AppHandle) -> Result<()> {
@@ -477,6 +545,12 @@ impl ModelService {
         }
     }
 
+    /// Read the model file into the OS page cache without creating a `WhisperContext`.
+    /// Safe to run while recording — unlike `get_or_load_context`, this does not touch Metal.
+    pub fn warm_model_file_on_disk(model_path: &Path) {
+        let _ = std::fs::read(model_path);
+    }
+
     /// Load a Whisper context for `model_path`, or return the cached one. Loads block on
     /// disk I/O and model parsing, so callers should invoke this from `spawn_blocking` (or
     /// off the async runtime). Subsequent calls for the same path are O(hash lookup).
@@ -556,11 +630,28 @@ impl ModelService {
     /// Evicts any cached GPU context so it is reloaded with `use_gpu = false`.
     fn mark_cpu_fallback(&self, path: &Path) {
         let path = path.to_path_buf();
-        self.lock_contexts().remove(&path);
+        self.evict_context(&path);
         self.cpu_fallback_paths
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .insert(path);
+    }
+
+    /// Drop a cached `WhisperContext` so the next inference loads a fresh one.
+    /// Reusing a context after Metal encode failures can poison later passes.
+    fn evict_context(&self, model_path: &Path) {
+        self.lock_contexts().remove(model_path);
+    }
+
+    /// Clear the sticky CPU-only flag for `model_path` so the next transcription
+    /// retries GPU. Evicts any cached context so `get_or_load_context` does not
+    /// return a CPU-only context left over from a prior failure.
+    fn reset_gpu_preference(&self, model_path: &Path) {
+        self.cpu_fallback_paths
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(model_path);
+        self.evict_context(model_path);
     }
 
     /// Transcribe mono f32 PCM at 16 kHz and report Whisper's own progress.
@@ -570,8 +661,9 @@ impl ModelService {
     ///
     /// On GPU encode failure (e.g. Metal `GenericError(-6)` on M1) the context is evicted and
     /// the inference is retried automatically on CPU. If encode still fails with Silero VAD
-    /// enabled, a final retry runs without VAD. Subsequent calls for the same model path
-    /// use CPU without re-attempting GPU.
+    /// enabled, a final retry runs without VAD. GPU is retried again on the next transcription.
+    ///
+    /// Long audio uses whisper.cpp's internal seek/windowing — do not pre-chunk PCM here.
     ///
     /// `source` identifies the caller workflow (e.g. `"scribe/mic"`) for failure diagnostics.
     pub fn transcribe_pcm_with_progress<F>(
@@ -590,6 +682,50 @@ impl ModelService {
             .inference_gate
             .lock()
             .unwrap_or_else(|p| p.into_inner());
+        self.reset_gpu_preference(model_path);
+
+        if let Some(expected) = self.catalog_sha256_for_path(model_path) {
+            if !self.whisper_model_integrity_ok(model_path) {
+                let actual = file_sha256_hex(model_path).unwrap_or_default();
+                return Err(anyhow!(
+                    "Whisper model failed SHA-256 integrity check (expected {expected}, got {actual}). Re-download from Settings."
+                ));
+            }
+        } else if !self.model_available(model_path) {
+            return Err(anyhow!(
+                "Whisper model not found at {}",
+                model_path.display()
+            ));
+        }
+
+        if pcm.is_empty() {
+            return Err(anyhow!("cannot transcribe empty PCM buffer"));
+        }
+        if pcm.len() < MIN_PCM_SAMPLES_16K {
+            return Err(anyhow!(
+                "recording too short to transcribe ({} samples, need at least {})",
+                pcm.len(),
+                MIN_PCM_SAMPLES_16K
+            ));
+        }
+        let pcm_diag = pcm_diagnostics(pcm);
+        if pcm_diag.nan_count > 0 || pcm_diag.inf_count > 0 {
+            return Err(anyhow!(
+                "PCM contains invalid samples (nan={}, inf={})",
+                pcm_diag.nan_count,
+                pcm_diag.inf_count
+            ));
+        }
+
+        let vad_model_path = vad_model_path.filter(|_| pcm.len() >= VAD_MIN_PCM_SAMPLES);
+        if vad_model_path.is_none() && pcm.len() < VAD_MIN_PCM_SAMPLES {
+            tracing::debug!(
+                source,
+                pcm_samples = pcm.len(),
+                "VAD disabled for short clip"
+            );
+        }
+
         let on_progress = Arc::new(Mutex::new(on_progress));
         let vad_requested = vad_model_path.is_some();
         let mut gpu_retried = false;
@@ -601,6 +737,10 @@ impl ModelService {
             abort.clone(),
             Arc::clone(&on_progress),
         );
+
+        if abort.as_ref().is_some_and(|a| a.load(Ordering::SeqCst)) {
+            return Ok(Vec::new());
+        }
 
         if matches!(&result, Err(InferError::Encode(_))) && self.uses_gpu_for(model_path) {
             if let Err(InferError::Encode(ref e)) = result {
@@ -636,6 +776,10 @@ impl ModelService {
             );
         }
 
+        if abort.as_ref().is_some_and(|a| a.load(Ordering::SeqCst)) {
+            return Ok(Vec::new());
+        }
+
         if matches!(&result, Err(InferError::Encode(_))) && vad_requested {
             if let Err(InferError::Encode(ref e)) = result {
                 self.record_encode_failure(
@@ -667,7 +811,16 @@ impl ModelService {
         }
 
         match result {
-            Ok(segments) => Ok(segments),
+            Ok(segments) => {
+                if segments.is_empty() {
+                    tracing::debug!(
+                        source,
+                        pcm_samples = pcm.len(),
+                        "whisper returned no segments (silence or skipped chunk)"
+                    );
+                }
+                Ok(segments)
+            }
             Err(InferError::Encode(e)) => {
                 self.record_encode_failure(
                     source,
@@ -706,12 +859,17 @@ impl ModelService {
         error: &anyhow::Error,
     ) {
         let diag = pcm_diagnostics(pcm);
+        let model_integrity_ok = self.whisper_model_integrity_ok(model_path);
+        let model_bytes = self.whisper_model_bytes(model_path);
+        let model_sha256 = file_sha256_hex(model_path).ok();
         tracing::error!(
             source,
             attempt,
             retried_from_gpu,
             use_gpu,
             vad_enabled,
+            model_integrity_ok,
+            model_bytes,
             model = model_path
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
@@ -738,6 +896,9 @@ impl ModelService {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| model_path.display().to_string()),
+            model_bytes,
+            model_integrity_ok,
+            model_sha256,
             pcm_samples: diag.samples,
             duration_secs: diag.duration_secs,
             rms: diag.rms,
@@ -802,12 +963,10 @@ impl ModelService {
                 f(p);
             }
         });
-        // Let an in-flight inference be interrupted: whisper.cpp polls this between work units
-        // and bails out of `full()` early when it returns true. Without this, an abort is only
-        // observed after the entire pass completes.
-        if let Some(abort) = abort {
-            params.set_abort_callback_safe(move || abort.load(Ordering::SeqCst));
-        }
+        // Do not call `set_abort_callback_safe` — on whisper-rs 0.16 / Metal, registering
+        // an abort callback (even one that always returns false) can fail encode with
+        // GenericError(-6). Cooperative cancel is checked via `abort_flag` between retries.
+        let _abort = abort;
 
         let infer_started = Instant::now();
         match state.full(params, pcm) {
@@ -981,6 +1140,9 @@ struct TranscriptionFailureRecord {
     use_gpu: bool,
     vad_enabled: bool,
     model: String,
+    model_bytes: u64,
+    model_integrity_ok: bool,
+    model_sha256: Option<String>,
     pcm_samples: usize,
     duration_secs: f64,
     rms: f64,
@@ -1115,6 +1277,101 @@ mod tests {
                 .unwrap()
                 .join("transcription-failures.jsonl")
         );
+    }
+
+    #[test]
+    fn vad_model_needs_redownload_when_corrupt() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        assert!(svc.vad_model_needs_redownload());
+
+        let path = dir.join(VAD_MODEL_FILENAME);
+        std::fs::write(&path, b"not a real vad model").unwrap();
+        assert!(svc.vad_model_available());
+        assert!(!svc.vad_model_integrity_ok());
+        assert!(svc.vad_model_needs_redownload());
+        assert!(svc.vad_path_for_inference().is_none());
+    }
+
+    #[test]
+    fn vad_path_for_pcm_skips_short_clips() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        let path = dir.join(VAD_MODEL_FILENAME);
+        // Write bytes that won't match SHA but path exists — integrity fails, so inference path is None.
+        std::fs::write(&path, b"stub").unwrap();
+        assert!(svc.vad_path_for_pcm(16_000).is_none());
+        assert!(svc.vad_path_for_pcm(32_000).is_none());
+    }
+
+    #[test]
+    fn whisper_model_integrity_fails_when_catalog_hash_mismatch() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        let path = dir.join("ggml-tiny.en-q5_1.bin");
+        std::fs::write(&path, b"truncated or corrupt download").unwrap();
+        assert!(svc.model_available(&path));
+        assert!(!svc.whisper_model_integrity_ok(&path));
+    }
+
+    #[test]
+    fn whisper_model_integrity_skips_non_catalog_paths() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        let path = dir.join("custom-whisper.bin");
+        std::fs::write(&path, [1, 2, 3]).unwrap();
+        assert!(svc.whisper_model_integrity_ok(&path));
+    }
+
+    #[test]
+    #[ignore = "hardware: set SCRIBE_REGRESSION_WAV to a saved scribe mic.wav"]
+    fn transcribe_saved_scribe_mic_wav_matches_dictate_path() {
+        use crate::services::audio::read_wav_mono_f32;
+        let wav = std::env::var("SCRIBE_REGRESSION_WAV")
+            .map(PathBuf::from)
+            .ok()
+            .filter(|p| p.exists());
+        let Some(wav) = wav else {
+            eprintln!("skip: set SCRIBE_REGRESSION_WAV to a scribe session mic.wav");
+            return;
+        };
+        let models_dir = std::env::var("SCRIBEFLOAT_MODELS_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                PathBuf::from(
+                    "/Users/benjamin/Library/Application Support/com.benjamin.scribefloat-v8/models",
+                )
+            });
+        let model_path = models_dir.join("ggml-tiny.en-q5_1.bin");
+        if !model_path.exists() {
+            eprintln!("skip: tiny model not present at {}", model_path.display());
+            return;
+        }
+        let svc = ModelService::new(models_dir);
+        let pcm = read_wav_mono_f32(&wav).expect("read scribe mic.wav");
+        eprintln!("pcm samples = {}", pcm.len());
+        let result = svc.transcribe_pcm_with_progress(
+            &model_path,
+            &pcm,
+            svc.vad_path_for_pcm(pcm.len()).as_deref(),
+            None,
+            "test/scribe-wav",
+            |_| {},
+        );
+        eprintln!("result = {result:?}");
+        result.expect("scribe session wav should transcribe via dictate-identical path");
+    }
+
+    #[test]
+    fn reset_gpu_preference_clears_cpu_fallback_and_evicts_context() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir);
+        let path = Path::new("/tmp/gpu_reset_test_model.bin");
+        svc.mark_cpu_fallback(path);
+        assert!(svc.cpu_fallback_paths.lock().unwrap().contains(path));
+        svc.reset_gpu_preference(path);
+        assert!(!svc.cpu_fallback_paths.lock().unwrap().contains(path));
+        assert!(svc.lock_contexts().get(path).is_none());
     }
 
     #[test]

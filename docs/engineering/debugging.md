@@ -36,6 +36,38 @@ Whisper runs inside `tokio::task::spawn_blocking`. If you add logging or timing 
 
 The `on_tick` callback is called per Whisper segment. If progress appears stuck, the model is still running — Whisper does not yield between segments on a chunk.
 
+Scribe finalizes mic audio (`prepare_audio`) synchronously in `stop_and_save` before emitting `TRANSCRIBING`; only Whisper runs on the background blocking task.
+
+Long recordings use whisper.cpp's internal seek/windowing — do not pre-chunk PCM in `services/model.rs`. Manual 10 s windows were a regression source.
+
+Silero VAD is disabled for clips under ~2 s (`VAD_MIN_PCM_SAMPLES`); shorter audio with VAD enabled often fails encode with `GenericError(-6)` because VAD strips all speech.
+
+Record-start preload only warms the model file in the OS page cache (`warm_model_file_on_disk`) — it does not load a `WhisperContext` during capture, which would race with stop-and-transcribe on Metal.
+
+Voiceprint enrollment uses live mic-level frame counts for clip purity — it does not call `transcribe_pcm_with_progress` (which previously shared Metal state with Scribe).
+
+On GPU encode failure (Metal `GenericError(-6)` on M1), `transcribe_pcm_with_progress` retries on CPU, then without VAD if needed. The cached `WhisperContext` is reused across retries (fresh `WhisperState` per attempt); only `mark_cpu_fallback` evicts after a GPU encode failure. GPU is retried again on the next transcription.
+
+An empty segment list after a successful `whisper_full` (whisper log: `single timestamp ending - skip entire chunk`) is normal silence/skipped-window behaviour — not an encode failure.
+
+Do not wire `set_abort_callback_safe` on whisper-rs 0.16 / Metal — even when the flag is false, encode can fail with `GenericError(-6)`. Scribe used to pass an abort handle; Dictate never did. Cooperative cancel is checked between retry attempts instead.
+
+### Known quirks (FYI for maintainers)
+
+**Scribe encode failed with `GenericError(-6)` but Dictate worked** — Fixed by not registering Whisper's abort callback on Metal. Same audio, same model; only Scribe wired that callback.
+
+**Cancel during transcription** — Cancel is checked between GPU → CPU → no-VAD retries, not mid-pass. The user may wait a few seconds for the current attempt to finish. Tradeoff for reliable encode on M1.
+
+**Model reload each recording** — Each transcription clears the cached Whisper context so the next recording starts fresh on GPU. Slightly more load time after stop; avoids getting stuck after a failed attempt.
+
+**Silence skipping (VAD) on short clips** — Disabled under ~2 s. Very short recordings transcribe without VAD so the encoder is not fed an empty buffer.
+
+**Voiceprint enrollment** — Clip quality uses the live mic level meter, not a Whisper pass. Avoids fighting Scribe for the same GPU.
+
+**Dual-source (mic + speaker)** — Mic and speaker each get their own VAD yes/no decision based on that track's length (`vad_path_for_pcm` per channel in `scribe.rs` and `transcribe.rs`).
+
+**Regression test for a saved session WAV** — `transcribe_saved_scribe_mic_wav_matches_dictate_path` is `#[ignore]` and only runs when `SCRIBE_REGRESSION_WAV` points at a real `mic.wav` on the developer machine.
+
 ---
 
 ## Unexplained numeric constants

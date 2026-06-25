@@ -536,7 +536,11 @@ pub fn run() {
                 }
             }
             let model = services::model::ModelService::new(models_dir);
-            if !model.vad_model_available() {
+            if model.vad_model_needs_redownload() {
+                if model.vad_model_available() && !model.vad_model_integrity_ok() {
+                    tracing::warn!("VAD model failed integrity check — re-downloading");
+                    let _ = std::fs::remove_file(model.vad_model_path());
+                }
                 let model_bg = Arc::clone(&model);
                 let app_bg = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
@@ -557,7 +561,6 @@ pub fn run() {
             let voiceprint_ctrl = controllers::voiceprint::VoiceprintController::new(
                 Arc::clone(&voiceprint),
                 Arc::clone(&audio),
-                Arc::clone(&model),
                 Arc::clone(&config),
                 data_dir.join("voiceprint_clips"),
             );

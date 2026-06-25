@@ -343,7 +343,7 @@ graph TB
 
 **Loading strategy:**
 - Whisper contexts cached in `ModelService` keyed by model path (`get_or_load_context`) — eliminates cold-load on every transcribe
-- Tiny/base models preloaded in background when a Scribe or Dictate recording starts (`PRELOAD_ELIGIBLE_MODEL_IDS` in `services/model.rs`)
+- Record-start preload warms the model file in the OS page cache (`warm_model_file_on_disk`) — does not create a `WhisperContext` during capture
 - Transcribe model → loaded when a Transcribe job starts
 - Inference thread count capped at physical cores (max 8)
 

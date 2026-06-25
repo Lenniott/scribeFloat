@@ -231,18 +231,15 @@ impl TranscribeController {
                 }
             };
 
-            let vad_path = self.model.vad_model_path();
-            let vad = self
-                .model
-                .model_available(&vad_path)
-                .then_some(vad_path.as_path());
+            let mic_vad = self.model.vad_path_for_pcm(decoded.mic_pcm_16k.len());
+            let mic_vad = mic_vad.as_deref();
             let segments = if let Some(speaker_pcm) = decoded.speaker_pcm_16k.as_ref() {
                 let mic_segments = self
                     .model
                     .transcribe_pcm_with_progress(
                         model_path,
                         &decoded.mic_pcm_16k,
-                        vad,
+                        mic_vad,
                         None,
                         "transcribe/mic",
                         {
@@ -277,12 +274,13 @@ impl TranscribeController {
                     }
                 };
 
+                let speaker_vad = self.model.vad_path_for_pcm(speaker_pcm.len());
                 let speaker_segments = self
                     .model
                     .transcribe_pcm_with_progress(
                         model_path,
                         speaker_pcm,
-                        vad,
+                        speaker_vad.as_deref(),
                         None,
                         "transcribe/speaker",
                         {
@@ -323,7 +321,7 @@ impl TranscribeController {
                 match self.model.transcribe_pcm_with_progress(
                     model_path,
                     &decoded.mic_pcm_16k,
-                    vad,
+                    mic_vad,
                     None,
                     "transcribe/mic",
                     {

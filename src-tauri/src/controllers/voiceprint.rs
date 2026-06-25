@@ -1,9 +1,8 @@
 use crate::services::audio::{read_wav_mono_f32, AudioService, MicSession, WHISPER_SAMPLE_RATE};
 use crate::services::config::ConfigService;
-use crate::services::model::ModelService;
 use crate::services::voiceprint::{profile_summary, VoiceprintService};
 use crate::types::{
-    Config, VoiceprintClipResult, VoiceprintClipState, VoiceprintClipStatus, VoiceprintModelStatus,
+    VoiceprintClipResult, VoiceprintClipState, VoiceprintClipStatus, VoiceprintModelStatus,
     VoiceprintProfileSummary,
 };
 use std::collections::HashMap;
@@ -17,7 +16,6 @@ use tauri::{AppHandle, Emitter};
 pub struct VoiceprintController {
     service: Arc<VoiceprintService>,
     audio: Arc<AudioService>,
-    model: Arc<ModelService>,
     config: Arc<ConfigService>,
     clips_dir: PathBuf,
     active_clips: Mutex<HashMap<String, ActiveClip>>,
@@ -28,14 +26,12 @@ impl VoiceprintController {
     pub fn new(
         service: Arc<VoiceprintService>,
         audio: Arc<AudioService>,
-        model: Arc<ModelService>,
         config: Arc<ConfigService>,
         clips_dir: PathBuf,
     ) -> Arc<Self> {
         Arc::new(Self {
             service,
             audio,
-            model,
             config,
             clips_dir,
             active_clips: Mutex::new(HashMap::new()),
@@ -192,11 +188,11 @@ impl VoiceprintController {
             .stop_and_finalize()
             .map_err(|e| format!("failed to stop voiceprint clip: {e}"))?;
         let duration_s = active.started_at.elapsed().as_secs_f32();
+        let counters = *active.counters.lock().unwrap_or_else(|p| p.into_inner());
+        let purity = counters.purity();
+        let speech_s = duration_s * purity;
         let pcm = read_wav_mono_f32(&wav_path)
             .map_err(|e| format!("failed to read voiceprint clip: {e}"))?;
-        let (speech_s, purity) = self.measure_vad_purity(&pcm, duration_s)?;
-        // Use a slightly relaxed threshold to buffer against the live amplitude
-        // metric overestimating speech relative to Whisper VAD.
         let accepted = purity >= 0.45 && speech_s >= 4.5;
 
         if accepted {
@@ -308,44 +304,6 @@ impl VoiceprintController {
         }
         Ok(())
     }
-
-    fn measure_vad_purity(&self, pcm: &[f32], duration_s: f32) -> Result<(f32, f32), String> {
-        let vad_path = self.model.vad_model_path();
-        if !self.model.model_available(&vad_path) {
-            return Err("Silero VAD model is required for voiceprint enrollment".to_string());
-        }
-
-        let model_path = resolve_voiceprint_model_path(&self.config.get(), &self.model);
-        if !self.model.model_available(&model_path) {
-            return Err(
-                "a Whisper transcription model is required before enrolling a voiceprint"
-                    .to_string(),
-            );
-        }
-
-        let segments = self
-            .model
-            .transcribe_pcm_with_progress(
-                &model_path,
-                pcm,
-                Some(vad_path.as_path()),
-                None,
-                "voiceprint/enroll-vad",
-                |_| {},
-            )
-            .map_err(|e| format!("failed to run VAD purity check: {e}"))?;
-        let speech_s = segments
-            .iter()
-            .map(|segment| (segment.end_ms - segment.start_ms).max(0) as f32 / 1000.0)
-            .sum::<f32>()
-            .min(duration_s.max(0.0));
-        let purity = if duration_s > 0.0 {
-            (speech_s / duration_s).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        Ok((speech_s, purity))
-    }
 }
 
 struct ActiveClip {
@@ -430,23 +388,6 @@ fn normalize_clip_id(value: &str) -> Result<String, String> {
     }
 }
 
-fn resolve_voiceprint_model_path(config: &Config, model: &ModelService) -> PathBuf {
-    if let Some(model_id) = &config.selected_model_id {
-        if let Some(path) = model.model_path_for_id(model_id) {
-            if model.model_available(&path) {
-                return path;
-            }
-        }
-    }
-    if let Some(path) = &config.scribe_model_path {
-        let path = PathBuf::from(path);
-        if model.model_available(&path) {
-            return path;
-        }
-    }
-    model.default_model_path()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -470,11 +411,9 @@ mod tests {
         )
         .unwrap();
         let config = ConfigService::load(root.join("config.json")).unwrap();
-        let model = ModelService::new(root.join("models"));
         let ctrl = VoiceprintController::new(
             Arc::new(svc),
             AudioService::new(),
-            model,
             config,
             root.join("clips"),
         );

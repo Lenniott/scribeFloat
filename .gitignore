@@ -16,3 +16,4 @@ vite.config.ts.timestamp-*
 /context.claude/worktrees/
 /.claude/worktrees/
 /tools
+.cursor/*.log

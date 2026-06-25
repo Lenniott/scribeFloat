@@ -169,6 +169,7 @@ pub fn note_attach_transcript(
         .attach_transcript(
             &id,
             pending.segments,
+            pending.speaker_blocks,
             pending.notes,
             pending.model,
             pending.speaker_capture,

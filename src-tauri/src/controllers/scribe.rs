@@ -80,6 +80,7 @@ enum ProgressMessage {
 /// Transcript payload held after note-editor recording completes, until `note_attach_transcript`.
 pub struct PendingAttach {
     pub segments: Vec<Segment>,
+    pub speaker_blocks: Vec<SpeakerBlock>,
     pub notes: Vec<Note>,
     pub model: String,
     pub speaker_capture: bool,
@@ -312,19 +313,16 @@ impl ScribeController {
         );
     }
 
-    /// Eagerly load the configured model into the shared context cache while recording,
-    /// so transcription on stop skips the cold-load delay (~300 ms tiny → ~2 s large).
+    /// Warm the model file in the OS page cache while recording. Does not create a
+    /// `WhisperContext` — loading Metal during capture races with stop-and-transcribe.
     fn spawn_record_start_preload(&self, cfg: &Config) {
         let path = preload_path_for_config(cfg, &self.model);
         if !self.model.model_available(&path) {
             return;
         }
-        let model = Arc::clone(&self.model);
         tauri::async_runtime::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
-                if let Err(e) = model.get_or_load_context(&path) {
-                    tracing::debug!(error = %e, "record-start model preload failed");
-                }
+                ModelService::warm_model_file_on_disk(&path);
             })
             .await;
         });
@@ -758,17 +756,16 @@ impl ScribeController {
             }
         });
 
-        let vad_path = self.model.vad_model_path();
-        let vad = self
-            .model
-            .model_available(&vad_path)
-            .then_some(vad_path.as_path());
+        // Re-read mic.wav on the blocking thread (same as Dictate) so transcription
+        // always sees the finalized file, not a buffer prepared on the async runtime.
+        let pcm_16k = read_wav_mono_f32(&prepared.wav_path)?;
+        let mic_vad = self.model.vad_path_for_pcm(pcm_16k.len());
         let segments = if let Some(speaker_pcm) = &prepared.speaker_pcm_16k {
             let tx1 = progress_tx.clone();
             let mic_segs = self.model.transcribe_pcm_with_progress(
                 model_path,
-                &prepared.pcm_16k,
-                vad,
+                &pcm_16k,
+                mic_vad.as_deref(),
                 Some(Arc::clone(abort_flag)),
                 "scribe/mic",
                 move |p| {
@@ -782,10 +779,11 @@ impl ScribeController {
                 return Ok(Vec::new());
             }
             let tx2 = progress_tx.clone();
+            let speaker_vad = self.model.vad_path_for_pcm(speaker_pcm.len());
             let speaker_segs = self.model.transcribe_pcm_with_progress(
                 model_path,
                 speaker_pcm,
-                vad,
+                speaker_vad.as_deref(),
                 Some(Arc::clone(abort_flag)),
                 "scribe/speaker",
                 move |p| {
@@ -798,8 +796,8 @@ impl ScribeController {
             let tx = progress_tx.clone();
             self.model.transcribe_pcm_with_progress(
                 model_path,
-                &prepared.pcm_16k,
-                vad,
+                &pcm_16k,
+                mic_vad.as_deref(),
                 Some(Arc::clone(abort_flag)),
                 "scribe/mic",
                 move |p| {
@@ -935,6 +933,7 @@ impl ScribeController {
         let history_record_id = if attach_note_id.is_some() {
             self.lock().pending_attach = Some(PendingAttach {
                 segments: segments.to_vec(),
+                speaker_blocks: speaker_blocks.to_vec(),
                 notes: notes.to_vec(),
                 model: model_name,
                 speaker_capture,

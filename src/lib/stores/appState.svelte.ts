@@ -17,6 +17,7 @@ class AppState {
 	settingsTab = $state<SettingsTab>('general');
 	captureLeaveGuard = $state<((proceed: () => void) => void) | null>(null);
 	noteLeaveGuard = $state<((proceed: () => void, cancel: () => void) => void) | null>(null);
+	scribeLeaveGuard = $state<((proceed: () => void, cancel: () => void) => void) | null>(null);
 }
 
 export const appState = new AppState();

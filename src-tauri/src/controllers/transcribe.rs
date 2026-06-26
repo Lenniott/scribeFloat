@@ -3,6 +3,7 @@ use crate::services::history::HistoryService;
 use crate::services::model::ModelService;
 use crate::services::output::OutputService;
 use crate::services::transcribe_input::{TranscribeInputItem, TranscribeInputService};
+use crate::services::voiceprint::{label_segments, VoiceprintService};
 use crate::types::{
     Config, HistoryRecord, ProcessingStage, TranscribeItemStatus, TranscribeQueueItem,
     TranscribeState, TranscribeStateEvent,
@@ -29,6 +30,7 @@ pub struct TranscribeController {
     output: Arc<OutputService>,
     history: Arc<HistoryService>,
     config: Arc<ConfigService>,
+    voiceprint: Arc<VoiceprintService>,
     app: AppHandle,
 }
 
@@ -39,6 +41,7 @@ impl TranscribeController {
         output: Arc<OutputService>,
         history: Arc<HistoryService>,
         config: Arc<ConfigService>,
+        voiceprint: Arc<VoiceprintService>,
         app: AppHandle,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -50,6 +53,7 @@ impl TranscribeController {
             output,
             history,
             config,
+            voiceprint,
             app,
         })
     }
@@ -365,20 +369,41 @@ impl TranscribeController {
             );
 
             let dual_source = decoded.speaker_pcm_16k.is_some();
+            let speaker_blocks = label_segments(
+                &segments,
+                &decoded.mic_pcm_16k,
+                crate::services::audio::WHISPER_SAMPLE_RATE,
+                &self.voiceprint,
+                cfg.voice_similarity_threshold,
+            )
+            .unwrap_or_default();
+
             // Markdown is opt-in; write `.md` only when the toggle is on.
             let markdown_path = if markdown_on {
                 let output_name = format!("{}_{}.md", slugify(&input.display_name), model_name);
                 let transcript_dest = output_folder.join(output_name);
-                match self.output.write_transcript(
-                    &segments,
-                    &[],
-                    &input.display_name,
-                    model_name,
-                    include_timestamps,
-                    replacement_rules,
-                    replacement_prefix,
-                    &transcript_dest,
-                ) {
+                let write_result = if speaker_blocks.is_empty() {
+                    self.output.write_transcript(
+                        &segments,
+                        &[],
+                        &input.display_name,
+                        model_name,
+                        include_timestamps,
+                        replacement_rules,
+                        replacement_prefix,
+                        &transcript_dest,
+                    )
+                } else {
+                    self.output.write_speaker_blocks_transcript(
+                        &speaker_blocks,
+                        &input.display_name,
+                        model_name,
+                        replacement_rules,
+                        replacement_prefix,
+                        &transcript_dest,
+                    )
+                };
+                match write_result {
                     Ok(path) => Some(path),
                     Err(err) => {
                         queue[index].status = TranscribeItemStatus::Error;
@@ -403,6 +428,7 @@ impl TranscribeController {
                 input.display_name.clone(),
                 model_name.to_string(),
                 segments.clone(),
+                speaker_blocks,
                 replacement_rules,
                 replacement_prefix,
                 dual_source,

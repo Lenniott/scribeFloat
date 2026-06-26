@@ -1,7 +1,12 @@
 use crate::controllers::scribe::ScribeController;
-use crate::types::{AppError, Note};
+use crate::types::{AppError, Note, ScribeStateEvent};
 use std::sync::Arc;
 use tauri::{Manager, State};
+
+#[tauri::command]
+pub fn scribe_get_state(ctrl: State<'_, Arc<ScribeController>>) -> ScribeStateEvent {
+    ctrl.get_state()
+}
 
 #[tauri::command]
 pub fn scribe_start(

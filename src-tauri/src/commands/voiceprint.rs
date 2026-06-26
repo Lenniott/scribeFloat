@@ -1,7 +1,7 @@
 use crate::controllers::voiceprint::VoiceprintController;
 use crate::types::{
     AppError, SessionCaptureStart, SessionCaptureStatus, VoiceprintClipResult,
-    VoiceprintModelStatus, VoiceprintProfileSummary,
+    VoiceprintModelStatus, VoiceprintProfileScore, VoiceprintProfileSummary,
 };
 use std::sync::Arc;
 use tauri::{AppHandle, State};
@@ -70,6 +70,18 @@ pub async fn voiceprint_stop_clip(
 ) -> Result<VoiceprintClipResult, AppError> {
     let ctrl = Arc::clone(&ctrl);
     tauri::async_runtime::spawn_blocking(move || ctrl.stop_clip(clip_id))
+        .await
+        .map_err(|e| AppError::from(e.to_string()))?
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn voiceprint_score_clip(
+    ctrl: State<'_, Arc<VoiceprintController>>,
+    clip_id: String,
+) -> Result<Vec<VoiceprintProfileScore>, AppError> {
+    let ctrl = Arc::clone(&ctrl);
+    tauri::async_runtime::spawn_blocking(move || ctrl.score_clip(clip_id))
         .await
         .map_err(|e| AppError::from(e.to_string()))?
         .map_err(AppError::from)

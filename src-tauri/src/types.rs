@@ -592,6 +592,12 @@ pub struct VoiceprintClipResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintProfileScore {
+    pub profile_name: String,
+    pub score: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionStatus {
     pub kind: String,
     pub granted: bool,
@@ -908,6 +914,7 @@ impl HistoryRecord {
         title: String,
         model: String,
         segments: Vec<Segment>,
+        speaker_blocks: Vec<SpeakerBlock>,
         rules: &[ReplacementRule],
         prefix: &str,
         dual_source: bool,
@@ -923,6 +930,7 @@ impl HistoryRecord {
             Vec::new(),
             word_count,
         );
+        rec.speaker_blocks = speaker_blocks;
         rec.dual_source = dual_source;
         rec.source_path = Some(source_path);
         rec.markdown_path = markdown_path;

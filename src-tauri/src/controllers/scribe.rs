@@ -808,6 +808,22 @@ impl ScribeController {
 
         progress_tx.send(ProgressMessage::Finished).ok();
         progress_thread.join().ok();
+
+        let pcm_duration_ms = (pcm_16k.len() as f64 / 16_000.0 * 1000.0) as u64;
+        let last_seg_end_ms = segments
+            .as_ref()
+            .ok()
+            .and_then(|s| s.last())
+            .map(|s| s.end_ms as u64);
+        tracing::info!(
+            segment_count = segments.as_ref().map(|s| s.len()).unwrap_or(0),
+            pcm_duration_ms,
+            last_seg_end_ms,
+            gap_ms = last_seg_end_ms.map(|e| pcm_duration_ms.saturating_sub(e)),
+            vad_enabled = mic_vad.is_some(),
+            "transcription segments summary"
+        );
+
         segments
     }
 
@@ -969,6 +985,10 @@ impl ScribeController {
 
         let transcript_path = markdown_path.map(|p| p.to_string_lossy().into_owned());
         Ok((history_record_id, transcript_path))
+    }
+
+    pub fn get_state(&self) -> ScribeStateEvent {
+        ScribeStateEvent::new(self.lock().state.clone())
     }
 
     pub fn get_include_timestamps(&self) -> bool {

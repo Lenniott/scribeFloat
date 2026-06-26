@@ -600,6 +600,7 @@ pub fn run() {
                 Arc::clone(&output),
                 Arc::clone(&history),
                 Arc::clone(&config),
+                Arc::clone(&voiceprint),
                 app.handle().clone(),
             );
             let history_ctrl = controllers::history::HistoryController::new(
@@ -703,6 +704,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::scribe::scribe_get_state,
             commands::scribe::scribe_start,
             commands::scribe::scribe_stop_and_save,
             commands::scribe::scribe_save_recording_only,
@@ -735,6 +737,7 @@ pub fn run() {
             commands::voiceprint::voiceprint_download_model,
             commands::voiceprint::voiceprint_start_clip,
             commands::voiceprint::voiceprint_stop_clip,
+            commands::voiceprint::voiceprint_score_clip,
             commands::voiceprint::voiceprint_commit_clip,
             commands::voiceprint::voiceprint_discard_clip,
             commands::voiceprint::session_capture_start,

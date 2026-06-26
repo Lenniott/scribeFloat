@@ -1,9 +1,10 @@
 use crate::services::audio::{read_wav_mono_f32, AudioService, MicSession, WHISPER_SAMPLE_RATE};
 use crate::services::config::ConfigService;
 use crate::services::voiceprint::{profile_summary, VoiceprintService};
+use crate::services::voiceprint::cosine;
 use crate::types::{
     VoiceprintClipResult, VoiceprintClipState, VoiceprintClipStatus, VoiceprintModelStatus,
-    VoiceprintProfileSummary,
+    VoiceprintProfileScore, VoiceprintProfileSummary,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -224,6 +225,27 @@ impl VoiceprintController {
             purity,
             accepted,
         })
+    }
+
+    pub fn score_clip(&self, clip_id: String) -> Result<Vec<VoiceprintProfileScore>, String> {
+        let clip_id = normalize_clip_id(&clip_id)?;
+        let pending = self
+            .pending_clips
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let clip = pending
+            .get(&clip_id)
+            .ok_or_else(|| format!("voiceprint clip `{clip_id}` is not ready to score"))?;
+        let profiles = self.service.load_profiles().map_err(|e| e.to_string())?;
+        let scores = profiles
+            .iter()
+            .filter(|p| p.embedding.len() == clip.embedding.len())
+            .map(|p| VoiceprintProfileScore {
+                profile_name: p.name.clone(),
+                score: cosine(&clip.embedding, &p.embedding),
+            })
+            .collect();
+        Ok(scores)
     }
 
     pub fn commit_clip(&self, clip_id: String, profile_name: String) -> Result<(), String> {

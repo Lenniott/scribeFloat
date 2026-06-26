@@ -30,6 +30,13 @@
 	let threshold = $state(0.75);
 	let thresholdSaveTimer: ReturnType<typeof setTimeout> | undefined;
 
+	type ProfileScore = { profile_name: string; score: number };
+	type TestState = 'idle' | 'recording' | 'scored';
+	let testState = $state<TestState>('idle');
+	let testClipId = $state('');
+	let testScores = $state<ProfileScore[]>([]);
+	let testError = $state('');
+
 	onMount(async () => {
 		await Promise.all([refresh(), loadVoiceSettings()]);
 	});
@@ -152,6 +159,42 @@
 		} catch (e) {
 			actionError = `Could not save matching sensitivity: ${appErrorMessage(e)}`;
 		}
+	}
+
+	async function startTest() {
+		testError = '';
+		testScores = [];
+		try {
+			testClipId = await invoke<string>('voiceprint_start_clip', { micDeviceId: '' });
+			testState = 'recording';
+		} catch (e) {
+			testError = `Could not start test: ${appErrorMessage(e)}`;
+		}
+	}
+
+	async function stopTest() {
+		try {
+			type ClipResult = { accepted: boolean; speech_s: number; purity: number };
+			const result = await invoke<ClipResult>('voiceprint_stop_clip', { clipId: testClipId });
+			if (!result.accepted) {
+				const speechSec = result.speech_s.toFixed(1);
+				testError = `Clip too short or noisy to score (${speechSec}s of speech detected). Try speaking clearly for at least 5 seconds.`;
+				testState = 'idle';
+				return;
+			}
+			testScores = await invoke<ProfileScore[]>('voiceprint_score_clip', { clipId: testClipId });
+			await invoke('voiceprint_discard_clip', { clipId: testClipId });
+			testState = 'scored';
+		} catch (e) {
+			testError = `Test failed: ${appErrorMessage(e)}`;
+			testState = 'idle';
+		}
+	}
+
+	function resetTest() {
+		testState = 'idle';
+		testScores = [];
+		testError = '';
 	}
 </script>
 
@@ -296,5 +339,59 @@
 				</SettingsRow>
 			</SettingsList>
 		</SettingsSection>
+
+		{#if profiles.length > 0}
+			<SettingsSection
+				title="Test identification"
+				description="Record a short clip to see how well your voice matches each enrolled profile."
+			>
+				{#if testError}
+					<p class="rounded-md border border-destructive/40 bg-fill px-3 py-2 sf-label-sm text-destructive">
+						{testError}
+					</p>
+				{/if}
+
+				{#if testState === 'idle'}
+					<Button variant="normal" size="small" onclick={() => void startTest()}>
+						Start test recording
+					</Button>
+				{:else if testState === 'recording'}
+					<div class="flex items-center gap-3">
+						<span class="animate-pulse sf-label-sm text-fg-dim">Recording…</span>
+						<Button variant="primary" size="small" onclick={() => void stopTest()}>
+							Stop &amp; score
+						</Button>
+					</div>
+				{:else if testState === 'scored'}
+					<div class="space-y-3">
+						{#each testScores.sort((a, b) => b.score - a.score) as result (result.profile_name)}
+							{@const pct = Math.round(result.score * 100)}
+							{@const thresholdPct = Math.round(threshold * 100)}
+							{@const matches = result.score >= threshold}
+							<div class="space-y-1">
+								<div class="flex items-baseline justify-between">
+									<span class="sf-label-sm text-fg">{result.profile_name}</span>
+									<span class="sf-meta-sm {matches ? 'text-brand' : 'text-fg-dim'}">
+										{pct}% {matches ? '✓ match' : '· no match'}
+									</span>
+								</div>
+								<div class="relative h-2 w-full overflow-visible rounded-full bg-fill">
+									<div
+										class="h-2 rounded-full {matches ? 'bg-brand' : 'bg-fg-dim/40'}"
+										style="width: {pct}%"
+									></div>
+									<div
+										class="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 bg-fg/50"
+										style="left: {thresholdPct}%"
+										title="Threshold ({thresholdPct}%)"
+									></div>
+								</div>
+							</div>
+						{/each}
+						<Button variant="ghost" size="small" onclick={resetTest}>Test again</Button>
+					</div>
+				{/if}
+			</SettingsSection>
+		{/if}
 	</section>
 {/if}

@@ -376,6 +376,23 @@ pub fn label_segments(
             Some(pcm) if pcm.len() >= sample_rate as usize * 2 => {
                 match voiceprint_svc.embed(pcm, sample_rate) {
                     Ok(embedding) => {
+                        let scores: Vec<(f32, &str)> = profiles
+                            .iter()
+                            .filter(|p| p.embedding.len() == embedding.len())
+                            .map(|p| (cosine(&embedding, &p.embedding), p.name.as_str()))
+                            .collect();
+                        let best = scores
+                            .iter()
+                            .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                        tracing::info!(
+                            segment_start_ms = start_ms,
+                            segment_end_ms = end_ms,
+                            text = %segment.text,
+                            threshold = threshold,
+                            scores = ?scores.iter().map(|(s, n)| format!("{n}={s:.3}")).collect::<Vec<_>>(),
+                            best_score = best.map(|(s, _)| *s),
+                            "voiceprint chunk similarity"
+                        );
                         voiceprint_svc.identify_with_threshold(&embedding, &profiles, threshold)
                     }
                     Err(err) => {
@@ -384,7 +401,16 @@ pub fn label_segments(
                     }
                 }
             }
-            _ => "Other".to_string(),
+            _ => {
+                let duration_ms = end_ms.saturating_sub(start_ms);
+                tracing::debug!(
+                    segment_start_ms = start_ms,
+                    segment_end_ms = end_ms,
+                    duration_ms,
+                    "voiceprint chunk too short, labelling Other"
+                );
+                "Other".to_string()
+            }
         };
         blocks.push(SpeakerBlock {
             label,
@@ -478,7 +504,7 @@ fn l2_normalize(mut values: Vec<f32>) -> Vec<f32> {
 }
 
 #[allow(dead_code)]
-fn cosine(a: &[f32], b: &[f32]) -> f32 {
+pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() {
         return 0.0;
     }

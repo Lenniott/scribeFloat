@@ -6,6 +6,8 @@ status: active
 
 # Score each segment against session centroid and compute speaker margin
 
+As a user reviewing a transcript, I want to see which speaker labels the app is confident about and which ones it was unsure of so that I know where to focus my corrections rather than reading every line.
+
 Once session centroids exist (story 0060), back-fill two confidence signals onto each `SpeakerBlock`:
 
 **`session_score: Option<f32>`** — cosine similarity of the segment's embedding to its own label's session centroid. Measures how well the segment fits its assigned speaker cluster.

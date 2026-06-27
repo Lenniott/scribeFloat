@@ -6,6 +6,8 @@ status: active
 
 # Inline label correction with centroid recalculation and cascading relabel
 
+As a user fixing a wrong speaker label in a transcript, I want correcting one line to automatically fix other lines that sound the same so that I don't have to hunt through the whole transcript manually — and I never need to go to Settings to do it.
+
 Allow the user to correct a speaker label directly on a transcript segment without going to Settings. When a correction is applied:
 
 1. Update the segment's `label` to the chosen speaker

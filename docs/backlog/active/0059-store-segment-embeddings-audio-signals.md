@@ -6,6 +6,8 @@ status: active
 
 # Store per-segment embeddings and audio quality signals at label time
 
+As a user who wants accurate speaker labels, I want the app to remember the voice fingerprint it computed for each spoken segment so that later improvements (corrections, better profiles) can be applied without re-processing the audio.
+
 Currently `label_segments()` in `voiceprint.rs` computes a 192-float embedding for each Whisper segment and immediately discards it after the cosine comparison. The label is stored on `SpeakerBlock` but nothing else is kept.
 
 Extend `SpeakerBlock` to carry the embedding and three audio quality signals computed from the raw PCM slice before embedding:

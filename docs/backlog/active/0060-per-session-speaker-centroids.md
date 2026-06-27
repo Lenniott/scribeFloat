@@ -6,6 +6,8 @@ status: active
 
 # Compute and store per-session speaker centroids after labeling
 
+As a user in a meeting, I want the app to build a voice reference for each speaker from that specific recording so that speaker recognition is tuned to the conditions of the room and mic — not just a generic profile from a different day.
+
 After `label_segments()` runs and `SpeakerBlock` embeddings are populated (story 0059), group segments by their label and compute a centroid embedding per speaker for that session. Store the centroids alongside the session transcript.
 
 For each label that has at least one embedded segment:

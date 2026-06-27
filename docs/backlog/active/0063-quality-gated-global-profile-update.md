@@ -6,6 +6,8 @@ status: active
 
 # Quality-gated global voiceprint profile update from session centroid
 
+As a user who records meetings regularly, I want each good recording to quietly improve how well the app recognises my voice and other speakers over time so that I don't have to manually re-enrol or go to Settings to keep accuracy high.
+
 After a session ends (or after inline corrections settle), offer to improve a speaker's global voiceprint profile using the session centroid — but only when all three quality gates pass:
 
 **Audio quality** (from stored signals on `SpeakerBlock`, story 0059):

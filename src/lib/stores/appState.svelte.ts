@@ -12,10 +12,7 @@ class AppState {
 	deleteTarget = $state<HistoryListItem | null>(null);
 	deleting = $state(false);
 	skipDeleteConfirm = $state(false);
-	captureOpen = $state(false);
-	captureVisitKey = $state(0);
 	settingsTab = $state<SettingsTab>('general');
-	captureLeaveGuard = $state<((proceed: () => void) => void) | null>(null);
 	noteLeaveGuard = $state<((proceed: () => void, cancel: () => void) => void) | null>(null);
 }
 

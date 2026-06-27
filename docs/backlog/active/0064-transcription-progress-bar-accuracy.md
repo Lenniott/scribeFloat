@@ -27,6 +27,15 @@ The stage that has progress resolution (`TranscribingAudio` with segment callbac
 - Decoding progress (segment callbacks) is fine as-is — it's already accurate for what it covers
 - If the model was pre-loaded during recording (`spawn_record_start_preload`), the model-load phase should be near-instant and the bar should reflect that
 
+## Reference
+
+`src/lib/ui/5_views/scribe-processing.svelte` (deleted in story 0065) contained working implementations of:
+- `progressSequence` — stage label + stage ID array driving a `StackProgressBar`
+- `handleScribeEvent` — mapping `processing_stage` and `progress` from `scribe://state-changed` onto the progress bar
+- `indeterminate={processingStage === "LOADING_MODEL"}` — the indeterminate spinner condition
+
+These patterns should be ported into `RecordingStrip`'s transcribing phase as part of this story. Check git history for the deleted file if needed.
+
 ## Notes
 
 - Whisper's encoder phase does not currently emit callbacks — check whether whisper-rs / whisper.cpp exposes encoder progress; if not, elapsed-time estimation based on audio length is an acceptable fallback

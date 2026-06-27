@@ -15,7 +15,6 @@
 	import Button from '@components/controls/Button.svelte';
 	import Checkbox from '@components/controls/Checkbox.svelte';
 	import Modal from '@primitives/layout/Modal.svelte';
-	import CaptureView from '@views/capture.svelte';
 	import DictateView from '@views/dictate.svelte';
 	import OnboardingView from '@views/onboarding.svelte';
 	import { appState } from '@stores/appState.svelte';
@@ -85,13 +84,6 @@
 
 	function guardedNavigate(next: AppRoute) {
 		const path = ROUTE_PATHS[next];
-		if (appState.captureOpen && appState.captureLeaveGuard) {
-			appState.captureLeaveGuard(() => {
-				appState.captureOpen = false;
-				void goto(path);
-			});
-			return;
-		}
 		if (isNoteEditorPath(page.url.pathname)) {
 			runNoteLeaveGuard(() => void goto(path));
 			return;
@@ -104,14 +96,6 @@
 	}
 
 	beforeNavigate(({ cancel, to }) => {
-		if (appState.captureOpen && appState.captureLeaveGuard && to) {
-			cancel();
-			appState.captureLeaveGuard(() => {
-				appState.captureOpen = false;
-				void goto(to.url.pathname);
-			});
-			return;
-		}
 		if (
 			to &&
 			isNoteEditorPath(page.url.pathname) &&
@@ -216,17 +200,7 @@
 				<AppSidebar activeRoute={currentRoute} onnavigate={guardedNavigate} />
 			{/if}
 			<main class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-canvas">
-				{#if appState.captureOpen}
-					<CaptureView
-						visitKey={appState.captureVisitKey}
-						onclose={() => (appState.captureOpen = false)}
-						registerLeaveGuard={(handler) => {
-							appState.captureLeaveGuard = handler;
-						}}
-					/>
-				{:else}
-					{@render children()}
-				{/if}
+				{@render children()}
 			</main>
 		</div>
 	</div>

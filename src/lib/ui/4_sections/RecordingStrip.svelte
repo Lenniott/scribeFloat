@@ -9,7 +9,8 @@
 	import ToggleSwitch from '@components/controls/Toggle.svelte';
 	import FieldRow from '@primitives/form/FieldRow.svelte';
 	import { Trash2, Settings2 } from 'lucide-svelte';
-  import { Button } from '../2_components';
+	import { Button } from '../2_components';
+	import { appState } from '@stores/appState.svelte';
 
 	type StripPhase = 'idle' | 'recording' | 'transcribing';
 
@@ -87,6 +88,7 @@
 			preferredSpeaker: null,
 			captureSpeaker,
 		});
+		appState.scribeNoteId = noteId;
 		phase = 'recording';
 		startElapsedTimer();
 	}
@@ -98,10 +100,12 @@
 		audioLevel = 0;
 		speakerLevel = 0;
 		awaitingAttach = true;
+		appState.scribeAwaitingAttach = true;
 		try {
 			await invoke('scribe_stop_and_save', { title: null });
 		} catch (e) {
 			awaitingAttach = false;
+			appState.scribeAwaitingAttach = false;
 			phase = 'idle';
 			errorMessage = String(e);
 		}
@@ -112,6 +116,8 @@
 		audioLevel = 0;
 		speakerLevel = 0;
 		awaitingAttach = false;
+		appState.scribeNoteId = null;
+		appState.scribeAwaitingAttach = false;
 		await invoke('scribe_set_attach_note', { noteId: null }).catch(() => {});
 		await invoke('scribe_cancel').catch(() => {});
 		phase = 'idle';
@@ -120,6 +126,8 @@
 	async function handleDone() {
 		if (!awaitingAttach) return;
 		awaitingAttach = false;
+		appState.scribeAwaitingAttach = false;
+		appState.scribeNoteId = null;
 		try {
 			await invoke('note_attach_transcript', { id: noteId });
 			phase = 'idle';
@@ -138,6 +146,7 @@
 					stopElapsedTimer();
 					audioLevel = 0;
 					speakerLevel = 0;
+					appState.scribeNoteId = null;
 				}
 				break;
 			case 'RECORDING':
@@ -155,6 +164,8 @@
 				break;
 			case 'ERROR':
 				awaitingAttach = false;
+				appState.scribeNoteId = null;
+				appState.scribeAwaitingAttach = false;
 				phase = 'idle';
 				stopElapsedTimer();
 				errorMessage = p.error ?? 'Recording failed';

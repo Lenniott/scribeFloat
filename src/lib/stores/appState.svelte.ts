@@ -14,6 +14,8 @@ class AppState {
 	skipDeleteConfirm = $state(false);
 	settingsTab = $state<SettingsTab>('general');
 	noteLeaveGuard = $state<((proceed: () => void, cancel: () => void) => void) | null>(null);
+	scribeNoteId = $state<string | null>(null);
+	scribeAwaitingAttach = $state(false);
 }
 
 export const appState = new AppState();

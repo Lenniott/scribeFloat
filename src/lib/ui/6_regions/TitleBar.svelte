@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { invoke } from '@tauri-apps/api/core';
 	import { listen } from '@tauri-apps/api/event';
 	import { ArrowLeft, Mic, PenLine, Square, Trash2 } from 'lucide-svelte';
@@ -19,7 +20,7 @@
 	let {
 		onNewNote,
 		onBack,
-		backLabel = 'Notes',
+		backLabel = 'Back',
 	}: {
 		onNewNote?: () => void;
 		onBack?: () => void;
@@ -34,6 +35,7 @@
 
 	const isRecording = $derived(dictateState === 'RECORDING');
 	const isBusy = $derived(dictateState === 'TRANSCRIBING' || dictateState === 'PASTING');
+	const dictateDisabled = $derived(isBusy || scribePhase !== 'idle');
 
 	const isOnRecordingNote = $derived(
 		appState.scribeNoteId !== null &&
@@ -109,8 +111,14 @@
 	}
 
 	async function handleDictateClick() {
-		if (isBusy) return;
+		if (dictateDisabled) return;
 		await invoke('dictate_trigger').catch(() => {});
+	}
+
+	function handleRecordClick() {
+		if (!onNewNote) return;
+		appState.scribeAutoStart = true;
+		onNewNote();
 	}
 
 	onMount(() => {
@@ -144,6 +152,11 @@
 			{#if scribePhase === 'recording'}
 				<RecordingStatusDot status="recording" />
 				<RecordingTimer elapsedSeconds={scribeElapsedSeconds} />
+				{#if appState.scribeNoteId}
+					<Button variant="ghost" size="small" onclick={() => void goto(`/notes/${appState.scribeNoteId}`)}>
+						Go to note
+					</Button>
+				{/if}
 				<Button variant="normal" size="small" onclick={scribeStopAndSave}>Stop & Save</Button>
 				<IconButton aria-label="Discard recording" icon={Trash2} size="small" variant="normal" onclick={() => (showDiscardConfirm = true)} />
 			{:else}
@@ -153,16 +166,16 @@
 		{#if isRecording}
 			<RecordingStatusDot status="recording" pulseWhileRecording={false} />
 		{/if}
-		{#if onNewNote}
-			<Button variant="normal" size="small" icon={PenLine} onclick={onNewNote}>
-				New Note
+		{#if scribePhase === 'idle' && onNewNote}
+			<Button variant="normal" size="small" icon={PenLine} onclick={handleRecordClick}>
+				Record
 			</Button>
 		{/if}
 		<Button
 			variant={isRecording ? 'active' : 'normal'}
 			size="small"
 			icon={isRecording ? Square : Mic}
-			disabled={isBusy}
+			disabled={dictateDisabled}
 			onclick={handleDictateClick}
 		>
 			{isBusy ? 'Dictating…' : isRecording ? 'Stop' : 'Dictate'}

@@ -1,16 +1,15 @@
-use crate::types::{Note, ReplacementRule, ReplacementScope, Segment, SpeakerBlock};
+use crate::types::{Note, ReplacementRule, ReplacementScope, Segment, SegmentSource, SpeakerBlock};
+use crate::services::speaker_blocks::display_block_label;
 
 use super::dedup::{dedup_consecutive_phrases, dedup_repeated_block};
 use super::cleanup::cleanup_text;
 use super::replacements::apply_replacements;
 
-fn speaker_source_prefix(text: &str) -> &'static str {
-    if text.starts_with("in: ") {
-        "in"
-    } else if text.starts_with("out: ") {
-        "out"
-    } else {
-        ""
+fn segment_channel_key(source: Option<SegmentSource>) -> &'static str {
+    match source {
+        Some(SegmentSource::Mic) => "in",
+        Some(SegmentSource::Speaker) => "out",
+        None => "",
     }
 }
 
@@ -26,7 +25,7 @@ fn format_ms(ms: i64) -> String {
 
 /// Group segments into paragraphs and render the transcript body (after replacement rules).
 /// Consecutive same-source segments separated by less than 8 s merge into one paragraph;
-/// speaker sources (`in:` vs `out:`) never merge. Shared by the markdown writer,
+/// mic and speaker sources never merge. Shared by the markdown writer,
 /// on-demand export/preview, and word counting.
 pub fn render_transcript_body(
     segments: &[Segment],
@@ -48,19 +47,14 @@ pub fn render_transcript_body(
             continue;
         }
         let deduped = dedup_repeated_block(&dedup_consecutive_phrases(&clean));
-        let seg_source = speaker_source_prefix(&deduped);
+        let seg_source = segment_channel_key(seg.source);
         let last = groups
             .last_mut()
             .filter(|g| seg.start_ms - g.end_ms < MERGE_GAP_MS && g.source == seg_source);
         match last {
             Some(g) => {
                 g.end_ms = seg.end_ms;
-                let body = deduped
-                    .strip_prefix("in: ")
-                    .or_else(|| deduped.strip_prefix("out: "))
-                    .map(|s| s.to_string())
-                    .unwrap_or(deduped);
-                g.parts.push(body);
+                g.parts.push(deduped);
             }
             None => groups.push(Group {
                 start_ms: seg.start_ms,
@@ -106,6 +100,8 @@ pub fn render_speaker_blocks_body(
     blocks: &[SpeakerBlock],
     rules: &[ReplacementRule],
     prefix: &str,
+    input_label: &str,
+    output_label: &str,
 ) -> String {
     let mut out = String::new();
     for (index, block) in blocks.iter().enumerate() {
@@ -115,7 +111,8 @@ pub fn render_speaker_blocks_body(
         if index > 0 {
             out.push_str("\n\n---\n\n");
         }
-        out.push_str(&format!("**[{}]**", block.label));
+        let label = display_block_label(&block.label, input_label, output_label);
+        out.push_str(&format!("**[{label}]**"));
         if let (Some(start), Some(end)) = (
             format_speaker_time(block.start_ms),
             format_speaker_time(block.end_ms),
@@ -224,6 +221,7 @@ mod tests {
             start_ms: 12_000,
             end_ms: 14_000,
             text: "hello world".to_string(),
+            source: None,
         }];
         assert_eq!(count_words(&segments, &[], ""), 2);
     }
@@ -234,17 +232,20 @@ mod tests {
             Segment {
                 start_ms: 0,
                 end_ms: 1_000,
-                text: "in: hello dash world".to_string(),
+                text: "hello dash world".to_string(),
+                source: Some(SegmentSource::Mic),
             },
             Segment {
                 start_ms: 1_200,
                 end_ms: 3_000,
-                text: "out: How are you?".to_string(),
+                text: "How are you?".to_string(),
+                source: Some(SegmentSource::Speaker),
             },
             Segment {
                 start_ms: 3_100,
                 end_ms: 4_000,
-                text: "out: I am well.".to_string(),
+                text: "I am well.".to_string(),
+                source: Some(SegmentSource::Speaker),
             },
         ];
         let notes = vec![Note {
@@ -258,13 +259,13 @@ mod tests {
         let expected = "---\n\
 title: 'My Title'\n\
 duration_seconds: 4.0\n\
-word_count: 11\n\
-token_estimate: 14\n\
+word_count: 9\n\
+token_estimate: 12\n\
 model: tiny\n\
 ---\n\n\
 ## Transcript\n\n\
-[00:00:00] in: hello - world\n\n\
-[00:00:01] out: How are you? I am well.\n\n\
+[00:00:00] hello - world\n\n\
+[00:00:01] How are you? I am well.\n\n\
 ## Notes\n\
 [1] (00:00:02) follow up\n\n";
         assert_eq!(md, expected);

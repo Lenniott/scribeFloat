@@ -335,6 +335,7 @@ mod tests {
             start_ms: 0,
             end_ms: 1_000,
             text: text.to_string(),
+            source: None,
         }];
         HistoryRecord::from_dictate(&segs, text, "tiny".to_string())
     }
@@ -349,6 +350,7 @@ mod tests {
                 start_ms: i * 1000,
                 end_ms: (i + 1) * 1000,
                 text: format!("word{i} "),
+                source: None,
             })
             .collect();
         rec.word_count = 200;
@@ -525,11 +527,13 @@ mod tests {
                 start_ms: 0,
                 end_ms: 1_000,
                 text: "Hello".into(),
+            source: None,
             },
             Segment {
                 start_ms: 1_000,
                 end_ms: 2_500,
                 text: "world".into(),
+            source: None,
             },
         ];
 
@@ -571,6 +575,7 @@ mod tests {
                 start_ms: 0,
                 end_ms: 1_000,
                 text: "first".into(),
+                source: None,
             }],
             vec![],
             vec![crate::types::Note {
@@ -596,6 +601,7 @@ mod tests {
                 start_ms: 0,
                 end_ms: 2_000,
                 text: "second".into(),
+                source: None,
             }],
             vec![],
             vec![crate::types::Note {

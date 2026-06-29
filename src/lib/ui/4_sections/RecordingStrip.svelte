@@ -191,6 +191,10 @@
 
 	onMount(async () => {
 		await loadSettings();
+		if (appState.scribeAutoStart) {
+			appState.scribeAutoStart = false;
+			await startRecording();
+		}
 		unlisteners.push(
 			await listen<ScribePayload>('scribe://state-changed', (e) =>
 				handleScribeEvent(e.payload),
@@ -221,55 +225,55 @@
 		{#if anotherNoteRecording}
 			<p class="sf-body-sm text-fg-dim">Recording in progress</p>
 		{:else}
-		<Button variant="primary" onclick={startRecording}>
-			Record
-		</Button>
-		<div class="relative" bind:this={settingsAnchor}>
-			<IconButton
-				aria-label="Recording settings"
-				icon={Settings2}
-				size="small"
-				variant="normal"
-				onclick={(e) => {
-					e.stopPropagation();
-					settingsOpen = !settingsOpen;
-				}}
-			/>
-			{#if settingsOpen}
-				<div
-					class="absolute right-0 top-full z-50 mt-1 w-64 rounded-md border border-fill bg-card p-3 shadow-lg space-y-4"
-					role="group"
+			<Button variant="primary" onclick={startRecording}>
+				Record
+			</Button>
+			<div class="relative" bind:this={settingsAnchor}>
+				<IconButton
 					aria-label="Recording settings"
-				>
-					<FieldRow
-						label="Microphone"
-						id="recording-strip-mic"
-						mode="select"
-						options={micOptions}
-						bind:value={selectedMic}
-					/>
-					<ToggleSwitch
-						label="Speaker capture"
-						checked={captureSpeaker}
-						onchange={(v) => {
-							captureSpeaker = v;
-							void invoke('scribe_toggle_speaker_capture', { enabled: v });
-						}}
-					/>
-					<ToggleSwitch
-						label="Timestamps"
-						checked={includeTimestamps}
-						onchange={(v) => {
-							includeTimestamps = v;
-							void invoke('scribe_set_include_timestamps', { enabled: v });
-						}}
-					/>
-				</div>
+					icon={Settings2}
+					size="small"
+					variant="normal"
+					onclick={(e) => {
+						e.stopPropagation();
+						settingsOpen = !settingsOpen;
+					}}
+				/>
+				{#if settingsOpen}
+					<div
+						class="absolute right-0 top-full z-50 mt-1 w-64 rounded-md border border-fill bg-card p-3 shadow-lg space-y-4"
+						role="group"
+						aria-label="Recording settings"
+					>
+						<FieldRow
+							label="Microphone"
+							id="recording-strip-mic"
+							mode="select"
+							options={micOptions}
+							bind:value={selectedMic}
+						/>
+						<ToggleSwitch
+							label="Speaker capture"
+							checked={captureSpeaker}
+							onchange={(v) => {
+								captureSpeaker = v;
+								void invoke('scribe_toggle_speaker_capture', { enabled: v });
+							}}
+						/>
+						<ToggleSwitch
+							label="Timestamps"
+							checked={includeTimestamps}
+							onchange={(v) => {
+								includeTimestamps = v;
+								void invoke('scribe_set_include_timestamps', { enabled: v });
+							}}
+						/>
+					</div>
+				{/if}
+			</div>
+			{#if errorMessage}
+				<p class="sf-body-md text-destructive">{errorMessage}</p>
 			{/if}
-		</div>
-		{#if errorMessage}
-			<p class="sf-body-md text-destructive">{errorMessage}</p>
-		{/if}
 		{/if}
 	</div>
 {:else if phase === 'recording'}
@@ -294,6 +298,47 @@
 				variant="normal"
 				onclick={() => (confirmingDiscard = true)}
 			/>
+			<div class="relative" bind:this={settingsAnchor}>
+				<IconButton
+					aria-label="Recording settings"
+					icon={Settings2}
+					size="small"
+					variant="normal"
+					onclick={(e) => {
+						e.stopPropagation();
+						settingsOpen = !settingsOpen;
+					}}
+				/>
+				{#if settingsOpen}
+					<div
+						class="absolute right-0 top-full z-50 mt-1 w-64 rounded-md border border-fill bg-card p-3 shadow-lg space-y-4"
+						role="group"
+						aria-label="Recording settings"
+					>
+						<FieldRow
+							label="Microphone"
+							id="recording-strip-mic-active"
+							mode="select"
+							options={micOptions}
+							bind:value={selectedMic}
+							disabled={true}
+						/>
+						<ToggleSwitch
+							label="Speaker capture"
+							checked={captureSpeaker}
+							disabled={true}
+						/>
+						<ToggleSwitch
+							label="Timestamps"
+							checked={includeTimestamps}
+							onchange={(v) => {
+								includeTimestamps = v;
+								void invoke('scribe_set_include_timestamps', { enabled: v });
+							}}
+						/>
+					</div>
+				{/if}
+			</div>
 		</div>
 	{/if}
 {:else}

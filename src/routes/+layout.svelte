@@ -82,6 +82,17 @@
 	const isSettingsRoute = $derived(page.url.pathname.startsWith('/settings'));
 	const showNoteBack = $derived(isNoteEditorPath(page.url.pathname));
 
+	const titleBarBack = $derived(
+		showNoteBack ? () => void goto('/notes') :
+		isSettingsRoute ? () => void goto(previousPath) :
+		undefined
+	);
+	const titleBarBackLabel = $derived(
+		showNoteBack ? 'Notes' :
+		isSettingsRoute ? ROUTE_LABELS[pathnameToRoute(previousPath)] :
+		'Back'
+	);
+
 	function guardedNavigate(next: AppRoute) {
 		const path = ROUTE_PATHS[next];
 		if (isNoteEditorPath(page.url.pathname)) {
@@ -185,16 +196,14 @@
 	<div class="flex h-screen flex-col overflow-hidden bg-canvas">
 		<ShellTitleBar
 			onNewNote={openCapture}
-			onBack={showNoteBack ? () => void goto('/notes') : undefined}
-			backLabel="Notes"
+			onBack={titleBarBack}
+			backLabel={titleBarBackLabel}
 		/>
 		<div class="flex min-h-0 flex-1 overflow-hidden">
 			{#if isSettingsRoute}
 				<SettingsSidebar
 					activeTab={appState.settingsTab}
 					ontabchange={(tab) => (appState.settingsTab = tab)}
-					onback={() => void goto(previousPath)}
-					backLabel={ROUTE_LABELS[pathnameToRoute(previousPath)]}
 				/>
 			{:else}
 				<AppSidebar activeRoute={currentRoute} onnavigate={guardedNavigate} />

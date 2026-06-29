@@ -13,3 +13,4 @@
 | ADR-0009 | [0009-note-lifecycle-immediate-create-autosave-discard-if-empty.md](0009-note-lifecycle-immediate-create-autosave-discard-if-empty.md) | Note created immediately on open; autosaved; silently discarded if empty on leave |
 | ADR-0010 | [0010-separate-capture-config-from-note-intent.md](0010-separate-capture-config-from-note-intent.md) | Capture is intake configuration only; "quick" is the only capture-derived Note property in the UI |
 | ADR-0011 | [0011-voiceprint-engine-binary-speaker-verification.md](0011-voiceprint-engine-binary-speaker-verification.md) | Binary-extensible speaker verification via sherpa-onnx campplus; threshold 0.75; [You]/[Other] transcript labels |
+| ADR-0012 | [0012-navigation-intent-via-shared-state-flag.md](0012-navigation-intent-via-shared-state-flag.md) | Short-lived boolean flag on appState passes intent across a navigation boundary |

@@ -40,10 +40,14 @@
 	let micOptions = $state([{ value: '', label: 'System Default' }]);
 	let errorMessage = $state('');
 	let awaitingAttach = false;
+	let confirmingDiscard = $state(false);
 	let settingsAnchor: HTMLDivElement | undefined = $state();
 	let timerInterval: ReturnType<typeof setInterval> | null = null;
 	const speakerEnabledForWaveform = $derived(captureSpeaker);
 	const elapsedSeconds = $derived(Math.floor(elapsedMs / 1000));
+	const anotherNoteRecording = $derived(
+		appState.scribeNoteId !== null && appState.scribeNoteId !== noteId
+	);
 	let unlisteners: UnlistenFn[] = [];
 
 	$effect(() => {
@@ -113,6 +117,7 @@
 
 	async function discardRecording() {
 		stopElapsedTimer();
+		confirmingDiscard = false;
 		audioLevel = 0;
 		speakerLevel = 0;
 		awaitingAttach = false;
@@ -213,6 +218,9 @@
 
 {#if phase === 'idle'}
 	<div class="flex min-h-10 shrink-0 items-center gap-2">
+		{#if anotherNoteRecording}
+			<p class="sf-body-sm text-fg-dim">Recording in progress</p>
+		{:else}
 		<Button variant="primary" onclick={startRecording}>
 			Record
 		</Button>
@@ -262,23 +270,32 @@
 		{#if errorMessage}
 			<p class="sf-body-md text-destructive">{errorMessage}</p>
 		{/if}
+		{/if}
 	</div>
 {:else if phase === 'recording'}
-	<div class="flex min-h-14 shrink-0 items-center gap-2">
-		<Waveform micLevel={audioLevel} speakerLevel={speakerLevel} speakerEnabled={speakerEnabledForWaveform} size="small" />
-		<StatusDot status="recording" />
-		<RecordingTimer {elapsedSeconds} />
-		<Button variant="normal" onclick={stopAndSave}>
-			Stop &amp; Save
-		</Button>
-		<IconButton
-			aria-label="Discard recording"
-			icon={Trash2}
-			size="small"
-			variant="normal"
-			onclick={discardRecording}
-		/>
-	</div>
+	{#if confirmingDiscard}
+		<div class="flex min-h-14 shrink-0 items-center gap-2">
+			<p class="sf-body-sm text-fg-dim">Discard recording?</p>
+			<Button variant="destructive" size="small" onclick={discardRecording}>Discard</Button>
+			<Button variant="normal" size="small" onclick={() => (confirmingDiscard = false)}>Cancel</Button>
+		</div>
+	{:else}
+		<div class="flex min-h-14 shrink-0 items-center gap-2">
+			<Waveform micLevel={audioLevel} speakerLevel={speakerLevel} speakerEnabled={speakerEnabledForWaveform} size="small" />
+			<StatusDot status="recording" />
+			<RecordingTimer {elapsedSeconds} />
+			<Button variant="normal" onclick={stopAndSave}>
+				Stop &amp; Save
+			</Button>
+			<IconButton
+				aria-label="Discard recording"
+				icon={Trash2}
+				size="small"
+				variant="normal"
+				onclick={() => (confirmingDiscard = true)}
+			/>
+		</div>
+	{/if}
 {:else}
 	<div class="flex min-h-10 shrink-0 items-center gap-2">
 		<p class="sf-body-md text-fg-dim">Transcribing…</p>

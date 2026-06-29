@@ -7,7 +7,7 @@ mod types;
 use std::sync::Arc;
 use tauri::{
     image::Image,
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
     WindowEvent,
@@ -122,11 +122,18 @@ pub(crate) const DICTATE_WINDOW_LABEL: &str = "dictate";
 const HISTORY_WINDOW_LABEL: &str = "history";
 const ONBOARDING_WINDOW_LABEL: &str = "onboarding";
 
-const OPEN_SCRIBE_MENU_ID: &str = "open_scribe";
-const OPEN_TRANSCRIBE_MENU_ID: &str = "open_transcribe";
-const OPEN_HISTORY_MENU_ID: &str = "open_history";
+const DICTATE_MENU_ID: &str = "dictate";
+const NEW_NOTE_MENU_ID: &str = "new_note";
+const OPEN_APP_MENU_ID: &str = "open_app";
 const OPEN_SETTINGS_MENU_ID: &str = "open_settings";
 const QUIT_MENU_ID: &str = "quit";
+
+const SETTINGS_MENU_ACCELERATOR: &str = "CmdOrCtrl+,";
+const QUIT_MENU_ACCELERATOR: &str = "CmdOrCtrl+Q";
+
+struct TrayMenuState {
+    new_note_item: MenuItem<tauri::Wry>,
+}
 
 const HISTORY_WINDOW_W: f64 = 980.0;
 const HISTORY_WINDOW_H: f64 = 680.0;
@@ -163,47 +170,85 @@ fn load_icon(app: &tauri::AppHandle, file_name: &str) -> Option<Image<'static>> 
     Image::from_path(path).ok()
 }
 
-fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
-    let open_scribe = MenuItem::with_id(app, OPEN_SCRIBE_MENU_ID, "Scribe", true, None::<&str>)?;
-    let open_transcribe = MenuItem::with_id(
+fn build_tray_menu(
+    app: &impl Manager<tauri::Wry>,
+    open_hotkey: &str,
+) -> tauri::Result<(MenuItem<tauri::Wry>, Menu<tauri::Wry>)> {
+    let dictate_item = MenuItem::with_id(app, DICTATE_MENU_ID, "Dictate", true, None::<&str>)?;
+    let new_note_item = MenuItem::with_id(
         app,
-        OPEN_TRANSCRIBE_MENU_ID,
-        "Transcribe",
+        NEW_NOTE_MENU_ID,
+        "New note",
+        true,
+        Some(open_hotkey),
+    )?;
+    let open_app_item = MenuItem::with_id(
+        app,
+        OPEN_APP_MENU_ID,
+        "Open ScribeFloat",
         true,
         None::<&str>,
     )?;
-    let open_history = MenuItem::with_id(app, OPEN_HISTORY_MENU_ID, "Dashboard", true, None::<&str>)?;
-    let open_settings =
-        MenuItem::with_id(app, OPEN_SETTINGS_MENU_ID, "Settings", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, QUIT_MENU_ID, "Quit", true, None::<&str>)?;
+    let settings_item = MenuItem::with_id(
+        app,
+        OPEN_SETTINGS_MENU_ID,
+        "Settings",
+        true,
+        Some(SETTINGS_MENU_ACCELERATOR),
+    )?;
+    let quit_item = MenuItem::with_id(
+        app,
+        QUIT_MENU_ID,
+        "Quit scribefloat",
+        true,
+        Some(QUIT_MENU_ACCELERATOR),
+    )?;
     let menu = Menu::with_items(
         app,
         &[
-            &open_scribe,
-            &open_transcribe,
-            &open_history,
-            &open_settings,
-            &quit,
+            &dictate_item,
+            &new_note_item,
+            &PredefinedMenuItem::separator(app)?,
+            &open_app_item,
+            &settings_item,
+            &PredefinedMenuItem::separator(app)?,
+            &quit_item,
         ],
     )?;
+
+    Ok((new_note_item, menu))
+}
+
+pub(crate) fn refresh_tray_accelerators(app: &AppHandle, open_hotkey: &str) {
+    let Some(state) = app.try_state::<TrayMenuState>() else {
+        return;
+    };
+    let _ = state.new_note_item.set_text("New note");
+    let _ = state.new_note_item.set_accelerator(Some(open_hotkey));
+}
+
+fn create_tray(app: &mut tauri::App, open_hotkey: &str) -> tauri::Result<()> {
+    let (new_note_item, menu) = build_tray_menu(app, open_hotkey)?;
 
     let mut tray = TrayIconBuilder::with_id("main")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            OPEN_SCRIBE_MENU_ID => {
-                if let Err(err) = open_scribe_window(app) {
-                    tracing::warn!(error = %err, "failed to open scribe window");
+            DICTATE_MENU_ID => {
+                if let Some(ctrl) =
+                    app.try_state::<Arc<controllers::dictate::DictateController>>()
+                {
+                    ctrl.trigger_toggle();
                 }
             }
-            OPEN_TRANSCRIBE_MENU_ID => {
-                if let Err(err) = open_transcribe_window(app) {
-                    tracing::warn!(error = %err, "failed to open transcribe window");
+            NEW_NOTE_MENU_ID => {
+                if let Err(err) = open_new_note(app) {
+                    tracing::warn!(error = %err, "failed to open new note");
                 }
             }
-            OPEN_HISTORY_MENU_ID => {
-                if let Err(err) = open_history_window(app) {
-                    tracing::warn!(error = %err, "failed to open history window");
+            OPEN_APP_MENU_ID => {
+                if let Err(err) = navigate_history_path(app, "") {
+                    tracing::warn!(error = %err, "failed to open scribefloat window");
                 }
             }
             OPEN_SETTINGS_MENU_ID => {
@@ -238,6 +283,7 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
     }
 
     tray.build(app)?;
+    app.manage(TrayMenuState { new_note_item });
     Ok(())
 }
 
@@ -272,19 +318,60 @@ struct ShellNavigatePayload {
     settings_tab: Option<String>,
 }
 
+fn navigate_history_path(app: &AppHandle, path: &str) -> tauri::Result<WebviewWindow> {
+    let path = path.trim_start_matches('/');
+    if let Some(window) = app.get_webview_window(HISTORY_WINDOW_LABEL) {
+        raise_webview_window(app, &window)?;
+        let target = if path.is_empty() {
+            "/?view=history".to_string()
+        } else {
+            format!("/{path}")
+        };
+        window.eval(format!("window.location.assign('{target}');"))?;
+        return Ok(window);
+    }
+
+    let url = if path.is_empty() {
+        WebviewUrl::App("?view=history".into())
+    } else {
+        WebviewUrl::App(path.into())
+    };
+    open_or_focus_window(
+        app,
+        HISTORY_WINDOW_LABEL,
+        "ScribeFloat",
+        url,
+        HISTORY_WINDOW_W,
+        HISTORY_WINDOW_H,
+    )
+}
+
+fn shell_route_to_path(route: &str) -> &str {
+    match route {
+        "home" => "",
+        "notes" => "notes",
+        "upload" => "upload",
+        "float" => "float",
+        "settings" => "settings",
+        "notes-new" | "notes/new" => "notes/new",
+        // Legacy tray/IPC route — open the shell home.
+        "scribe" => "",
+        _ => "",
+    }
+}
+
 fn navigate_shell(
     app: &AppHandle,
     route: &str,
     settings_tab: Option<&str>,
 ) -> tauri::Result<WebviewWindow> {
-    let window = open_history_window(app)?;
-    let payload = ShellNavigatePayload {
-        route: route.to_string(),
-        settings_tab: settings_tab.map(|s| s.to_string()),
-    };
-    let _ = window.emit("app://navigate", payload);
-    if route == "scribe" {
-        let _ = window.emit("scribe://opened", ());
+    let window = navigate_history_path(app, shell_route_to_path(route))?;
+    if route == "settings" && settings_tab.is_some() {
+        let payload = ShellNavigatePayload {
+            route: route.to_string(),
+            settings_tab: settings_tab.map(|s| s.to_string()),
+        };
+        let _ = window.emit("app://navigate", payload);
     }
     Ok(window)
 }
@@ -293,23 +380,16 @@ pub(crate) fn open_scribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow
     navigate_shell(app, "scribe", None)
 }
 
+pub(crate) fn open_new_note(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    navigate_history_path(app, "notes/new")
+}
+
 pub(crate) fn open_settings_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    navigate_shell(app, "settings", None)
+    navigate_history_path(app, "settings")
 }
 
 pub(crate) fn open_transcribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     navigate_shell(app, "upload", None)
-}
-
-fn open_history_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    open_or_focus_window(
-        app,
-        HISTORY_WINDOW_LABEL,
-        "ScribeFloat",
-        WebviewUrl::App("?view=history".into()),
-        HISTORY_WINDOW_W,
-        HISTORY_WINDOW_H,
-    )
 }
 
 pub(crate) fn open_onboarding_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
@@ -460,18 +540,17 @@ pub fn run() {
                     if event.state != ShortcutState::Pressed {
                         return;
                     }
-                    let Some(config) = app.try_state::<Arc<services::config::ConfigService>>()
-                    else {
-                        return;
-                    };
-                    let scribe_str = config.get().open_scribe_hotkey.clone();
+                    let open_hotkey = app
+                        .try_state::<Arc<services::config::ConfigService>>()
+                        .map(|config| config.get().open_scribe_hotkey.clone())
+                        .unwrap_or_else(|| platform::default_open_scribe_hotkey().to_string());
                     if let Ok(scribe_sc) =
-                        scribe_str.parse::<tauri_plugin_global_shortcut::Shortcut>()
+                        open_hotkey.parse::<tauri_plugin_global_shortcut::Shortcut>()
                     {
                         if shortcut.id() == scribe_sc.id() {
                             let handle = app.clone();
                             let _ = app.run_on_main_thread(move || {
-                                open_scribe_window(&handle).ok();
+                                open_new_note(&handle).ok();
                             });
                         }
                     }
@@ -481,8 +560,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
-            create_tray(app)?;
-
             let data_dir = app.path().app_data_dir()?;
             #[cfg(target_os = "macos")]
             if let Some(helper) = platform::resolve_set_default_output_helper() {
@@ -493,6 +570,7 @@ pub fn run() {
                 );
             }
             let config = services::config::ConfigService::load(data_dir.join("config.json"))?;
+            app.manage(Arc::clone(&config));
             {
                 let save_folder = config.get().save_folder;
                 if platform::windows_save_folder_needs_migration(&save_folder) {
@@ -576,6 +654,9 @@ pub fn run() {
                 tracing::debug!(error = %err, "hotkey rehydration skipped");
             }
 
+            let (open_hotkey, _) = settings_ctrl.get_hotkeys();
+            create_tray(app, &open_hotkey)?;
+
             let ctrl = controllers::scribe::ScribeController::new(
                 Arc::clone(&audio),
                 Arc::clone(&model),
@@ -612,7 +693,6 @@ pub fn run() {
 
             app.manage(model); // shared model service
             app.manage(voiceprint); // shared voiceprint service
-            app.manage(config); // shared config service
             app.manage(model_ctrl); // model command orchestration
             app.manage(voiceprint_ctrl); // voiceprint command orchestration
             app.manage(settings_ctrl); // settings orchestration

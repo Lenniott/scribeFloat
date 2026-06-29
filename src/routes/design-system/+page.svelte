@@ -872,8 +872,8 @@
       <div>
         <p class="sf-section-label text-fg-dim mb-3">TitleBar — App Region</p>
         <p class="sf-body-md text-fg-muted mb-3">
-          Scribe capture opens via New Note. Dictate is a persistent title-bar action. Note
-          editor shows a back button top-left.
+          Scribe capture opens via Record (auto-starts on the new note). Dictate is a persistent
+          title-bar action. Note editor and Settings use the TitleBar back button.
         </p>
         <div class="flex flex-col gap-3">
           <div class="overflow-hidden rounded-md border border-rim">
@@ -906,7 +906,6 @@
             ontabchange={(tab) => {
               demoSettingsTab = tab;
             }}
-            onback={() => {}}
           />
           <div class="min-w-0 flex-1 bg-panel p-4">
             <p class="sf-body-md text-fg-dim">Tab: {demoSettingsTab}</p>

@@ -18,6 +18,7 @@
 	import DictateView from '@views/dictate.svelte';
 	import OnboardingView from '@views/onboarding.svelte';
 	import { appState } from '@stores/appState.svelte';
+	import { scribe } from '@stores/scribeController.svelte';
 	import { loadNotes, executeDelete } from '@stores/appActions';
 	import type { SettingsTab } from '@sections/settingsTypes';
 
@@ -167,6 +168,7 @@
 		}
 
 		void loadNotes();
+		void scribe.init();
 		const unlistenNoteP = listen('note://item-added', () => {
 			void loadNotes();
 		});
@@ -182,6 +184,7 @@
 			mounted = false;
 			cleanup();
 			window.removeEventListener('storage', onStorage);
+			scribe.destroy();
 			await (await unlistenNoteP)();
 			await (await unlistenNavP)();
 		};

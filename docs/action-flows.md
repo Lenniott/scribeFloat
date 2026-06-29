@@ -270,8 +270,8 @@ Unified editor for store records (written, scribe, dictate with segments). Legac
 
 ### 6a. Create
 
-1. User clicks **+ New Note** → `/notes/new` → `note_create_empty` appends one **written** line to `history.jsonl`
-2. Redirect to `/notes/[id]`
+1. User clicks **Record** in the TitleBar (or **+ New Note** on the Notes list) → `/notes/new` → `note_create_empty` appends one **written** line to `history.jsonl`
+2. Redirect to `/notes/[id]`; if started from TitleBar **Record**, `note-editor` auto-starts capture via `appState.scribeAutoStart`
 
 ### 6b. Load
 
@@ -285,7 +285,7 @@ Unified editor for store records (written, scribe, dictate with segments). Legac
 
 ### 6d. Attach transcript (recording strip)
 
-1. `RecordingStrip` → `scribe_*` commands → on completion `note_attach_transcript`
+1. TitleBar **Record** or `scribeController` → `scribe_*` commands → on completion `note_attach_transcript`
 2. `update_segments` **appends** one jsonl line (capture event)
 
 ### 6e. Delete
@@ -295,7 +295,7 @@ Unified editor for store records (written, scribe, dictate with segments). Legac
 ### 6f. Leave guard (navigate away)
 
 1. `note-editor.svelte` registers `appState.noteLeaveGuard`; `+layout.svelte` `beforeNavigate` and sidebar navigation call it when leaving `/notes/[id]`
-2. **While recording** (`RecordingStrip` `phase === 'recording'`): navigate immediately — recording continues in background; note is not deleted
+2. **While recording** (`scribeController.phase === 'recording'`): navigate immediately — recording continues in background; note is not deleted
 3. **`note_is_empty`** (no written body, no segments, default title unchanged) **and no metadata** → `history_delete` silently, then navigate
 4. **Empty with metadata** (tags/keywords/layers in sidecar, no body or transcript) → “Discard empty note?” modal; Discard deletes, Keep cancels navigation
 5. **Otherwise** → navigate; note persists

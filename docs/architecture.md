@@ -522,7 +522,7 @@ graph TB
 ```
 
 **State transitions:**
-- `IDLE → RECORDING`: user presses **Start Recording** in panel (New note hotkey `CmdOrCtrl+Shift+L` or TitleBar opens the note editor; recording does not start automatically)
+- `IDLE → RECORDING`: user presses **Record** in TitleBar (sets `scribeAutoStart` and navigates to `/notes/new` when not already on a note; `scribeController` auto-starts on editor mount). On an open note, Record starts capture immediately. New note hotkey `CmdOrCtrl+Shift+L` opens the editor without auto-start.
 - `RECORDING → TRANSCRIBING`: Stop & Save pressed
 - `RECORDING → IDLE`: Cancel pressed — audio discarded
 - `TRANSCRIBING → DONE`: history record appended; `.md` written if `save_transcripts_as_markdown` is on

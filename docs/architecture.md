@@ -105,11 +105,9 @@ C4Container
         }
     }
 
-    Rel(user, tray, "opens panels via menu")
-    Rel(tray, scribe_ui, "shows window")
-    Rel(tray, transcribe_ui, "shows window")
-    Rel(tray, dictate_ui, "shows HUD")
-    Rel(tray, history_ui, "shows window")
+    Rel(user, tray, "opens actions via menu")
+    Rel(tray, dictate_ui, "Dictate toggle")
+    Rel(tray, history_ui, "New note / Open app")
     Rel(tray, settings_ui, "shows window")
 
     Rel(scribe_ui, cmd_scribe, "invoke()", "Tauri IPC")
@@ -524,7 +522,7 @@ graph TB
 ```
 
 **State transitions:**
-- `IDLE → RECORDING`: user presses **Start Recording** in panel (hotkey `CmdOrCtrl+Shift+L` or tray click opens the panel; recording does not start automatically)
+- `IDLE → RECORDING`: user presses **Record** in TitleBar (sets `scribeAutoStart` and navigates to `/notes/new` when not already on a note; `scribeController` auto-starts on editor mount). On an open note, Record starts capture immediately. New note hotkey `CmdOrCtrl+Shift+L` opens the editor without auto-start.
 - `RECORDING → TRANSCRIBING`: Stop & Save pressed
 - `RECORDING → IDLE`: Cancel pressed — audio discarded
 - `TRANSCRIBING → DONE`: history record appended; `.md` written if `save_transcripts_as_markdown` is on

@@ -62,7 +62,7 @@ On mount, `onboarding.svelte` calls `model_list`. If any model is already downlo
 
 User records mic only. No system audio capture.
 
-1. User triggers Scribe via tray or hotkey
+1. User triggers Scribe via **New note** tray item or hotkey (`CmdOrCtrl+Shift+L` default)
 2. Scribe panel opens
 3. Audio Service: Device Manager checks preferred mic → falls back to system default if unavailable
 4. Audio Service: Mic Capture opens mic input stream
@@ -95,7 +95,7 @@ User records mic only. No system audio capture.
 
 User records mic + system audio (remote call, meeting, etc). Speaker capture can be toggled on/off at any point during the recording — the mic never stops.
 
-1. User triggers Scribe via tray or hotkey
+1. User triggers Scribe via **New note** tray item or hotkey (`CmdOrCtrl+Shift+L` default)
 2. Scribe panel opens; `captureSpeaker` initialised from the persistent settings default (off by default on fresh install)
 3. Audio Service: Device Manager checks preferred mic → fallback if unavailable
 4. Audio Service: Mic Capture opens mic input stream; Sleep Prevention acquired
@@ -140,6 +140,8 @@ User records mic + system audio (remote call, meeting, etc). Speaker capture can
 ---
 
 ## 3. Dictate
+
+Tray menu **Dictate** toggles the same pipeline as the key listener (default modifier is Left Control on macOS).
 
 Key listener (always on): **Left Control** only (`CGEventTap` on macOS, low-level hook on Windows). Two sequences after an initial tap + release:
 
@@ -187,7 +189,7 @@ Key listener (always on): **Left Control** only (`CGEventTap` on macOS, low-leve
 
 User brings an existing audio file. No recording step.
 
-1. User triggers Transcribe via tray
+1. User triggers Transcribe via the Upload area in the app shell
 2. Transcribe panel opens
 3. User selects audio file (WAV, MP3, M4A, FLAC)
 4. User selects output folder (defaults to config save folder)
@@ -216,7 +218,7 @@ Unified read-only and management view across all transcript-bearing flows.
 
 ### 5a. List
 
-1. User opens History via tray
+1. User opens the app via **Open scribefloat** tray item (navigates to Home) or uses in-app navigation
 2. `history_list` IPC command → `HistoryController::list`
 3. HistoryController reads all live records from `HistoryService` (last-writer-wins by id from `history.jsonl`; deleted tombstones excluded)
 4. HistoryController reads legacy on-disk items: existing `.md` files via `OutputService::list_transcripts`, legacy dictate entries via `OutputService::read_dictate_history` (`dictate_history.json`)
@@ -268,8 +270,8 @@ Unified editor for store records (written, scribe, dictate with segments). Legac
 
 ### 6a. Create
 
-1. User clicks **+ New Note** → `/notes/new` → `note_create_empty` appends one **written** line to `history.jsonl`
-2. Redirect to `/notes/[id]`
+1. User clicks **Record** in the TitleBar (or **+ New Note** on the Notes list) → `/notes/new` → `note_create_empty` appends one **written** line to `history.jsonl`
+2. Redirect to `/notes/[id]`; if started from TitleBar **Record**, `note-editor` auto-starts capture via `appState.scribeAutoStart`
 
 ### 6b. Load
 
@@ -283,7 +285,7 @@ Unified editor for store records (written, scribe, dictate with segments). Legac
 
 ### 6d. Attach transcript (recording strip)
 
-1. `RecordingStrip` → `scribe_*` commands → on completion `note_attach_transcript`
+1. TitleBar **Record** or `scribeController` → `scribe_*` commands → on completion `note_attach_transcript`
 2. `update_segments` **appends** one jsonl line (capture event)
 
 ### 6e. Delete
@@ -293,7 +295,7 @@ Unified editor for store records (written, scribe, dictate with segments). Legac
 ### 6f. Leave guard (navigate away)
 
 1. `note-editor.svelte` registers `appState.noteLeaveGuard`; `+layout.svelte` `beforeNavigate` and sidebar navigation call it when leaving `/notes/[id]`
-2. **While recording** (`RecordingStrip` `phase === 'recording'`): navigate immediately — recording continues in background; note is not deleted
+2. **While recording** (`scribeController.phase === 'recording'`): navigate immediately — recording continues in background; note is not deleted
 3. **`note_is_empty`** (no written body, no segments, default title unchanged) **and no metadata** → `history_delete` silently, then navigate
 4. **Empty with metadata** (tags/keywords/layers in sidecar, no body or transcript) → “Discard empty note?” modal; Discard deletes, Keep cancels navigation
 5. **Otherwise** → navigate; note persists

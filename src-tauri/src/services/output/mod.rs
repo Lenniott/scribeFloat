@@ -128,9 +128,11 @@ impl OutputService {
         model_name: &str,
         rules: &[ReplacementRule],
         prefix: &str,
+        input_label: &str,
+        output_label: &str,
         dest: &Path,
     ) -> Result<PathBuf> {
-        let body = render::render_speaker_blocks_body(blocks, rules, prefix);
+        let body = render::render_speaker_blocks_body(blocks, rules, prefix, input_label, output_label);
         let word_count = body.split_whitespace().count();
         let mut md = String::new();
         md.push_str("---\n");
@@ -261,8 +263,8 @@ impl OutputService {
 mod tests {
     use super::*;
     use crate::types::{
-        Note, ReplacementRule, ReplacementRuleType, ReplacementScope, Segment, SessionManifest,
-        SessionManifestState, WordTransform,
+        Note, ReplacementRule, ReplacementRuleType, ReplacementScope, Segment, SegmentSource,
+        SessionManifest, SessionManifestState, WordTransform,
     };
 
     fn simple_rule(trigger: &str, output: &str, scope: ReplacementScope) -> ReplacementRule {
@@ -364,6 +366,7 @@ mod tests {
             start_ms: 12_000,
             end_ms: 14_000,
             text: "hello world".to_string(),
+            source: None,
         }];
         svc.write_transcript(&segments, &[], "Test", "tiny", true, &[], "", &file)
             .expect("write transcript");
@@ -379,6 +382,7 @@ mod tests {
             start_ms: 12_000,
             end_ms: 14_000,
             text: "hello world".to_string(),
+            source: None,
         }];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write transcript");
@@ -395,29 +399,32 @@ mod tests {
             Segment {
                 start_ms: 0,
                 end_ms: 1_000,
-                text: "in: yeah".to_string(),
+                text: "yeah".to_string(),
+                source: Some(SegmentSource::Mic),
             },
             Segment {
                 start_ms: 1_200,
                 end_ms: 3_000,
-                text: "out: Hello there.".to_string(),
+                text: "Hello there.".to_string(),
+                source: Some(SegmentSource::Speaker),
             },
             Segment {
                 start_ms: 3_100,
                 end_ms: 4_000,
-                text: "out: How are you?".to_string(),
+                text: "How are you?".to_string(),
+                source: Some(SegmentSource::Speaker),
             },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write");
         let content = std::fs::read_to_string(&file).expect("read");
         assert!(
-            content.contains("in: yeah\n\nout: Hello there."),
-            "in: and out: should be separated by a blank line, got:\n{content}"
+            content.contains("yeah\n\nHello there."),
+            "mic and speaker paragraphs should be separated by a blank line, got:\n{content}"
         );
         assert!(
-            content.contains("out: Hello there. How are you?"),
-            "consecutive out: segments within gap should merge without repeating label, got:\n{content}"
+            content.contains("Hello there. How are you?"),
+            "consecutive speaker segments within gap should merge, got:\n{content}"
         );
     }
 
@@ -429,29 +436,32 @@ mod tests {
             Segment {
                 start_ms: 0,
                 end_ms: 1_000,
-                text: "in: yeah".to_string(),
+                text: "yeah".to_string(),
+                source: Some(SegmentSource::Mic),
             },
             Segment {
                 start_ms: 2_000,
                 end_ms: 4_000,
-                text: "out: Thanks for sharing.".to_string(),
+                text: "Thanks for sharing.".to_string(),
+                source: Some(SegmentSource::Speaker),
             },
             Segment {
                 start_ms: 5_000,
                 end_ms: 6_000,
-                text: "in: Absolutely.".to_string(),
+                text: "Absolutely.".to_string(),
+                source: Some(SegmentSource::Mic),
             },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
             .expect("write");
         let content = std::fs::read_to_string(&file).expect("read");
         assert!(
-            content.contains("in: yeah\n\nout:"),
-            "in→out should be \\n\\n, got:\n{content}"
+            content.contains("yeah\n\nThanks for sharing."),
+            "mic→speaker should be \\n\\n, got:\n{content}"
         );
         assert!(
-            content.contains("out: Thanks for sharing.\n\nin:"),
-            "out→in should be \\n\\n, got:\n{content}"
+            content.contains("Thanks for sharing.\n\nAbsolutely."),
+            "speaker→mic should be \\n\\n, got:\n{content}"
         );
     }
 
@@ -464,11 +474,13 @@ mod tests {
                 start_ms: 0,
                 end_ms: 2_000,
                 text: "First thought.".to_string(),
+            source: None,
             },
             Segment {
                 start_ms: 12_000,
                 end_ms: 14_000,
                 text: "Second thought.".to_string(),
+            source: None,
             },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
@@ -489,11 +501,13 @@ mod tests {
                 start_ms: 0,
                 end_ms: 500,
                 text: "Hello".to_string(),
+            source: None,
             },
             Segment {
                 start_ms: 700,
                 end_ms: 1_200,
                 text: "world.".to_string(),
+            source: None,
             },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
@@ -513,6 +527,7 @@ mod tests {
             start_ms: 0,
             end_ms: 2_000,
             text: "hello world".to_string(),
+            source: None,
         }];
         svc.write_transcript(&segments, &[], "T", "tiny", false, &[], "", &file)
             .expect("write");
@@ -752,6 +767,7 @@ mod tests {
             start_ms: 0,
             end_ms: 1_000,
             text: "hello dash world".to_string(),
+            source: None,
         }];
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
         let result = svc.format_dictate_text(&segments, &rules, "");

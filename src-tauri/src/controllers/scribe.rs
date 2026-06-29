@@ -5,8 +5,9 @@ use crate::services::{
     history::HistoryService,
     model::ModelService,
     output::OutputService,
-    voiceprint::{label_segments, VoiceprintService},
+    voiceprint::{VoiceprintService},
 };
+use crate::services::speaker_blocks::build_speaker_blocks;
 use crate::types::{
     Config, HistoryRecord, Note, ProcessingStage, RecoverySessionInfo, ScribeState,
     ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest, SessionManifestState,
@@ -817,12 +818,14 @@ impl ScribeController {
         prepared: &PreparedAudio,
         config: &Config,
     ) -> Vec<SpeakerBlock> {
-        match label_segments(
+        let dual_source = prepared.speaker_pcm_16k.is_some();
+        match build_speaker_blocks(
             segments,
             &prepared.pcm_16k,
             WHISPER_SAMPLE_RATE,
             &self.voiceprint,
             config.voice_similarity_threshold,
+            dual_source,
         ) {
             Ok(blocks) => blocks,
             Err(err) => {
@@ -889,6 +892,8 @@ impl ScribeController {
                     &model_name,
                     &config.replacement_rules,
                     &config.replacement_prefix,
+                    &config.input_label,
+                    &config.output_label,
                     dest,
                 )?;
             }
@@ -1724,21 +1729,25 @@ mod tests {
                 start_ms: 0,
                 end_ms: 500,
                 text: "Thank you.".to_string(),
+            source: None,
             },
             Segment {
                 start_ms: 1_000,
                 end_ms: 1_500,
                 text: "Hello world".to_string(),
+            source: None,
             },
             Segment {
                 start_ms: 2_000,
                 end_ms: 2_500,
                 text: "Thanks for watching.".to_string(),
+            source: None,
             },
             Segment {
                 start_ms: 3_000,
                 end_ms: 3_500,
                 text: "Transcribed by Whisper".to_string(),
+            source: None,
             },
         ];
         let filtered = filter_hallucination_phrases(segs);
@@ -1753,11 +1762,13 @@ mod tests {
                 start_ms: 0,
                 end_ms: 500,
                 text: "THANK YOU.".to_string(),
+            source: None,
             },
             Segment {
                 start_ms: 1_000,
                 end_ms: 1_500,
                 text: "Real speech here".to_string(),
+            source: None,
             },
         ];
         let filtered = filter_hallucination_phrases(segs);
@@ -1772,11 +1783,13 @@ mod tests {
                 start_ms: 0,
                 end_ms: 1_000,
                 text: "I'm talking about the project".to_string(),
+            source: None,
             },
             Segment {
                 start_ms: 1_000,
                 end_ms: 2_000,
                 text: "Let me explain the architecture".to_string(),
+            source: None,
             },
         ];
         let filtered = filter_hallucination_phrases(segs);
@@ -1790,6 +1803,7 @@ mod tests {
             start_ms: 0,
             end_ms: 1_000,
             text: "I want to thank you for coming today".to_string(),
+            source: None,
         }];
         let filtered = filter_hallucination_phrases(segs);
         assert_eq!(filtered.len(), 1);

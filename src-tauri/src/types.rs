@@ -362,11 +362,36 @@ fn default_output_label() -> String {
     "Speaker".to_string()
 }
 
+/// Stored speaker-block labels for dual-source channel tier (tier 2).
+pub const CHANNEL_LABEL_IN: &str = "In";
+/// Stored speaker-block labels for dual-source channel tier (tier 2).
+pub const CHANNEL_LABEL_OUT: &str = "Out";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SegmentSource {
+    Mic,
+    Speaker,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Segment {
     pub start_ms: i64,
     pub end_ms: i64,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<SegmentSource>,
+}
+
+impl Segment {
+    pub fn new(start_ms: i64, end_ms: i64, text: impl Into<String>) -> Self {
+        Self {
+            start_ms,
+            end_ms,
+            text: text.into(),
+            source: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -733,7 +758,7 @@ pub struct HistoryRecord {
     pub created_at: String,
     pub title: String,
     pub model: String,
-    /// Raw merged segments (preserving `in:`/`out:` speaker labels) — re-renderable.
+    /// Raw merged segments with optional channel metadata — re-renderable.
     pub segments: Vec<Segment>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub speaker_blocks: Vec<SpeakerBlock>,
@@ -887,11 +912,7 @@ impl HistoryRecord {
         let duration_ms = segments.last().map(|s| s.end_ms.max(0)).unwrap_or(0);
         let word_count = text.split_whitespace().count();
         let title = title_from_text(text);
-        let stored = vec![Segment {
-            start_ms: 0,
-            end_ms: duration_ms,
-            text: text.to_string(),
-        }];
+        let stored = vec![Segment::new(0, duration_ms, text)];
         Self::base(
             HistoryKind::Dictate,
             title,
@@ -1113,12 +1134,14 @@ mod tests {
             Segment {
                 start_ms: 0,
                 end_ms: 1_000,
-                text: "in: hi".to_string(),
+                text: "hi".to_string(),
+                source: Some(crate::types::SegmentSource::Mic),
             },
             Segment {
                 start_ms: 1_200,
                 end_ms: 5_000,
-                text: "out: hello there".to_string(),
+                text: "hello there".to_string(),
+                source: Some(crate::types::SegmentSource::Speaker),
             },
         ];
         let rec = HistoryRecord::from_scribe(
@@ -1149,6 +1172,7 @@ mod tests {
             start_ms: 0,
             end_ms: 2_000,
             text: "mic only".to_string(),
+            source: None,
         }];
         let rec = HistoryRecord::from_scribe(
             "Call".to_string(),
@@ -1173,6 +1197,7 @@ mod tests {
             start_ms: 0,
             end_ms: 2_000,
             text: "raw".to_string(),
+            source: None,
         }];
         let rec = HistoryRecord::from_dictate(&segments, "hello there friend", "tiny".to_string());
         assert_eq!(rec.kind, HistoryKind::Dictate);
@@ -1188,6 +1213,7 @@ mod tests {
             start_ms: 0,
             end_ms: 3_000,
             text: "one two".to_string(),
+            source: None,
         }];
         let rec = HistoryRecord::from_transcribe(
             "clip".to_string(),

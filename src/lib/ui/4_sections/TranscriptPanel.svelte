@@ -17,10 +17,14 @@
 		end_ms: number | null;
 		text: string;
 	};
+
 	type ProfileSummary = {
 		slug: string;
 		name: string;
 	};
+
+	const CHANNEL_LABEL_IN = 'In';
+	const CHANNEL_LABEL_OUT = 'Out';
 
 	let { noteId }: { noteId: string } = $props();
 
@@ -29,20 +33,34 @@
 	let speakerBlocks = $state<SpeakerBlock[]>([]);
 	let profiles = $state<ProfileSummary[]>([]);
 	let userDisplayName = $state('You');
+	let inputLabel = $state('Mic');
+	let outputLabel = $state('Speaker');
 	let hideOthers = $state(false);
 	let renamingLabel = $state('');
 	let renameValue = $state('');
 	let loadError = $state('');
 
+	const isChannelTier = $derived(
+		speakerBlocks.some((b) => b.label === CHANNEL_LABEL_IN || b.label === CHANNEL_LABEL_OUT),
+	);
+	const isIdentityTier = $derived(speakerBlocks.length > 0 && !isChannelTier);
+	const hasCopyableContent = $derived(
+		speakerBlocks.length > 0 || html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length > 0,
+	);
+
 	onMount(async () => {
 		try {
-			const [rendered, detail] = await Promise.all([
+			const [rendered, detail, labels] = await Promise.all([
 				invoke<string>('note_render_transcript_html', { id: noteId }),
-				invoke<{ notes?: SessionNote[]; speaker_blocks?: SpeakerBlock[] }>('history_get_detail', { id: noteId }),
+				invoke<{ notes?: SessionNote[]; speaker_blocks?: SpeakerBlock[] }>('history_get_detail', {
+					id: noteId,
+				}),
+				invoke<[string, string]>('settings_get_input_labels').catch(() => ['Mic', 'Speaker'] as [string, string]),
 			]);
 			html = rendered;
 			sessionNotes = detail.notes ?? [];
 			speakerBlocks = detail.speaker_blocks ?? [];
+			[inputLabel, outputLabel] = labels;
 			profiles = await invoke<ProfileSummary[]>('voiceprint_list_profiles').catch(() => []);
 			userDisplayName = await invoke<string>('settings_get_user_display_name').catch(() => 'You');
 		} catch (e) {
@@ -50,8 +68,26 @@
 		}
 	});
 
+	function displayLabel(label: string): string {
+		if (label === 'You') return userDisplayName;
+		if (label === CHANNEL_LABEL_IN) return inputLabel;
+		if (label === CHANNEL_LABEL_OUT) return outputLabel;
+		return label;
+	}
+
+	function blockPlainText(block: SpeakerBlock): string {
+		const time =
+			block.start_ms != null && block.end_ms != null
+				? `${formatBlockTime(block.start_ms)} → ${formatBlockTime(block.end_ms)} `
+				: '';
+		return `[${displayLabel(block.label)}] ${time}${block.text}`.trim();
+	}
+
 	async function copyTranscript() {
-		const plain = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+		const plain =
+			speakerBlocks.length > 0
+				? speakerBlocks.map(blockPlainText).join('\n\n')
+				: html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 		if (!plain) return;
 		await writeText(plain).catch(() => {});
 	}
@@ -71,15 +107,17 @@
 		return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 	}
 
-	function displayLabel(label: string): string {
-		return label === 'You' ? userDisplayName : label;
+	function visibleBlock(block: SpeakerBlock): boolean {
+		if (!hideOthers) return true;
+		return block.label === 'You' || block.label === userDisplayName;
 	}
 
-	function visibleBlock(block: SpeakerBlock): boolean {
-		return !hideOthers || block.label === 'You' || block.label === userDisplayName;
+	function canRenameLabel(label: string): boolean {
+		return isIdentityTier && profiles.some((item) => item.name === label);
 	}
 
 	function startRename(label: string) {
+		if (!canRenameLabel(label)) return;
 		renamingLabel = label;
 		renameValue = displayLabel(label);
 	}
@@ -109,7 +147,7 @@
 			<button
 				type="button"
 				class="sf-label-sm text-fg-dim hover:text-fg disabled:opacity-40"
-				disabled={!html}
+				disabled={!hasCopyableContent}
 				onclick={copyTranscript}
 			>
 				Copy
@@ -118,11 +156,13 @@
 		{#if loadError}
 			<p class="px-4 pb-3 sf-body-sm text-destructive">{loadError}</p>
 		{:else if speakerBlocks.length > 0}
-			<div class="flex justify-end px-4 pb-2">
-				<Button variant={hideOthers ? 'active' : 'normal'} size="small" onclick={() => (hideOthers = !hideOthers)}>
-					Hide Other
-				</Button>
-			</div>
+			{#if isIdentityTier}
+				<div class="flex justify-end px-4 pb-2">
+					<Button variant={hideOthers ? 'active' : 'normal'} size="small" onclick={() => (hideOthers = !hideOthers)}>
+						Hide Other
+					</Button>
+				</div>
+			{/if}
 			<div class="flex flex-col px-4 pb-3">
 				{#each speakerBlocks as block, index (`${block.label}-${block.start_ms}-${index}`)}
 					{#if visibleBlock(block)}
@@ -131,13 +171,19 @@
 						{/if}
 						<div class="flex flex-col gap-1">
 							<div class="flex flex-wrap items-center gap-2">
-								<button
-									type="button"
-									class="rounded-sm border border-fill bg-fill px-1.5 py-0.5 sf-label-sm text-fg"
-									onclick={() => startRename(block.label)}
-								>
-									[{displayLabel(block.label)}]
-								</button>
+								{#if canRenameLabel(block.label)}
+									<button
+										type="button"
+										class="rounded-sm border border-fill bg-fill px-1.5 py-0.5 sf-label-sm text-fg"
+										onclick={() => startRename(block.label)}
+									>
+										[{displayLabel(block.label)}]
+									</button>
+								{:else}
+									<span class="rounded-sm border border-fill bg-fill px-1.5 py-0.5 sf-label-sm text-fg">
+										[{displayLabel(block.label)}]
+									</span>
+								{/if}
 								{#if block.start_ms != null && block.end_ms != null}
 									<span class="sf-meta-sm text-fg-dim">{formatBlockTime(block.start_ms)} → {formatBlockTime(block.end_ms)}</span>
 								{/if}

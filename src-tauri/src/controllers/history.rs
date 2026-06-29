@@ -222,10 +222,12 @@ impl HistoryController {
             return Err("legacy items have no structured detail".to_string());
         }
         let save_folder = self.config.get().save_folder;
-        self.history
+        let record = self
+            .history
             .get(&save_folder, id)
             .map_err(|e| e.to_string())?
-            .ok_or_else(|| "history record not found".to_string())
+            .ok_or_else(|| "history record not found".to_string())?;
+        Ok(record)
     }
 
     /// Render markdown for preview (no file written). Works for store and both legacy sources.
@@ -250,9 +252,12 @@ impl HistoryController {
             .get(&cfg.save_folder, id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "history record not found".to_string())?;
+        let speaker_blocks = record.speaker_blocks;
+        let input_label = cfg.input_label.clone();
+        let output_label = cfg.output_label.clone();
         // Return only the paragraph-grouped body text — no YAML front matter, no headings.
         // The full .md format is reserved for export (history_export_markdown).
-        if record.speaker_blocks.is_empty() {
+        if speaker_blocks.is_empty() {
             Ok(output::render_transcript_body(
                 &record.segments,
                 cfg.include_timestamps,
@@ -261,9 +266,11 @@ impl HistoryController {
             ))
         } else {
             Ok(output::render_speaker_blocks_body(
-                &record.speaker_blocks,
+                &speaker_blocks,
                 &cfg.replacement_rules,
                 &cfg.replacement_prefix,
+                &input_label,
+                &output_label,
             ))
         }
     }
@@ -291,7 +298,11 @@ impl HistoryController {
             .output
             .transcript_path(&save_folder, &model_path, &record.title);
 
-        if record.speaker_blocks.is_empty() {
+        let speaker_blocks = record.speaker_blocks;
+        let input_label = cfg.input_label.clone();
+        let output_label = cfg.output_label.clone();
+
+        if speaker_blocks.is_empty() {
             self.output.write_transcript(
                 &record.segments,
                 &record.notes,
@@ -304,11 +315,13 @@ impl HistoryController {
             )
         } else {
             self.output.write_speaker_blocks_transcript(
-                &record.speaker_blocks,
+                &speaker_blocks,
                 &record.title,
                 &record.model,
                 &cfg.replacement_rules,
                 &cfg.replacement_prefix,
+                &input_label,
+                &output_label,
                 &dest,
             )
         }
@@ -511,6 +524,7 @@ mod tests {
             start_ms: 0,
             end_ms: 1_000,
             text: text.to_string(),
+            source: None,
         }]
     }
 
@@ -531,7 +545,7 @@ mod tests {
         let record = HistoryRecord::from_scribe(
             "Meeting".to_string(),
             "tiny".to_string(),
-            seg("in: hello"),
+            seg("hello"),
             Vec::<Note>::new(),
             &[],
             "",

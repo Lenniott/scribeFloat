@@ -6,10 +6,10 @@
 	import MarkdownEditor from '@components/controls/MarkdownEditor.svelte';
 	import Button from '@components/controls/Button.svelte';
 	import Modal from '@primitives/layout/Modal.svelte';
-	import RecordingStrip from '@sections/RecordingStrip.svelte';
 	import TranscriptPanel from '@sections/TranscriptPanel.svelte';
 	import { loadNotes } from '@stores/appActions';
 	import { appState } from '@stores/appState.svelte';
+	import { scribe } from '@stores/scribeController.svelte';
 	import { runNoteLeaveGuard } from '@services/noteLeaveGuard';
 
 	type Segment = { start_ms: number; end_ms: number; text: string };
@@ -36,13 +36,13 @@
 	/** Last values persisted (or loaded) — autosave skips when unchanged. */
 	let savedTitle = '';
 	let savedContent = '';
-	let recordingActive = $state(false);
 	let showDiscardModal = $state(false);
 	let pendingProceed: (() => void) | null = null;
 	let pendingCancel: (() => void) | null = null;
 
 	const hasTranscript = $derived(segments.length > 0);
 	const hasRightPanel = $derived(showTranscript || showMetadata);
+	const recordingActive = $derived(scribe.isRecordingToNote(id));
 
 	const rightPanelOptions: { id: RightPanel; label: string }[] = [
 		{ id: 'transcript', label: 'Transcript' },
@@ -123,6 +123,11 @@
 		savedTitle = title;
 		savedContent = writtenContent;
 		initialized = true;
+
+		if (appState.scribeAutoStart && scribe.phase === 'idle') {
+			appState.scribeAutoStart = false;
+			await scribe.startRecording(id);
+		}
 	});
 
 	onDestroy(() => {
@@ -168,10 +173,6 @@
 		}, 800);
 	}
 
-	async function goBackToNotes() {
-		void goto('/notes');
-	}
-
 	async function onTranscriptReady() {
 		try {
 			const record = await invoke<HistoryRecord>('history_get_detail', { id });
@@ -183,21 +184,21 @@
 			// list refresh on next visit still picks up changes
 		}
 	}
+
+	$effect(() => {
+		if (scribe.transcriptReadyNoteId === id) {
+			scribe.clearTranscriptReady();
+			void onTranscriptReady();
+		}
+	});
 </script>
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden bg-panel">
-	<div class="flex shrink-0 items-center gap-3 border-b border-card px-4 py-2">
-		<button
-			type="button"
-			class="sf-label-md shrink-0 text-fg-dim hover:text-fg"
-			onclick={goBackToNotes}
-		>
-			← Notes
-		</button>
+	<div class="flex shrink-0 items-center border-b border-card px-4 py-2">
 		<EditableTitle bind:value={title} placeholder="Untitled note" />
 	</div>
 
-	<RecordingStrip noteId={id} bind:recordingActive ontranscriptready={onTranscriptReady} />
+
 
 	<div
 		class="flex shrink-0 items-center gap-2 border-b border-card px-4 py-2"

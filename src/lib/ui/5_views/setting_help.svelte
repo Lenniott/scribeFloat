@@ -410,7 +410,7 @@
             >Send a tip</a
           >
         </p>
-        <Button variant="normal" onclick={() => goto(`/design-system`)}>Go to Design System</Button>
+        <Button variant="ghost" onclick={() => goto(`/design-system`)}>Go to Design System</Button>
       </div>
     </div>
   </div>

@@ -46,7 +46,7 @@
 			icon: "size-4",
 		},
 		small: {
-			button: "size-8 p-0",
+			button: "size-7 p-0",
 			icon: "size-3.5",
 		},
 	};

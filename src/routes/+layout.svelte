@@ -15,10 +15,10 @@
 	import Button from '@components/controls/Button.svelte';
 	import Checkbox from '@components/controls/Checkbox.svelte';
 	import Modal from '@primitives/layout/Modal.svelte';
-	import CaptureView from '@views/capture.svelte';
 	import DictateView from '@views/dictate.svelte';
 	import OnboardingView from '@views/onboarding.svelte';
 	import { appState } from '@stores/appState.svelte';
+	import { scribe } from '@stores/scribeController.svelte';
 	import { loadNotes, executeDelete } from '@stores/appActions';
 	import type { SettingsTab } from '@sections/settingsTypes';
 
@@ -81,16 +81,21 @@
 
 	const currentRoute = $derived(pathnameToRoute(page.url.pathname));
 	const isSettingsRoute = $derived(page.url.pathname.startsWith('/settings'));
+	const showNoteBack = $derived(isNoteEditorPath(page.url.pathname));
+
+	const titleBarBack = $derived(
+		showNoteBack ? () => void goto('/notes') :
+		isSettingsRoute ? () => void goto(previousPath) :
+		undefined
+	);
+	const titleBarBackLabel = $derived(
+		showNoteBack ? 'Notes' :
+		isSettingsRoute ? ROUTE_LABELS[pathnameToRoute(previousPath)] :
+		'Back'
+	);
 
 	function guardedNavigate(next: AppRoute) {
 		const path = ROUTE_PATHS[next];
-		if (appState.captureOpen && appState.captureLeaveGuard) {
-			appState.captureLeaveGuard(() => {
-				appState.captureOpen = false;
-				void goto(path);
-			});
-			return;
-		}
 		if (isNoteEditorPath(page.url.pathname)) {
 			runNoteLeaveGuard(() => void goto(path));
 			return;
@@ -103,14 +108,6 @@
 	}
 
 	beforeNavigate(({ cancel, to }) => {
-		if (appState.captureOpen && appState.captureLeaveGuard && to) {
-			cancel();
-			appState.captureLeaveGuard(() => {
-				appState.captureOpen = false;
-				void goto(to.url.pathname);
-			});
-			return;
-		}
 		if (
 			to &&
 			isNoteEditorPath(page.url.pathname) &&
@@ -171,6 +168,7 @@
 		}
 
 		void loadNotes();
+		void scribe.init();
 		const unlistenNoteP = listen('note://item-added', () => {
 			void loadNotes();
 		});
@@ -186,6 +184,7 @@
 			mounted = false;
 			cleanup();
 			window.removeEventListener('storage', onStorage);
+			scribe.destroy();
 			await (await unlistenNoteP)();
 			await (await unlistenNavP)();
 		};
@@ -198,30 +197,22 @@
 	<DictateView />
 {:else}
 	<div class="flex h-screen flex-col overflow-hidden bg-canvas">
-		<ShellTitleBar onNewNote={openCapture} />
+		<ShellTitleBar
+			onNewNote={openCapture}
+			onBack={titleBarBack}
+			backLabel={titleBarBackLabel}
+		/>
 		<div class="flex min-h-0 flex-1 overflow-hidden">
 			{#if isSettingsRoute}
 				<SettingsSidebar
 					activeTab={appState.settingsTab}
 					ontabchange={(tab) => (appState.settingsTab = tab)}
-					onback={() => void goto(previousPath)}
-					backLabel={ROUTE_LABELS[pathnameToRoute(previousPath)]}
 				/>
 			{:else}
 				<AppSidebar activeRoute={currentRoute} onnavigate={guardedNavigate} />
 			{/if}
 			<main class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-canvas">
-				{#if appState.captureOpen}
-					<CaptureView
-						visitKey={appState.captureVisitKey}
-						onclose={() => (appState.captureOpen = false)}
-						registerLeaveGuard={(handler) => {
-							appState.captureLeaveGuard = handler;
-						}}
-					/>
-				{:else}
-					{@render children()}
-				{/if}
+				{@render children()}
 			</main>
 		</div>
 	</div>

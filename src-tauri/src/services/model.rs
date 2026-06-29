@@ -1010,6 +1010,7 @@ impl ModelService {
                     start_ms: seg.start_timestamp() * 10,
                     end_ms: seg.end_timestamp() * 10,
                     text,
+                    source: None,
                 });
             }
         }
@@ -1017,8 +1018,8 @@ impl ModelService {
         Ok(segments)
     }
 
-    /// Merge dual-source segments chronologically and label channel origin.
-    /// `in:` = speaker/system audio, `out:` = local microphone.
+    /// Merge dual-source segments chronologically with channel metadata.
+    /// `SegmentSource::Mic` = local microphone; `SegmentSource::Speaker` = loopback/system audio.
     pub fn merge_dual_source(
         &self,
         mic_segments: &[Segment],
@@ -1044,14 +1045,9 @@ impl ModelService {
 
         let mut out: Vec<Segment> = Vec::with_capacity(merged.len());
         for item in merged {
-            // Product semantics:
-            // in: local microphone (what I say)
-            // out: speaker/system audio (what I hear)
-            let label = if item.is_speaker { "out:" } else { "in:" };
-            let text = format!("{label} {}", item.seg.text.trim());
-            // Suppress likely mic bleed duplicates when same text appears very close in time.
+            let text = item.seg.text.trim().to_string();
             let is_near_duplicate = out.last().is_some_and(|prev| {
-                prev.text.ends_with(item.seg.text.trim())
+                prev.text.ends_with(text.as_str())
                     && (item.seg.start_ms - prev.start_ms).abs() <= 1_500
             });
             if is_near_duplicate {
@@ -1061,6 +1057,11 @@ impl ModelService {
                 start_ms: item.seg.start_ms,
                 end_ms: item.seg.end_ms,
                 text,
+                source: Some(if item.is_speaker {
+                    crate::types::SegmentSource::Speaker
+                } else {
+                    crate::types::SegmentSource::Mic
+                }),
             });
         }
         out
@@ -1241,17 +1242,20 @@ mod tests {
             start_ms: 2_000,
             end_ms: 2_500,
             text: "hello from mic".to_string(),
+            source: None,
         }];
         let speaker = vec![Segment {
             start_ms: 1_000,
             end_ms: 1_500,
             text: "hello from speaker".to_string(),
+            source: None,
         }];
         let merged = service.merge_dual_source(&mic, &speaker);
         assert_eq!(merged.len(), 2);
-        // Sorted by start_ms: speaker (1000ms) before mic (2000ms).
-        assert!(merged[0].text.starts_with("out: "));
-        assert!(merged[1].text.starts_with("in: "));
+        assert_eq!(merged[0].source, Some(crate::types::SegmentSource::Speaker));
+        assert_eq!(merged[1].source, Some(crate::types::SegmentSource::Mic));
+        assert_eq!(merged[0].text, "hello from speaker");
+        assert_eq!(merged[1].text, "hello from mic");
     }
 
     #[test]

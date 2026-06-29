@@ -23,7 +23,7 @@
 		description?: string;
 		/** Trailing control beside a single-line input (e.g. PathPicker Change button). */
 		suffix?: Snippet;
-		onblur?: () => void;
+		onblur?: (event: FocusEvent) => void;
 	} = $props();
 
 	const fieldId = $derived(id ?? `field-${label.toLowerCase().replace(/\s+/g, "-")}`);

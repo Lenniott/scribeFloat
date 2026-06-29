@@ -693,6 +693,7 @@ pub fn run() {
 
             app.manage(model); // shared model service
             app.manage(voiceprint); // shared voiceprint service
+            app.manage(config); // shared config service
             app.manage(model_ctrl); // model command orchestration
             app.manage(voiceprint_ctrl); // voiceprint command orchestration
             app.manage(settings_ctrl); // settings orchestration

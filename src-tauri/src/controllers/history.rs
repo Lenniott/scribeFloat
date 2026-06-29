@@ -255,6 +255,8 @@ impl HistoryController {
         let speaker_blocks = record.speaker_blocks;
         let input_label = cfg.input_label.clone();
         let output_label = cfg.output_label.clone();
+        // Return only the paragraph-grouped body text — no YAML front matter, no headings.
+        // The full .md format is reserved for export (history_export_markdown).
         if speaker_blocks.is_empty() {
             Ok(output::render_transcript_body(
                 &record.segments,

@@ -6,6 +6,7 @@
 	import { ArrowLeft, Mic, PenLine, Square, Trash2 } from 'lucide-svelte';
 	import Button from '@components/controls/Button.svelte';
 	import IconButton from '@components/controls/IconButton.svelte';
+	import Modal from '@primitives/layout/Modal.svelte';
 	import RecordingStatusDot from '@primitives/display/StatusDot.svelte';
 	import RecordingTimer from '@primitives/display/RecordingTimer.svelte';
 	import { appState } from '@stores/appState.svelte';
@@ -29,6 +30,7 @@
 	let scribePhase = $state<ScribePhase>('idle');
 	let scribeElapsedMs = $state(0);
 	let scribeTimerInterval: ReturnType<typeof setInterval> | null = null;
+	let showDiscardConfirm = $state(false);
 
 	const isRecording = $derived(dictateState === 'RECORDING');
 	const isBusy = $derived(dictateState === 'TRANSCRIBING' || dictateState === 'PASTING');
@@ -62,6 +64,7 @@
 	}
 
 	async function scribeDiscard() {
+		showDiscardConfirm = false;
 		stopScribeTimer();
 		await invoke('scribe_set_attach_note', { noteId: null }).catch(() => {});
 		await invoke('scribe_cancel').catch(() => {});
@@ -142,7 +145,7 @@
 				<RecordingStatusDot status="recording" />
 				<RecordingTimer elapsedSeconds={scribeElapsedSeconds} />
 				<Button variant="normal" size="small" onclick={scribeStopAndSave}>Stop & Save</Button>
-				<IconButton aria-label="Discard recording" icon={Trash2} size="small" variant="normal" onclick={scribeDiscard} />
+				<IconButton aria-label="Discard recording" icon={Trash2} size="small" variant="normal" onclick={() => (showDiscardConfirm = true)} />
 			{:else}
 				<span class="sf-body-sm text-fg-dim">Transcribing…</span>
 			{/if}
@@ -166,3 +169,18 @@
 		</Button>
 	</div>
 </header>
+
+<Modal
+	open={showDiscardConfirm}
+	title="Discard recording?"
+	description="The recording will be permanently lost. This cannot be undone."
+	maxWidthClass="max-w-sm"
+	onClose={() => (showDiscardConfirm = false)}
+>
+	{#snippet footer()}
+		<div class="flex w-full justify-end gap-3">
+			<Button variant="normal" onclick={() => (showDiscardConfirm = false)}>Cancel</Button>
+			<Button variant="destructive" onclick={() => void scribeDiscard()}>Discard</Button>
+		</div>
+	{/snippet}
+</Modal>

@@ -265,7 +265,122 @@ of needing to be taught the extraction/retrieval logic itself.
 
 ---
 
-## 10. Reference
+## 10. Conversation Analysis signals — exploratory, not yet decided
+
+> Surfaced from a study of Conversation Analysis / Conversational UX (Harvey Sacks, Bob Moore).
+> These are hypotheses to test in the next extraction-quality pass (`PRODUCT_LEARNINGS.md`'s
+> "next experiment is quality work"), not committed design. Marked here so the reasoning survives
+> past the conversation that produced it.
+
+### 10.1 A second classification axis: Activity, alongside Aspect
+
+The 7 aspects (§3) classify *what kind of content* an occurrence is (Decision, Problem, ...).
+They say nothing about *what shape of interaction* it's embedded in. Conversation Analysis'
+"Pattern Language" (~100 generic interaction shapes — troubleshooting, instruction-giving,
+extended telling, quiz) is a cheap second field to add per occurrence or segment, orthogonal to
+aspect. Use: a segment classified as "Instruction Giving" is a candidate for a workflow-diagram
+output template; a "Quiz" segment isn't. Not yet designed further than this.
+
+**Considered and rejected — Slots.** Task-oriented slot-filling ("for an Instruction-Giving
+activity, extract slots X/Y/Z") was also proposed. Rejected: it's a fixed schema authored ahead of
+time, which is exactly the anti-pattern `AGENT_CONTEXT.md` already burned itself on — "do not make
+users define fixed recipes." If structured parameters are wanted later, they should come from a
+small number of universal activity templates, not user-authored slot schemas.
+
+### 10.2 Chunking refinement: gap vs. pause as a Transition Relevance Place signal
+
+Refines `chunk_strategy` in §3, doesn't replace it. Whisper's timing already distinguishes a
+comfortable inter-turn *gap* from an intra-turn *pause* — that distinction is a sharper signal for
+where one thought ends and another begins than a fixed `batch_size_units` count. Worth testing
+against segment-boundary chunking as-is before assuming it's an improvement.
+
+### 10.3 Preference organization as an Option-vs-Decision confidence signal
+
+Dispreferred responses (rejection, disagreement) are typically hedged, delayed, and longer than
+preferred ones (quick uptake). Usable as a heuristic feature in the batch prompt to help the model
+distinguish "this was floated and dropped" (Option) from "this was actually agreed" (Decision)
+with more than its own unaided judgment.
+
+### 10.4 Compression, the accordion model, and a rehydration pass
+
+The core finding from this round of discussion. Recipient Design + Minimization mean speakers
+compress based on their estimate of what the listener already shares — "the usual pipeline,"
+a bare name, an acronym — and that compression is invisible in the transcript itself. Nothing in
+the pipeline as designed so far (aspects, threads, embeddings, pack assembly) accounts for this,
+and it matters directly for this product because recurring stakeholder relationships are the
+premise, not the exception.
+
+**Resolution order for a flagged compressed reference, cheapest first:**
+
+0. **Scan backward within the same transcript.** The presence of compression is itself evidence
+   that a richer, establishing version of the same referent exists somewhere earlier — not
+   necessarily adjacent. Cheapest possible check: same source, no retrieval needed.
+1. **Check for an adjacent repair sequence.** Recipient signals confusion ("what do you mean,"
+   "who?") in third position, speaker abandons compression and gives the "longer, simpler,
+   clunkier" unpacked version. When present, this is the single best source of rich context
+   available — a human already explained it, nothing was inferred.
+2. **Cross-note corpus retrieval** — only if 0 and 1 find nothing (the accordion never opened;
+   two experts, no confusion, no local record of the fuller meaning). Reuses the same
+   embedding + lexical-gate retrieval mechanism already designed for pack assembly (§6), scoped by
+   whatever tags the note already carries — degrades gracefully if Tags aren't approved yet rather
+   than blocking on approval.
+3. **Leave unresolved, flagged, no invention.** If nothing is found, mark
+   `external_reference: unresolved` rather than letting the model synthesize a plausible-sounding
+   definition for jargon it has no legitimate way to know. Same rule as the pack empty-state (§6):
+   no confident answer beats a wrong one.
+
+### 10.5 Compression as the wheat/chaff and dedup mechanism
+
+This is the sharpest product implication, and it answers the original duplication concern more
+directly than the storage changes in §5:
+
+- An occurrence showing **heavy compression** is evidence the thread was already established
+  elsewhere in this transcript or a prior one — it adds no new information. Store it as a
+  lightweight recurrence pointer only (segment ref, no full excerpt, no embedding spent on it).
+- An occurrence showing **unpacking/expansion** is the canonical, information-rich instance of the
+  thread — this is the one that gets a full excerpt, an embedding, and is what the thread's stored
+  `summary` is actually built from.
+
+This is cheaper than embedding-similarity-based dedup (cluster everything, then collapse
+near-duplicates after the fact): compression is detectable directly from the text before any
+embedding is computed, so it decides what's worth embedding rather than embedding everything and
+pruning afterward.
+
+Worth a new per-occurrence marker, separate from `confidence`: something like
+`self_contained: true/false` — richness is about how much external context a reader would need,
+not about how sure the extraction is.
+
+**Free glossary source, as a side effect.** A repair-triggered unpacking sequence is a candidate
+definition entry, sourced from what a human actually said rather than a model-authored gloss —
+a much lower-risk path toward something like the Glossary type the earlier 12-type knowledge
+design carried (deferred, not abandoned, per `knowledge-orchestration.md`), without reviving that
+architecture.
+
+### 10.6 Context Pack assembly rule: surface only the uncompressed form
+
+Direct consequence for §6 step 6 (assembly): when a thread has multiple backing occurrences, the
+assembled pack should quote the least-compressed one — the richest, most self-contained version —
+never the first-seen or most-recent one by default. Compressed occurrences count toward "this
+recurred N times" but are never what gets quoted.
+
+### 10.7 Recipient Design applied to pack *output* (smaller, separate idea)
+
+Context Packs are currently scoped by topic only (`request`/`tags`/`signals`, §6). Recipient
+Design suggests they could also take an audience parameter — the same underlying facts phrased
+differently for a stakeholder briefing vs. handoff to an AI model with no shared background
+(UC-6, `accumulated-context-problem.md`). Noted, not designed.
+
+### 10.8 New open questions from this section
+
+- How is "compression" actually detected in practice — regex/heuristic markers (bare definite
+  reference, acronym, undefined proper noun), or a cheap classification pass? Needs empirical
+  testing against real transcripts before committing either way.
+- Does the backward in-transcript scan (§10.4 tier 0) need its own lightweight similarity check,
+  or can it reuse the same per-note occurrence list directly without any embedding at all?
+
+---
+
+## 11. Reference
 
 | Document | Relationship |
 |---|---|

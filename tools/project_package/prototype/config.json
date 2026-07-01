@@ -1,0 +1,22 @@
+{
+  "ollama_url": "http://localhost:11434",
+  "model": "qwen3.5:4b",
+  "embedding_model": "embeddinggemma:latest",
+  "embed_memories": true,
+  "temperature": 0.1,
+  "think": false,
+  "batch_size_units": 120,
+  "overlap_units": 12,
+  "force_rerun_batches": false,
+  "force_rerun_memory": false,
+  "force_rerun_embeddings": false,
+  "categories": [
+    "Situation",
+    "Problem",
+    "Intent",
+    "Option",
+    "Decision",
+    "Evidence",
+    "Open Thread"
+  ]
+}

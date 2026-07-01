@@ -1,0 +1,83 @@
+{
+  "pack_id": "sedgwick_workflow_automation_opportunities",
+  "request": {
+    "pack_id": "sedgwick_workflow_automation_opportunities",
+    "title": "Sedgwick White workflow automation opportunities",
+    "request": "What everyday Sedgwick White workflows and problems could light automation or AI-assisted workflows help with?",
+    "tags": [
+      "workflow_discovery",
+      "light_automation",
+      "client_service"
+    ],
+    "signals": [
+      "tax",
+      "planning",
+      "client intake",
+      "forms",
+      "reports",
+      "documents",
+      "marketing"
+    ],
+    "max_memories": 10,
+    "max_occurrences_per_memory": 4
+  },
+  "expanded_brief": {
+    "request": "What everyday Sedgwick White workflows and problems could light automation or AI-assisted workflows help with?",
+    "tags": [
+      "workflow_discovery",
+      "light_automation",
+      "client_service"
+    ],
+    "signals": [
+      "workflow",
+      "process",
+      "handoff",
+      "manual",
+      "repeat",
+      "review",
+      "submit",
+      "follow up",
+      "decision",
+      "problem",
+      "open question",
+      "automation",
+      "automated",
+      "ai",
+      "assist",
+      "reduce friction",
+      "routing",
+      "template",
+      "generate",
+      "extract",
+      "summarise",
+      "client",
+      "advice",
+      "service",
+      "inquiry",
+      "planning",
+      "data",
+      "paper",
+      "email",
+      "tax",
+      "client intake",
+      "forms",
+      "reports",
+      "documents",
+      "marketing"
+    ],
+    "query_text": "What everyday Sedgwick White workflows and problems could light automation or AI-assisted workflows help with? workflow_discovery light_automation client_service workflow process handoff manual repeat review submit follow up decision problem open question automation automated ai assist reduce friction routing template generate extract summarise client advice service inquiry planning data paper email tax client intake forms reports documents marketing"
+  },
+  "selected_memory_ids": [
+    "mem_2026-04-09-17-28-15-small_thread_003",
+    "mem_16-29012026-tax-return-wealth-planning_thread_002",
+    "mem_16-29012026-tax-return-wealth-planning_thread_004",
+    "mem_16-29012026-tax-return-wealth-planning_thread_005",
+    "mem_16-29012026-tax-return-wealth-planning_thread_006",
+    "mem_16-29012026-tax-return-wealth-planning_thread_001",
+    "mem_2026-04-09-17-28-15-small_thread_001",
+    "mem_16-29012026-tax-return-wealth-planning_thread_003",
+    "mem_2026-04-09-17-28-15-small_thread_004",
+    "mem_2026-04-09-17-28-15-small_thread_005"
+  ],
+  "created_at": "2026-06-30T22:01:41"
+}

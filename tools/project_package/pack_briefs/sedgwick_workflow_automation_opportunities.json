@@ -1,0 +1,21 @@
+{
+  "pack_id": "sedgwick_workflow_automation_opportunities",
+  "title": "Sedgwick White workflow automation opportunities",
+  "request": "What everyday Sedgwick White workflows and problems could light automation or AI-assisted workflows help with?",
+  "tags": [
+    "workflow_discovery",
+    "light_automation",
+    "client_service"
+  ],
+  "signals": [
+    "tax",
+    "planning",
+    "client intake",
+    "forms",
+    "reports",
+    "documents",
+    "marketing"
+  ],
+  "max_memories": 10,
+  "max_occurrences_per_memory": 4
+}

@@ -19,6 +19,8 @@ Lightweight captures of ideation and design sessions. Not decisions — decision
 |------|----------|
 | [design-brain-prd.md](active/design-brain-prd.md) | Float enrichment engine proposal |
 | [knowledge-layer-intent.md](active/knowledge-layer-intent.md) | Knowledge layer intent doc |
+| [knowledge-orchestration.md](active/knowledge-orchestration.md) | Knowledge orchestration design, tag+annotate+export pivot |
+| [2026-07-01-context-extraction-engine.md](active/2026-07-01-context-extraction-engine.md) | Reconciles Broccoli memory experiment with Float engine + knowledge-orchestration pivot |
 
 ### captured/
 | File | Date | Produces |

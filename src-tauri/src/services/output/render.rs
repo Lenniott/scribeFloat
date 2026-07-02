@@ -105,9 +105,11 @@ pub fn render_speaker_blocks_body(
 ) -> String {
     let mut out = String::new();
     for (index, block) in blocks.iter().enumerate() {
-        if block.text.trim().is_empty() {
+        let cleaned = cleanup_text(block.text.trim());
+        if cleaned.is_empty() {
             continue;
         }
+        let deduped = dedup_repeated_block(&dedup_consecutive_phrases(&cleaned));
         if index > 0 {
             out.push_str("\n\n---\n\n");
         }
@@ -120,7 +122,7 @@ pub fn render_speaker_blocks_body(
             out.push_str(&format!(" · {start}–{end}"));
         }
         out.push_str("\n\n");
-        out.push_str(block.text.trim());
+        out.push_str(&deduped);
     }
     apply_replacements(&out, rules, &ReplacementScope::Transcripts, prefix)
 }
@@ -224,6 +226,26 @@ mod tests {
             source: None,
         }];
         assert_eq!(count_words(&segments, &[], ""), 2);
+    }
+
+    #[test]
+    fn render_speaker_blocks_body_applies_cleanup_and_dedup() {
+        use crate::types::SpeakerBlock;
+        let blocks = vec![SpeakerBlock {
+            label: "input".to_string(),
+            start_ms: Some(0),
+            end_ms: Some(5_000),
+            text: "[MUSIC] hello hello world".to_string(),
+        }];
+        let body = render_speaker_blocks_body(&blocks, &[], "", "Input", "Output");
+        assert!(
+            body.contains("hello world"),
+            "expected deduped text, got: {body}"
+        );
+        assert!(
+            !body.contains("[MUSIC]"),
+            "bracket annotations should be stripped, got: {body}"
+        );
     }
 
     #[test]

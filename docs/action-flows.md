@@ -123,7 +123,7 @@ User records mic + system audio (remote call, meeting, etc). Speaker capture can
 17. Model Service: loads selected model
 18. Model Service: transcribes mic PCM → mic segments (progress 0–50%)
 19. Model Service: transcribes speaker PCM → raw speaker segments (progress 50–100%) when dual-source
-20. `filter_hallucination_phrases`: strips known Whisper hallucination phrases from speaker segments
+20. `filter_hallucination_phrases` (`services/output/hallucination.rs`): strips known Whisper hallucination phrases from mic and speaker segments (also applied in Dictate before `format_dictate_text` and Transcribe upload)
 21. Model Service: merges mic and speaker segments chronologically; suppresses near-duplicate lines within 1.5 s; applies `in:`/`out:` labels
 22. Output Service: groups segments, builds dual-source markdown, applies word replacement rules
 23. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting)

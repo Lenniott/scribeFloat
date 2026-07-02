@@ -2,6 +2,7 @@ use crate::services::config::ConfigService;
 use crate::services::history::HistoryService;
 use crate::services::model::ModelService;
 use crate::services::output::OutputService;
+use crate::services::output::filter_hallucination_phrases;
 use crate::services::transcribe_input::{TranscribeInputItem, TranscribeInputService};
 use crate::types::{
     Config, HistoryRecord, ProcessingStage, TranscribeItemStatus, TranscribeQueueItem,
@@ -315,6 +316,9 @@ impl TranscribeController {
                     }
                 };
 
+                let mic_segments = filter_hallucination_phrases(&mic_segments);
+                let speaker_segments = filter_hallucination_phrases(&speaker_segments);
+
                 self.model
                     .merge_dual_source(&mic_segments, &speaker_segments)
             } else {
@@ -338,7 +342,7 @@ impl TranscribeController {
                         }
                     },
                 ) {
-                    Ok(segments) => segments,
+                    Ok(segments) => filter_hallucination_phrases(&segments),
                     Err(err) => {
                         queue[index].status = TranscribeItemStatus::Error;
                         queue[index].error = Some(err.to_string());

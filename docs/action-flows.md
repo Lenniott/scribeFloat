@@ -281,7 +281,9 @@ Unified editor for store records (written, scribe, dictate with segments). Legac
 
 1. CodeMirror debounce (~800 ms) → `note_save_written_content` only if body changed (dirty-check in UI)
 2. Title debounce (~500 ms) → `note_save_title` only if title changed
-3. Backend overwrites sidecar files — **no new jsonl line**
+3. Metadata sidebar → `note_set_tags` (and related metadata commands) on change
+4. Backend overwrites sidecar files — **no new jsonl line**
+5. Each metadata/content save emits `note://item-updated` with `{ id }`; `+layout.svelte` listens and calls `loadNotes()` so the notes list reflects title/tag changes without a full reload
 
 ### 6d. Attach transcript (recording strip)
 

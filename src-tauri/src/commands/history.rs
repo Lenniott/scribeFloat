@@ -4,6 +4,23 @@ use crate::types::{AppError, DashboardStats, HistoryListItem, HistoryRecord, Tag
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 
+pub(crate) const NOTE_ITEM_UPDATED_EVENT: &str = "note://item-updated";
+
+#[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
+pub(crate) struct NoteItemUpdatedPayload {
+    pub id: String,
+}
+
+fn emit_note_item_updated(app: &AppHandle, id: &str) {
+    app.emit(
+        NOTE_ITEM_UPDATED_EVENT,
+        NoteItemUpdatedPayload {
+            id: id.to_string(),
+        },
+    )
+    .ok();
+}
+
 fn validate_id(id: &str) -> Result<(), AppError> {
     if id.trim().is_empty() {
         return Err(AppError::InvalidInput(
@@ -37,6 +54,17 @@ mod tests {
     #[test]
     fn uuid_style_id_accepted() {
         assert!(validate_id("550e8400-e29b-41d4-a716-446655440000").is_ok());
+    }
+
+    #[test]
+    fn item_updated_payload_serializes_id() {
+        let payload = NoteItemUpdatedPayload {
+            id: "note-abc".to_string(),
+        };
+        assert_eq!(
+            serde_json::to_string(&payload).unwrap(),
+            r#"{"id":"note-abc"}"#
+        );
     }
 }
 
@@ -118,22 +146,28 @@ pub fn note_create_empty(
 #[tauri::command]
 pub fn note_save_written_content(
     ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
     id: String,
     content: String,
 ) -> Result<(), AppError> {
     validate_id(&id)?;
     ctrl.save_written_content(&id, &content)
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    emit_note_item_updated(&app, &id);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn note_save_title(
     ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
     id: String,
     title: String,
 ) -> Result<(), AppError> {
     validate_id(&id)?;
-    ctrl.save_title(&id, &title).map_err(AppError::from)
+    ctrl.save_title(&id, &title).map_err(AppError::from)?;
+    emit_note_item_updated(&app, &id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -157,11 +191,14 @@ pub fn note_has_metadata(
 #[tauri::command]
 pub fn note_set_tags(
     ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
     id: String,
     tags: Vec<String>,
 ) -> Result<(), AppError> {
     validate_id(&id)?;
-    ctrl.update_tags(&id, tags).map_err(AppError::from)
+    ctrl.update_tags(&id, tags).map_err(AppError::from)?;
+    emit_note_item_updated(&app, &id);
+    Ok(())
 }
 
 #[tauri::command]

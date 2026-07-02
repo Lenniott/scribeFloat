@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { appState } from './appState.svelte';
+import { buildMicOptions, resolveSelectedMic } from '@utils/micOptions';
 
 export type ScribePhase = 'idle' | 'recording' | 'transcribing';
 
@@ -42,6 +44,9 @@ class ScribeController {
 			await listen<number>('scribe://speaker-level', (e) => {
 				this.speakerLevel = e.payload;
 			}),
+			await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+				if (focused) void this.refreshMicOptions();
+			}),
 		);
 	}
 
@@ -62,11 +67,7 @@ class ScribeController {
 
 	async loadSettings() {
 		this.includeTimestamps = await invoke<boolean>('scribe_get_include_timestamps').catch(() => true);
-		const devices = await invoke<string[]>('scribe_list_input_devices').catch(() => []);
-		this.micOptions = [
-			{ value: '', label: 'System Default' },
-			...devices.map((d) => ({ value: d, label: d })),
-		];
+		await this.refreshMicOptions();
 		const [preferredMic] = await invoke<[string | null, string | null]>(
 			'settings_get_preferred_audio_devices',
 		).catch(() => [null, null] as [string | null, string | null]);
@@ -74,6 +75,12 @@ class ScribeController {
 		this.captureSpeaker = await invoke<boolean>('settings_get_scribe_capture_speaker').catch(
 			() => false,
 		);
+	}
+
+	async refreshMicOptions() {
+		const devices = await invoke<string[]>('scribe_list_input_devices').catch(() => []);
+		this.micOptions = buildMicOptions(devices);
+		this.selectedMic = resolveSelectedMic(this.selectedMic, devices);
 	}
 
 	async setMic(mic: string) {

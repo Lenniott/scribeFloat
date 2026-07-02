@@ -138,7 +138,9 @@
 					variant="normal"
 					onclick={(e) => {
 						e.stopPropagation();
-						settingsOpen = !settingsOpen;
+						const opening = !settingsOpen;
+						settingsOpen = opening;
+						if (opening) void scribe.refreshMicOptions();
 					}}
 				/>
 				{#if settingsOpen}

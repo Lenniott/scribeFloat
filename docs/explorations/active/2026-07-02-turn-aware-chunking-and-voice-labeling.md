@@ -11,9 +11,11 @@
 
 ## 1. The problem as observed
 
-Dual-source recordings (mic + speaker capture) show **crossover**: speech from the other party
-appears under my label, turns interleave mid-utterance, and paragraph grouping cuts across
-question/answer pairs. Any chunking built on top of this inherits the damage — a chunk with the
+Recordings with more than one voice show **crossover**: speech from the other party appears
+under my label, turns interleave mid-utterance, and paragraph grouping cuts across
+question/answer pairs. It happens on both capture shapes — dual-channel (mic + speaker
+capture) and single mic with two people in the room (the voiceprint path on
+`feature/app-shell-nav`) — through different mechanisms, diagnosed separately in §2 and §4.5. Any chunking built on top of this inherits the damage — a chunk with the
 wrong voice attached is worse than a chunk with no voice at all, because downstream extraction
 ("what did *I* decide?") will confidently mis-attribute.
 
@@ -91,7 +93,21 @@ Two consequences fall out of this frame:
 
 ---
 
-## 4. Layer 1 — voice attribution (capture-time, deterministic)
+## 4. Layer 1 — voice attribution (capture-time)
+
+Attribution has **two input cases**, and crossover has a different mechanism in each:
+
+- **Dual-channel** (mic + speaker capture): the other party arrives on a separate channel; the
+  failure is mic *bleed* and overlap ordering. Covered in 4.1–4.4 below.
+- **Single mic, multiple people in the room**: everyone arrives on one channel; the only
+  separation signal is the voiceprint engine (ADR-0011, `feature/app-shell-nav` lineage —
+  sherpa-onnx campplus embeddings, nearest enrolled profile ≥ threshold else "Other"). Its
+  failure modes and fixes are §4.5.
+
+Both cases produce the same output contract: `voice` + confidence per segment (4.4), so Layers
+2–3 don't care which path attributed the text.
+
+### 4.1–4.4 Dual-channel case
 
 Fixes crossover at the source. All inputs already exist at the `merge_dual_source` call site:
 both 16 kHz PCM buffers on the shared session clock, plus both segment lists. No model calls,
@@ -131,6 +147,63 @@ parsing as a fallback — no migration pass, the fallback just never goes away f
 `Uncertain` (energy test ambiguous — e.g. both channels active and similar) renders with a marker
 rather than a confident wrong label; same principle as the pack empty state: no answer beats a
 wrong one.
+
+### 4.5 Single-mic case — voiceprints + conversation logic
+
+The `feature/app-shell-nav` branch already carries the engine (ADR-0011,
+`services/voiceprint.rs`, `services/speaker_blocks.rs`): per-Whisper-segment PCM slice →
+campplus embedding → nearest enrolled profile with a hard cosine threshold (default 0.75) →
+label, else "Other"; segments under ~2 s are labelled "Other" unconditionally; same-label
+blocks merge. The probe-validated ME/OTHER gap (+0.386 worst case) says the *embedding* is
+trustworthy — the crossover comes from how it's applied:
+
+1. **Whisper segments are not speaker-pure.** Whisper cuts on acoustic pauses, not speaker
+   change. In fast exchange, one segment routinely contains both voices; the embedding of a
+   mixed segment is a blend, whoever dominates wins, and the other person's words ride along
+   under the wrong name. This is the primary single-mic crossover source.
+2. **Short segments default to "Other".** The user's own "yeah" / "okay" (< 2 s) gets labelled
+   Other — crossover in the opposite direction, and it destroys exactly the backchannel evidence
+   Layer 3 wants (third-position uptake).
+3. **Every segment is classified independently against a hard threshold.** No temporal context:
+   a borderline segment mid-monologue flips to Other and back (label flicker), and cosine 0.74
+   vs 0.76 are treated as different worlds.
+
+Fixes, in the same logic-plus-embedding spirit as the rest of this doc — each one uses the
+existing embedding extractor, no new models:
+
+- **(a) Change-point splitting before labelling.** For mic segments above ~3 s, slide a
+  1.0–1.5 s window (0.25–0.5 s hop) over the segment's PCM, embed each window, and look for a
+  similarity trough between adjacent windows. A trough = probable speaker change inside the
+  segment: split at the nearest word/token timestamp (whisper-rs can emit these) and label each
+  side separately. Directly removes defect 1.
+- **(b) Sequence smoothing instead of per-segment thresholding.** Treat per-profile cosine
+  scores as evidence and run a cheap Viterbi/HMM pass over the segment sequence where switching
+  speakers costs more when there's no TRP (no pause, no syntactic completion) and less at one.
+  Turns are contiguous — the transition prior is exactly the conversation-analysis structure
+  Layer 2 computes anyway. Kills flicker, rescues borderline segments, removes defect 3.
+- **(c) Short segments attributed by adjacency, not defaulted.** A < 2 s utterance flanked by
+  same-voice segments with near-zero gaps inherits that voice (continuation); one landing
+  *inside* another voice's turn span is a continuer credited to the non-holder unless profile
+  evidence contradicts; otherwise `Uncertain`. Removes defect 2 without pretending the
+  embedding works on 0.8 s of audio.
+- **(d) Session-local centroids as the decision boundary.** With one enrolled profile and two
+  people in the room, "≥ 0.75 to me, else Other" is an absolute test with no notion of *the
+  other person in this session*. Instead: cluster the session's segment embeddings (k = 2–3,
+  online centroids); the cluster claimed by enrolled-profile matches is the user, remaining
+  clusters become stable Other-1/Other-2 for the session. Each segment is then attributed by
+  *relative* distance to session centroids rather than an absolute threshold — robust to mic
+  distance drift within a session. This is not full diarization (no open speaker-count
+  estimation, no pyannote pipeline) — it's ADR-0011's own "naturally extends to N profiles"
+  argument applied within one session.
+- **(e) Carry the margin, not just the winner.** `voice_confidence` (4.4) = top score minus
+  runner-up (or minus the centroid boundary). Layer 2 uses it for `Uncertain` rendering;
+  Layer 3's chunker refuses to place a boundary that depends on a voice change whose
+  attribution is low-confidence.
+
+Note the app-shell-nav lineage already has the structured `source: Option<SegmentSource>` field
+on `Segment` — most of what P1 below asks for. The two lineages compose rather than compete:
+voiceprints attribute the single-mic path, channel energy attributes the dual-channel path, and
+on dual-channel recordings voiceprints additionally name *who* is on the speaker channel.
 
 ---
 
@@ -221,7 +294,8 @@ continuers from the other) are one chunk, not many — the chaining rule general
 
 | Phase | What | Why first | Acceptance |
 |---|---|---|---|
-| **P0** | Energy-dominance bleed filter + fuzzy overlap arbitration in `merge_dual_source` (needs PCM passed in) | Fixes the visible crossover with zero new dependencies | Unit tests with synthetic PCM: bleed dropped, twin "yeah" kept, high-energy channel wins overlap |
+| **P0** | Energy-dominance bleed filter + fuzzy overlap arbitration in `merge_dual_source` (needs PCM passed in) | Fixes the visible dual-channel crossover with zero new dependencies | Unit tests with synthetic PCM: bleed dropped, twin "yeah" kept, high-energy channel wins overlap |
+| **P0b** | Single-mic voiceprint fixes on the app-shell-nav lineage: change-point splitting (4.5a) + sequence smoothing (4.5b) + short-segment adjacency (4.5c) | Fixes the visible single-mic crossover using the already-built embedding extractor | Fixture session with two voices: mixed segments split at the change point, no label flicker mid-monologue, user's backchannels not labelled Other |
 | **P1** | `Voice` field on `Segment`, prefix parsing demoted to legacy read fallback + render concern | Unblocks everything downstream; removes the string-prefix fragility | Golden render tests unchanged output for old notes; new notes carry structured voice |
 | **P2** | Turn assembly + adaptive gap + backchannel embedding; rendering switches to paragraph-per-turn | Reading order = interaction order; paragraphing matches conversation rhythm | Fixture conversations: interruption splits, continuer doesn't, slow monologue stays whole |
 | **P3** | Sequence chunker (logic pass, then embedding cohesion gate) as the `turn_taking_aware` strategy in the hydration pipeline | Needs P1/P2 output; needs Float embedding path (story 0052 lineage) | Labeled fixture transcripts: no split inside adjacency pair/repair; closing third ends chunk; extend the hydration test kit with turn-labeled cases |
@@ -245,3 +319,12 @@ P0 is small and self-contained. P3 lands inside the hydration pipeline build, no
 5. **Dictate path.** Single-channel, no turns at all — Layers 2–3 no-op gracefully (one voice,
    structural chunking per the hydration doc's written-source rule), but confirm the shared code
    path doesn't force turn machinery onto it.
+6. **Word/token timestamps for change-point splitting (4.5a).** Whisper-rs exposes token
+   timestamps; verify their accuracy is good enough to split a segment mid-way without slicing
+   a word, and what the extra inference cost is on the fast model tier.
+7. **Windowed embedding cost.** 4.5a embeds ~2–4 windows per second of long segments; measure
+   against campplus inference speed before deciding whether it runs on every mic segment or
+   only when the smoothing pass (4.5b) flags a segment as suspicious.
+8. **Branch reconciliation.** This doc assumes the app-shell-nav voiceprint lineage lands on
+   main; the structured `SegmentSource` field there and the `Voice` field proposed in 4.4 should
+   be one design, not two — resolve when the branches merge.

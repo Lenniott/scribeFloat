@@ -262,6 +262,9 @@ on-disk save folder directly — no daemon, no IPC socket.
    database" persisted) on a re-run — a holistic "judge whether this is confusing" instruction
    isn't reliably steerable by prompt wording alone.
 
+   **Test assets:** manual prompt pipeline + labeled test chunks live in
+   [`2026-07-02-hydration-prompt-test-kit.md`](./2026-07-02-hydration-prompt-test-kit.md).
+
    **Refined hypothesis, not yet tested:** stop asking for a single holistic judgment. Split into
    two steps — (a) extract candidate phrases (proper nouns, acronyms, definite "the X"
    references) rather than asking for a vague-things judgment directly, then (b) ask a targeted

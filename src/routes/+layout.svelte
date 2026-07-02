@@ -172,6 +172,9 @@
 		const unlistenNoteP = listen('note://item-added', () => {
 			void loadNotes();
 		});
+		const unlistenNoteUpdatedP = listen<{ id: string }>('note://item-updated', () => {
+			void loadNotes();
+		});
 		const unlistenNavP = listen<AppNavigateEvent>('app://navigate', (event) => {
 			const next = event.payload.route;
 			if (next === 'settings' && event.payload.settingsTab) {
@@ -186,6 +189,7 @@
 			window.removeEventListener('storage', onStorage);
 			scribe.destroy();
 			await (await unlistenNoteP)();
+			await (await unlistenNoteUpdatedP)();
 			await (await unlistenNavP)();
 		};
 	});

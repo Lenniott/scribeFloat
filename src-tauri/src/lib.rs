@@ -799,6 +799,7 @@ pub fn run() {
             commands::scribe::scribe_read_transcript,
             commands::scribe::scribe_list_recovery_sessions,
             commands::scribe::scribe_list_transcripts,
+            commands::scribe::scribe_switch_mic,
             commands::scribe::scribe_toggle_speaker_capture,
             commands::model::model_setup_status,
             commands::model::model_list,

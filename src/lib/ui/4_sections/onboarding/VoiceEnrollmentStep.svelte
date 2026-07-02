@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
 	import { listen } from '@tauri-apps/api/event';
+	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { onDestroy, onMount } from 'svelte';
 	import { CircleCheckBig, Mic } from 'lucide-svelte';
 	import Button from '@components/controls/Button.svelte';
 	import TextField from '@primitives/form/TextField.svelte';
 	import StepShell from '@primitives/layout/StepFrame.svelte';
 	import { appErrorMessage } from '@utils/types';
+	import { resolveSelectedMic } from '@utils/micOptions';
 
 	type ClipStatus = {
 		clip_id: string;
@@ -57,6 +59,13 @@
 	let modelProgress = $state(0);
 	let vadProgress = $state(0);
 	let unlisten: (() => void) | undefined;
+	let unlistenFocus: (() => void) | undefined;
+
+	async function refreshMics() {
+		const devices = await invoke<string[]>('scribe_list_input_devices').catch(() => []);
+		mics = devices;
+		selectedMic = resolveSelectedMic(selectedMic, devices) || devices[0] || '';
+	}
 
 	const progress = $derived(Math.min(100, Math.round((speechS / 10) * 100)));
 	const safeToStop = $derived(speechS >= 4.5 && purity >= 0.45);
@@ -76,8 +85,7 @@
 
 	onMount(async () => {
 		profileName = prefilledName;
-		mics = await invoke<string[]>('scribe_list_input_devices').catch(() => []);
-		selectedMic = mics[0] ?? '';
+		await refreshMics();
 		profileNames = await invoke<string[]>('voiceprint_list_profile_names').catch(() => []);
 		if (!lockedName && profileNames.length > 0 && prefilledName !== 'You') {
 			profileName = prefilledName;
@@ -102,10 +110,15 @@
 		if (!modelReady) {
 			void downloadModel();
 		}
+
+		unlistenFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+			if (focused) void refreshMics();
+		});
 	});
 
 	onDestroy(() => {
 		unlisten?.();
+		unlistenFocus?.();
 		if (clipId && step !== 'done' && step !== 'saving') {
 			void invoke('voiceprint_discard_clip', { clipId }).catch(() => {});
 		}

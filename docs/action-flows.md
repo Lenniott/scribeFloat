@@ -123,7 +123,7 @@ User records mic + system audio (remote call, meeting, etc). Speaker capture can
 17. Model Service: loads selected model
 18. Model Service: transcribes mic PCM → mic segments (progress 0–50%)
 19. Model Service: transcribes speaker PCM → raw speaker segments (progress 50–100%) when dual-source
-20. `filter_hallucination_phrases`: strips known Whisper hallucination phrases from speaker segments
+20. `filter_hallucination_phrases` (`services/output/hallucination.rs`): strips known Whisper hallucination phrases from mic and speaker segments (also applied in Dictate before `format_dictate_text` and Transcribe upload)
 21. Model Service: merges mic and speaker segments chronologically; suppresses near-duplicate lines within 1.5 s; applies `in:`/`out:` labels
 22. Output Service: groups segments, builds dual-source markdown, applies word replacement rules
 23. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting)
@@ -281,7 +281,9 @@ Unified editor for store records (written, scribe, dictate with segments). Legac
 
 1. CodeMirror debounce (~800 ms) → `note_save_written_content` only if body changed (dirty-check in UI)
 2. Title debounce (~500 ms) → `note_save_title` only if title changed
-3. Backend overwrites sidecar files — **no new jsonl line**
+3. Metadata sidebar → `note_set_tags` (and related metadata commands) on change
+4. Backend overwrites sidecar files — **no new jsonl line**
+5. Each metadata/content save emits `note://item-updated` with `{ id }`; `+layout.svelte` listens and calls `loadNotes()` so the notes list reflects title/tag changes without a full reload
 
 ### 6d. Attach transcript (recording strip)
 

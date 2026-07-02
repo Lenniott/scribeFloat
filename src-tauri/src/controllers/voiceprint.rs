@@ -127,6 +127,7 @@ impl VoiceprintController {
                 false,
                 wav_path.clone(),
                 Some(on_level),
+                None,
             )
             .map_err(|e| e.to_string())?;
         let started_at = Instant::now();

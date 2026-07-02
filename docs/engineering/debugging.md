@@ -11,7 +11,7 @@
 | Audio not capturing or wrong device | `services/audio.rs` → `MicSession` |
 | Transcription wrong or failing | `services/model.rs` → `transcribe_pcm_with_progress` |
 | Dual-source merge / mic bleed issue | `services/model.rs` → `merge_dual_source` |
-| Speaker channel hallucinating ("Thank you." etc.) | `controllers/scribe.rs` → `pcm_rms` (silence gate) and `filter_hallucination_phrases` |
+| Speaker channel hallucinating ("Thank you." etc.) | `services/output/hallucination.rs` → `speaker_pcm_has_signal` (silence gate) and `filter_hallucination_phrases` |
 | Speaker capture not toggling or output device not restoring | `controllers/scribe.rs` → `toggle_speaker_capture`; check `restore_output_device` |
 | Loopback device not found | `platform/mod.rs` → `loopback_device_and_config`; check BlackHole install or `preferred_speaker_device` config |
 | Transcript paragraphs not grouping correctly | `services/output.rs` → `write_transcript`; check `MERGE_GAP_MS` and `speaker_source_prefix` |
@@ -34,7 +34,7 @@ When a bug is in a tight loop (audio callback, transcription progress): add a `/
 
 Whisper runs inside `tokio::task::spawn_blocking`. If you add logging or timing to the transcription path, use `eprintln!` or `std::time::Instant` — `tracing` spans do not propagate into blocking threads without extra setup.
 
-The `on_tick` callback is called per Whisper segment. If progress appears stuck, the model is still running — Whisper does not yield between segments on a chunk.
+The progress callback (`set_progress_callback_safe`) reports encoder/decoder work as 0–100% during `whisper_full`. Unlike `set_abort_callback_safe`, it is safe to register on whisper-rs 0.16 / Metal — only the abort callback triggers `GenericError(-6)`.
 
 Scribe finalizes mic audio (`prepare_audio`) synchronously in `stop_and_save` before emitting `TRANSCRIBING`; only Whisper runs on the background blocking task.
 

@@ -29,6 +29,13 @@ const WRITER_DRAIN_TIMEOUT_MS: u64 = 200;
 /// crash mid-recording leaves a playable file.
 const WAV_CHECKPOINT_INTERVAL: Duration = Duration::from_secs(30);
 
+/// PCM chunk tagged with the capture device's native sample rate so the writer can
+/// resample correctly when the input device is hot-swapped mid-recording.
+struct PcmChunk {
+    native_rate: u32,
+    samples: Vec<f32>,
+}
+
 /// Handle for an active capture session that streams mono f32 PCM to a 16 kHz WAV file on
 /// disk. The cpal audio callback only mixes-to-mono and pushes into a channel; a separate
 /// writer thread resamples to 16 kHz and appends to `hound::WavWriter`, keeping resident
@@ -36,6 +43,12 @@ const WAV_CHECKPOINT_INTERVAL: Duration = Duration::from_secs(30);
 pub struct MicSession {
     /// Kept alive so the underlying audio unit stays open. Dropped in `stop_and_finalize`.
     stream: cpal::Stream,
+    /// Sender shared with the writer thread; kept so the input stream can be rebuilt on
+    /// device disconnect without finalizing the WAV.
+    pcm_sender: mpsc::Sender<PcmChunk>,
+    on_level: Option<Arc<dyn Fn(f32) + Send + Sync>>,
+    on_stream_error: Option<Arc<dyn Fn(cpal::StreamError) + Send + Sync>>,
+    label: &'static str,
     /// `None` after `stop_and_finalize` joins the writer.
     writer_handle: Option<JoinHandle<Result<()>>>,
     /// Set by `stop_and_finalize` to make the writer exit its poll loop.
@@ -52,6 +65,54 @@ impl MicSession {
     /// drops `self`, so the path would otherwise be unreachable).
     pub fn wav_path(&self) -> &Path {
         &self.wav_path
+    }
+
+    /// Re-open capture on the system default input after the current device was unplugged.
+    /// Audio continues appending to the same WAV via the existing writer thread.
+    pub fn reconnect_to_default_input(&mut self) -> Result<String> {
+        self.reconnect_to_input(None, true)
+    }
+
+    /// Re-open capture on a named input device. Used when the user changes mic mid-recording.
+    pub fn reconnect_to_named_input(&mut self, name: &str) -> Result<String> {
+        self.reconnect_to_input(Some(name), false)
+    }
+
+    /// Swap the cpal input stream without stopping the writer thread or finalizing the WAV.
+    fn reconnect_to_input(
+        &mut self,
+        preferred_name: Option<&str>,
+        allow_fallback_to_default: bool,
+    ) -> Result<String> {
+        let _ = self.stream.pause();
+
+        let (device, device_name) =
+            resolve_input_device(preferred_name, allow_fallback_to_default)?;
+        let supported = device.default_input_config()?;
+        let sample_rate = supported.sample_rate().0;
+        let channels = supported.channels() as usize;
+        let config = supported.config();
+
+        let new_stream = build_input_stream(
+            &device,
+            &config,
+            supported.sample_format(),
+            sample_rate,
+            channels,
+            self.pcm_sender.clone(),
+            self.on_level.clone(),
+            self.label,
+            self.on_stream_error.clone(),
+        )?;
+        new_stream.play()?;
+        let old = std::mem::replace(&mut self.stream, new_stream);
+        drop(old);
+        tracing::info!(
+            label = self.label,
+            device = %device_name,
+            "reconnected capture input device"
+        );
+        Ok(device_name)
     }
 
     /// Stop capture, wait for the writer to drain pending chunks and finalize the WAV
@@ -129,6 +190,7 @@ impl AudioService {
             wav_path,
             on_level,
             "loopback",
+            None,
         )
     }
 
@@ -143,36 +205,9 @@ impl AudioService {
         allow_fallback_to_default: bool,
         wav_path: PathBuf,
         on_level: Option<Arc<dyn Fn(f32) + Send + Sync>>,
+        on_stream_error: Option<Arc<dyn Fn(cpal::StreamError) + Send + Sync>>,
     ) -> Result<MicSession> {
-        let host = cpal::default_host();
-        let device = match preferred_name {
-            Some(name) => {
-                let mut found_exact = false;
-                let selected = host
-                    .input_devices()?
-                    .find(|d| d.name().map(|n| n == name).unwrap_or(false))
-                    .inspect(|_| {
-                        found_exact = true;
-                    })
-                    .or_else(|| {
-                        if allow_fallback_to_default {
-                            host.default_input_device()
-                        } else {
-                            None
-                        }
-                    })
-                    .ok_or_else(|| anyhow!("no input device found"))?;
-                if !found_exact && !allow_fallback_to_default {
-                    return Err(anyhow!(
-                        "preferred input device `{name}` was not found; refusing fallback for this stream"
-                    ));
-                }
-                selected
-            }
-            None => host
-                .default_input_device()
-                .ok_or_else(|| anyhow!("no default input device"))?,
-        };
+        let (device, _) = resolve_input_device(preferred_name, allow_fallback_to_default)?;
 
         let supported = device.default_input_config()?;
         let sample_rate = supported.sample_rate().0;
@@ -187,8 +222,52 @@ impl AudioService {
             wav_path,
             on_level,
             "mic",
+            on_stream_error,
         )
     }
+}
+
+fn resolve_input_device(
+    preferred_name: Option<&str>,
+    allow_fallback_to_default: bool,
+) -> Result<(cpal::Device, String)> {
+    let host = cpal::default_host();
+    let device = match preferred_name {
+        Some(name) => {
+            let mut found_exact = false;
+            let selected = host
+                .input_devices()?
+                .find(|d| d.name().map(|n| n == name).unwrap_or(false))
+                .inspect(|_| {
+                    found_exact = true;
+                })
+                .or_else(|| {
+                    if allow_fallback_to_default {
+                        host.default_input_device()
+                    } else {
+                        None
+                    }
+                })
+                .ok_or_else(|| {
+                    if allow_fallback_to_default {
+                        anyhow!("no input device found")
+                    } else {
+                        anyhow!("preferred input device `{name}` was not found")
+                    }
+                })?;
+            if !found_exact && !allow_fallback_to_default {
+                return Err(anyhow!(
+                    "preferred input device `{name}` was not found; refusing fallback for this stream"
+                ));
+            }
+            selected
+        }
+        None => host
+            .default_input_device()
+            .ok_or_else(|| anyhow!("no default input device"))?,
+    };
+    let device_name = device.name().unwrap_or_else(|_| "System Default".to_string());
+    Ok((device, device_name))
 }
 
 /// Shared capture-and-write plumbing for mic + loopback. Creates the WAV writer, spawns
@@ -205,6 +284,7 @@ fn start_capture(
     wav_path: PathBuf,
     on_level: Option<Arc<dyn Fn(f32) + Send + Sync>>,
     label: &'static str,
+    on_stream_error: Option<Arc<dyn Fn(cpal::StreamError) + Send + Sync>>,
 ) -> Result<MicSession> {
     if let Some(parent) = wav_path.parent() {
         std::fs::create_dir_all(parent).context("create capture parent dir")?;
@@ -217,19 +297,21 @@ fn start_capture(
         }
     };
 
-    let (sender, receiver) = mpsc::channel::<Vec<f32>>();
+    let (sender, receiver) = mpsc::channel::<PcmChunk>();
     let stop_signal = Arc::new(AtomicBool::new(false));
-    let writer_handle =
-        spawn_writer_thread(streaming, receiver, sample_rate, Arc::clone(&stop_signal));
+    let writer_handle = spawn_writer_thread(streaming, receiver, Arc::clone(&stop_signal));
 
+    let on_stream_error_stored = on_stream_error.clone();
     let stream_result = build_input_stream(
         &device,
         &config,
         sample_format,
+        sample_rate,
         channels,
-        sender,
-        on_level,
+        sender.clone(),
+        on_level.clone(),
         label,
+        on_stream_error,
     );
 
     let stream = match stream_result {
@@ -254,26 +336,37 @@ fn start_capture(
 
     Ok(MicSession {
         stream,
+        pcm_sender: sender,
+        on_level,
+        on_stream_error: on_stream_error_stored,
+        label,
         writer_handle: Some(writer_handle),
         stop_signal,
         wav_path,
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_input_stream(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     sample_format: cpal::SampleFormat,
+    sample_rate: u32,
     channels: usize,
-    sender: mpsc::Sender<Vec<f32>>,
+    sender: mpsc::Sender<PcmChunk>,
     on_level: Option<Arc<dyn Fn(f32) + Send + Sync>>,
     label: &'static str,
+    on_stream_error: Option<Arc<dyn Fn(cpal::StreamError) + Send + Sync>>,
 ) -> Result<cpal::Stream> {
-    let err_fn =
-        move |e: cpal::StreamError| tracing::error!(label, error = %e, "audio stream error");
+    let err_fn = move |e: cpal::StreamError| {
+        tracing::error!(label, error = %e, "audio stream error");
+        if let Some(cb) = &on_stream_error {
+            cb(e);
+        }
+    };
     let stream = match sample_format {
         cpal::SampleFormat::F32 => {
-            let tx = sender;
+            let tx = sender.clone();
             let level_cb = on_level;
             device.build_input_stream(
                 config,
@@ -282,7 +375,11 @@ fn build_input_stream(
                     if let Some(cb) = &level_cb {
                         cb(level_from_mono(&mono));
                     }
-                    tx.send(mono).ok();
+                    tx.send(PcmChunk {
+                        native_rate: sample_rate,
+                        samples: mono,
+                    })
+                    .ok();
                 },
                 err_fn,
                 None,
@@ -299,7 +396,11 @@ fn build_input_stream(
                     if let Some(cb) = &level_cb {
                         cb(level_from_mono(&mono));
                     }
-                    tx.send(mono).ok();
+                    tx.send(PcmChunk {
+                        native_rate: sample_rate,
+                        samples: mono,
+                    })
+                    .ok();
                 },
                 err_fn,
                 None,
@@ -376,19 +477,20 @@ impl StreamingWavWriter {
 /// `WRITER_DRAIN_TIMEOUT_MS` so the tail of audio buffered by cpal is not lost.
 fn spawn_writer_thread(
     mut streaming: StreamingWavWriter,
-    receiver: mpsc::Receiver<Vec<f32>>,
-    native_rate: u32,
+    receiver: mpsc::Receiver<PcmChunk>,
     stop_signal: Arc<AtomicBool>,
 ) -> JoinHandle<Result<()>> {
     std::thread::spawn(move || -> Result<()> {
         let poll = Duration::from_millis(WRITER_POLL_MS);
         loop {
             if stop_signal.load(Ordering::SeqCst) {
-                drain_remaining_chunks(&receiver, &mut streaming, native_rate)?;
+                drain_remaining_chunks(&receiver, &mut streaming)?;
                 break;
             }
             match receiver.recv_timeout(poll) {
-                Ok(chunk) => write_resampled_chunk(&chunk, native_rate, &mut streaming)?,
+                Ok(chunk) => {
+                    write_resampled_chunk(&chunk.samples, chunk.native_rate, &mut streaming)?
+                }
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
             }
@@ -399,13 +501,12 @@ fn spawn_writer_thread(
 }
 
 fn drain_remaining_chunks(
-    receiver: &mpsc::Receiver<Vec<f32>>,
+    receiver: &mpsc::Receiver<PcmChunk>,
     streaming: &mut StreamingWavWriter,
-    native_rate: u32,
 ) -> Result<()> {
     let drain_timeout = Duration::from_millis(WRITER_DRAIN_TIMEOUT_MS);
     while let Ok(chunk) = receiver.recv_timeout(drain_timeout) {
-        write_resampled_chunk(&chunk, native_rate, streaming)?;
+        write_resampled_chunk(&chunk.samples, chunk.native_rate, streaming)?;
     }
     Ok(())
 }
@@ -607,7 +708,7 @@ mod tests {
         let path = temp_wav();
         let svc = AudioService::new();
         let session = svc
-            .start_mic(None, true, path.clone(), None)
+            .start_mic(None, true, path.clone(), None, None)
             .expect("start mic");
 
         std::thread::sleep(std::time::Duration::from_millis(500));
@@ -633,7 +734,7 @@ mod tests {
         let path = temp_wav();
         let svc = AudioService::new();
         let session = svc
-            .start_mic(None, true, path.clone(), None)
+            .start_mic(None, true, path.clone(), None, None)
             .expect("start mic");
 
         std::thread::sleep(std::time::Duration::from_secs(1));

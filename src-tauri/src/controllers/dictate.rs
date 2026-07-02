@@ -4,7 +4,7 @@ use crate::services::{
     config::ConfigService,
     history::HistoryService,
     model::ModelService,
-    output::OutputService,
+    output::{filter_hallucination_phrases, OutputService},
 };
 use crate::types::{
     Config, DictateProcessingStage, DictateState, DictateStateEvent, HistoryRecord,
@@ -552,6 +552,7 @@ impl DictateController {
                 drop(gate);
                 let _ = app.emit(DICTATE_AUDIO_LEVEL_EVENT, level);
             })),
+            None,
         )?;
 
         let mut inner = self.lock();
@@ -826,6 +827,7 @@ impl DictateController {
                     )
                     .ok();
             },
+            None,
         ) {
             Ok(segments) => segments,
             Err(e) => {
@@ -845,6 +847,8 @@ impl DictateController {
             self.transition_to_idle();
             return Ok(false);
         }
+
+        let segments = filter_hallucination_phrases(&segments);
 
         if segments.is_empty() {
             self.delete_dictate_wav(&wav_path);

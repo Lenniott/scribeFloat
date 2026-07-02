@@ -41,20 +41,24 @@ Two prompts, run in sequence per chunk:
 Mapping back to the hydration doc's chunk-call output: `text` rows populate `defines`,
 `missing` rows populate `unresolved`, `general` rows populate neither.
 
-## 2. Prompt 1 — extract (rev 2)
+## 2. Prompt 1 — extract (rev 3)
 
-Rev 1 findings (2026-07-02, manual runs): opening with "Read this transcript chunk" made the
-model return only the timestamps — "you will be given" framing fixed that. Then "keep each
-phrase whole, including its qualifiers" with no upper bound made it extend spans greedily into
-whole clauses ("the list view failed the contrast check last sprint"), emit overlapping items,
-and paraphrase instead of copying ("was" became "is"). Rev 2 bounds the phrase from above as
-explicitly as from below: no verbs, no statements, 1–4 words, no item containing another.
+Revision trail (2026-07-02, manual runs):
+
+- **Rev 1:** "keep each phrase whole, including its qualifiers" with no upper bound → greedy
+  clause-length spans, overlapping items, paraphrase ("was" → "is").
+- **Rev 2:** bounded phrases from above (no verbs, 1–4 words, no containment). But the prompt
+  showed the literal line-format template `[timestamp] Speaker: spoken words`, and the model
+  latched onto the bracketed pattern and returned only timestamps — twice, under two different
+  framings. **Rule: never show a literal format template in the prompt.** Same failure family
+  as worked examples: the model copies whatever pattern it can see. Rev 3 (user-derived) drops
+  the format demo entirely; one metadata sentence suffices.
+- **Temperature matters more than wording at this stage.** Three identical rev-3 runs at UI
+  default temperature produced one pass, one paraphrased set, one clause-span set. Run at
+  temperature 0 (`/set parameter temperature 0` in `ollama run`, or the UI model settings)
+  before judging any wording change.
 
 ```
-You will be given a transcript chunk. Each line has this format:
-
-[timestamp] Speaker: spoken words
-
 The timestamp and speaker name are metadata. Use only the spoken words.
 
 List the specific things the spoken words mention: people, companies,
@@ -77,6 +81,12 @@ Transcript chunk:
 """
 ```
 
+**Scoring relaxation:** dropped leading articles ("card-based layout" for "the card-based
+layout") are a pass — verbatim copying is a known small-model weakness and the app layer can
+re-anchor phrases to the transcript by substring/fuzzy match. Paraphrase ("decision factor",
+"list view failure") and clause spans remain failures. Harmless extra noun phrases ("deciding
+factor") are noise, not failures — Prompt 2 will label them `general`.
+
 ## 3. Prompt 2 — resolve (rev 2)
 
 Rev 1 findings (2026-07-02, manual run on chunk F): given a single loose phrase line, the
@@ -87,14 +97,13 @@ JSON array, each output key is specified individually, and length/order/copy-unc
 explicit rules. Note the run's input was also rev-1 extraction garbage — when testing this
 prompt in isolation, feed it the expected Prompt 1 output from the chunk tables in §4.
 
+Rev 2 note: the format-template line was removed after the Prompt 1 rev 2 finding — a literal
+`[timestamp] Speaker:` template in the prompt makes the model echo timestamps.
+
 ```
 You will be given a transcript chunk and a JSON array of phrases taken from it.
-
-Each chunk line has this format:
-
-[timestamp] Speaker: spoken words
-
-The timestamp and speaker name are metadata. Use only the spoken words.
+The timestamp and speaker name at the start of each chunk line are metadata.
+Use only the spoken words.
 
 For each phrase in the array, in order, output one JSON object with exactly
 these three keys:
@@ -242,6 +251,7 @@ wording, items assembled from words that aren't adjacent in the transcript.
 | 2026-07-02 | local (Ollama UI) | — | Prompt 1 rev 1 returned only timestamps; "you will be given" framing fixed it |
 | 2026-07-02 | local (Ollama UI) | F | Prompt 1 rev 1 (as reframed): greedy clause-length spans, overlaps, paraphrase → wrote rev 2 |
 | 2026-07-02 | local (Ollama UI) | F | Prompt 2 rev 1, fed a rev-1 clause as input: ignored phrase list, invented phrases, dropped `source` key → wrote rev 2 |
+| 2026-07-02 | local (Ollama UI) | F | Prompt 1 rev 2: format template triggered timestamp-echo again → rev 3 drops it. Rev 3 × 3 runs at default temp: 1 pass, 1 paraphrase, 1 clause spans → retest at temp 0 |
 | | | | |
 
 ## What a pass looks like

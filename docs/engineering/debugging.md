@@ -34,7 +34,7 @@ When a bug is in a tight loop (audio callback, transcription progress): add a `/
 
 Whisper runs inside `tokio::task::spawn_blocking`. If you add logging or timing to the transcription path, use `eprintln!` or `std::time::Instant` — `tracing` spans do not propagate into blocking threads without extra setup.
 
-The `on_tick` callback is called per Whisper segment. If progress appears stuck, the model is still running — Whisper does not yield between segments on a chunk.
+The progress callback (`set_progress_callback_safe`) reports encoder/decoder work as 0–100% during `whisper_full`. Unlike `set_abort_callback_safe`, it is safe to register on whisper-rs 0.16 / Metal — only the abort callback triggers `GenericError(-6)`.
 
 Scribe finalizes mic audio (`prepare_audio`) synchronously in `stop_and_save` before emitting `TRANSCRIBING`; only Whisper runs on the background blocking task.
 

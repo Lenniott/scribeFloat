@@ -1,5 +1,43 @@
 use serde::{Deserialize, Serialize};
 
+/// Typed error returned at the Tauri IPC boundary.
+/// The `code` tag lets the frontend branch on error kind without string-matching.
+/// Variants not yet used in Rust are kept so the TypeScript union type stays complete.
+#[derive(Debug, Serialize)]
+#[allow(dead_code)]
+#[serde(tag = "code", content = "message")]
+pub enum AppError {
+    NotFound(String),
+    InvalidInput(String),
+    StateMachine(String),
+    Io(String),
+    Internal(String),
+}
+
+impl std::fmt::Display for AppError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound(m)
+            | Self::InvalidInput(m)
+            | Self::StateMachine(m)
+            | Self::Io(m)
+            | Self::Internal(m) => f.write_str(m),
+        }
+    }
+}
+
+impl From<anyhow::Error> for AppError {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Internal(e.to_string())
+    }
+}
+
+impl From<String> for AppError {
+    fn from(s: String) -> Self {
+        Self::Internal(s)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default = "default_save_folder")]
@@ -73,6 +111,62 @@ pub struct Config {
 
     #[serde(default = "default_replacement_rules")]
     pub replacement_rules: Vec<ReplacementRule>,
+
+    /// Word spoken before any trigger to gate replacements (e.g. "float").
+    /// Empty string disables the prefix requirement — triggers fire directly.
+    #[serde(default = "default_replacement_prefix")]
+    pub replacement_prefix: String,
+
+    /// When true, Scribe and Transcribe also write a derived `.md` next to the canonical
+    /// history record. Default OFF — markdown is opt-in; the JSONL store is the source of
+    /// truth. Dictate never writes `.md` regardless of this flag.
+    #[serde(default)]
+    pub save_transcripts_as_markdown: bool,
+
+    // ── Float inference ───────────────────────────────────────────────────────
+
+    /// Which inference backend Float uses. Defaults to Ollama (local, no key required).
+    #[serde(default)]
+    pub float_provider: FloatProvider,
+
+    /// Base URL for the inference endpoint (no trailing slash).
+    /// Ollama default: http://localhost:11434
+    /// Leave at default when using Ollama; change only for cloud providers or custom deployments.
+    #[serde(default = "default_float_endpoint_url")]
+    pub float_endpoint_url: String,
+
+    /// API key for cloud providers (OpenAI, Anthropic). Not used for Ollama.
+    #[serde(default)]
+    pub float_api_key: Option<String>,
+
+    /// Model name Float uses for inference.
+    /// Examples: "llama3.2:3b" (Ollama), "gpt-4o-mini" (OpenAI), "claude-haiku-4-5-20251001" (Anthropic).
+    /// None = Float is not ready to run — user must pick a model before flows execute.
+    #[serde(default)]
+    pub float_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneralSettingsUpdate {
+    pub output_path: String,
+    pub open_hotkey: String,
+    pub dictate_hotkey: String,
+    pub input_label: String,
+    pub output_label: String,
+    pub preferred_input_device: Option<String>,
+    pub preferred_speaker_device: Option<String>,
+    pub scribe_capture_speaker: bool,
+    pub speaker_capture_available: bool,
+    pub dictate_auto_enter: bool,
+    pub keep_wav: bool,
+    pub save_transcripts_as_markdown: bool,
+    pub theme_mode: String,
+    pub open_with_app_path: Option<String>,
+}
+
+fn default_float_endpoint_url() -> String {
+    "http://localhost:11434".to_string()
 }
 
 impl Default for Config {
@@ -97,6 +191,12 @@ impl Default for Config {
             dictate_auto_paste: true,
             dictate_auto_enter: false,
             replacement_rules: default_replacement_rules(),
+            replacement_prefix: default_replacement_prefix(),
+            save_transcripts_as_markdown: false,
+            float_provider: FloatProvider::Ollama,
+            float_endpoint_url: default_float_endpoint_url(),
+            float_api_key: None,
+            float_model: None,
         }
     }
 }
@@ -173,13 +273,24 @@ pub struct ReplacementRule {
     pub transform: WordTransform,
 }
 
+fn default_replacement_prefix() -> String {
+    "float".to_string()
+}
+
 fn default_replacement_rules() -> Vec<ReplacementRule> {
+    // Triggers are stored WITHOUT the global prefix. The replacement engine
+    // prepends `Config::replacement_prefix` at match time, so these fire on
+    // "float to do", "float dash", etc. by default.
     vec![
         ReplacementRule {
             trigger: "to do".to_string(),
-            aliases: vec![],
+            aliases: vec![
+                "to do.".to_string(),
+                "todo".to_string(),
+                "todo.".to_string(),
+            ],
             rule_type: ReplacementRuleType::Simple,
-            output: "[ ]".to_string(),
+            output: "\n- [ ] ".to_string(),
             scope: ReplacementScope::Both,
             prefix: String::new(),
             suffix: String::new(),
@@ -300,6 +411,8 @@ pub struct ScribeStateEvent {
     pub wav_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub history_record_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -519,6 +632,310 @@ pub struct DictateHistoryEntry {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScribeTranscriptEntry {
+    pub path: String,
+    pub title: String,
+    pub model: String,
+    pub modified_at: String,
+}
+
+// ── History record store ────────────────────────────────────────────────────────
+
+/// Which capture flow produced a history record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HistoryKind {
+    Scribe,
+    Dictate,
+    Transcribe,
+    Written,
+}
+
+/// The canonical, source-of-truth record persisted to `{save_folder}/history.jsonl`.
+/// One compact JSON object per line. Markdown is a derived, optional output.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoryRecord {
+    pub format_version: u8,
+    pub id: String,
+    pub kind: HistoryKind,
+    /// RFC3339 UTC timestamp.
+    pub created_at: String,
+    pub title: String,
+    pub model: String,
+    /// Raw merged segments (preserving `in:`/`out:` speaker labels) — re-renderable.
+    pub segments: Vec<Segment>,
+    #[serde(default)]
+    pub notes: Vec<Note>,
+    pub duration_ms: i64,
+    pub word_count: usize,
+    #[serde(default)]
+    pub speaker_capture: bool,
+    #[serde(default)]
+    pub dual_source: bool,
+    /// Source audio path (Transcribe imports).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    /// Exported markdown path, when written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub markdown_path: Option<String>,
+    /// Kept-audio session directory (Scribe with keep_wav).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_dir: Option<String>,
+    /// Primary kept audio file (e.g. `{session_dir}/mic.wav`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_path: Option<String>,
+    /// Markdown text for the `written` Source. None for non-Written records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub written_content: Option<String>,
+    /// Tombstone: a later line with `deleted = true` removes the record from the live view.
+    #[serde(default)]
+    pub deleted: bool,
+}
+
+/// Where a history list item originated. Legacy sources are read-only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HistoryItemSource {
+    Store,
+    LegacyMarkdown,
+    LegacyDictate,
+}
+
+/// Lightweight projection of a record for the History list UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoryListItem {
+    pub id: String,
+    pub kind: HistoryKind,
+    pub created_at: String,
+    pub title: String,
+    pub model: String,
+    pub word_count: usize,
+    pub duration_ms: i64,
+    pub duration_secs: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub excerpt: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    pub has_markdown: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub markdown_path: Option<String>,
+    pub source: HistoryItemSource,
+}
+
+/// Aggregated dashboard metrics for the home screen.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardStats {
+    pub transcript_count: usize,
+    pub recorded_this_week_secs: Option<i64>,
+    pub float_layers: Option<usize>,
+    pub drafts_to_review: Option<usize>,
+}
+
+/// One tag name and how many store transcripts reference it (filter panel vocabulary).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TagVocabularyEntry {
+    pub name: String,
+    pub count: usize,
+}
+
+impl HistoryRecord {
+    /// Shared scaffolding: format version, fresh uuid, current UTC time, duration and
+    /// word count. `word_count` is computed via the same renderer the `.md` uses so the
+    /// store and any exported markdown never diverge.
+    fn base(
+        kind: HistoryKind,
+        title: String,
+        model: String,
+        segments: Vec<Segment>,
+        notes: Vec<Note>,
+        word_count: usize,
+    ) -> Self {
+        let duration_ms = segments.last().map(|s| s.end_ms.max(0)).unwrap_or(0);
+        Self {
+            format_version: 1,
+            id: uuid::Uuid::new_v4().to_string(),
+            kind,
+            created_at: chrono::Utc::now().to_rfc3339(),
+            title,
+            model,
+            segments,
+            notes,
+            duration_ms,
+            word_count,
+            speaker_capture: false,
+            dual_source: false,
+            source_path: None,
+            markdown_path: None,
+            session_dir: None,
+            audio_path: None,
+            written_content: None,
+            deleted: false,
+        }
+    }
+
+    /// Build a Scribe record. `session_dir`/`audio_path` are set when `keep_wav` is on so
+    /// the History delete path can remove the kept audio. `markdown_path` is set when the
+    /// markdown toggle is on.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_scribe(
+        title: String,
+        model: String,
+        segments: Vec<Segment>,
+        notes: Vec<Note>,
+        rules: &[ReplacementRule],
+        prefix: &str,
+        speaker_capture: bool,
+        dual_source: bool,
+        session_dir: Option<String>,
+        audio_path: Option<String>,
+        markdown_path: Option<String>,
+    ) -> Self {
+        let word_count = crate::services::output::count_words(&segments, rules, prefix);
+        let mut rec = Self::base(
+            HistoryKind::Scribe,
+            title,
+            model,
+            segments,
+            notes,
+            word_count,
+        );
+        rec.speaker_capture = speaker_capture;
+        rec.dual_source = dual_source;
+        rec.session_dir = session_dir;
+        rec.audio_path = audio_path;
+        rec.markdown_path = markdown_path;
+        rec
+    }
+
+    /// Build a Dictate record. Stores the final (post-replacement) dictation text as a single
+    /// segment — dictate output is plain text, not a re-renderable transcript. Never has `.md`.
+    pub fn from_dictate(segments: &[Segment], text: &str, model: String) -> Self {
+        let duration_ms = segments.last().map(|s| s.end_ms.max(0)).unwrap_or(0);
+        let word_count = text.split_whitespace().count();
+        let title = title_from_text(text);
+        let stored = vec![Segment {
+            start_ms: 0,
+            end_ms: duration_ms,
+            text: text.to_string(),
+        }];
+        Self::base(
+            HistoryKind::Dictate,
+            title,
+            model,
+            stored,
+            Vec::new(),
+            word_count,
+        )
+    }
+
+    /// Build a Transcribe record from an imported audio file.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_transcribe(
+        title: String,
+        model: String,
+        segments: Vec<Segment>,
+        rules: &[ReplacementRule],
+        prefix: &str,
+        dual_source: bool,
+        source_path: String,
+        markdown_path: Option<String>,
+    ) -> Self {
+        let word_count = crate::services::output::count_words(&segments, rules, prefix);
+        let mut rec = Self::base(
+            HistoryKind::Transcribe,
+            title,
+            model,
+            segments,
+            Vec::new(),
+            word_count,
+        );
+        rec.dual_source = dual_source;
+        rec.source_path = Some(source_path);
+        rec.markdown_path = markdown_path;
+        rec
+    }
+
+    /// Build a Written note record. Content starts empty — filled in via `update_written_content`.
+    pub fn from_written(title: String) -> Self {
+        Self::base(
+            HistoryKind::Written,
+            title,
+            String::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+        )
+    }
+
+    /// Project to the lightweight list item shown in History.
+    pub fn to_list_item(&self) -> HistoryListItem {
+        let excerpt = if self.kind == HistoryKind::Written {
+            excerpt_from_written_content(self.written_content.as_deref())
+                .or_else(|| excerpt_from_segments(&self.segments))
+        } else {
+            excerpt_from_segments(&self.segments)
+        };
+        HistoryListItem {
+            id: self.id.clone(),
+            kind: self.kind,
+            created_at: self.created_at.clone(),
+            title: self.title.clone(),
+            model: self.model.clone(),
+            word_count: self.word_count,
+            duration_ms: self.duration_ms,
+            duration_secs: self.duration_ms / 1000,
+            excerpt,
+            tags: Vec::new(),
+            has_markdown: self.markdown_path.is_some(),
+            markdown_path: self.markdown_path.clone(),
+            source: HistoryItemSource::Store,
+        }
+    }
+}
+
+const EXCERPT_MAX_CHARS: usize = 120;
+
+fn excerpt_from_segments(segments: &[Segment]) -> Option<String> {
+    let text = segments
+        .iter()
+        .map(|s| s.text.trim())
+        .find(|t| !t.is_empty())?;
+    truncate_excerpt(&text.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+fn excerpt_from_written_content(content: Option<&str>) -> Option<String> {
+    let text = content?.trim();
+    if text.is_empty() {
+        return None;
+    }
+    truncate_excerpt(text)
+}
+
+fn truncate_excerpt(flat: &str) -> Option<String> {
+    if flat.is_empty() {
+        return None;
+    }
+    if flat.chars().count() <= EXCERPT_MAX_CHARS {
+        Some(flat.to_string())
+    } else {
+        let truncated: String = flat.chars().take(EXCERPT_MAX_CHARS).collect();
+        Some(format!("{truncated}…"))
+    }
+}
+
+/// Derive a short title from free text: first few words, trimmed, with a sensible fallback.
+fn title_from_text(text: &str) -> String {
+    let words: Vec<&str> = text.split_whitespace().take(8).collect();
+    let joined = words.join(" ");
+    let trimmed = joined.trim_end_matches(|c: char| !c.is_alphanumeric());
+    if trimmed.is_empty() {
+        "Dictation".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 impl ScribeStateEvent {
     pub fn new(state: ScribeState) -> Self {
         Self {
@@ -528,6 +945,7 @@ impl ScribeStateEvent {
             transcript_path: None,
             wav_path: None,
             error: None,
+            history_record_id: None,
         }
     }
 }
@@ -546,6 +964,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn default_replacement_rules_have_no_embedded_prefix() {
+        // Triggers should be plain base words (e.g. "dash", "to do").
+        // The global replacement_prefix ("float") is applied at match time by
+        // apply_replacements — it must NOT be stored in the trigger itself.
+        let rules = default_replacement_rules();
+        for rule in &rules {
+            assert!(
+                !rule.trigger.starts_with("float "),
+                "trigger {:?} must not embed the prefix — use Config::replacement_prefix",
+                rule.trigger
+            );
+            for alias in &rule.aliases {
+                assert!(
+                    !alias.starts_with("float "),
+                    "alias {:?} in rule {:?} must not embed the prefix",
+                    alias,
+                    rule.trigger
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn default_replacement_prefix_is_float() {
+        assert_eq!(default_replacement_prefix(), "float");
+    }
+
+    #[test]
     fn scribe_state_event_serializes_ui_expected_keys() {
         let mut event = ScribeStateEvent::new(ScribeState::Done);
         event.transcript_path = Some("/tmp/result.md".to_string());
@@ -560,6 +1006,18 @@ mod tests {
     }
 
     #[test]
+    fn scribe_state_event_serializes_history_record_id() {
+        let mut event = ScribeStateEvent::new(ScribeState::Done);
+        event.history_record_id = Some("abc-123".to_string());
+        let json = serde_json::to_value(&event).expect("serialize");
+        assert_eq!(json["history_record_id"], "abc-123");
+        // Omitted when None (skip_serializing_if)
+        let event2 = ScribeStateEvent::new(ScribeState::Done);
+        let json2 = serde_json::to_value(&event2).expect("serialize");
+        assert!(!json2.as_object().unwrap().contains_key("history_record_id"));
+    }
+
+    #[test]
     fn scribe_transcribing_event_carries_progress_lifecycle_field() {
         let mut event = ScribeStateEvent::new(ScribeState::Transcribing);
         event.progress = Some(0.25);
@@ -567,4 +1025,189 @@ mod tests {
         assert_eq!(json["state"], "TRANSCRIBING");
         assert_eq!(json["progress"], 0.25);
     }
+
+    #[test]
+    fn config_save_transcripts_as_markdown_defaults_false_from_old_config() {
+        // An old config file missing the new field must still deserialize.
+        let old = r#"{"save_folder":"/tmp/x"}"#;
+        let cfg: Config = serde_json::from_str(old).expect("deserialize old config");
+        assert!(!cfg.save_transcripts_as_markdown);
+    }
+
+    #[test]
+    fn from_scribe_sets_dual_source_duration_and_kept_audio() {
+        let segments = vec![
+            Segment {
+                start_ms: 0,
+                end_ms: 1_000,
+                text: "in: hi".to_string(),
+            },
+            Segment {
+                start_ms: 1_200,
+                end_ms: 5_000,
+                text: "out: hello there".to_string(),
+            },
+        ];
+        let rec = HistoryRecord::from_scribe(
+            "Meeting".to_string(),
+            "tiny".to_string(),
+            segments,
+            vec![],
+            &[],
+            "",
+            true,
+            true,
+            Some("/save/2026/sess".to_string()),
+            Some("/save/2026/sess/mic.wav".to_string()),
+            None,
+        );
+        assert_eq!(rec.kind, HistoryKind::Scribe);
+        assert_eq!(rec.duration_ms, 5_000);
+        assert!(rec.dual_source);
+        assert!(rec.speaker_capture);
+        assert_eq!(rec.session_dir.as_deref(), Some("/save/2026/sess"));
+        assert!(!rec.id.is_empty());
+        assert_eq!(rec.format_version, 1);
+    }
+
+    #[test]
+    fn from_scribe_can_distinguish_speaker_capture_enabled_from_dual_source_success() {
+        let segments = vec![Segment {
+            start_ms: 0,
+            end_ms: 2_000,
+            text: "mic only".to_string(),
+        }];
+        let rec = HistoryRecord::from_scribe(
+            "Call".to_string(),
+            "tiny".to_string(),
+            segments,
+            vec![],
+            &[],
+            "",
+            true,
+            false,
+            None,
+            None,
+            None,
+        );
+        assert!(rec.speaker_capture);
+        assert!(!rec.dual_source);
+    }
+
+    #[test]
+    fn from_dictate_word_count_matches_text() {
+        let segments = vec![Segment {
+            start_ms: 0,
+            end_ms: 2_000,
+            text: "raw".to_string(),
+        }];
+        let rec = HistoryRecord::from_dictate(&segments, "hello there friend", "tiny".to_string());
+        assert_eq!(rec.kind, HistoryKind::Dictate);
+        assert_eq!(rec.word_count, 3);
+        assert_eq!(rec.duration_ms, 2_000);
+        assert_eq!(rec.segments[0].text, "hello there friend");
+        assert!(rec.markdown_path.is_none());
+    }
+
+    #[test]
+    fn from_transcribe_sets_source_path() {
+        let segments = vec![Segment {
+            start_ms: 0,
+            end_ms: 3_000,
+            text: "one two".to_string(),
+        }];
+        let rec = HistoryRecord::from_transcribe(
+            "clip".to_string(),
+            "tiny".to_string(),
+            segments,
+            &[],
+            "",
+            false,
+            "/in/clip.mp3".to_string(),
+            None,
+        );
+        assert_eq!(rec.kind, HistoryKind::Transcribe);
+        assert_eq!(rec.source_path.as_deref(), Some("/in/clip.mp3"));
+        assert_eq!(rec.word_count, 2);
+    }
+
+    #[test]
+    fn written_record_has_correct_kind() {
+        let rec = HistoryRecord::from_written("Title".into());
+        assert_eq!(rec.kind, HistoryKind::Written);
+        assert!(rec.segments.is_empty());
+        assert_eq!(rec.model, "");
+        assert_eq!(rec.duration_ms, 0);
+        assert_eq!(rec.word_count, 0);
+        assert!(rec.written_content.is_none());
+        assert!(!rec.id.is_empty());
+    }
+
+    #[test]
+    fn written_record_deserialises_without_written_content_field() {
+        let json = r#"{"format_version":1,"id":"abc","kind":"written","created_at":"2026-01-01T00:00:00Z","title":"T","model":"","segments":[],"notes":[],"duration_ms":0,"word_count":0}"#;
+        let rec: HistoryRecord = serde_json::from_str(json).expect("deserialise");
+        assert_eq!(rec.kind, HistoryKind::Written);
+        assert!(rec.written_content.is_none());
+    }
+}
+
+// ── Float inference types ─────────────────────────────────────────────────────
+
+/// Which inference backend Float uses for LLM calls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum FloatProvider {
+    /// Local Ollama daemon (http://localhost:11434 by default). No API key required.
+    #[default]
+    Ollama,
+    /// OpenAI API (https://api.openai.com). Requires api key.
+    OpenAi,
+    /// Anthropic API (https://api.anthropic.com). Requires api key.
+    Anthropic,
+    /// Any OpenAI-compatible endpoint. User supplies the base URL and optional key.
+    Custom,
+}
+
+impl FloatProvider {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "ollama" => Ok(Self::Ollama),
+            "openai" => Ok(Self::OpenAi),
+            "anthropic" => Ok(Self::Anthropic),
+            "custom" => Ok(Self::Custom),
+            other => Err(format!("unsupported float provider `{other}`")),
+        }
+    }
+
+    /// Default base URL for this provider.
+    pub fn default_endpoint(&self) -> &'static str {
+        match self {
+            Self::Ollama => "http://localhost:11434",
+            Self::OpenAi => "https://api.openai.com",
+            Self::Anthropic => "https://api.anthropic.com",
+            Self::Custom => "http://localhost:11434",
+        }
+    }
+}
+
+/// A model available from the configured inference provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FloatModelInfo {
+    /// The model identifier to pass in inference requests (e.g. "llama3.2:3b", "gpt-4o-mini").
+    pub id: String,
+    /// Human-readable label. Falls back to `id` when the provider returns no display name.
+    pub label: String,
+}
+
+/// The full Float configuration, returned by `float_get_config`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FloatConfig {
+    pub provider: FloatProvider,
+    pub endpoint_url: String,
+    /// API key present flag — the key itself is never sent to the frontend.
+    pub has_api_key: bool,
+    pub model: Option<String>,
+    /// True when provider + endpoint + model are all set and Float is ready to run.
+    pub ready: bool,
 }

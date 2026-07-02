@@ -1,6 +1,6 @@
 use crate::types::{ModelDownloadEvent, Segment};
 use anyhow::{anyhow, Context, Result};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use whisper_rs::{
     FullParams, SamplingStrategy, SegmentCallbackData, WhisperContext, WhisperContextParameters,
-    WhisperVadParams,
+    WhisperError, WhisperVadParams,
 };
 
 /// Cap inference threads at the number of physical cores. Hyperthreading does not help
@@ -17,13 +17,6 @@ use whisper_rs::{
 const MAX_INFERENCE_THREADS: usize = 8;
 
 pub const SMALL_MODEL_FILENAME: &str = "ggml-small.en-q5_1.bin";
-
-/// Model catalog ids eligible for record-start preload (small models only).
-pub const PRELOAD_ELIGIBLE_MODEL_IDS: &[&str] = &["tiny-en-q5", "base-en-q5"];
-
-pub fn model_id_preload_eligible(model_id: &str) -> bool {
-    PRELOAD_ELIGIBLE_MODEL_IDS.contains(&model_id)
-}
 
 pub const VAD_MODEL_FILENAME: &str = "ggml-silero-v6.2.0.bin";
 const VAD_MODEL_URL: &str =
@@ -44,7 +37,7 @@ pub struct ModelCatalogItem {
     pub rtfx: Option<u32>,
     /// Verified lowercase-hex SHA-256 of the model file. When `Some`, the download is
     /// rejected unless the bytes hash to this value (see `verify_sha256`). When `None`,
-    /// the download is accepted unverified — fill these in (TODO(S1)) to enable pinning.
+    /// the download is accepted unverified.
     pub sha256: Option<&'static str>,
 }
 
@@ -93,7 +86,8 @@ const MODEL_CATALOG: [ModelCatalogItem; 5] = [
         id: "large-v3-turbo-q5",
         label: "Large Turbo",
         file_name: "ggml-large-v3-turbo-q5_0.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+        url:
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
         size_mb: 547,
         wer: 2.10,
         rtfx: Some(200),
@@ -142,8 +136,24 @@ async fn verify_sha256(path: &Path, expected_hex: &str) -> Result<()> {
     Ok(())
 }
 
+/// Distinguishes GPU encode failures (retryable on CPU) from other inference errors.
+enum InferError {
+    Encode(anyhow::Error),
+    Other(anyhow::Error),
+}
+
+impl From<InferError> for anyhow::Error {
+    fn from(e: InferError) -> Self {
+        match e {
+            InferError::Encode(e) | InferError::Other(e) => e,
+        }
+    }
+}
+
 pub struct ModelService {
     models_dir: PathBuf,
+    /// Append-only log of encode failures for post-mortem diagnosis (`{app_data}/transcription-failures.jsonl`).
+    failure_log_path: PathBuf,
     /// Loaded Whisper contexts keyed by canonical model path. A `WhisperContext` owns the
     /// model weights (~30 MB tiny → ~550 MB large turbo) and is safe to share across calls —
     /// only the per-inference `WhisperState` is created fresh on each transcribe. Caching
@@ -153,14 +163,24 @@ pub struct ModelService {
     /// Per-path mutexes so concurrent callers (e.g. record-start preload + stop transcribe)
     /// serialize on the same file instead of each paying a full WhisperContext load.
     loading_locks: Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>,
+    /// Paths where the GPU encoder previously failed (e.g. Metal encode error on M1).
+    /// `get_or_load_context` loads these with `use_gpu = false` from this point forward.
+    cpu_fallback_paths: Mutex<HashSet<PathBuf>>,
+    /// Serializes all in-flight `whisper_full` calls. `WhisperContext` is shared across
+    /// Scribe, Dictate, and Transcribe; concurrent encode passes corrupt Metal/ggml state.
+    inference_gate: Mutex<()>,
 }
 
 impl ModelService {
     pub fn new(models_dir: PathBuf) -> Arc<Self> {
+        let failure_log_path = transcription_failure_log_path(&models_dir);
         Arc::new(Self {
             models_dir,
+            failure_log_path,
             loaded_contexts: Mutex::new(HashMap::new()),
             loading_locks: Mutex::new(HashMap::new()),
+            cpu_fallback_paths: Mutex::new(HashSet::new()),
+            inference_gate: Mutex::new(()),
         })
     }
 
@@ -447,6 +467,16 @@ impl ModelService {
         MODEL_CATALOG.iter().find(|m| m.id == model_id).copied()
     }
 
+    /// Drop all cached WhisperContexts before app exit so Metal GPU resources are
+    /// freed while the Rust runtime is still live — prevents the ggml-metal assertion
+    /// `[rsets->data count] == 0` that fires when contexts are dropped during
+    /// NSApplication teardown after Metal state has already been partially cleaned up.
+    pub fn release_contexts(&self) {
+        if let Ok(mut guard) = self.loaded_contexts.lock() {
+            guard.clear();
+        }
+    }
+
     /// Load a Whisper context for `model_path`, or return the cached one. Loads block on
     /// disk I/O and model parsing, so callers should invoke this from `spawn_blocking` (or
     /// off the async runtime). Subsequent calls for the same path are O(hash lookup).
@@ -457,9 +487,7 @@ impl ModelService {
 
         let path_key = model_path.to_path_buf();
         let load_lock = self.load_lock_for(&path_key);
-        let _in_flight = load_lock
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let _in_flight = load_lock.lock().unwrap_or_else(|p| p.into_inner());
 
         if let Some(ctx) = self.cached_context(model_path) {
             return Ok(ctx);
@@ -468,24 +496,40 @@ impl ModelService {
         let path_str = model_path
             .to_str()
             .ok_or_else(|| anyhow!("model path is not valid UTF-8"))?;
+
+        let use_gpu = !self
+            .cpu_fallback_paths
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .contains(&path_key);
+        let mut ctx_params = WhisperContextParameters::default();
+        if !use_gpu {
+            tracing::info!(
+                model = model_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                "loading model on CPU (GPU encode previously failed)"
+            );
+            ctx_params.use_gpu(false);
+        }
+
         let load_started = Instant::now();
-        let ctx = WhisperContext::new_with_params(path_str, WhisperContextParameters::default())
+        let ctx = WhisperContext::new_with_params(path_str, ctx_params)
             .map_err(|e| anyhow!("failed to load model at {path_str}: {e:?}"))?;
         let ctx = Arc::new(ctx);
-        eprintln!(
-            "[model] loaded {} in {} ms",
-            model_path
+        tracing::debug!(
+            model = model_path
                 .file_name()
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_else(|| path_str.to_string()),
-            load_started.elapsed().as_millis()
+            elapsed_ms = load_started.elapsed().as_millis(),
+            "model loaded"
         );
 
         let mut guard = self.lock_contexts();
         Ok(Arc::clone(
-            guard
-                .entry(path_key)
-                .or_insert_with(|| Arc::clone(&ctx)),
+            guard.entry(path_key).or_insert_with(|| Arc::clone(&ctx)),
         ))
     }
 
@@ -495,10 +539,7 @@ impl ModelService {
     }
 
     fn load_lock_for(&self, path_key: &Path) -> Arc<Mutex<()>> {
-        let mut locks = self
-            .loading_locks
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let mut locks = self.loading_locks.lock().unwrap_or_else(|p| p.into_inner());
         locks
             .entry(path_key.to_path_buf())
             .or_insert_with(|| Arc::new(Mutex::new(())))
@@ -511,26 +552,234 @@ impl ModelService {
             .unwrap_or_else(|p| p.into_inner())
     }
 
+    /// Mark a model path for CPU-only inference after a GPU encode failure.
+    /// Evicts any cached GPU context so it is reloaded with `use_gpu = false`.
+    fn mark_cpu_fallback(&self, path: &Path) {
+        let path = path.to_path_buf();
+        self.lock_contexts().remove(&path);
+        self.cpu_fallback_paths
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(path);
+    }
+
     /// Transcribe mono f32 PCM at 16 kHz and report Whisper's own progress.
     /// Must be called from spawn_blocking.
     /// Pass `vad_model_path` to enable Silero VAD — silence mid-recording is skipped,
     /// preventing hallucinations during pauses.
+    ///
+    /// On GPU encode failure (e.g. Metal `GenericError(-6)` on M1) the context is evicted and
+    /// the inference is retried automatically on CPU. If encode still fails with Silero VAD
+    /// enabled, a final retry runs without VAD. Subsequent calls for the same model path
+    /// use CPU without re-attempting GPU.
+    ///
+    /// `source` identifies the caller workflow (e.g. `"scribe/mic"`) for failure diagnostics.
     pub fn transcribe_pcm_with_progress<F>(
         &self,
         model_path: &Path,
         pcm: &[f32],
         vad_model_path: Option<&Path>,
         abort: Option<Arc<AtomicBool>>,
-        mut on_progress: F,
+        source: &str,
+        on_progress: F,
     ) -> Result<Vec<Segment>>
     where
-        F: FnMut(f32) + 'static,
+        F: FnMut(f32) + Send + 'static,
+    {
+        let _inference = self
+            .inference_gate
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let on_progress = Arc::new(Mutex::new(on_progress));
+        let vad_requested = vad_model_path.is_some();
+        let mut gpu_retried = false;
+
+        let mut result = self.run_inference(
+            model_path,
+            pcm,
+            vad_model_path,
+            abort.clone(),
+            Arc::clone(&on_progress),
+        );
+
+        if matches!(&result, Err(InferError::Encode(_))) && self.uses_gpu_for(model_path) {
+            if let Err(InferError::Encode(ref e)) = result {
+                self.record_encode_failure(
+                    source,
+                    model_path,
+                    pcm,
+                    vad_requested,
+                    true,
+                    "gpu",
+                    false,
+                    e,
+                );
+                tracing::warn!(
+                    source,
+                    model = model_path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                    error = %format!("{e:#}"),
+                    pcm = %format_pcm_summary(pcm),
+                    "whisper encode failed on GPU, retrying on CPU"
+                );
+            }
+            self.mark_cpu_fallback(model_path);
+            gpu_retried = true;
+            result = self.run_inference(
+                model_path,
+                pcm,
+                vad_model_path,
+                abort.clone(),
+                Arc::clone(&on_progress),
+            );
+        }
+
+        if matches!(&result, Err(InferError::Encode(_))) && vad_requested {
+            if let Err(InferError::Encode(ref e)) = result {
+                self.record_encode_failure(
+                    source,
+                    model_path,
+                    pcm,
+                    true,
+                    !self.uses_gpu_for(model_path),
+                    if gpu_retried { "cpu" } else { "cpu-vad-only" },
+                    gpu_retried,
+                    e,
+                );
+            }
+            tracing::warn!(
+                source,
+                model = model_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                "whisper encode failed with VAD enabled, retrying without VAD"
+            );
+            result = self.run_inference(model_path, pcm, None, abort, Arc::clone(&on_progress));
+            if result.is_ok() {
+                tracing::info!(
+                    source,
+                    "transcription succeeded after disabling VAD fallback"
+                );
+            }
+        }
+
+        match result {
+            Ok(segments) => Ok(segments),
+            Err(InferError::Encode(e)) => {
+                self.record_encode_failure(
+                    source,
+                    model_path,
+                    pcm,
+                    false,
+                    !self.uses_gpu_for(model_path),
+                    "no-vad",
+                    vad_requested,
+                    &e,
+                );
+                Err(e.into())
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    fn uses_gpu_for(&self, model_path: &Path) -> bool {
+        !self
+            .cpu_fallback_paths
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .contains(model_path)
+    }
+
+    fn record_encode_failure(
+        &self,
+        source: &str,
+        model_path: &Path,
+        pcm: &[f32],
+        vad_enabled: bool,
+        use_gpu: bool,
+        attempt: &str,
+        retried_from_gpu: bool,
+        error: &anyhow::Error,
+    ) {
+        let diag = pcm_diagnostics(pcm);
+        tracing::error!(
+            source,
+            attempt,
+            retried_from_gpu,
+            use_gpu,
+            vad_enabled,
+            model = model_path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            error = %format!("{error:#}"),
+            pcm_samples = diag.samples,
+            duration_secs = format!("{:.3}", diag.duration_secs),
+            rms = format!("{:.6}", diag.rms),
+            peak = format!("{:.6}", diag.peak),
+            nan_count = diag.nan_count,
+            inf_count = diag.inf_count,
+            threads = inference_thread_count(),
+            log_path = %self.failure_log_path.display(),
+            "whisper encode failed"
+        );
+        self.persist_failure_record(TranscriptionFailureRecord {
+            ts: chrono::Utc::now().to_rfc3339(),
+            source: source.to_string(),
+            attempt: attempt.to_string(),
+            retried_from_gpu,
+            use_gpu,
+            vad_enabled,
+            model: model_path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| model_path.display().to_string()),
+            pcm_samples: diag.samples,
+            duration_secs: diag.duration_secs,
+            rms: diag.rms,
+            peak: diag.peak,
+            nan_count: diag.nan_count,
+            inf_count: diag.inf_count,
+            threads: inference_thread_count(),
+            error: format!("{error:#}"),
+        });
+    }
+
+    fn persist_failure_record(&self, record: TranscriptionFailureRecord) {
+        let Ok(line) = serde_json::to_string(&record) else {
+            return;
+        };
+        use std::io::Write;
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.failure_log_path)
+        {
+            let _ = writeln!(file, "{line}");
+        }
+    }
+
+    fn run_inference<F>(
+        &self,
+        model_path: &Path,
+        pcm: &[f32],
+        vad_model_path: Option<&Path>,
+        abort: Option<Arc<AtomicBool>>,
+        on_progress: Arc<Mutex<F>>,
+    ) -> Result<Vec<Segment>, InferError>
+    where
+        F: FnMut(f32) + Send + 'static,
     {
         let total_ms = ((pcm.len() as f32 / 16_000.0) * 1_000.0).max(1.0);
-        let ctx = self.get_or_load_context(model_path)?;
+        let ctx = self
+            .get_or_load_context(model_path)
+            .map_err(InferError::Other)?;
         let mut state = ctx
             .create_state()
-            .map_err(|e| anyhow!("failed to create whisper state: {e:?}"))?;
+            .map_err(|e| InferError::Other(anyhow!("failed to create whisper state: {e:?}")))?;
 
         let n_threads = inference_thread_count();
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
@@ -545,8 +794,12 @@ impl ModelService {
             params.enable_vad(true);
             params.set_vad_params(WhisperVadParams::default());
         }
+        let prog = Arc::clone(&on_progress);
         params.set_segment_callback_safe_lossy(move |segment: SegmentCallbackData| {
-            on_progress(progress_from_segment_end(segment.end_timestamp, total_ms));
+            let p = progress_from_segment_end(segment.end_timestamp, total_ms);
+            if let Ok(mut f) = prog.lock() {
+                f(p);
+            }
         });
         // Let an in-flight inference be interrupted: whisper.cpp polls this between work units
         // and bails out of `full()` early when it returns true. Without this, an abort is only
@@ -556,9 +809,19 @@ impl ModelService {
         }
 
         let infer_started = Instant::now();
-        state
-            .full(params, pcm)
-            .map_err(|e| anyhow!("whisper inference failed: {e:?}"))?;
+        match state.full(params, pcm) {
+            Ok(()) => {}
+            Err(e @ (WhisperError::FailedToEncode | WhisperError::GenericError(_))) => {
+                return Err(InferError::Encode(anyhow!(
+                    "whisper inference failed: {e:?}"
+                )));
+            }
+            Err(e) => {
+                return Err(InferError::Other(anyhow!(
+                    "whisper inference failed: {e:?}"
+                )));
+            }
+        }
         let elapsed = infer_started.elapsed();
         let audio_secs = total_ms / 1000.0;
         let rtf = if elapsed.as_secs_f32() > 0.0 {
@@ -566,16 +829,16 @@ impl ModelService {
         } else {
             f32::INFINITY
         };
-        eprintln!(
-            "[transcribe] model={} audio={:.2}s wall={:.2}s rtf={:.2}x threads={}",
-            model_path
+        tracing::debug!(
+            model = model_path
                 .file_name()
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "?".to_string()),
-            audio_secs,
-            elapsed.as_secs_f32(),
-            rtf,
-            n_threads,
+            audio_secs = format!("{audio_secs:.2}"),
+            wall_secs = format!("{:.2}", elapsed.as_secs_f32()),
+            rtf = format!("{rtf:.2}"),
+            threads = n_threads,
+            "transcription complete"
         );
 
         let mut segments = Vec::new();
@@ -607,7 +870,8 @@ impl ModelService {
             is_speaker: bool,
         }
 
-        let mut merged: Vec<Tagged> = Vec::with_capacity(mic_segments.len() + speaker_segments.len());
+        let mut merged: Vec<Tagged> =
+            Vec::with_capacity(mic_segments.len() + speaker_segments.len());
         merged.extend(mic_segments.iter().cloned().map(|seg| Tagged {
             seg,
             is_speaker: false,
@@ -643,8 +907,87 @@ impl ModelService {
     }
 }
 
+fn transcription_failure_log_path(models_dir: &Path) -> PathBuf {
+    models_dir
+        .parent()
+        .map(|p| p.join("transcription-failures.jsonl"))
+        .unwrap_or_else(|| models_dir.join("transcription-failures.jsonl"))
+}
+
 fn progress_from_segment_end(end_timestamp: i64, total_ms: f32) -> f32 {
     ((end_timestamp as f32 * 10.0) / total_ms).clamp(0.0, 1.0)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PcmDiagnostics {
+    samples: usize,
+    duration_secs: f64,
+    rms: f64,
+    peak: f64,
+    nan_count: u64,
+    inf_count: u64,
+}
+
+fn pcm_diagnostics(pcm: &[f32]) -> PcmDiagnostics {
+    let mut nan_count = 0u64;
+    let mut inf_count = 0u64;
+    let mut peak = 0.0f64;
+    let mut sum_sq = 0.0f64;
+    let mut valid = 0u64;
+    for &s in pcm {
+        if s.is_nan() {
+            nan_count += 1;
+            continue;
+        }
+        if s.is_infinite() {
+            inf_count += 1;
+            continue;
+        }
+        valid += 1;
+        let abs = f64::from(s.abs());
+        peak = peak.max(abs);
+        sum_sq += f64::from(s) * f64::from(s);
+    }
+    let rms = if valid == 0 {
+        0.0
+    } else {
+        (sum_sq / valid as f64).sqrt()
+    };
+    PcmDiagnostics {
+        samples: pcm.len(),
+        duration_secs: pcm.len() as f64 / 16_000.0,
+        rms,
+        peak,
+        nan_count,
+        inf_count,
+    }
+}
+
+fn format_pcm_summary(pcm: &[f32]) -> String {
+    let d = pcm_diagnostics(pcm);
+    format!(
+        "{} samples ({:.2}s), rms={:.4}, peak={:.4}, nan={}, inf={}",
+        d.samples, d.duration_secs, d.rms, d.peak, d.nan_count, d.inf_count
+    )
+}
+
+#[derive(serde::Serialize)]
+struct TranscriptionFailureRecord {
+    ts: String,
+    source: String,
+    attempt: String,
+    retried_from_gpu: bool,
+    use_gpu: bool,
+    vad_enabled: bool,
+    model: String,
+    pcm_samples: usize,
+    duration_secs: f64,
+    rms: f64,
+    peak: f64,
+    nan_count: u64,
+    inf_count: u64,
+    threads: usize,
+    error: String,
 }
 
 fn inference_thread_count() -> usize {
@@ -719,13 +1062,6 @@ mod tests {
     }
 
     #[test]
-    fn model_id_preload_eligible_only_tiny_and_base() {
-        assert!(model_id_preload_eligible("tiny-en-q5"));
-        assert!(model_id_preload_eligible("base-en-q5"));
-        assert!(!model_id_preload_eligible("small-en-q5"));
-    }
-
-    #[test]
     fn inference_thread_count_is_clamped() {
         let n = inference_thread_count();
         assert!(n >= 1, "thread count must be at least 1");
@@ -753,5 +1089,46 @@ mod tests {
         // Sorted by start_ms: speaker (1000ms) before mic (2000ms).
         assert!(merged[0].text.starts_with("out: "));
         assert!(merged[1].text.starts_with("in: "));
+    }
+
+    #[test]
+    fn pcm_diagnostics_detects_nan_and_peak() {
+        let mut pcm = vec![0.5f32; 16_000];
+        pcm[0] = f32::NAN;
+        pcm[1] = f32::INFINITY;
+        let d = pcm_diagnostics(&pcm);
+        assert_eq!(d.samples, 16_000);
+        assert!((d.duration_secs - 1.0).abs() < f64::EPSILON);
+        assert_eq!(d.nan_count, 1);
+        assert_eq!(d.inf_count, 1);
+        assert!((d.peak - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn transcription_failure_log_path_is_sibling_of_models_dir() {
+        let models_dir = temp_models_dir().join("models");
+        assert_eq!(
+            transcription_failure_log_path(&models_dir),
+            models_dir
+                .parent()
+                .unwrap()
+                .join("transcription-failures.jsonl")
+        );
+    }
+
+    #[test]
+    fn mark_cpu_fallback_adds_to_set_and_evicts_context_cache() {
+        let svc = ModelService::new(temp_models_dir());
+        let path = Path::new("/tmp/nonexistent_model.bin");
+        // Not in fallback set initially
+        assert!(!svc.cpu_fallback_paths.lock().unwrap().contains(path));
+        svc.mark_cpu_fallback(path);
+        // Now marked for CPU-only loading
+        assert!(svc.cpu_fallback_paths.lock().unwrap().contains(path));
+        // Context cache has no entry (nothing was loaded, but eviction mustn't panic)
+        assert!(svc.lock_contexts().get(path).is_none());
+        // Idempotent
+        svc.mark_cpu_fallback(path);
+        assert!(svc.cpu_fallback_paths.lock().unwrap().contains(path));
     }
 }

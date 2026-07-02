@@ -13,7 +13,8 @@ fn build_set_default_output_helper() {
     println!("cargo:rustc-env=SCRIBEFLOAT_TARGET_TRIPLE={target}");
     println!("cargo:rerun-if-changed=Swift/SetDefaultOutput/main.swift");
 
-    let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let manifest_dir =
+        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let src = manifest_dir.join("Swift/SetDefaultOutput/main.swift");
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
     let dest = out_dir.join("set-default-output");

@@ -12,12 +12,19 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"check:ds": "node scripts/check-design-system.mjs",
+		"test:ui-enforcement": "node .cursor/hooks/ui-enforcement.test.mjs",
 		"bump": "node scripts/bump-version.mjs",
 		"devupdate": "npm update && cargo update --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
-		"tauri": "tauri"
+		"tauri": "tauri",
+		"test": "vitest run",
+		"test:watch": "vitest"
 	},
 	"license": "MIT",
 	"dependencies": {
+		"@codemirror/commands": "^6.10.3",
+		"@codemirror/lang-markdown": "^6.5.0",
+		"@codemirror/state": "^6.6.0",
+		"@codemirror/view": "^6.43.1",
 		"@tailwindcss/vite": "^4.2.2",
 		"@tauri-apps/api": "^2",
 		"@tauri-apps/plugin-clipboard-manager": "^2.3.2",
@@ -31,11 +38,15 @@
 		"@sveltejs/kit": "^2.9.0",
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
 		"@tauri-apps/cli": "^2",
+		"@testing-library/jest-dom": "^6.6.3",
+		"@testing-library/svelte": "^5.2.6",
 		"@types/node": "^25.6.0",
+		"jsdom": "^26.1.0",
 		"svelte": "^5.0.0",
 		"svelte-check": "^4.0.0",
 		"typescript": "~5.6.2",
-		"vite": "^6.0.3"
+		"vite": "^6.0.3",
+		"vitest": "^3.2.4"
 	},
 	"overrides": {
 		"cookie": "^0.7.2"

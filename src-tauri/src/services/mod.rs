@@ -1,6 +1,9 @@
 pub mod audio;
 pub mod config;
+pub mod history;
+pub mod note_sidecar;
 pub mod hotkeys;
+pub mod inference;
 pub mod model;
 pub mod output;
 pub mod permissions;

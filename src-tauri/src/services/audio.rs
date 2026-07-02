@@ -219,7 +219,8 @@ fn start_capture(
 
     let (sender, receiver) = mpsc::channel::<Vec<f32>>();
     let stop_signal = Arc::new(AtomicBool::new(false));
-    let writer_handle = spawn_writer_thread(streaming, receiver, sample_rate, Arc::clone(&stop_signal));
+    let writer_handle =
+        spawn_writer_thread(streaming, receiver, sample_rate, Arc::clone(&stop_signal));
 
     let stream_result = build_input_stream(
         &device,
@@ -268,7 +269,8 @@ fn build_input_stream(
     on_level: Option<Arc<dyn Fn(f32) + Send + Sync>>,
     label: &'static str,
 ) -> Result<cpal::Stream> {
-    let err_fn = move |e: cpal::StreamError| eprintln!("{label} stream error: {e}");
+    let err_fn =
+        move |e: cpal::StreamError| tracing::error!(label, error = %e, "audio stream error");
     let stream = match sample_format {
         cpal::SampleFormat::F32 => {
             let tx = sender;
@@ -318,8 +320,16 @@ struct StreamingWavWriter {
 
 impl StreamingWavWriter {
     fn create(path: PathBuf) -> Result<Self> {
-        crate::services::output::write_streaming_wav_placeholder(&path, WHISPER_SAMPLE_RATE, 1, 16)?;
-        let file = OpenOptions::new().append(true).open(&path).context("open wav for append")?;
+        crate::services::output::write_streaming_wav_placeholder(
+            &path,
+            WHISPER_SAMPLE_RATE,
+            1,
+            16,
+        )?;
+        let file = OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .context("open wav for append")?;
         Ok(Self {
             file: BufWriter::new(file),
             path,
@@ -419,10 +429,7 @@ pub fn read_wav_mono_f32(path: &Path) -> Result<Vec<f32>> {
     let mut reader = hound::WavReader::open(path).context("open WAV")?;
     let spec = reader.spec();
     if spec.channels != 1 {
-        return Err(anyhow!(
-            "expected mono WAV, got {} channels",
-            spec.channels
-        ));
+        return Err(anyhow!("expected mono WAV, got {} channels", spec.channels));
     }
     if spec.sample_rate != WHISPER_SAMPLE_RATE {
         return Err(anyhow!(
@@ -524,7 +531,10 @@ mod tests {
     }
 
     fn temp_wav() -> PathBuf {
-        std::env::temp_dir().join(format!("scribefloat-audio-tests-{}.wav", uuid::Uuid::new_v4()))
+        std::env::temp_dir().join(format!(
+            "scribefloat-audio-tests-{}.wav",
+            uuid::Uuid::new_v4()
+        ))
     }
 
     #[test]
@@ -542,7 +552,10 @@ mod tests {
         let round = read_wav_mono_f32(&path).expect("read");
         assert_eq!(round.len(), pcm.len());
         for (a, b) in round.iter().zip(pcm.iter()) {
-            assert!((a - b).abs() < 1e-3, "roundtrip drift > 0.001 at {a} vs {b}");
+            assert!(
+                (a - b).abs() < 1e-3,
+                "roundtrip drift > 0.001 at {a} vs {b}"
+            );
         }
 
         let _ = std::fs::remove_file(&path);
@@ -582,5 +595,75 @@ mod tests {
 
         assert!(read_wav_mono_f32(&path).is_err());
         let _ = std::fs::remove_file(&path);
+    }
+
+    // ── Hardware-gated capture tests ──────────────────────────────────────────
+    // Skipped by default. Run on a machine with a real mic:
+    //   cargo test -- --ignored
+
+    #[test]
+    #[ignore = "requires real mic — run with: cargo test -- --ignored"]
+    fn mic_session_records_and_produces_readable_wav() {
+        let path = temp_wav();
+        let svc = AudioService::new();
+        let session = svc
+            .start_mic(None, true, path.clone(), None)
+            .expect("start mic");
+
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        let wav = session.stop_and_finalize().expect("finalize");
+        let pcm = read_wav_mono_f32(&wav).expect("read wav");
+
+        // 500 ms at 16 kHz = 8 000 samples. Allow headroom for resampling rounding.
+        assert!(
+            pcm.len() >= 4_000,
+            "expected at least 4 000 samples, got {}",
+            pcm.len()
+        );
+        let _ = std::fs::remove_file(wav);
+    }
+
+    #[test]
+    #[ignore = "requires real mic — run with: cargo test -- --ignored"]
+    fn mic_session_wav_is_non_silent_with_ambient_audio() {
+        // Verifies the full pipeline: cpal callback → writer thread → WAV on disk → readable.
+        // Will fail in a genuinely silent room; that's intentional — the test is checking
+        // the capture path, not the silence detector.
+        let path = temp_wav();
+        let svc = AudioService::new();
+        let session = svc
+            .start_mic(None, true, path.clone(), None)
+            .expect("start mic");
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        let wav = session.stop_and_finalize().expect("finalize");
+        let pcm = read_wav_mono_f32(&wav).expect("read wav");
+        let rms: f32 = (pcm.iter().map(|s| s * s).sum::<f32>() / pcm.len() as f32).sqrt();
+        assert!(rms > 1e-4, "captured audio is silent (rms={rms:.6}) — is the mic live?");
+        let _ = std::fs::remove_file(wav);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    #[ignore = "requires macOS loopback device — run with: cargo test -- --ignored"]
+    fn loopback_session_records_and_produces_readable_wav() {
+        let path = temp_wav();
+        let svc = AudioService::new();
+        let session = svc
+            .start_loopback(None, path.clone(), None)
+            .expect("start loopback");
+
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        let wav = session.stop_and_finalize().expect("finalize");
+        let pcm = read_wav_mono_f32(&wav).expect("read wav");
+        assert!(
+            pcm.len() >= 4_000,
+            "expected at least 4 000 samples, got {}",
+            pcm.len()
+        );
+        let _ = std::fs::remove_file(wav);
     }
 }

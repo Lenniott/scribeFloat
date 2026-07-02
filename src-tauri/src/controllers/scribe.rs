@@ -1,11 +1,15 @@
+use crate::services::audio::{read_wav_mono_f32, WHISPER_SAMPLE_RATE};
 use crate::services::{
     audio::{AudioService, MicSession},
     config::ConfigService,
-    model::{model_id_preload_eligible, ModelService},
+    history::HistoryService,
+    model::ModelService,
     output::OutputService,
 };
-use crate::services::audio::{read_wav_mono_f32, WHISPER_SAMPLE_RATE};
-use crate::types::{Config, Note, ProcessingStage, RecoverySessionInfo, ScribeState, ScribeStateEvent, Segment, SessionManifest, SessionManifestState};
+use crate::types::{
+    Config, HistoryRecord, Note, ProcessingStage, RecoverySessionInfo, ScribeState,
+    ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest, SessionManifestState,
+};
 use anyhow::{anyhow, Result};
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -38,7 +42,10 @@ struct SpeakerAccumulator {
 
 impl SpeakerAccumulator {
     fn new() -> Self {
-        Self { segments: vec![], active: None }
+        Self {
+            segments: vec![],
+            active: None,
+        }
     }
 }
 
@@ -68,6 +75,18 @@ enum ProgressMessage {
     Finished,
 }
 
+/// Transcript payload held after note-editor recording completes, until `note_attach_transcript`.
+pub struct PendingAttach {
+    pub segments: Vec<Segment>,
+    pub notes: Vec<Note>,
+    pub model: String,
+    pub speaker_capture: bool,
+    pub dual_source: bool,
+    pub session_dir: Option<String>,
+    pub audio_path: Option<String>,
+    pub markdown_path: Option<String>,
+}
+
 struct Inner {
     state: ScribeState,
     session: Option<ActiveSession>,
@@ -76,6 +95,10 @@ struct Inner {
     transcription_abort: Option<Arc<AtomicBool>>,
     /// Set once `mic.wav` is written during transcription (for abort UX).
     transcription_wav_path: Option<PathBuf>,
+    /// When set, the next completed recording attaches to this note instead of creating a Scribe record.
+    attach_note_id: Option<String>,
+    /// Cached transcript from the most recent note-editor recording stop.
+    pending_attach: Option<PendingAttach>,
 }
 
 pub struct ScribeController {
@@ -86,6 +109,7 @@ pub struct ScribeController {
     audio: Arc<AudioService>,
     model: Arc<ModelService>,
     output: Arc<OutputService>,
+    history: Arc<HistoryService>,
     config: Arc<ConfigService>,
     app: AppHandle,
 }
@@ -95,6 +119,7 @@ impl ScribeController {
         audio: Arc<AudioService>,
         model: Arc<ModelService>,
         output: Arc<OutputService>,
+        history: Arc<HistoryService>,
         config: Arc<ConfigService>,
         app: AppHandle,
     ) -> Arc<Self> {
@@ -105,11 +130,14 @@ impl ScribeController {
                 notes: Vec::new(),
                 transcription_abort: None,
                 transcription_wav_path: None,
+                attach_note_id: None,
+                pending_attach: None,
             }),
             capture_sync: Mutex::new(()),
             audio,
             model,
             output,
+            history,
             config,
             app,
         })
@@ -152,7 +180,7 @@ impl ScribeController {
                 .filter(|s| !s.is_empty())
             {
                 if let Err(err) = self.audio.set_output_device(target_output) {
-                    eprintln!("failed to switch output route to `{target_output}`: {err}");
+                    tracing::warn!(device = target_output, error = %err, "failed to switch output route");
                 }
             }
             let app = self.app.clone();
@@ -167,7 +195,10 @@ impl ScribeController {
                 Ok(stream) => {
                     speaker_capture_started = true;
                     (
-                        SpeakerAccumulator { segments: vec![], active: Some((0, stream)) },
+                        SpeakerAccumulator {
+                            segments: vec![],
+                            active: Some((0, stream)),
+                        },
                         prev,
                     )
                 }
@@ -270,17 +301,16 @@ impl ScribeController {
             None,
             None,
         );
-        let _ = self.app.emit("scribe://state-changed", ScribeStateEvent::new(ScribeState::Idle));
+        let _ = self.app.emit(
+            "scribe://state-changed",
+            ScribeStateEvent::new(ScribeState::Idle),
+        );
     }
 
-    /// Eagerly load the small models into the shared context cache while recording is in
-    /// progress, so transcription on stop starts instantly. No-op for larger models — those
-    /// load on demand to avoid pinning hundreds of MB of RAM speculatively.
+    /// Eagerly load the configured model into the shared context cache while recording,
+    /// so transcription on stop skips the cold-load delay (~300 ms tiny → ~2 s large).
     fn spawn_record_start_preload(&self, cfg: &Config) {
-        let path = match preload_path_for_config(cfg, &self.model) {
-            Some(p) => p,
-            None => return,
-        };
+        let path = preload_path_for_config(cfg, &self.model);
         if !self.model.model_available(&path) {
             return;
         }
@@ -288,11 +318,21 @@ impl ScribeController {
         tauri::async_runtime::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
                 if let Err(e) = model.get_or_load_context(&path) {
-                    eprintln!("[scribe] record-start preload failed: {e}");
+                    tracing::debug!(error = %e, "record-start model preload failed");
                 }
             })
             .await;
         });
+    }
+
+    /// Route the next completed recording to attach onto a note instead of creating a Scribe history record.
+    pub fn set_attach_note(&self, note_id: Option<String>) {
+        self.lock().attach_note_id = note_id;
+    }
+
+    /// Take the cached transcript from the most recent note-editor recording.
+    pub fn take_pending_attach(&self) -> Option<PendingAttach> {
+        self.lock().pending_attach.take()
     }
 
     /// Transition RECORDING → IDLE. Discards the audio buffer and removes the
@@ -308,6 +348,7 @@ impl ScribeController {
             inner.session = None;
             inner.state = ScribeState::Idle;
             inner.notes.clear();
+            inner.attach_note_id = None;
             self.emit_state(&inner);
             session
         };
@@ -319,7 +360,9 @@ impl ScribeController {
                 session_dir,
                 ..
             } = session;
-            let _ = mic.stop_and_finalize().map_err(|e| eprintln!("scribe: cancel finalize mic: {e}"));
+            let _ = mic
+                .stop_and_finalize()
+                .map_err(|e| tracing::debug!(error = %e, "cancel finalize mic"));
             let _ = finalize_speaker_segments(speaker_accum);
             self.restore_output_device(previous_output_device.as_deref());
             self.emit_capture_levels_idle();
@@ -407,17 +450,17 @@ impl ScribeController {
             }
             inner.state = ScribeState::Transcribing;
             inner.transcription_abort = Some(Arc::clone(&abort_flag));
-            (
-                inner.session.take().expect("session exists when Recording"),
-                inner.notes.clone(),
-            )
+            let session = inner.session.take().ok_or_else(|| {
+                anyhow!("session missing in Recording state")
+            })?;
+            (session, inner.notes.clone())
         };
 
         // Stop capture before emitting TRANSCRIBING so the mic is never active while we are not Recording.
         let prepared = match this.prepare_audio(session) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("prepare_audio after stop: {e}");
+                tracing::error!(error = %e, "prepare_audio after stop failed");
                 this.clear_transcription_tracking();
                 {
                     let mut inner = this.lock();
@@ -452,16 +495,15 @@ impl ScribeController {
 
         tauri::async_runtime::spawn(async move {
             let ctrl = Arc::clone(&this);
-            let result =
-                tokio::task::spawn_blocking(move || {
-                    ctrl.do_transcription(prepared, notes, &title, abort_flag)
-                })
-                    .await;
+            let result = tokio::task::spawn_blocking(move || {
+                ctrl.do_transcription(prepared, notes, &title, abort_flag)
+            })
+            .await;
 
             match result {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => {
-                    eprintln!("transcription error: {e}");
+                    tracing::error!(error = %e, "transcription error");
                     this.clear_transcription_tracking();
                     {
                         let mut inner = this.lock();
@@ -479,7 +521,7 @@ impl ScribeController {
                 }
                 Err(e) => {
                     this.clear_transcription_tracking();
-                    eprintln!("transcription task panicked: {e}");
+                    tracing::error!(error = %e, "transcription task panicked");
                     this.lock().state = ScribeState::Error;
                     this.app
                         .emit(
@@ -556,18 +598,35 @@ impl ScribeController {
             return Ok(());
         }
 
-        if let Err(e) = self.write_outputs(&segments, &notes, title, &model_path, &config, &prepared)
-        {
-            let _ = self.write_session_manifest(
-                &prepared.session_dir,
-                SessionManifestState::Error,
-                "",
-                vec![],
-                None,
-                None,
-            );
-            return Err(e);
-        }
+        let (history_record_id, transcript_path) =
+            match self.write_outputs(&segments, &notes, title, &model_path, &config, &prepared) {
+                Ok(result) => result,
+                Err(e) => {
+                    // Mark the session as errored so the recovery scan can surface it.
+                    let _ = self.write_session_manifest(
+                        &prepared.session_dir,
+                        SessionManifestState::Error,
+                        "",
+                        vec![],
+                        None,
+                        None,
+                    );
+                    return Err(e);
+                }
+            };
+
+        self.clear_transcription_tracking();
+        self.transition(ScribeState::Done);
+        self.app
+            .emit(
+                "scribe://state-changed",
+                ScribeStateEvent {
+                    transcript_path,
+                    history_record_id,
+                    ..ScribeStateEvent::new(ScribeState::Done)
+                },
+            )
+            .ok();
         Ok(())
     }
 
@@ -578,12 +637,20 @@ impl ScribeController {
     fn prepare_audio(&self, session: ActiveSession) -> Result<PreparedAudio> {
         let started_at_iso = session.started_at_iso.clone();
         let total_ms = session.started_at.elapsed().as_millis() as u64;
-        let ActiveSession { mic, mut speaker_accum, previous_output_device, session_dir, .. } = session;
+        let ActiveSession {
+            mic,
+            mut speaker_accum,
+            previous_output_device,
+            session_dir,
+            ..
+        } = session;
 
         // Roll any still-active loopback capture into the segment list before finalizing.
         if let Some((start_ms, stream)) = speaker_accum.active.take() {
             let wav_path = stream.stop_and_finalize()?;
-            speaker_accum.segments.push(CapturedSpeakerSegment { start_ms, wav_path });
+            speaker_accum
+                .segments
+                .push(CapturedSpeakerSegment { start_ms, wav_path });
         }
         let speaker_capture_enabled = !speaker_accum.segments.is_empty();
 
@@ -622,18 +689,30 @@ impl ScribeController {
             for seg in &speaker_accum.segments {
                 let _ = self.output.delete_wav(&seg.wav_path);
             }
-            self.output.write_wav(&assembled, WHISPER_SAMPLE_RATE, &session_dir.join("speaker.wav"))?;
+            self.output.write_wav(
+                &assembled,
+                WHISPER_SAMPLE_RATE,
+                &session_dir.join("speaker.wav"),
+            )?;
             if pcm_rms(&assembled) >= SPEAKER_SILENCE_THRESHOLD {
                 Some(assembled)
             } else {
-                eprintln!("speaker channel is silent (RMS < {SPEAKER_SILENCE_THRESHOLD}) — skipping speaker transcription");
+                tracing::info!(
+                    threshold = SPEAKER_SILENCE_THRESHOLD,
+                    "speaker channel is silent — skipping speaker transcription"
+                );
                 None
             }
         } else {
             None
         };
 
-        Ok(PreparedAudio { session_dir, wav_path, pcm_16k, speaker_pcm_16k })
+        Ok(PreparedAudio {
+            session_dir,
+            wav_path,
+            pcm_16k,
+            speaker_pcm_16k,
+        })
     }
 
     /// Run Whisper on the prepared audio, reporting progress via state events.
@@ -666,7 +745,10 @@ impl ScribeController {
         });
 
         let vad_path = self.model.vad_model_path();
-        let vad = self.model.model_available(&vad_path).then_some(vad_path.as_path());
+        let vad = self
+            .model
+            .model_available(&vad_path)
+            .then_some(vad_path.as_path());
         let segments = if let Some(speaker_pcm) = &prepared.speaker_pcm_16k {
             let tx1 = progress_tx.clone();
             let mic_segs = self.model.transcribe_pcm_with_progress(
@@ -674,7 +756,10 @@ impl ScribeController {
                 &prepared.pcm_16k,
                 vad,
                 Some(Arc::clone(abort_flag)),
-                move |p| { tx1.send(ProgressMessage::Progress(p * 0.5)).ok(); },
+                "scribe/mic",
+                move |p| {
+                    tx1.send(ProgressMessage::Progress(p * 0.5)).ok();
+                },
             )?;
             // Skip the second (speaker) pass entirely if the user aborted during the mic pass.
             if abort_flag.load(Ordering::SeqCst) {
@@ -688,7 +773,10 @@ impl ScribeController {
                 speaker_pcm,
                 vad,
                 Some(Arc::clone(abort_flag)),
-                move |p| { tx2.send(ProgressMessage::Progress(0.5 + p * 0.5)).ok(); },
+                "scribe/speaker",
+                move |p| {
+                    tx2.send(ProgressMessage::Progress(0.5 + p * 0.5)).ok();
+                },
             )?;
             let speaker_segs = filter_hallucination_phrases(speaker_segs);
             Ok(self.model.merge_dual_source(&mic_segs, &speaker_segs))
@@ -699,7 +787,10 @@ impl ScribeController {
                 &prepared.pcm_16k,
                 vad,
                 Some(Arc::clone(abort_flag)),
-                move |p| { tx.send(ProgressMessage::Progress(p)).ok(); },
+                "scribe/mic",
+                move |p| {
+                    tx.send(ProgressMessage::Progress(p)).ok();
+                },
             )
         };
 
@@ -708,7 +799,10 @@ impl ScribeController {
         segments
     }
 
-    /// Write the transcript file, optionally delete WAVs, and emit the Done event.
+    /// Write the transcript file, persist the history record, and optionally delete WAVs.
+    /// Returns the record id on success; the caller is responsible for transitioning state
+    /// and emitting the Done event so that a history-write failure surfaces as an error
+    /// event rather than a silent Done with no record.
     fn write_outputs(
         &self,
         segments: &[Segment],
@@ -717,13 +811,19 @@ impl ScribeController {
         model_path: &Path,
         config: &Config,
         prepared: &PreparedAudio,
-    ) -> Result<()> {
+    ) -> Result<(Option<String>, Option<String>)> {
         let save_folder = PathBuf::from(&config.save_folder);
-        let transcript_path = self.output.transcript_path(&save_folder, model_path, title);
         let model_name = model_path
             .file_stem()
             .map(|s| s.to_string_lossy().replace("ggml-", ""))
             .unwrap_or_else(|| "model".to_string());
+
+        // Markdown is opt-in: reserve a non-colliding `.md` name only when the toggle is on.
+        let markdown_path = if config.save_transcripts_as_markdown {
+            Some(self.output.transcript_path(&save_folder, model_path, title))
+        } else {
+            None
+        };
 
         self.app
             .emit(
@@ -735,15 +835,73 @@ impl ScribeController {
                 },
             )
             .ok();
-        self.output.write_transcript(
-            segments,
-            notes,
-            title,
-            &model_name,
-            config.include_timestamps,
+        if let Some(dest) = markdown_path.as_ref() {
+            self.output.write_transcript(
+                segments,
+                notes,
+                title,
+                &model_name,
+                config.include_timestamps,
+                &config.replacement_rules,
+                &config.replacement_prefix,
+                dest,
+            )?;
+        }
+
+        // Persist the canonical history record — always, regardless of the markdown toggle.
+        let keep_audio = config.keep_wav && !segments.is_empty();
+        // speaker_capture = user setting; dual_source = speaker PCM actually used for merge
+        let speaker_capture = config.scribe_capture_speaker;
+        let dual_source = prepared.speaker_pcm_16k.is_some();
+        let (session_dir, audio_path) = if keep_audio {
+            (
+                Some(prepared.session_dir.to_string_lossy().into_owned()),
+                Some(
+                    mic_wav_path_for(&prepared.session_dir)
+                        .to_string_lossy()
+                        .into_owned(),
+                ),
+            )
+        } else {
+            (None, None)
+        };
+        let record = HistoryRecord::from_scribe(
+            title.to_string(),
+            model_name.clone(),
+            segments.to_vec(),
+            notes.to_vec(),
             &config.replacement_rules,
-            &transcript_path,
-        )?;
+            &config.replacement_prefix,
+            speaker_capture,
+            dual_source,
+            session_dir.clone(),
+            audio_path.clone(),
+            markdown_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned()),
+        );
+
+        let attach_note_id = self.lock().attach_note_id.take();
+        let history_record_id = if attach_note_id.is_some() {
+            self.lock().pending_attach = Some(PendingAttach {
+                segments: segments.to_vec(),
+                notes: notes.to_vec(),
+                model: model_name,
+                speaker_capture,
+                dual_source,
+                session_dir,
+                audio_path,
+                markdown_path: record.markdown_path.clone(),
+            });
+            None
+        } else {
+            let id = self
+                .history
+                .append(&config.save_folder, record)
+                .map_err(|e| anyhow!("failed to persist scribe session: {e}"))?;
+            self.app.emit("note://item-added", ()).ok();
+            Some(id)
+        };
 
         if !segments.is_empty() {
             self.app
@@ -758,20 +916,10 @@ impl ScribeController {
                 .ok();
         }
         self.output
-            .finalize_scribe_session(&prepared.session_dir, config.keep_wav && !segments.is_empty())?;
+            .finalize_scribe_session(&prepared.session_dir, keep_audio)?;
 
-        self.clear_transcription_tracking();
-        self.transition(ScribeState::Done);
-        self.app
-            .emit(
-                "scribe://state-changed",
-                ScribeStateEvent {
-                    transcript_path: Some(transcript_path.to_string_lossy().into()),
-                    ..ScribeStateEvent::new(ScribeState::Done)
-                },
-            )
-            .ok();
-        Ok(())
+        let transcript_path = markdown_path.map(|p| p.to_string_lossy().into_owned());
+        Ok((history_record_id, transcript_path))
     }
 
     pub fn get_include_timestamps(&self) -> bool {
@@ -781,7 +929,15 @@ impl ScribeController {
     /// Incomplete Scribe sessions under the configured save folder (crash/interrupted recordings).
     pub fn list_recovery_sessions(&self) -> Result<Vec<RecoverySessionInfo>> {
         let cfg = self.config.get();
-        self.output.scan_incomplete_scribe_sessions(&cfg.save_folder)
+        self.output
+            .scan_incomplete_scribe_sessions(&cfg.save_folder)
+    }
+
+    pub fn list_transcripts(&self) -> Result<Vec<ScribeTranscriptEntry>, String> {
+        let cfg = self.config.get();
+        self.output
+            .list_transcripts(&cfg.save_folder)
+            .map_err(|e| e.to_string())
     }
 
     pub fn set_include_timestamps(&self, enabled: bool) -> Result<()> {
@@ -801,7 +957,10 @@ impl ScribeController {
                 if inner.state != ScribeState::Recording {
                     return Err(anyhow!("not recording"));
                 }
-                let session = inner.session.as_ref().ok_or_else(|| anyhow!("no session"))?;
+                let session = inner
+                    .session
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("no session"))?;
                 if session.speaker_accum.active.is_some() {
                     return Ok(()); // no-op: already capturing
                 }
@@ -829,7 +988,7 @@ impl ScribeController {
                     }
                 }
                 if let Err(err) = self.audio.set_output_device(target) {
-                    eprintln!("failed to switch output to `{target}`: {err}");
+                    tracing::warn!(device = target, error = %err, "failed to switch output device");
                 }
             }
 
@@ -852,7 +1011,10 @@ impl ScribeController {
                         (
                             session.session_dir.clone(),
                             session.started_at_iso.clone(),
-                            speaker_manifest_wav_names(&session.session_dir, &session.speaker_accum),
+                            speaker_manifest_wav_names(
+                                &session.session_dir,
+                                &session.speaker_accum,
+                            ),
                         )
                     };
                     let _ = self.sync_session_manifest_speaker_wavs(
@@ -863,7 +1025,10 @@ impl ScribeController {
                 }
                 Err(err) => {
                     self.app
-                        .emit("scribe://speaker-capture-unavailable", json!({ "reason": err.to_string() }))
+                        .emit(
+                            "scribe://speaker-capture-unavailable",
+                            json!({ "reason": err.to_string() }),
+                        )
                         .ok();
                 }
             }
@@ -874,21 +1039,27 @@ impl ScribeController {
                 if inner.state != ScribeState::Recording {
                     return Err(anyhow!("not recording"));
                 }
-                inner.session.as_mut().and_then(|s| s.speaker_accum.active.take())
+                inner
+                    .session
+                    .as_mut()
+                    .and_then(|s| s.speaker_accum.active.take())
             };
             if let Some((start_ms, stream)) = active {
                 // Finalize the segment WAV outside the lock — blocking I/O.
                 let wav_path = match stream.stop_and_finalize() {
                     Ok(p) => p,
                     Err(e) => {
-                        eprintln!("scribe: speaker segment finalize: {e}");
+                        tracing::debug!(error = %e, "speaker segment finalize failed");
                         return Ok(());
                     }
                 };
                 let (prev_device, session_dir, started_at_iso, speaker_wavs) = {
                     let mut inner = self.lock();
                     if let Some(session) = inner.session.as_mut() {
-                        session.speaker_accum.segments.push(CapturedSpeakerSegment { start_ms, wav_path });
+                        session
+                            .speaker_accum
+                            .segments
+                            .push(CapturedSpeakerSegment { start_ms, wav_path });
                     }
                     let session = inner.session.as_ref();
                     (
@@ -988,14 +1159,14 @@ impl ScribeController {
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|p| {
-            eprintln!("scribe: recovering from poisoned mutex");
+            tracing::debug!("recovering from poisoned scribe mutex");
             p.into_inner()
         })
     }
 
     fn capture_guard(&self) -> std::sync::MutexGuard<'_, ()> {
         self.capture_sync.lock().unwrap_or_else(|p| {
-            eprintln!("scribe: recovering from poisoned capture mutex");
+            tracing::debug!("recovering from poisoned capture mutex");
             p.into_inner()
         })
     }
@@ -1003,7 +1174,7 @@ impl ScribeController {
     fn restore_output_device(&self, previous: Option<&str>) {
         if let Some(device) = previous {
             if let Err(e) = self.audio.set_output_device(device) {
-                eprintln!("failed to restore output device to `{device}`: {e}");
+                tracing::warn!(device, error = %e, "failed to restore output device");
             }
         }
     }
@@ -1061,14 +1232,10 @@ fn finalize_speaker_segments(mut accum: SpeakerAccumulator) -> Vec<PathBuf> {
             Ok(wav_path) => accum
                 .segments
                 .push(CapturedSpeakerSegment { start_ms, wav_path }),
-            Err(e) => eprintln!("scribe: failed to finalize active speaker stream: {e}"),
+            Err(e) => tracing::debug!(error = %e, "failed to finalize active speaker stream"),
         }
     }
-    accum
-        .segments
-        .into_iter()
-        .map(|seg| seg.wav_path)
-        .collect()
+    accum.segments.into_iter().map(|seg| seg.wav_path).collect()
 }
 
 fn mic_wav_path_for(session_dir: &Path) -> PathBuf {
@@ -1200,25 +1367,40 @@ fn resolve_model_path(config: &Config, model: &ModelService) -> PathBuf {
     }
 }
 
-/// Returns the on-disk path for the configured Scribe model **only when it is in the
-/// preload allowlist**. `scribe_model_path` (a user-supplied custom file) is intentionally
-/// excluded — we can't know its size and don't want to pin arbitrary files in RAM.
-fn preload_path_for_config(config: &Config, model: &ModelService) -> Option<PathBuf> {
-    if config.scribe_model_path.is_some() {
-        return None;
-    }
-    let model_id = config.selected_model_id.as_deref()?;
-    if !model_id_preload_eligible(model_id) {
-        return None;
-    }
-    model.model_path_for_id(model_id)
+/// Path of the model that Scribe will use on stop — same resolution as transcription.
+fn preload_path_for_config(config: &Config, model: &ModelService) -> PathBuf {
+    resolve_model_path(config, model)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::services::model::SMALL_MODEL_FILENAME;
+    use hound::{SampleFormat, WavSpec, WavWriter};
     use std::path::PathBuf;
+
+    fn write_test_wav_16k(path: &PathBuf, samples: &[f32]) {
+        let spec = WavSpec {
+            channels: 1,
+            sample_rate: WHISPER_SAMPLE_RATE,
+            bits_per_sample: 16,
+            sample_format: SampleFormat::Int,
+        };
+        let mut writer = WavWriter::create(path, spec).expect("create test wav");
+        for &s in samples {
+            writer
+                .write_sample((s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
+                .expect("write sample");
+        }
+        writer.finalize().expect("finalize test wav");
+    }
+
+    fn temp_test_dir() -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("scribe-tests-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
     #[test]
     fn start_guard_rejects_recording_and_transcribing_states() {
@@ -1294,7 +1476,7 @@ mod tests {
     }
 
     #[test]
-    fn preload_path_returns_none_for_custom_scribe_model_path() {
+    fn preload_path_uses_custom_scribe_model_path() {
         let models_dir =
             std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
         let model = ModelService::new(models_dir);
@@ -1303,39 +1485,34 @@ mod tests {
             selected_model_id: Some("tiny-en-q5".to_string()),
             ..Config::default()
         };
-        assert!(preload_path_for_config(&config, model.as_ref()).is_none());
+        assert_eq!(
+            preload_path_for_config(&config, model.as_ref()),
+            PathBuf::from("/tmp/custom.bin")
+        );
     }
 
     #[test]
-    fn preload_path_returns_none_for_larger_models() {
-        let models_dir =
-            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
-        let model = ModelService::new(models_dir);
-        for id in ["small-en-q5", "medium-en-q5", "large-v3-turbo-q5"] {
-            let config = Config {
-                selected_model_id: Some(id.to_string()),
-                ..Config::default()
-            };
-            assert!(
-                preload_path_for_config(&config, model.as_ref()).is_none(),
-                "{id} should not be eligible for preload"
-            );
-        }
-    }
-
-    #[test]
-    fn preload_path_returns_some_for_tiny_and_base() {
+    fn preload_path_returns_catalog_path_for_all_models() {
         let models_dir =
             std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
         let model = ModelService::new(models_dir.clone());
-        for id in ["tiny-en-q5", "base-en-q5"] {
+        for id in [
+            "tiny-en-q5",
+            "base-en-q5",
+            "small-en-q5",
+            "medium-en-q5",
+            "large-v3-turbo-q5",
+        ] {
             let config = Config {
                 selected_model_id: Some(id.to_string()),
                 ..Config::default()
             };
-            let p = preload_path_for_config(&config, model.as_ref())
-                .unwrap_or_else(|| panic!("{id} should be eligible"));
-            assert!(p.starts_with(&models_dir), "preload path under models dir");
+            let p = preload_path_for_config(&config, model.as_ref());
+            assert_eq!(p, model.model_path_for_id(id).expect("catalog path"));
+            assert!(
+                p.starts_with(&models_dir),
+                "{id} preload path under models dir"
+            );
         }
     }
 
@@ -1373,7 +1550,10 @@ mod tests {
     }
 
     fn fake_segment(start_ms: u64, pcm: Vec<f32>) -> SpeakerSegment {
-        SpeakerSegment { start_ms, pcm_16k: pcm }
+        SpeakerSegment {
+            start_ms,
+            pcm_16k: pcm,
+        }
     }
 
     // ── assemble_speaker_pcm ──────────────────────────────────────────────────
@@ -1410,9 +1590,15 @@ mod tests {
         let out = assemble_speaker_pcm(&[seg], total_ms);
         assert_eq!(out.len(), 2 * one_sec);
         // First second: silence
-        assert!(out[..one_sec].iter().all(|&s| s == 0.0), "expected silence before segment");
+        assert!(
+            out[..one_sec].iter().all(|&s| s == 0.0),
+            "expected silence before segment"
+        );
         // Second second: filled
-        assert!(out[one_sec..].iter().all(|&s| (s - 1.0).abs() < 1e-5), "expected audio after offset");
+        assert!(
+            out[one_sec..].iter().all(|&s| (s - 1.0).abs() < 1e-5),
+            "expected audio after offset"
+        );
     }
 
     #[test]
@@ -1424,9 +1610,18 @@ mod tests {
 
         let out = assemble_speaker_pcm(&[seg_a, seg_b], 3_000);
         assert_eq!(out.len(), 3 * one_sec);
-        assert!(out[..one_sec].iter().all(|&s| (s - 0.3).abs() < 1e-5), "first segment");
-        assert!(out[one_sec..2 * one_sec].iter().all(|&s| s == 0.0), "gap is silence");
-        assert!(out[2 * one_sec..].iter().all(|&s| (s - 0.7).abs() < 1e-5), "second segment");
+        assert!(
+            out[..one_sec].iter().all(|&s| (s - 0.3).abs() < 1e-5),
+            "first segment"
+        );
+        assert!(
+            out[one_sec..2 * one_sec].iter().all(|&s| s == 0.0),
+            "gap is silence"
+        );
+        assert!(
+            out[2 * one_sec..].iter().all(|&s| (s - 0.7).abs() < 1e-5),
+            "second segment"
+        );
     }
 
     #[test]
@@ -1435,7 +1630,11 @@ mod tests {
         let seg = fake_segment(0, vec![1.0f32; 2 * WHISPER_SAMPLE_RATE as usize]);
 
         let out = assemble_speaker_pcm(&[seg], 1_000);
-        assert_eq!(out.len(), WHISPER_SAMPLE_RATE as usize, "output must not exceed total_ms");
+        assert_eq!(
+            out.len(),
+            WHISPER_SAMPLE_RATE as usize,
+            "output must not exceed total_ms"
+        );
     }
 
     // ── pcm_rms ───────────────────────────────────────────────────────────────
@@ -1473,10 +1672,26 @@ mod tests {
     #[test]
     fn filter_removes_known_hallucination_phrases() {
         let segs = vec![
-            Segment { start_ms: 0, end_ms: 500, text: "Thank you.".to_string() },
-            Segment { start_ms: 1_000, end_ms: 1_500, text: "Hello world".to_string() },
-            Segment { start_ms: 2_000, end_ms: 2_500, text: "Thanks for watching.".to_string() },
-            Segment { start_ms: 3_000, end_ms: 3_500, text: "Transcribed by Whisper".to_string() },
+            Segment {
+                start_ms: 0,
+                end_ms: 500,
+                text: "Thank you.".to_string(),
+            },
+            Segment {
+                start_ms: 1_000,
+                end_ms: 1_500,
+                text: "Hello world".to_string(),
+            },
+            Segment {
+                start_ms: 2_000,
+                end_ms: 2_500,
+                text: "Thanks for watching.".to_string(),
+            },
+            Segment {
+                start_ms: 3_000,
+                end_ms: 3_500,
+                text: "Transcribed by Whisper".to_string(),
+            },
         ];
         let filtered = filter_hallucination_phrases(segs);
         assert_eq!(filtered.len(), 1);
@@ -1486,8 +1701,16 @@ mod tests {
     #[test]
     fn filter_is_case_insensitive() {
         let segs = vec![
-            Segment { start_ms: 0, end_ms: 500, text: "THANK YOU.".to_string() },
-            Segment { start_ms: 1_000, end_ms: 1_500, text: "Real speech here".to_string() },
+            Segment {
+                start_ms: 0,
+                end_ms: 500,
+                text: "THANK YOU.".to_string(),
+            },
+            Segment {
+                start_ms: 1_000,
+                end_ms: 1_500,
+                text: "Real speech here".to_string(),
+            },
         ];
         let filtered = filter_hallucination_phrases(segs);
         assert_eq!(filtered.len(), 1);
@@ -1497,8 +1720,16 @@ mod tests {
     #[test]
     fn filter_keeps_real_speech_intact() {
         let segs = vec![
-            Segment { start_ms: 0, end_ms: 1_000, text: "I'm talking about the project".to_string() },
-            Segment { start_ms: 1_000, end_ms: 2_000, text: "Let me explain the architecture".to_string() },
+            Segment {
+                start_ms: 0,
+                end_ms: 1_000,
+                text: "I'm talking about the project".to_string(),
+            },
+            Segment {
+                start_ms: 1_000,
+                end_ms: 2_000,
+                text: "Let me explain the architecture".to_string(),
+            },
         ];
         let filtered = filter_hallucination_phrases(segs);
         assert_eq!(filtered.len(), 2);
@@ -1507,10 +1738,80 @@ mod tests {
     #[test]
     fn filter_does_not_strip_thank_you_mid_sentence() {
         // Only exact matches should be stripped, not substrings
-        let segs = vec![
-            Segment { start_ms: 0, end_ms: 1_000, text: "I want to thank you for coming today".to_string() },
-        ];
+        let segs = vec![Segment {
+            start_ms: 0,
+            end_ms: 1_000,
+            text: "I want to thank you for coming today".to_string(),
+        }];
         let filtered = filter_hallucination_phrases(segs);
         assert_eq!(filtered.len(), 1);
+    }
+
+    // ── load_speaker_segments (disk I/O layer) ────────────────────────────────
+    // These tests close the gap between the in-memory assemble_speaker_pcm tests
+    // and real hardware: they write real 16 kHz WAV files to a temp dir and verify
+    // that load_speaker_segments reads them back correctly before assembly.
+
+    #[test]
+    fn load_speaker_segments_reads_pcm_from_disk() {
+        let dir = temp_test_dir();
+        let wav_path = dir.join("seg0.wav");
+        let dc = vec![0.5f32; WHISPER_SAMPLE_RATE as usize]; // 1 second of DC
+        write_test_wav_16k(&wav_path, &dc);
+
+        let captured = vec![CapturedSpeakerSegment {
+            start_ms: 0,
+            wav_path,
+        }];
+        let loaded = load_speaker_segments(&captured).expect("load");
+
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].start_ms, 0);
+        assert_eq!(loaded[0].pcm_16k.len(), WHISPER_SAMPLE_RATE as usize);
+        assert!(
+            loaded[0].pcm_16k.iter().any(|s| s.abs() > 0.1),
+            "expected non-silent pcm"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_and_assemble_pipeline_places_pcm_at_correct_offset() {
+        // 3-second session; 1 second of audio starting at t=1000 ms
+        let dir = temp_test_dir();
+        let wav_path = dir.join("seg0.wav");
+        let one_sec = WHISPER_SAMPLE_RATE as usize;
+        write_test_wav_16k(&wav_path, &vec![0.8f32; one_sec]);
+
+        let captured = vec![CapturedSpeakerSegment {
+            start_ms: 1_000,
+            wav_path,
+        }];
+        let loaded = load_speaker_segments(&captured).expect("load");
+        let assembled = assemble_speaker_pcm(&loaded, 3_000);
+
+        assert_eq!(assembled.len(), 3 * one_sec);
+        assert!(
+            assembled[..one_sec].iter().all(|s| s.abs() < 1e-5),
+            "first second should be silence"
+        );
+        assert!(
+            assembled[one_sec..2 * one_sec].iter().any(|s| s.abs() > 0.1),
+            "second second should have audio"
+        );
+        assert!(
+            assembled[2 * one_sec..].iter().all(|s| s.abs() < 1e-5),
+            "third second should be silence"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_speaker_segments_missing_file_returns_error() {
+        let captured = vec![CapturedSpeakerSegment {
+            start_ms: 0,
+            wav_path: PathBuf::from("/nonexistent/path/seg.wav"),
+        }];
+        assert!(load_speaker_segments(&captured).is_err());
     }
 }

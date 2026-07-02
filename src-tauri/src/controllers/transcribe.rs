@@ -1,10 +1,11 @@
 use crate::services::config::ConfigService;
+use crate::services::history::HistoryService;
 use crate::services::model::ModelService;
 use crate::services::output::OutputService;
 use crate::services::transcribe_input::{TranscribeInputItem, TranscribeInputService};
 use crate::types::{
-    Config, ProcessingStage, TranscribeItemStatus, TranscribeQueueItem, TranscribeState,
-    TranscribeStateEvent,
+    Config, HistoryRecord, ProcessingStage, TranscribeItemStatus, TranscribeQueueItem,
+    TranscribeState, TranscribeStateEvent,
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -26,6 +27,7 @@ pub struct TranscribeController {
     input: Arc<TranscribeInputService>,
     model: Arc<ModelService>,
     output: Arc<OutputService>,
+    history: Arc<HistoryService>,
     config: Arc<ConfigService>,
     app: AppHandle,
 }
@@ -35,6 +37,7 @@ impl TranscribeController {
         input: Arc<TranscribeInputService>,
         model: Arc<ModelService>,
         output: Arc<OutputService>,
+        history: Arc<HistoryService>,
         config: Arc<ConfigService>,
         app: AppHandle,
     ) -> Arc<Self> {
@@ -45,12 +48,16 @@ impl TranscribeController {
             input,
             model,
             output,
+            history,
             config,
             app,
         })
     }
 
-    pub fn inspect_inputs(&self, input_paths: Vec<String>) -> Result<Vec<TranscribeQueueItem>, String> {
+    pub fn inspect_inputs(
+        &self,
+        input_paths: Vec<String>,
+    ) -> Result<Vec<TranscribeQueueItem>, String> {
         let items = self.input.expand_inputs(&input_paths)?;
         Ok(items
             .into_iter()
@@ -100,17 +107,33 @@ impl TranscribeController {
         );
 
         let replacement_rules = cfg.replacement_rules.clone();
+        let replacement_prefix = cfg.replacement_prefix.clone();
         tauri::async_runtime::spawn(async move {
             let ctrl = Arc::clone(&this);
             let result = tokio::task::spawn_blocking(move || {
-                ctrl.run_batch(inputs, &model_path, &model_name, &output_folder, include_timestamps, &replacement_rules, &mut queue)
+                ctrl.run_batch(
+                    inputs,
+                    &model_path,
+                    &model_name,
+                    &output_folder,
+                    include_timestamps,
+                    &replacement_rules,
+                    &replacement_prefix,
+                    &mut queue,
+                )
             })
             .await;
 
             match result {
                 Ok(Ok(final_queue)) => {
                     this.lock().state = TranscribeState::Done;
-                    this.emit_queue_state(TranscribeState::Done, final_queue, Some(1.0), None, None);
+                    this.emit_queue_state(
+                        TranscribeState::Done,
+                        final_queue,
+                        Some(1.0),
+                        None,
+                        None,
+                    );
                 }
                 Ok(Err(err)) => {
                     this.lock().state = TranscribeState::Error;
@@ -168,8 +191,14 @@ impl TranscribeController {
         output_folder: &Path,
         include_timestamps: bool,
         replacement_rules: &[crate::types::ReplacementRule],
+        replacement_prefix: &str,
         queue: &mut [TranscribeQueueItem],
     ) -> Result<Vec<TranscribeQueueItem>, String> {
+        // Snapshot once: history records always go to the save folder; `.md` is opt-in (and may
+        // target a different output folder).
+        let cfg = self.config.get();
+        let save_folder = cfg.save_folder.clone();
+        let markdown_on = cfg.save_transcripts_as_markdown;
         for (index, input) in inputs.iter().enumerate() {
             if queue.get(index).is_none() {
                 continue;
@@ -203,23 +232,33 @@ impl TranscribeController {
             };
 
             let vad_path = self.model.vad_model_path();
-            let vad = self.model.model_available(&vad_path).then_some(vad_path.as_path());
+            let vad = self
+                .model
+                .model_available(&vad_path)
+                .then_some(vad_path.as_path());
             let segments = if let Some(speaker_pcm) = decoded.speaker_pcm_16k.as_ref() {
                 let mic_segments = self
                     .model
-                    .transcribe_pcm_with_progress(model_path, &decoded.mic_pcm_16k, vad, None, {
-                        let app = self.app.clone();
-                        let item_id = queue[index].id.clone();
-                        move |p| {
-                            let _ = app.emit(
-                                "transcribe://item-progress",
-                                serde_json::json!({
-                                    "item_id": item_id,
-                                    "progress": p * 0.5
-                                }),
-                            );
-                        }
-                    })
+                    .transcribe_pcm_with_progress(
+                        model_path,
+                        &decoded.mic_pcm_16k,
+                        vad,
+                        None,
+                        "transcribe/mic",
+                        {
+                            let app = self.app.clone();
+                            let item_id = queue[index].id.clone();
+                            move |p| {
+                                let _ = app.emit(
+                                    "transcribe://item-progress",
+                                    serde_json::json!({
+                                        "item_id": item_id,
+                                        "progress": p * 0.5
+                                    }),
+                                );
+                            }
+                        },
+                    )
                     .map_err(|e| e.to_string());
                 let mic_segments = match mic_segments {
                     Ok(segments) => segments,
@@ -240,19 +279,26 @@ impl TranscribeController {
 
                 let speaker_segments = self
                     .model
-                    .transcribe_pcm_with_progress(model_path, speaker_pcm, vad, None, {
-                        let app = self.app.clone();
-                        let item_id = queue[index].id.clone();
-                        move |p| {
-                            let _ = app.emit(
-                                "transcribe://item-progress",
-                                serde_json::json!({
-                                    "item_id": item_id,
-                                    "progress": 0.5 + p * 0.5
-                                }),
-                            );
-                        }
-                    })
+                    .transcribe_pcm_with_progress(
+                        model_path,
+                        speaker_pcm,
+                        vad,
+                        None,
+                        "transcribe/speaker",
+                        {
+                            let app = self.app.clone();
+                            let item_id = queue[index].id.clone();
+                            move |p| {
+                                let _ = app.emit(
+                                    "transcribe://item-progress",
+                                    serde_json::json!({
+                                        "item_id": item_id,
+                                        "progress": 0.5 + p * 0.5
+                                    }),
+                                );
+                            }
+                        },
+                    )
                     .map_err(|e| e.to_string());
                 let speaker_segments = match speaker_segments {
                     Ok(segments) => segments,
@@ -271,13 +317,15 @@ impl TranscribeController {
                     }
                 };
 
-                self.model.merge_dual_source(&mic_segments, &speaker_segments)
+                self.model
+                    .merge_dual_source(&mic_segments, &speaker_segments)
             } else {
                 match self.model.transcribe_pcm_with_progress(
                     model_path,
                     &decoded.mic_pcm_16k,
                     vad,
                     None,
+                    "transcribe/mic",
                     {
                         let app = self.app.clone();
                         let item_id = queue[index].id.clone();
@@ -318,29 +366,63 @@ impl TranscribeController {
                 None,
             );
 
-            let output_name = format!("{}_{}.md", slugify(&input.display_name), model_name);
-            let transcript_dest = output_folder.join(output_name);
-            match self.output.write_transcript(
-                &segments,
-                &[],
-                &input.display_name,
-                model_name,
-                include_timestamps,
+            let dual_source = decoded.speaker_pcm_16k.is_some();
+            // Markdown is opt-in; write `.md` only when the toggle is on.
+            let markdown_path = if markdown_on {
+                let output_name = format!("{}_{}.md", slugify(&input.display_name), model_name);
+                let transcript_dest = output_folder.join(output_name);
+                match self.output.write_transcript(
+                    &segments,
+                    &[],
+                    &input.display_name,
+                    model_name,
+                    include_timestamps,
+                    replacement_rules,
+                    replacement_prefix,
+                    &transcript_dest,
+                ) {
+                    Ok(path) => Some(path),
+                    Err(err) => {
+                        queue[index].status = TranscribeItemStatus::Error;
+                        queue[index].progress = 1.0;
+                        queue[index].error = Some(err.to_string());
+                        self.emit_queue_state(
+                            TranscribeState::Transcribing,
+                            queue.to_vec(),
+                            Some(overall_progress(queue)),
+                            Some(ProcessingStage::WritingTranscript),
+                            None,
+                        );
+                        continue;
+                    }
+                }
+            } else {
+                None
+            };
+
+            // Persist the canonical record — always, regardless of the markdown toggle.
+            let record = HistoryRecord::from_transcribe(
+                input.display_name.clone(),
+                model_name.to_string(),
+                segments.clone(),
                 replacement_rules,
-                &transcript_dest,
-            ) {
-                Ok(path) => {
-                    queue[index].status = TranscribeItemStatus::Done;
-                    queue[index].progress = 1.0;
-                    queue[index].transcript_path = Some(path.to_string_lossy().to_string());
-                    queue[index].error = None;
-                }
-                Err(err) => {
-                    queue[index].status = TranscribeItemStatus::Error;
-                    queue[index].progress = 1.0;
-                    queue[index].error = Some(err.to_string());
-                }
+                replacement_prefix,
+                dual_source,
+                input.source_path.to_string_lossy().into_owned(),
+                markdown_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().into_owned()),
+            );
+            if let Err(e) = self.history.append(&save_folder, record) {
+                tracing::warn!(error = %e, "failed to append transcribe history record");
+            } else {
+                self.app.emit("note://item-added", ()).ok();
             }
+
+            queue[index].status = TranscribeItemStatus::Done;
+            queue[index].progress = 1.0;
+            queue[index].transcript_path = markdown_path.map(|p| p.to_string_lossy().to_string());
+            queue[index].error = None;
 
             self.emit_queue_state(
                 TranscribeState::Transcribing,
@@ -407,7 +489,11 @@ fn resolve_output_folder(
     output.ensure_output_dir(path).map_err(|e| e.to_string())
 }
 
-fn resolve_model_path(config: &Config, model: &ModelService, explicit_model_id: Option<&str>) -> PathBuf {
+fn resolve_model_path(
+    config: &Config,
+    model: &ModelService,
+    explicit_model_id: Option<&str>,
+) -> PathBuf {
     if let Some(model_id) = explicit_model_id {
         if let Some(path) = model.model_path_for_id(model_id.trim()) {
             return path;
@@ -453,4 +539,125 @@ fn overall_progress(items: &[TranscribeQueueItem]) -> f32 {
         })
         .sum();
     (total / items.len() as f32).clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{Config, TranscribeItemStatus, TranscribeQueueItem};
+
+    fn make_queue_item(status: TranscribeItemStatus, progress: f32) -> TranscribeQueueItem {
+        TranscribeQueueItem {
+            id: "test".to_string(),
+            source_path: "".to_string(),
+            display_name: "".to_string(),
+            source_type: crate::types::TranscribeSourceType::SingleAudio,
+            duration_ms: 0,
+            status,
+            progress,
+            transcript_path: None,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn overall_progress_empty_returns_zero() {
+        assert_eq!(overall_progress(&[]), 0.0);
+    }
+
+    #[test]
+    fn overall_progress_all_done() {
+        let items = vec![
+            make_queue_item(TranscribeItemStatus::Done, 1.0),
+            make_queue_item(TranscribeItemStatus::Done, 1.0),
+        ];
+        assert_eq!(overall_progress(&items), 1.0);
+    }
+
+    #[test]
+    fn overall_progress_all_queued() {
+        let items = vec![
+            make_queue_item(TranscribeItemStatus::Queued, 0.0),
+            make_queue_item(TranscribeItemStatus::Queued, 0.0),
+        ];
+        assert_eq!(overall_progress(&items), 0.0);
+    }
+
+    #[test]
+    fn overall_progress_mixed() {
+        let items = vec![
+            make_queue_item(TranscribeItemStatus::Done, 1.0),
+            make_queue_item(TranscribeItemStatus::Queued, 0.0),
+            make_queue_item(TranscribeItemStatus::Processing, 0.5),
+            make_queue_item(TranscribeItemStatus::Error, 1.0),
+        ];
+        // (1.0 + 0.0 + 0.5 + 1.0) / 4 = 0.625
+        let p = overall_progress(&items);
+        assert!((p - 0.625).abs() < 1e-5, "expected 0.625, got {p}");
+    }
+
+    #[test]
+    fn slugify_spaces_become_underscores() {
+        assert_eq!(slugify("hello world"), "hello_world");
+    }
+
+    #[test]
+    fn slugify_strips_extension() {
+        assert_eq!(slugify("audio file.wav"), "audio_file");
+    }
+
+    #[test]
+    fn slugify_replaces_forbidden_chars() {
+        let slug = slugify("a/b\\c:d");
+        assert!(!slug.contains('/') && !slug.contains('\\') && !slug.contains(':'));
+    }
+
+    #[test]
+    fn resolve_model_path_prefers_explicit_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let model_svc = ModelService::new(tmp.path().to_path_buf());
+        let config = Config {
+            selected_model_id: Some("base-en-q5".to_string()),
+            ..Config::default()
+        };
+        // explicit id "tiny-en-q5" — path doesn't exist but model_path_for_id still returns it
+        let path = resolve_model_path(&config, &model_svc, Some("tiny-en-q5"));
+        assert!(path.to_string_lossy().contains("tiny"));
+    }
+
+    #[test]
+    fn resolve_model_path_falls_back_to_selected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let model_svc = ModelService::new(tmp.path().to_path_buf());
+        let config = Config {
+            selected_model_id: Some("base-en-q5".to_string()),
+            ..Config::default()
+        };
+        let path = resolve_model_path(&config, &model_svc, None);
+        assert!(path.to_string_lossy().contains("base"));
+    }
+
+    #[test]
+    fn resolve_output_folder_rejects_relative_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let output_svc = crate::services::output::OutputService::new();
+        let config = Config {
+            save_folder: tmp.path().to_string_lossy().to_string(),
+            ..Config::default()
+        };
+        let result = resolve_output_folder(&output_svc, &config, Some("relative/path"));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("must be absolute"));
+    }
+
+    #[test]
+    fn resolve_output_folder_rejects_empty() {
+        let output_svc = crate::services::output::OutputService::new();
+        let config = Config {
+            save_folder: String::new(),
+            ..Config::default()
+        };
+        let result = resolve_output_folder(&output_svc, &config, None);
+        assert!(result.is_err());
+    }
 }

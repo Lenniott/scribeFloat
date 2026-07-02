@@ -320,11 +320,7 @@ mod macos {
                 sel_registerName(c"requestAccessForMediaType:completionHandler:".as_ptr());
             let str_sel = sel_registerName(c"stringWithUTF8String:".as_ptr());
 
-            if !av_cls.is_null()
-                && !ns_cls.is_null()
-                && !req_sel.is_null()
-                && !str_sel.is_null()
-            {
+            if !av_cls.is_null() && !ns_cls.is_null() && !req_sel.is_null() && !str_sel.is_null() {
                 let media_type = objc_msg_send_id_cstr(ns_cls, str_sel, c"soun".as_ptr());
                 if !media_type.is_null() {
                     objc_msg_send_request_access(av_cls, req_sel, media_type, &mut block);
@@ -379,8 +375,7 @@ mod macos {
                 return 0;
             }
 
-            let media_type =
-                objc_msg_send_id_cstr(ns_string_cls, string_sel, c"soun".as_ptr());
+            let media_type = objc_msg_send_id_cstr(ns_string_cls, string_sel, c"soun".as_ptr());
             if media_type.is_null() {
                 return 0;
             }
@@ -478,7 +473,7 @@ mod windows {
         if let Ok(stream) = device.build_input_stream(
             &config,
             |_data: &[f32], _| {},
-            |err| eprintln!("[permissions] mic probe stream error: {err}"),
+            |err| tracing::debug!(error = %err, "mic probe stream error"),
             None,
         ) {
             let _ = stream.play();

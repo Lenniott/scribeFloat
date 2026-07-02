@@ -77,32 +77,45 @@ Transcript chunk:
 """
 ```
 
-## 3. Prompt 2 — resolve
+## 3. Prompt 2 — resolve (rev 2)
+
+Rev 1 findings (2026-07-02, manual run on chunk F): given a single loose phrase line, the
+model ignored the phrase list, invented its own phrases (re-running extraction), and dropped
+the `source` key entirely. The schema was shown as a one-line example rather than stated as a
+per-key contract, and nothing pinned output items to input items. Rev 2: phrases arrive as a
+JSON array, each output key is specified individually, and length/order/copy-unchanged are
+explicit rules. Note the run's input was also rev-1 extraction garbage — when testing this
+prompt in isolation, feed it the expected Prompt 1 output from the chunk tables in §4.
 
 ```
-Read this transcript chunk. Each line has this format:
+You will be given a transcript chunk and a JSON array of phrases taken from it.
+
+Each chunk line has this format:
 
 [timestamp] Speaker: spoken words
 
-Below the chunk is a list of phrases taken from it. For each phrase, first
-write one short sentence saying what the phrase refers to in this chunk.
-Then label where your answer came from, using exactly one of these words:
+The timestamp and speaker name are metadata. Use only the spoken words.
 
-text - this chunk itself explains what the phrase refers to
-general - the phrase describes itself; anyone with everyday work vocabulary
-understands the sentence without more information
-missing - the answer would be a guess; what it refers to was established
-somewhere you cannot see, and without that the sentence is hard to understand
+For each phrase in the array, in order, output one JSON object with exactly
+these three keys:
+
+"phrase" - the phrase, copied unchanged from the input array
+"refers_to" - one short sentence saying what the phrase refers to in this chunk
+"source" - exactly one of these three words:
+  text - this chunk itself explains what the phrase refers to
+  general - the phrase describes itself; anyone with everyday work vocabulary
+  understands the sentence without more information
+  missing - your refers_to sentence would be a guess; what the phrase points
+  at was established somewhere you cannot see
 
 Do not use "missing" just because you lack details about the thing. Use
-"missing" only when not knowing what the phrase points at makes the
-sentence itself unclear.
+"missing" only when not knowing what the phrase points at makes the sentence
+itself unclear.
 
-Return JSON only, and nothing else:
+Do not add, remove, split, or reword any phrase. The output array must have
+exactly one object for every phrase in the input array.
 
-[
-  {"phrase": "...", "refers_to": "...", "source": "text"}
-]
+Return a JSON array only, and nothing else.
 
 Transcript chunk:
 """
@@ -110,7 +123,7 @@ Transcript chunk:
 """
 
 Phrases:
-<PHRASES — one per line, exactly as returned by Prompt 1>
+["...", "..."]
 ```
 
 ## 4. Test chunks and expected results
@@ -228,6 +241,7 @@ wording, items assembled from words that aren't adjacent in the transcript.
 | 2026-07-02 | (Socrates prompt, pre-kit) | A | Failed: flagged defined term + compositional phrases as not self-contained |
 | 2026-07-02 | local (Ollama UI) | — | Prompt 1 rev 1 returned only timestamps; "you will be given" framing fixed it |
 | 2026-07-02 | local (Ollama UI) | F | Prompt 1 rev 1 (as reframed): greedy clause-length spans, overlaps, paraphrase → wrote rev 2 |
+| 2026-07-02 | local (Ollama UI) | F | Prompt 2 rev 1, fed a rev-1 clause as input: ignored phrase list, invented phrases, dropped `source` key → wrote rev 2 |
 | | | | |
 
 ## What a pass looks like

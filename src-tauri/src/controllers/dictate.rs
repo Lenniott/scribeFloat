@@ -552,6 +552,7 @@ impl DictateController {
                 drop(gate);
                 let _ = app.emit(DICTATE_AUDIO_LEVEL_EVENT, level);
             })),
+            None,
         )?;
 
         let mut inner = self.lock();
@@ -826,6 +827,7 @@ impl DictateController {
                     )
                     .ok();
             },
+            None,
         ) {
             Ok(segments) => segments,
             Err(e) => {

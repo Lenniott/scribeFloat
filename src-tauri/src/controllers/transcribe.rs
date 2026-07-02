@@ -256,6 +256,7 @@ impl TranscribeController {
                                 );
                             }
                         },
+                        None,
                     )
                     .map_err(|e| e.to_string());
                 let mic_segments = match mic_segments {
@@ -297,6 +298,7 @@ impl TranscribeController {
                                 );
                             }
                         },
+                        None,
                     )
                     .map_err(|e| e.to_string());
                 let speaker_segments = match speaker_segments {
@@ -341,6 +343,7 @@ impl TranscribeController {
                             );
                         }
                     },
+                    None,
                 ) {
                     Ok(segments) => filter_hallucination_phrases(&segments),
                     Err(err) => {

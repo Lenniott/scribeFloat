@@ -52,6 +52,10 @@ class ScribeController {
 			await listen<ScribePayload>('scribe://state-changed', (e) =>
 				this.handleScribeEvent(e.payload),
 			),
+			await listen<{ device: string }>('scribe://mic-fallback', (e) => {
+				this.selectedMic = e.payload.device;
+				void this.refreshMicOptions();
+			}),
 			await listen<number>('scribe://audio-level', (e) => {
 				this.audioLevel = e.payload;
 			}),
@@ -102,29 +106,27 @@ class ScribeController {
 			'settings_get_preferred_audio_devices',
 		).catch(() => [null, null] as [string | null, string | null]);
 
+		if (this.phase === 'recording') {
+			try {
+				await invoke('scribe_switch_mic', { device: mic });
+				await invoke('settings_set_preferred_audio_devices', {
+					preferredInputDevice: mic || null,
+					preferredSpeakerDevice: preferredSpeaker,
+				});
+				this.selectedMic = mic;
+			} catch (e) {
+				this.errorMessage = String(e);
+				await this.refreshMicOptions();
+			}
+			return;
+		}
+
 		await invoke('settings_set_preferred_audio_devices', {
 			preferredInputDevice: mic || null,
 			preferredSpeakerDevice: preferredSpeaker,
 		}).catch(() => {});
 
 		this.selectedMic = mic;
-
-		if (this.phase !== 'recording') return;
-
-		const noteId = appState.scribeNoteId;
-		if (!noteId) return;
-
-		// Same as legacy Scribe screen: cancel and restart on the same note with the new mic.
-		const sessionSpeakerCapture = this.captureSpeaker;
-		await invoke('scribe_set_attach_note', { noteId: null }).catch(() => {});
-		await invoke('scribe_cancel').catch(() => {});
-		this.stopTimer();
-		this.audioLevel = 0;
-		this.speakerLevel = 0;
-		this.phase = 'idle';
-		appState.scribeNoteId = null;
-		this.captureSpeaker = sessionSpeakerCapture;
-		await this.startRecording(noteId);
 	}
 
 	/** Idle: persist default. Recording: session-only toggle via backend. */
@@ -240,6 +242,9 @@ class ScribeController {
 	private handleScribeEvent(p: ScribePayload) {
 		if (p.progress != null) {
 			this.progress = p.progress;
+			if (p.progress >= 0.05 && this.processingStage === 'LOADING_MODEL') {
+				this.processingStage = 'TRANSCRIBING_AUDIO';
+			}
 		}
 		if (p.processing_stage) {
 			this.processingStage = p.processing_stage;

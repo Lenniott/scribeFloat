@@ -10,7 +10,12 @@ pub fn scribe_start(
     preferred_speaker: Option<String>,
     capture_speaker: bool,
 ) -> Result<(), AppError> {
-    ctrl.start(preferred_mic, preferred_speaker, capture_speaker)
+    ScribeController::start(
+        Arc::clone(&ctrl),
+        preferred_mic,
+        preferred_speaker,
+        capture_speaker,
+    )
         .map_err(AppError::from)
 }
 
@@ -101,6 +106,14 @@ pub fn scribe_list_output_devices(
     ctrl: State<'_, Arc<ScribeController>>,
 ) -> Result<Vec<String>, AppError> {
     Ok(ctrl.list_output_devices())
+}
+
+#[tauri::command]
+pub fn scribe_switch_mic(
+    ctrl: State<'_, Arc<ScribeController>>,
+    device: String,
+) -> Result<(), AppError> {
+    ctrl.switch_mic(device).map_err(AppError::from)
 }
 
 #[tauri::command]

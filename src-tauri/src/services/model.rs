@@ -666,6 +666,7 @@ impl ModelService {
     /// Long audio uses whisper.cpp's internal seek/windowing — do not pre-chunk PCM here.
     ///
     /// `source` identifies the caller workflow (e.g. `"scribe/mic"`) for failure diagnostics.
+    #[allow(clippy::too_many_arguments)]
     pub fn transcribe_pcm_with_progress<F>(
         &self,
         model_path: &Path,
@@ -674,6 +675,7 @@ impl ModelService {
         abort: Option<Arc<AtomicBool>>,
         source: &str,
         on_progress: F,
+        on_model_loaded: Option<Box<dyn FnOnce() + Send>>,
     ) -> Result<Vec<Segment>>
     where
         F: FnMut(f32) + Send + 'static,
@@ -735,6 +737,7 @@ impl ModelService {
             pcm,
             vad_model_path,
             abort.clone(),
+            on_model_loaded,
             Arc::clone(&on_progress),
         );
 
@@ -772,6 +775,7 @@ impl ModelService {
                 pcm,
                 vad_model_path,
                 abort.clone(),
+                None,
                 Arc::clone(&on_progress),
             );
         }
@@ -801,7 +805,7 @@ impl ModelService {
                     .unwrap_or_default(),
                 "whisper encode failed with VAD enabled, retrying without VAD"
             );
-            result = self.run_inference(model_path, pcm, None, abort, Arc::clone(&on_progress));
+            result = self.run_inference(model_path, pcm, None, abort, None, Arc::clone(&on_progress));
             if result.is_ok() {
                 tracing::info!(
                     source,
@@ -930,6 +934,7 @@ impl ModelService {
         pcm: &[f32],
         vad_model_path: Option<&Path>,
         abort: Option<Arc<AtomicBool>>,
+        on_model_loaded: Option<Box<dyn FnOnce() + Send>>,
         on_progress: Arc<Mutex<F>>,
     ) -> Result<Vec<Segment>, InferError>
     where
@@ -939,8 +944,11 @@ impl ModelService {
         let ctx = self
             .get_or_load_context(model_path)
             .map_err(InferError::Other)?;
+        if let Some(cb) = on_model_loaded {
+            cb();
+        }
         if let Ok(mut f) = on_progress.lock() {
-            f(0.0);
+            f(INFERENCE_MODEL_LOAD_PROGRESS);
         }
         let mut state = ctx
             .create_state()
@@ -971,7 +979,7 @@ impl ModelService {
                 return;
             }
             guard.record(percent);
-            let p = progress_from_whisper_percent(percent);
+            let p = inference_progress_from_whisper_percent(percent);
             if let Ok(mut f) = prog.lock() {
                 f(p);
             }
@@ -1090,6 +1098,14 @@ fn transcription_failure_log_path(models_dir: &Path) -> PathBuf {
 
 fn progress_from_whisper_percent(percent: i32) -> f32 {
     (percent as f32 / 100.0).clamp(0.0, 1.0)
+}
+
+/// Reserve the first slice of the 0–1 bar for model load; Whisper's callback covers encode+decode.
+pub const INFERENCE_MODEL_LOAD_PROGRESS: f32 = 0.05;
+
+fn inference_progress_from_whisper_percent(percent: i32) -> f32 {
+    INFERENCE_MODEL_LOAD_PROGRESS
+        + progress_from_whisper_percent(percent) * (1.0 - INFERENCE_MODEL_LOAD_PROGRESS)
 }
 
 struct WhisperProgressThrottle {
@@ -1281,6 +1297,15 @@ mod tests {
     }
 
     #[test]
+    fn inference_progress_reserves_headroom_for_model_load() {
+        assert_eq!(
+            inference_progress_from_whisper_percent(0),
+            INFERENCE_MODEL_LOAD_PROGRESS
+        );
+        assert_eq!(inference_progress_from_whisper_percent(100), 1.0);
+    }
+
+    #[test]
     fn whisper_progress_throttle_emits_on_first_percent_change_or_10hz() {
         assert!(should_emit_whisper_progress(
             None,
@@ -1445,6 +1470,7 @@ mod tests {
             None,
             "test/scribe-wav",
             |_| {},
+            None,
         );
         eprintln!("result = {result:?}");
         result.expect("scribe session wav should transcribe via dictate-identical path");

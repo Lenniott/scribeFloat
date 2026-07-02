@@ -39,18 +39,19 @@
 	const isBusy = $derived(dictateState === 'TRANSCRIBING' || dictateState === 'PASTING');
 	const dictateDisabled = $derived(isBusy || scribe.phase !== 'idle');
 
-	const scribeProgressSequence = [
+	const scribeProgressSequence = $derived([
 		{ label: 'Loading model', complete: scribe.processingStage !== 'LOADING_MODEL' },
 		{
 			label: 'Transcribing',
-			complete: scribe.processingStage === 'WRITING_TRANSCRIPT' ||
+			complete:
+				scribe.processingStage === 'WRITING_TRANSCRIPT' ||
 				scribe.processingStage === 'CLEANING_UP_AUDIO',
 		},
 		{
 			label: 'Writing transcript',
 			complete: scribe.processingStage === 'CLEANING_UP_AUDIO',
 		},
-	];
+	]);
 
 	const isOnRecordingNote = $derived(
 		appState.scribeNoteId !== null &&
@@ -144,7 +145,10 @@
 				progress={scribe.progressPercent}
 				variant="small"
 				sequence={scribeProgressSequence}
-				indeterminate={scribe.processingStage === 'LOADING_MODEL'}
+				indeterminate={
+					scribe.processingStage === 'LOADING_MODEL' ||
+					(scribe.processingStage === 'TRANSCRIBING_AUDIO' && scribe.progressPercent === 0)
+				}
 			/>
 		{/if}
 

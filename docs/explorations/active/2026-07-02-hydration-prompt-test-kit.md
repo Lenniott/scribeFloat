@@ -41,20 +41,33 @@ Two prompts, run in sequence per chunk:
 Mapping back to the hydration doc's chunk-call output: `text` rows populate `defines`,
 `missing` rows populate `unresolved`, `general` rows populate neither.
 
-## 2. Prompt 1 — extract
+## 2. Prompt 1 — extract (rev 2)
+
+Rev 1 findings (2026-07-02, manual runs): opening with "Read this transcript chunk" made the
+model return only the timestamps — "you will be given" framing fixed that. Then "keep each
+phrase whole, including its qualifiers" with no upper bound made it extend spans greedily into
+whole clauses ("the list view failed the contrast check last sprint"), emit overlapping items,
+and paraphrase instead of copying ("was" became "is"). Rev 2 bounds the phrase from above as
+explicitly as from below: no verbs, no statements, 1–4 words, no item containing another.
 
 ```
-Read this transcript chunk. Each line has this format:
+You will be given a transcript chunk. Each line has this format:
 
 [timestamp] Speaker: spoken words
 
 The timestamp and speaker name are metadata. Use only the spoken words.
 
-List every phrase from the spoken words that points at a specific thing:
-names of people, companies, products, or systems; acronyms; phrases built
-on "the", "that", "this", or a possessive; references to times or places.
-Keep each phrase whole, exactly as written, including its qualifiers.
-Do not list filler words, timestamps, or speaker names.
+List the specific things the spoken words mention: people, companies,
+products, systems, documents, acronyms, and references to times or places.
+
+Rules for each item:
+- Copy it word for word from the spoken words. Keep "the", "that", "this",
+  or a possessive if the phrase has one.
+- An item is a short noun phrase, usually 1 to 4 words. It must not
+  contain a verb and must not be a whole statement.
+- A time or place reference is its own separate item.
+- Never list two items where one contains the other.
+- Do not list filler words, timestamps, or speaker names.
 
 Return a JSON array of strings and nothing else.
 
@@ -185,11 +198,36 @@ present it as-is — noting how the prompts degrade on non-transcript input is p
 | the new team | missing | Borderline toward general; record what happens |
 | the service | general | Borderline; resolved by "hand the service over" context |
 
+### Chunk F — extraction stress test (dense qualifiers, one sentence)
+
+```
+[00:07:44] Ben: Okay, let's go with the card-based layout instead of the list view — we all agreed accessibility was the deciding factor there, since the list view failed the contrast check last sprint.
+```
+
+Expected Prompt 1 output (order irrelevant):
+
+```
+["the card-based layout", "the list view", "accessibility", "the contrast check", "last sprint"]
+```
+
+Failure modes to watch: clause-length items containing verbs, overlapping items, paraphrased
+wording, items assembled from words that aren't adjacent in the transcript.
+
+| Phrase | Expected source (Prompt 2) | Note |
+|---|---|---|
+| the card-based layout | general | Self-describing UI pattern |
+| the list view | general | Self-describing; also defined by contrast with the card option |
+| accessibility | general | |
+| the contrast check | general | The original §9.1 over-flag case: names a type of test |
+| last sprint | missing | WHICH sprint is calendar history — the one genuine flag here |
+
 ## 5. Results log
 
 | Date | Model | Chunk | Result summary |
 |---|---|---|---|
 | 2026-07-02 | (Socrates prompt, pre-kit) | A | Failed: flagged defined term + compositional phrases as not self-contained |
+| 2026-07-02 | local (Ollama UI) | — | Prompt 1 rev 1 returned only timestamps; "you will be given" framing fixed it |
+| 2026-07-02 | local (Ollama UI) | F | Prompt 1 rev 1 (as reframed): greedy clause-length spans, overlaps, paraphrase → wrote rev 2 |
 | | | | |
 
 ## What a pass looks like

@@ -1,0 +1,36 @@
+[00:00:02] Ben: Morning. How was the weekend?
+[00:00:05] Maya: Good, short. You?
+[00:00:08] Ben: Same. Okay, ready to dig in?
+[00:00:10] Maya: Yep.
+---
+[00:00:31] Ben: So where are we with the export bug?
+[00:00:34] Maya: I found it. The date filter drops the last day of the month.
+[00:00:39] Ben: In every report?
+[00:00:41] Maya: Only the weekly one. The monthly report builds its date range a different way.
+[00:00:47] Ben: Which fix are you leaning toward?
+[00:00:50] Maya: Move the range logic into one shared helper so both reports use the same rule.
+[00:00:56] Ben: mm-hm
+[00:00:57] Maya: It is a small change and it removes the whole class of bug, not just this one.
+[00:01:04] Ben: Okay, do that. Ship it behind the flag first.
+[00:01:08] Maya: Will do.
+---
+[00:01:35] Maya: One more thing. The blocker is still the handoff doc.
+[00:01:39] Ben: Which one?
+[00:01:41] Maya: The checklist for the payments migration. The one we started after the outage.
+[00:01:47] Ben: Right. What is missing?
+[00:01:49] Maya: The new team needs the alert runbook and the list of manual steps before we hand the service over.
+[00:01:55] Ben: I can write the runbook part today.
+[00:01:58] Maya: Perfect, thanks.
+---
+[00:02:24] Ben: Can I tell you what happened in the review call?
+[00:02:27] Maya: Go on.
+[00:02:29] Ben: We showed the new card layout to the group.
+[00:02:33] Maya: mm-hm
+[00:02:34] Ben: Sales loved it. Support asked for a bigger search box.
+[00:02:39] Ben: Then legal asked why the terms link was missing, and it turns out the link only shows on the old layout.
+[00:02:45] Maya: Ouch.
+[00:02:46] Ben: So the action is: add the terms link, then do a second pass with legal on Friday.
+---
+[00:03:12] Maya: Anything else before I go?
+[00:03:14] Ben: No, that covers it. Thanks.
+[00:03:16] Maya: Cool, see you.

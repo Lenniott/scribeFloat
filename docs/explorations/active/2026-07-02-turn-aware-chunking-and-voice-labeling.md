@@ -240,6 +240,11 @@ This is the concrete spec for `chunk_strategy: "turn_taking_aware"` in the Conte
 runs in the Float enrichment queue, where embedding calls are already planned
 (`embeddinggemma` via the existing inference service) — never in the capture path.
 
+**Spike assets:** `tools/chunking_spikes/` — stdlib Python comparing fixed-size vs turn vs
+rule vs rule+similarity chunking on a boundary-marked sample transcript, scored on
+precision/recall against the marks. On the sample, fixed-size scores F1 0.00 and the rules
+strategies 1.00; the honest caveat (rules tuned on the same sample) is in its README.
+
 **6.1 Logic pass first (cheap, deterministic):**
 
 - **First-pair-part detection.** Interrogative form (wh-word start, `?` ending, aux-inversion),

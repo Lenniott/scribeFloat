@@ -858,7 +858,7 @@ impl ModelService {
     }
 
     /// Merge dual-source segments chronologically and label channel origin.
-    /// `in:` = speaker/system audio, `out:` = local microphone.
+    /// `in:` = local microphone (what I say), `out:` = speaker/system audio (what I hear).
     pub fn merge_dual_source(
         &self,
         mic_segments: &[Segment],

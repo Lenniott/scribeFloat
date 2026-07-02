@@ -19,6 +19,7 @@ Lightweight captures of ideation and design sessions. Not decisions — decision
 | File | Produces |
 |------|----------|
 | [2026-07-01-context-hydration-pipeline.md](active/2026-07-01-context-hydration-pipeline.md) | Chunk/block/pack context extraction + retrieval design — current |
+| [2026-07-02-turn-aware-chunking-and-voice-labeling.md](active/2026-07-02-turn-aware-chunking-and-voice-labeling.md) | Voice attribution fix (mic bleed), turn assembly, and the `turn_taking_aware` chunk strategy spec |
 
 ### superseded/
 | File | Superseded by |

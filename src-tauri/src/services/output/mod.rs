@@ -8,12 +8,16 @@ use std::sync::Arc;
 
 mod cleanup;
 mod dedup;
+pub mod hallucination;
 mod legacy;
 mod render;
 mod replacements;
 mod session;
 pub mod wav;
 
+pub use hallucination::{
+    filter_hallucination_phrases, speaker_pcm_has_signal, SPEAKER_SILENCE_THRESHOLD,
+};
 pub use render::{count_words, render_speaker_blocks_body, render_transcript_body};
 pub use wav::{sync_wav_header, write_streaming_wav_placeholder};
 

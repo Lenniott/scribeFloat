@@ -11,7 +11,7 @@
 | Audio not capturing or wrong device | `services/audio.rs` → `MicSession` |
 | Transcription wrong or failing | `services/model.rs` → `transcribe_pcm_with_progress` |
 | Dual-source merge / mic bleed issue | `services/model.rs` → `merge_dual_source` |
-| Speaker channel hallucinating ("Thank you." etc.) | `controllers/scribe.rs` → `pcm_rms` (silence gate) and `filter_hallucination_phrases` |
+| Speaker channel hallucinating ("Thank you." etc.) | `services/output/hallucination.rs` → `speaker_pcm_has_signal` (silence gate) and `filter_hallucination_phrases` |
 | Speaker capture not toggling or output device not restoring | `controllers/scribe.rs` → `toggle_speaker_capture`; check `restore_output_device` |
 | Loopback device not found | `platform/mod.rs` → `loopback_device_and_config`; check BlackHole install or `preferred_speaker_device` config |
 | Transcript paragraphs not grouping correctly | `services/output.rs` → `write_transcript`; check `MERGE_GAP_MS` and `speaker_source_prefix` |

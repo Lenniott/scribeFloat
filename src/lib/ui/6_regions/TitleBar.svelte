@@ -13,6 +13,7 @@
 	import Modal from '@primitives/layout/Modal.svelte';
 	import RecordingStatusDot from '@primitives/display/StatusDot.svelte';
 	import RecordingTimer from '@primitives/display/RecordingTimer.svelte';
+	import ProgressBar from '@primitives/display/ProgressBar.svelte';
 	import { appState } from '@stores/appState.svelte';
 	import { scribe } from '@stores/scribeController.svelte';
 
@@ -37,6 +38,19 @@
 	const isRecording = $derived(dictateState === 'RECORDING');
 	const isBusy = $derived(dictateState === 'TRANSCRIBING' || dictateState === 'PASTING');
 	const dictateDisabled = $derived(isBusy || scribe.phase !== 'idle');
+
+	const scribeProgressSequence = [
+		{ label: 'Loading model', complete: scribe.processingStage !== 'LOADING_MODEL' },
+		{
+			label: 'Transcribing',
+			complete: scribe.processingStage === 'WRITING_TRANSCRIPT' ||
+				scribe.processingStage === 'CLEANING_UP_AUDIO',
+		},
+		{
+			label: 'Writing transcript',
+			complete: scribe.processingStage === 'CLEANING_UP_AUDIO',
+		},
+	];
 
 	const isOnRecordingNote = $derived(
 		appState.scribeNoteId !== null &&
@@ -126,7 +140,12 @@
 				onclick={() => (showDiscardConfirm = true)}
 			/>
 		{:else if scribe.phase === 'transcribing'}
-			<span class="sf-body-sm text-fg-dim">Transcribing…</span>
+			<ProgressBar
+				progress={scribe.progressPercent}
+				variant="small"
+				sequence={scribeProgressSequence}
+				indeterminate={scribe.processingStage === 'LOADING_MODEL'}
+			/>
 		{/if}
 
 		{#if onNewNote || scribe.phase !== 'idle'}

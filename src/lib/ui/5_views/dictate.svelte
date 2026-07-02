@@ -7,12 +7,14 @@
 	import RecordingStatusDot from "@primitives/display/StatusDot.svelte";
 	import RecordingTimer from "@primitives/display/RecordingTimer.svelte";
 	import IconButton from "@components/controls/IconButton.svelte";
+	import ProgressBar from "@primitives/display/ProgressBar.svelte";
 
 	type DictateState = "IDLE" | "RECORDING" | "TRANSCRIBING" | "PASTING" | "DONE" | "ERROR";
 
 	type DictateStateEvent = {
 		state: DictateState;
 		progress?: number;
+		processing_stage?: 'LOADING_MODEL' | 'TRANSCRIBING_AUDIO';
 		text?: string;
 		paste_failed?: boolean;
 		history_write_failed?: boolean;
@@ -26,11 +28,15 @@
 	let pasteFailed = $state(false);
 	let historyWriteFailed = $state(false);
 	let errorText = $state("");
+	let progress = $state(0);
+	let processingStage = $state<"LOADING_MODEL" | "TRANSCRIBING_AUDIO">("LOADING_MODEL");
 
 	let recordingStartedAt: number | null = null;
 	let timerInterval: ReturnType<typeof setInterval> | undefined;
 	let micLevelPending = 0;
 	let micFlushRaf = 0;
+
+	const progressPercent = $derived(Math.round(Math.max(0, Math.min(1, progress)) * 100));
 
 	const dotStatus = $derived(
 		dictateState === "RECORDING"
@@ -65,6 +71,13 @@
 		const prev = dictateState;
 		dictateState = ev.state;
 
+		if (ev.progress != null) {
+			progress = ev.progress;
+		}
+		if (ev.processing_stage) {
+			processingStage = ev.processing_stage;
+		}
+
 		if (ev.state === "DONE") {
 			resultText = ev.text ?? "";
 			pasteFailed = Boolean(ev.paste_failed);
@@ -87,6 +100,8 @@
 			if (ev.state === "IDLE") {
 				elapsedSeconds = 0;
 				recordingStartedAt = null;
+				progress = 0;
+				processingStage = "LOADING_MODEL";
 				resultText = "";
 				pasteFailed = false;
 				historyWriteFailed = false;
@@ -175,9 +190,17 @@
 		</div>
 	{:else if isProcessing}
 		<div class="flex min-w-0 flex-1 items-center gap-2">
-			<span class="sf-label-sm text-fg-dim">
-				{dictateState === "PASTING" ? "Pasting…" : "Transcribing…"}
-			</span>
+			<ProgressBar
+				progress={progressPercent}
+				variant="small"
+				sequence={[
+					{
+						label: dictateState === "PASTING" ? "Pasting" : "Transcribing",
+						complete: false,
+					},
+				]}
+				indeterminate={dictateState === "TRANSCRIBING" && processingStage === "LOADING_MODEL"}
+			/>
 		</div>
 	{:else}
 		<div class="flex items-center gap-4">

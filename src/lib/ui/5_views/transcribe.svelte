@@ -444,7 +444,7 @@
       >
         <div class="w-full max-w-2xl rounded-md border border-rim bg-panel p-4">
           <p class="mb-3 sf-label-sm text-fg-dim">
-            Processing {progress}%
+            {progressSequence.find((step) => step.stage === stage)?.label ?? "Processing"} · {progress}%
           </p>
           <StackProgressBar
             {progress}

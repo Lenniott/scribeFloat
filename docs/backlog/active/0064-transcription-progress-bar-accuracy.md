@@ -1,7 +1,7 @@
 ---
 id: "0064"
 title: Fix transcription progress bar to reflect where time is actually spent
-status: active
+status: done
 ---
 
 # Fix transcription progress bar to reflect where time is actually spent

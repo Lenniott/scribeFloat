@@ -18,7 +18,17 @@ python3 run_test.py                       # defaults: gemma3:270m, temp 0, 1 run
 python3 run_test.py --temps 0,0.4,0.8     # temperature sweep
 python3 run_test.py --runs 3              # repeat each temp 3x (variance check)
 python3 run_test.py --model qwen3.5:4b    # try a different local model
+python3 run_test.py --no-format           # disable structured outputs (see below)
+python3 run_test.py --hour-chunks 90      # timing projection assumption
 ```
+
+**Structured outputs are ON by default:** the runner sends a JSON schema in Ollama's
+`format` field, which constrains decoding so the model *cannot* return prose, code, or a
+transcript echo — only the required shape. The first gemma3:270m run (2026-07-02) failed to
+parse on all 5 chunks without this (transcript echoes, Python programs instead of JSON).
+Use `--no-format` to measure how a model behaves without the constraint. Note: schema
+constraints fix the *shape*, not the judgment — a constrained model can still label
+everything wrong.
 
 Ollama must be running (`ollama serve` or the desktop app) and the model pulled
 (`ollama pull gemma3:270m`).
@@ -29,10 +39,14 @@ One file per invocation in `results/`, e.g. `results/hydration_gemma3_270m_20260
 It contains, per temperature × run × chunk:
 
 - the raw model response for both prompts (so failures can be diagnosed, not just counted)
+- per-call wall time and generated-token counts, plus a per-chunk total
 - the parsed phrase list, with extraction-quality flags (`PARAPHRASE`, `CLAUSE?`, `OVERLAP`)
+- classified failures ("model echoed the transcript", "model wrote code instead of JSON")
+  instead of raw JSON parser errors
 - per-check scoring: `PASS` / `MISMATCH` / `NOT_EXTRACTED`, with borderline rows logged as
   `NOTE` rather than scored
-- a totals summary at the end
+- a totals summary, timing averages, and a projection of model time for a 1-hour recording
+  (default assumption: 60 chunks/hour, tune with `--hour-chunks`)
 
 Share the whole file — the raw responses are the useful part.
 

@@ -257,6 +257,7 @@ wording, items assembled from words that aren't adjacent in the transcript.
 | 2026-07-02 | local (Ollama UI) | F | Prompt 1 rev 1 (as reframed): greedy clause-length spans, overlaps, paraphrase → wrote rev 2 |
 | 2026-07-02 | local (Ollama UI) | F | Prompt 2 rev 1, fed a rev-1 clause as input: ignored phrase list, invented phrases, dropped `source` key → wrote rev 2 |
 | 2026-07-02 | local (Ollama UI) | F | Prompt 1 rev 2: format template triggered timestamp-echo again → rev 3 drops it. Rev 3 × 3 runs at default temp: 1 pass, 1 paraphrase, 1 clause spans → retest at temp 0 |
+| 2026-07-02 | gemma3:270m, temp 0 (scripted) | all 5 | 0/5 parseable even at temp 0: Prompt 1 echoed the transcript on 3 chunks; Prompt 2 emitted Python programs instead of JSON on the 2 that survived. 270m is below the floor for the resolve contract → runner now sends an Ollama `format` JSON schema (constrained decoding) by default; retest, and compare a 1B–4B model |
 | | | | |
 
 ## What a pass looks like

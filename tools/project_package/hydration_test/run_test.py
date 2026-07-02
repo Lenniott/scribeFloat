@@ -22,6 +22,7 @@ import argparse
 import json
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -169,8 +170,25 @@ CHUNKS = [
 
 VALID_SOURCES = {"text", "general", "missing"}
 
+# Ollama structured outputs: a JSON schema in the "format" field constrains
+# decoding, so the model cannot emit prose or code instead of the shape.
+EXTRACT_SCHEMA = {"type": "array", "items": {"type": "string"}}
+RESOLVE_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "phrase": {"type": "string"},
+            "refers_to": {"type": "string"},
+            "source": {"type": "string", "enum": ["text", "general", "missing"]},
+        },
+        "required": ["phrase", "refers_to", "source"],
+    },
+}
 
-def call_ollama(url: str, model: str, prompt: str, temperature: float, num_predict: int) -> str:
+
+def call_ollama(url: str, model: str, prompt: str, temperature: float,
+                num_predict: int, format_schema=None) -> tuple[str, dict]:
     payload = {
         "model": model,
         "prompt": prompt,
@@ -181,13 +199,38 @@ def call_ollama(url: str, model: str, prompt: str, temperature: float, num_predi
             "num_predict": num_predict,
         },
     }
+    if format_schema is not None:
+        payload["format"] = format_schema
     req = urllib.request.Request(
         url.rstrip("/") + "/api/generate",
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
     )
+    started = time.monotonic()
     with urllib.request.urlopen(req, timeout=300) as resp:
-        return json.loads(resp.read().decode("utf-8")).get("response", "")
+        data = json.loads(resp.read().decode("utf-8"))
+    stats = {
+        "wall_s": time.monotonic() - started,
+        "eval_count": data.get("eval_count"),
+        "prompt_eval_count": data.get("prompt_eval_count"),
+    }
+    return data.get("response", ""), stats
+
+
+def classify_failure(raw: str, chunk_text: str, exc: Exception) -> str:
+    lowered = normalise_quotes(raw).lower()
+    probe = normalise_quotes(chunk_text).lower()[:60]
+    if probe and probe in lowered:
+        return "model echoed the transcript chunk instead of answering"
+    if "```python" in lowered or "import json" in lowered or re.search(r"\bdef \w+\(", raw):
+        return "model wrote code instead of JSON"
+    return f"unparseable response: {exc}"
+
+
+def format_stats(label: str, stats: dict) -> str:
+    tokens = stats.get("eval_count")
+    rate = f", {tokens} tokens" if tokens else ""
+    return f"[{label} time] {stats['wall_s']:.1f}s{rate}"
 
 
 def extract_json_array(text: str):
@@ -275,24 +318,32 @@ def score_chunk(chunk: dict, rows: list[dict]) -> tuple[list[str], dict]:
 
 
 def run_once(out: list[str], args, temperature: float, run_no: int, totals: dict) -> None:
+    extract_schema = None if args.no_format else EXTRACT_SCHEMA
+    resolve_schema = None if args.no_format else RESOLVE_SCHEMA
     for chunk in CHUNKS:
         header = f"--- temp={temperature} run={run_no} {chunk['id']} ---"
         out.append(header)
         out.append(f"({chunk['label']})")
         print(header)
+        chunk_seconds = 0.0
 
         try:
-            raw1 = call_ollama(args.url, args.model, PROMPT_EXTRACT.format(chunk=chunk["text"]),
-                               temperature, args.num_predict)
+            raw1, stats1 = call_ollama(args.url, args.model,
+                                       PROMPT_EXTRACT.format(chunk=chunk["text"]),
+                                       temperature, args.num_predict, extract_schema)
         except urllib.error.URLError as exc:
             sys.exit(f"Could not reach Ollama at {args.url}: {exc}\nIs `ollama serve` (or the app) running?")
-        out.append("\n[prompt 1 raw response]")
+        chunk_seconds += stats1["wall_s"]
+        totals["extract_seconds"].append(stats1["wall_s"])
+        out.append(f"\n{format_stats('prompt 1', stats1)}")
+        out.append("[prompt 1 raw response]")
         out.append(raw1.strip() or "(empty)")
         try:
             phrases = [str(p) for p in extract_json_array(raw1) if str(p).strip()]
         except (ValueError, json.JSONDecodeError) as exc:
-            out.append(f"\n!! prompt 1 parse failure: {exc} — skipping resolve step\n")
+            out.append(f"\n!! prompt 1 failure: {classify_failure(raw1, chunk['text'], exc)} — skipping resolve step\n")
             totals["parse_failures"] += 1
+            totals["chunk_seconds"].append(chunk_seconds)
             continue
         out.append(f"\n[parsed phrases] {json.dumps(phrases, ensure_ascii=False)}")
         notes = extraction_notes(chunk["text"], phrases)
@@ -301,20 +352,24 @@ def run_once(out: list[str], args, temperature: float, run_no: int, totals: dict
             out.extend(notes)
 
         try:
-            raw2 = call_ollama(
+            raw2, stats2 = call_ollama(
                 args.url, args.model,
                 PROMPT_RESOLVE.format(chunk=chunk["text"],
                                       phrases=json.dumps(phrases, ensure_ascii=False)),
-                temperature, args.num_predict,
+                temperature, args.num_predict, resolve_schema,
             )
         except urllib.error.URLError as exc:
             sys.exit(f"Could not reach Ollama at {args.url}: {exc}")
-        out.append("\n[prompt 2 raw response]")
+        chunk_seconds += stats2["wall_s"]
+        totals["resolve_seconds"].append(stats2["wall_s"])
+        totals["chunk_seconds"].append(chunk_seconds)
+        out.append(f"\n{format_stats('prompt 2', stats2)}")
+        out.append("[prompt 2 raw response]")
         out.append(raw2.strip() or "(empty)")
         try:
             rows = [r for r in extract_json_array(raw2) if isinstance(r, dict)]
         except (ValueError, json.JSONDecodeError) as exc:
-            out.append(f"\n!! prompt 2 parse failure: {exc}\n")
+            out.append(f"\n!! prompt 2 failure: {classify_failure(raw2, chunk['text'], exc)}\n")
             totals["parse_failures"] += 1
             continue
         if len(rows) != len(phrases):
@@ -326,7 +381,29 @@ def run_once(out: list[str], args, temperature: float, run_no: int, totals: dict
         out.extend(lines)
         for k, v in tally.items():
             totals[k] += v
+        out.append(f"[chunk total time] {chunk_seconds:.1f}s")
         out.append("")
+
+
+def timing_summary(totals: dict, hour_chunks: int) -> list[str]:
+    lines = []
+    for label, values in [("extract call", totals["extract_seconds"]),
+                          ("resolve call", totals["resolve_seconds"]),
+                          ("full chunk (both calls)", totals["chunk_seconds"])]:
+        if values:
+            lines.append(
+                f"{label}: avg {sum(values) / len(values):.1f}s, "
+                f"min {min(values):.1f}s, max {max(values):.1f}s over {len(values)} call(s)"
+            )
+    if totals["chunk_seconds"]:
+        avg_chunk = sum(totals["chunk_seconds"]) / len(totals["chunk_seconds"])
+        projected_min = avg_chunk * hour_chunks / 60
+        lines.append(
+            f"projection: 1h recording at ~{hour_chunks} chunks -> "
+            f"~{projected_min:.0f} min of model time "
+            f"(2 calls/chunk; excludes block-confirmation and embedding calls)"
+        )
+    return lines
 
 
 def main() -> None:
@@ -338,6 +415,10 @@ def main() -> None:
     parser.add_argument("--runs", type=int, default=1,
                         help="repeat runs per temperature (variance check)")
     parser.add_argument("--num-predict", type=int, default=2048)
+    parser.add_argument("--no-format", action="store_true",
+                        help="disable Ollama structured outputs (JSON-schema-constrained decoding)")
+    parser.add_argument("--hour-chunks", type=int, default=60,
+                        help="assumed chunks per hour of recording, for the timing projection")
     args = parser.parse_args()
     temps = [float(t) for t in args.temps.split(",") if t.strip()]
 
@@ -346,12 +427,14 @@ def main() -> None:
     out_path = RESULTS_DIR / f"hydration_{safe_model}_{stamp}.txt"
 
     totals = {"pass": 0, "mismatch": 0, "not_extracted": 0,
-              "parse_failures": 0, "contract_violations": 0}
+              "parse_failures": 0, "contract_violations": 0,
+              "extract_seconds": [], "resolve_seconds": [], "chunk_seconds": []}
     out: list[str] = [
         "hydration prompt pipeline test",
         f"date: {datetime.now().isoformat(timespec='seconds')}",
         f"model: {args.model} | url: {args.url}",
         f"temps: {temps} | runs per temp: {args.runs} | num_predict: {args.num_predict}",
+        f"structured outputs (format schema): {'OFF' if args.no_format else 'ON'}",
         "prompts: extract rev 3, resolve rev 2 (see docs/explorations/active/2026-07-02-hydration-prompt-test-kit.md)",
         "",
     ]
@@ -362,7 +445,11 @@ def main() -> None:
 
     out.append("=== summary ===")
     for key, value in totals.items():
-        out.append(f"{key}: {value}")
+        if not isinstance(value, list):
+            out.append(f"{key}: {value}")
+    out.append("")
+    out.append("=== timing ===")
+    out.extend(timing_summary(totals, args.hour_chunks))
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out_path.write_text("\n".join(out) + "\n", encoding="utf-8")

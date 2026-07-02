@@ -4,6 +4,11 @@
 > [`2026-07-01-context-hydration-pipeline.md`](./2026-07-01-context-hydration-pipeline.md) §9.1.
 > Nothing here is app code. Run the prompts by hand in the Ollama UI, compare against the
 > expected-results tables, record what happened in §5.
+>
+> **Automated runner:** `tools/project_package/hydration_test/run_test.py` (stdlib-only
+> Python, no venv) runs the whole flow — both prompts, five chunks, temperature sweeps,
+> repeat runs — scores against expected labels and writes a shareable text report. It embeds
+> the prompt revisions from this doc; keep the two in sync.
 
 ## Lessons this kit encodes (from the failed "Socrates" run, 2026-07-02)
 

@@ -1,5 +1,12 @@
 # Knowledge Orchestration — Design Exploration
 
+> **Superseded** by
+> [`../active/2026-07-01-context-hydration-pipeline.md`](../active/2026-07-01-context-hydration-pipeline.md),
+> which carries forward this doc's Pivot section (tag+annotate+export, CLI precedent, source
+> linking via timestamp+grep) and replaces its retrieval mechanism with the chunk/block/hydration
+> model. Kept for the domain/type-routing reasoning trail (superseded twice over — first by this
+> doc's own Pivot section, now fully).
+>
 > Status: **active exploration — significant pivot recorded below**. Decisions below are agreed in conversation and captured here to avoid living only in chat history. Open questions are explicitly marked.
 > Prerequisite reading: [`knowledge-layer-intent.md`](knowledge-layer-intent.md), [`design-brain-prd.md`](design-brain-prd.md)
 

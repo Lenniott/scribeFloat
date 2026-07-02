@@ -8,6 +8,7 @@ Lightweight captures of ideation and design sessions. Not decisions — decision
 |--------|-------------|
 | `active/` | Decisions not yet fully captured as ADRs or stories |
 | `captured/` | All decisions have corresponding ADRs or stories — move here when done |
+| `superseded/` | Replaced by a newer exploration in the same lineage — kept for its reasoning trail, not because it's neglected |
 | `stale/` | Older than 30 days with no linked ADR or story — move here to flag for review |
 
 **When an exploration's status changes, move the file to the matching folder.**
@@ -17,10 +18,15 @@ Lightweight captures of ideation and design sessions. Not decisions — decision
 ### active/
 | File | Produces |
 |------|----------|
-| [design-brain-prd.md](active/design-brain-prd.md) | Float enrichment engine proposal |
-| [knowledge-layer-intent.md](active/knowledge-layer-intent.md) | Knowledge layer intent doc |
-| [knowledge-orchestration.md](active/knowledge-orchestration.md) | Knowledge orchestration design, tag+annotate+export pivot |
-| [2026-07-01-context-extraction-engine.md](active/2026-07-01-context-extraction-engine.md) | Reconciles Broccoli memory experiment with Float engine + knowledge-orchestration pivot |
+| [2026-07-01-context-hydration-pipeline.md](active/2026-07-01-context-hydration-pipeline.md) | Chunk/block/pack context extraction + retrieval design — current |
+
+### superseded/
+| File | Superseded by |
+|------|------|
+| [design-brain-prd.md](superseded/design-brain-prd.md) | Flow 1 (Tags) unaffected; Flow 2 superseded by `2026-07-01-context-hydration-pipeline.md` |
+| [knowledge-layer-intent.md](superseded/knowledge-layer-intent.md) | `2026-07-01-context-hydration-pipeline.md` (cross-note synthesis idea remains a later, undesigned phase) |
+| [knowledge-orchestration.md](superseded/knowledge-orchestration.md) | `2026-07-01-context-hydration-pipeline.md` |
+| [2026-07-01-context-extraction-engine-v1.md](superseded/2026-07-01-context-extraction-engine-v1.md) | `2026-07-01-context-hydration-pipeline.md` |
 
 ### captured/
 | File | Date | Produces |

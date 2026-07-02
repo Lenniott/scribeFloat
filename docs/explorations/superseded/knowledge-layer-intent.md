@@ -1,5 +1,11 @@
 # Knowledge Layer — Document of Intent
 
+> **Superseded** for context/memory extraction by
+> [`../active/2026-07-01-context-hydration-pipeline.md`](../active/2026-07-01-context-hydration-pipeline.md).
+> The cross-note synthesis idea here (personas, project arcs, built from many Notes) remains a
+> later, undesigned phase — not addressed by the hydration pipeline, which only produces on-demand
+> Context Packs, not persistent artifacts.
+>
 > Status: **intent only**. Nothing here is scoped or committed. This exists so the idea has a fixed reference rather than living in conversation history.  
 > Prerequisite reading: [`design-brain-prd.md`](design-brain-prd.md) (Float enrichment engine).
 

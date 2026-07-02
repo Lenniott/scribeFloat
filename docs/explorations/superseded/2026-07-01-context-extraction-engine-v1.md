@@ -1,5 +1,12 @@
 # Context Extraction Engine — reconciling Broccoli with Float
 
+> **Superseded** by
+> [`../active/2026-07-01-context-hydration-pipeline.md`](../active/2026-07-01-context-hydration-pipeline.md).
+> §1-§9 (what exists, Context Configs, the cue, storage, CLI, non-goals) carry forward largely
+> unchanged. §10's compression/rehydration exploration (10.1-10.9) is fully replaced by the
+> chunk → block → pack model with direct `unresolved`/`defines` extraction — kept here as the
+> reasoning trail that led there.
+>
 > Status: **active exploration**. Reconciles the `tools/project_package` ("Broccoli") memory
 > experiment with `design-brain-prd.md` (Float engine) and `knowledge-orchestration.md` (the
 > tag-and-export pivot). Nothing here is built. The extraction *recipe* (categories, prompts,
@@ -303,6 +310,10 @@ with more than its own unaided judgment.
 
 ### 10.4 Compression, the accordion model, and a rehydration pass
 
+> **Superseded by §10.9 below** — the tiered resolution mechanism here was found, in discussion,
+> to be more machinery than the problem needs. Left in place for the reasoning trail; §10.9 is the
+> current direction.
+
 The core finding from this round of discussion. Recipient Design + Minimization mean speakers
 compress based on their estimate of what the listener already shares — "the usual pipeline,"
 a bare name, an acronym — and that compression is invisible in the transcript itself. Nothing in
@@ -330,6 +341,9 @@ premise, not the exception.
    no confident answer beats a wrong one.
 
 ### 10.5 Compression as the wheat/chaff and dedup mechanism
+
+> **Superseded by §10.9 below** — "length" as the richness signal was rejected as too crude in
+> discussion. Left in place for the reasoning trail; §10.9 replaces the scoring mechanism.
 
 This is the sharpest product implication, and it answers the original duplication concern more
 directly than the storage changes in §5:
@@ -377,6 +391,67 @@ differently for a stakeholder briefing vs. handoff to an AI model with no shared
   testing against real transcripts before committing either way.
 - Does the backward in-transcript scan (§10.4 tier 0) need its own lightweight similarity check,
   or can it reuse the same per-note occurrence list directly without any embedding at all?
+
+---
+
+### 10.9 Pivot — chunk retrieval quality replaces tiered resolution
+
+After walking through §10.4/§10.5 in conversation, a simpler framing replaced them. Recorded here
+in full because it changes the shape of the mechanism, not just a detail.
+
+**The reframe:** a Context Pack is, in full, a chunk-retrieval problem. What makes a chunk *good*
+is not how relevant it is to the query — it's how self-contained it is. A human recipient in the
+original conversation could decompress "the usual pipeline" because they were there and share the
+background. An LLM reading a context pack cold has none of that. A chunk that's on-topic but
+compressed is closer to noise than signal once handed to a model with zero prior context — so
+"most relevant" is the wrong thing to optimise retrieval for for; "most relevant *and* most
+hydrated" is the actual target.
+
+**Why §10.4's tiered resolution (scan backward → check adjacent repair → cross-note retrieval →
+give up) is more machinery than this needs:** a plain similarity search across all chunks (same
+transcript and others, no need to treat them as separate tiers) will very likely surface a fuller
+explanation anyway, because the fuller explanation and the compressed reference are usually about
+the same topic and sit near each other in vector space regardless of which transcript they're in.
+Hand-coding "check same transcript first, then check for a literal repair pattern, then check
+elsewhere" tries to special-case something a single similarity search mostly gets for free.
+
+**Why §10.5's length-based richness score is too crude:** richness isn't a property a chunk has in
+isolation, and length is a bad proxy for it. It's relative — within a group of chunks that are
+already about the same thing, some are more self-contained than others, and that has to be judged
+by comparing them against each other, not by scoring each one alone.
+
+**The replacement mechanism:**
+
+1. **Chunk** using the turn-taking-aware strategy from §10.2 (unusual-for-*this*-conversation
+   silence, overlap, wrap-up words — not a fixed threshold, and not "every speaker change," since
+   fast back-and-forth in an engaged exchange is normal and doesn't mark a topic boundary).
+2. **Embed every chunk**, not only a pre-selected "canonical" one. This reverses the cost-saving
+   assumption in §10.5 (only embed the winner) — you cannot know which chunk is the winner without
+   comparing candidates first, so that saving didn't actually hold up once followed through.
+3. **Detect elicitation moments semantically, not lexically.** Embed a small reference set of
+   clarification/confusion exemplars ("what do you mean," "sorry, come again," "I don't follow")
+   and compare each turn's meaning against that set. This catches paraphrases a fixed keyword list
+   would miss, because it's checking the turn's *conversational function* (is this eliciting a
+   hydration) rather than its topic. A turn immediately following a detected elicitation is a
+   strong candidate for "this one's the hydrated version."
+4. **Cluster chunks by topic similarity**, as already planned for retrieval (§6).
+5. **Rank chunks within a cluster against each other, not by an absolute score.** A chunk that
+   follows a detected elicitation, or that subsumes what its cluster-neighbours say (covers
+   everything they cover, plus more), ranks above ones that don't.
+6. **Retrieval and pack assembly only ever surface the top-ranked chunk per cluster.** Compressed
+   siblings count toward "this recurred" but are never what gets shown or quoted — same rule as
+   §10.6, now backed by a real ranking mechanism instead of a single compression flag.
+
+**Honest cost note:** this embeds more than §10.5 assumed (every chunk, not just canonical ones).
+That's a real, deliberate cost increase over the earlier plan — accepted because there's no way to
+identify the canonical chunk without first being able to compare all the candidates.
+
+**Open questions this leaves (replaces §10.8):**
+- Does elicitation-detection via embedding-similarity-to-exemplars actually fire reliably on real
+  transcripts, versus a plain keyword list? Needs testing on real data before trusting it.
+- Does "subsumption" (chunk A covers everything chunk B says, plus more) need its own separate
+  check, or does it fall out as a byproduct of the same similarity comparison used for clustering?
+  Untested.
 
 ---
 

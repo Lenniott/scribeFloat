@@ -1,5 +1,10 @@
 # PRD — "Design Brain" Enrichment Engine
 
+> **Superseded.** Tags/Layer/Step/Flow (§4-§7 here) still stands as Flow 1 — unchanged. Everything
+> about knowledge/context extraction (Flow 2) is superseded by
+> [`../active/2026-07-01-context-hydration-pipeline.md`](../active/2026-07-01-context-hydration-pipeline.md).
+> Kept here for the HTTP-runner adoption rationale (§2) and the Flow 1 design.
+>
 > Status: **proposal / pre-spike**. Nothing in this document is built. This captures the ideation pass that led to the engine design, so the eventual spike has a fixed reference instead of re-deriving decisions from chat history.
 > Diagrams in Mermaid, matching the convention in `docs/architecture.md`.
 

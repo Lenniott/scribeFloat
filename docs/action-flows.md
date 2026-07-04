@@ -77,17 +77,19 @@ User records mic only. No system audio capture.
     - **Model available** → continue
 12. Scribe panel enters **Transcribing** state — progress bar shown
 13. Model Service: loads selected model (from cache or disk; tiny/base may already be preloaded)
-14. Model Service: transcribes PCM → returns timestamped segments
-15. Output Service: renders single-source markdown transcript and applies word replacement rules
-16. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting)
-17. Check: `save_transcripts_as_markdown` setting
+14. Model Service: transcribes the mic PCM once → returns timestamped segments
+15. ScribeController uses live voice-change cuts to build mic chunks
+16. Speaker chunk service: embeds each chunk, groups chunk voiceprints into local speakers, and maps Whisper segments to their parent chunk labels
+17. Output Service: renders transcript markdown and applies word replacement rules
+18. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting), including `speaker_change_cuts` and `speaker_chunks`
+19. Check: `save_transcripts_as_markdown` setting
     - **On** → Output Service writes `{title}_{model}.md` to **save folder root** (appends `_1`, `_2`, … on collision); Done event carries `transcript_path`
     - **Off** → no `.md` written; Done event carries `transcript_path = None`
-18. Check: WAV retention setting
+20. Check: WAV retention setting
     - **Keep** → staging folder and WAVs kept
     - **Delete** → Output Service removes staging folder after transcript confirmed non-empty
-19. Scribe panel enters **Done** state — file path shown when available, Open Transcript button shown when path is present
-20. **No model path**: staging WAV kept regardless of retention setting. Panel shows "Open in Transcribe →" with session path pre-filled
+21. Scribe panel enters **Done** state — file path shown when available, Open Transcript button shown when path is present
+22. **No model path**: staging WAV kept regardless of retention setting. Panel shows "Open in Transcribe →" with session path pre-filled
 
 ---
 
@@ -202,13 +204,14 @@ User brings an existing audio file. No recording step.
 8b. Model Service: transcribes `speaker.wav` → speaker segments (progress 50–100%)
 8c. Output Service: merges, suppresses bleed, applies `in:`/`out:` labels
 8d. Continue to step 10
-9. Model Service: transcribes audio file → timestamped segments (progress 0–100%)
-10. Output Service: renders markdown transcript and applies word replacement rules
-11. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting)
-12. Check: `save_transcripts_as_markdown` setting
+9. Model Service: transcribes the decoded mic PCM once → returns timestamped segments
+10. TranscribeController runs pitch/loudness analysis offline, builds chunks, embeds each chunk, and maps Whisper segments to their parent chunk labels
+11. Output Service: renders markdown transcript and applies word replacement rules
+12. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting), including `speaker_change_cuts` and `speaker_chunks` for single-audio uploads
+13. Check: `save_transcripts_as_markdown` setting
     - **On** → Output Service writes `<source_filename>_<model>.md` to selected output folder; Done event carries `transcript_path`
     - **Off** → no `.md` written; Done event carries `transcript_path = None`
-13. Transcribe panel enters **Done** state — file path shown when available, Open Transcript button shown when path is present
+14. Transcribe panel enters **Done** state — file path shown when available, Open Transcript button shown when path is present
 
 ---
 

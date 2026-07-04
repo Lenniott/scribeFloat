@@ -38,6 +38,7 @@ IPC: JS calls `invoke('command_name', { args })` → Rust `#[tauri::command]` in
 | `OutputService` | Markdown rendering (pure free functions) and durable file I/O: `.md` writes (opt-in via `save_transcripts_as_markdown`), session manifests, post-transcription cleanup, dictate failure salvage, legacy reads, delete primitives. Dictate never writes `.md`. |
 | `AudioService` | Opens audio streams and streams capture to checkpointed temp/session WAV files (16 kHz writer thread). Exposes an optional `Pcm16kTap` observer on the writer thread for live analysis — `audio.rs` never depends on the analysis module. Do not accumulate PCM in controllers. |
 | `services/analysis.rs` | Pure pitch/loudness analysis (no I/O, no locks): streaming `PitchAnalyzer` fed by the PCM tap, `detect_cuts` for voice-change cuts, canonical `rms`. Constructed per session and orchestrated by `ScribeController`; results persist via `OutputService` (`analysis.json`) and `HistoryService` (`speaker_change_cuts`). See ADR-0013. |
+| `services/speaker_chunks.rs` | Pure chunk orchestration helpers: convert cuts to voice-turn spans, compute chunk quality, assign chunk voiceprints to session speakers, map Whisper segments back to chunk labels. Controllers call it for Record and Upload; it does not own I/O or app state. |
 | `PermissionsService` | The only code that checks OS permissions. |
 
 ---

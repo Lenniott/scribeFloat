@@ -20,6 +20,7 @@ Lightweight captures of ideation and design sessions. Not decisions — decision
 | [design-brain-prd.md](active/design-brain-prd.md) | Float enrichment engine proposal |
 | [knowledge-layer-intent.md](active/knowledge-layer-intent.md) | Knowledge layer intent doc |
 | [2026-06-23-voiceprint-engine.md](active/2026-06-23-voiceprint-engine.md) | ADR-0011, stories 0052–0058 |
+| [2026-07-04-chunk-based-speaker-flow.md](active/2026-07-04-chunk-based-speaker-flow.md) | rewrite stories 0059-0063 around chunk embeddings |
 
 ### captured/
 | File | Date | Produces |

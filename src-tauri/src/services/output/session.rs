@@ -33,17 +33,13 @@ pub(super) fn write_session_notes(
         notes,
     };
     let dest = session_dir.join("notes.json");
-    let json =
-        serde_json::to_string_pretty(&payload).context("failed to serialize notes.json")?;
+    let json = serde_json::to_string_pretty(&payload).context("failed to serialize notes.json")?;
     std::fs::write(&dest, json).context("failed to write notes.json")?;
     Ok(dest)
 }
 
 /// Write or replace `{session_dir}/session.json` for Scribe lifecycle tracking.
-pub(super) fn write_session_manifest(
-    session_dir: &Path,
-    manifest: &SessionManifest,
-) -> Result<()> {
+pub(super) fn write_session_manifest(session_dir: &Path, manifest: &SessionManifest) -> Result<()> {
     let dest = session_dir.join("session.json");
     let json = serde_json::to_string_pretty(manifest).context("serialize session.json")?;
     std::fs::write(&dest, json).context("write session.json")?;
@@ -93,8 +89,7 @@ mod tests {
     use crate::types::{Note, SessionManifest, SessionManifestState};
 
     fn temp_session_dir() -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("session-tests-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("session-tests-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -107,8 +102,8 @@ mod tests {
             text: "remember this".to_string(),
             recorded_at_ms: 2500,
         }];
-        let dest = write_session_notes(&dir, "Meeting A", "mic.wav", &notes)
-            .expect("write_session_notes");
+        let dest =
+            write_session_notes(&dir, "Meeting A", "mic.wav", &notes).expect("write_session_notes");
         assert_eq!(dest.file_name().unwrap(), "notes.json");
         let raw = std::fs::read_to_string(&dest).expect("read");
         assert!(raw.contains("Meeting A"));
@@ -127,6 +122,7 @@ mod tests {
             speaker_wavs: vec!["speaker_seg_0.wav".to_string()],
             transcript_path: None,
             title: None,
+            speaker_cuts: vec![],
         };
         write_session_manifest(&dir, &manifest).expect("write");
         let raw = std::fs::read_to_string(dir.join("session.json")).expect("read");

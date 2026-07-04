@@ -16,7 +16,7 @@ pub fn scribe_start(
         preferred_speaker,
         capture_speaker,
     )
-        .map_err(AppError::from)
+    .map_err(AppError::from)
 }
 
 #[tauri::command]

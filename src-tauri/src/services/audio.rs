@@ -266,7 +266,9 @@ fn resolve_input_device(
             .default_input_device()
             .ok_or_else(|| anyhow!("no default input device"))?,
     };
-    let device_name = device.name().unwrap_or_else(|_| "System Default".to_string());
+    let device_name = device
+        .name()
+        .unwrap_or_else(|_| "System Default".to_string());
     Ok((device, device_name))
 }
 
@@ -742,7 +744,10 @@ mod tests {
         let wav = session.stop_and_finalize().expect("finalize");
         let pcm = read_wav_mono_f32(&wav).expect("read wav");
         let rms: f32 = (pcm.iter().map(|s| s * s).sum::<f32>() / pcm.len() as f32).sqrt();
-        assert!(rms > 1e-4, "captured audio is silent (rms={rms:.6}) — is the mic live?");
+        assert!(
+            rms > 1e-4,
+            "captured audio is silent (rms={rms:.6}) — is the mic live?"
+        );
         let _ = std::fs::remove_file(wav);
     }
 

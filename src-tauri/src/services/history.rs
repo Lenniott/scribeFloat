@@ -190,11 +190,13 @@ impl HistoryService {
         };
         let mut updated = inner.records[idx].clone();
         let offset_ms = updated.duration_ms.max(0);
-        updated.segments.extend(segments.into_iter().map(|mut segment| {
-            segment.start_ms = segment.start_ms.saturating_add(offset_ms);
-            segment.end_ms = segment.end_ms.saturating_add(offset_ms);
-            segment
-        }));
+        updated
+            .segments
+            .extend(segments.into_iter().map(|mut segment| {
+                segment.start_ms = segment.start_ms.saturating_add(offset_ms);
+                segment.end_ms = segment.end_ms.saturating_add(offset_ms);
+                segment
+            }));
         updated
             .speaker_blocks
             .extend(speaker_blocks.into_iter().map(|mut block| {
@@ -219,8 +221,7 @@ impl HistoryService {
             .last()
             .map(|s| s.end_ms.max(0))
             .unwrap_or(0);
-        updated.word_count =
-            crate::services::output::count_words(&updated.segments, rules, prefix);
+        updated.word_count = crate::services::output::count_words(&updated.segments, rules, prefix);
         Self::append_line(save_folder, &updated)?;
         inner.records[idx] = updated;
         Ok(())
@@ -527,13 +528,13 @@ mod tests {
                 start_ms: 0,
                 end_ms: 1_000,
                 text: "Hello".into(),
-            source: None,
+                source: None,
             },
             Segment {
                 start_ms: 1_000,
                 end_ms: 2_500,
                 text: "world".into(),
-            source: None,
+                source: None,
             },
         ];
 

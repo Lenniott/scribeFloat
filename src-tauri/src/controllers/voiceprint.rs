@@ -197,13 +197,10 @@ impl VoiceprintController {
         let accepted = purity >= 0.45 && speech_s >= 4.5;
 
         if accepted {
-            let embedding = self
-                .service
-                .embed(&pcm, WHISPER_SAMPLE_RATE)
-                .map_err(|e| {
-                    let _ = std::fs::remove_file(&wav_path);
-                    e.to_string()
-                })?;
+            let embedding = self.service.embed(&pcm, WHISPER_SAMPLE_RATE).map_err(|e| {
+                let _ = std::fs::remove_file(&wav_path);
+                e.to_string()
+            })?;
             self.pending_clips
                 .lock()
                 .unwrap_or_else(|p| p.into_inner())
@@ -255,11 +252,7 @@ impl VoiceprintController {
                 Some(profile) => (profile, true),
                 None => (
                     self.service
-                        .new_profile(
-                            profile_name,
-                            Some(mic_device_id.clone()),
-                            embedding.clone(),
-                        )
+                        .new_profile(profile_name, Some(mic_device_id.clone()), embedding.clone())
                         .map_err(|e| e.to_string())?,
                     false,
                 ),

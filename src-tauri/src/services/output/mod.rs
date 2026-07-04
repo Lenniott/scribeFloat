@@ -136,7 +136,8 @@ impl OutputService {
         output_label: &str,
         dest: &Path,
     ) -> Result<PathBuf> {
-        let body = render::render_speaker_blocks_body(blocks, rules, prefix, input_label, output_label);
+        let body =
+            render::render_speaker_blocks_body(blocks, rules, prefix, input_label, output_label);
         let word_count = body.split_whitespace().count();
         let mut md = String::new();
         md.push_str("---\n");
@@ -478,13 +479,13 @@ mod tests {
                 start_ms: 0,
                 end_ms: 2_000,
                 text: "First thought.".to_string(),
-            source: None,
+                source: None,
             },
             Segment {
                 start_ms: 12_000,
                 end_ms: 14_000,
                 text: "Second thought.".to_string(),
-            source: None,
+                source: None,
             },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
@@ -505,13 +506,13 @@ mod tests {
                 start_ms: 0,
                 end_ms: 500,
                 text: "Hello".to_string(),
-            source: None,
+                source: None,
             },
             Segment {
                 start_ms: 700,
                 end_ms: 1_200,
                 text: "world.".to_string(),
-            source: None,
+                source: None,
             },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
@@ -618,6 +619,7 @@ mod tests {
                 speaker_wavs: vec![],
                 transcript_path: None,
                 title: None,
+                speaker_cuts: vec![],
             },
         )
         .expect("write manifest");
@@ -719,6 +721,7 @@ mod tests {
             speaker_wavs: vec!["speaker_seg_0.wav".to_string()],
             transcript_path: None,
             title: None,
+            speaker_cuts: vec![],
         };
         svc.write_session_manifest(&dir, &manifest).expect("write");
         let raw = std::fs::read_to_string(dir.join("session.json")).expect("read");

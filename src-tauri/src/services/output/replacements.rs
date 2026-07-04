@@ -183,7 +183,12 @@ mod tests {
     fn whole_word_rule_fires_with_float_prefix() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("11 float dash may", &rules, &ReplacementScope::Both, "float"),
+            apply_replacements(
+                "11 float dash may",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
             "11 - may"
         );
     }
@@ -192,7 +197,12 @@ mod tests {
     fn whole_word_rule_case_insensitive() {
         let rules = vec![simple_rule("hashtag", "#", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("float HASHTAG project", &rules, &ReplacementScope::Both, "float"),
+            apply_replacements(
+                "float HASHTAG project",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
             "# project"
         );
     }
@@ -212,7 +222,12 @@ mod tests {
         // trigger "hash" should not fire inside "hashtag"
         let rules = vec![simple_rule("hash", "#", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("float hashtag project", &rules, &ReplacementScope::Both, "float"),
+            apply_replacements(
+                "float hashtag project",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
             "float hashtag project"
         );
     }
@@ -223,7 +238,12 @@ mod tests {
     fn phrase_rule_fires_with_float_prefix() {
         let rules = vec![simple_rule("to do", "[ ]", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("add float to do item", &rules, &ReplacementScope::Both, "float"),
+            apply_replacements(
+                "add float to do item",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
             "add [ ] item"
         );
     }
@@ -263,7 +283,12 @@ mod tests {
     fn newline_rule_bare_trigger_does_not_fire_with_prefix() {
         let rules = vec![newline_rule("new line")];
         assert_eq!(
-            apply_replacements("hello new line world", &rules, &ReplacementScope::Both, "float"),
+            apply_replacements(
+                "hello new line world",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
             "hello new line world"
         );
     }
@@ -296,7 +321,12 @@ mod tests {
             transform: WordTransform::None,
         }];
         assert_eq!(
-            apply_replacements("go to bed float newline", &rules, &ReplacementScope::Both, "float"),
+            apply_replacements(
+                "go to bed float newline",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
             "go to bed\n"
         );
     }
@@ -307,7 +337,12 @@ mod tests {
     fn wrap_rule_applies_transform_and_prefix_suffix() {
         let rules = vec![wrap_rule("hashtag", "#", "", WordTransform::Lower)];
         assert_eq!(
-            apply_replacements("float hashtag Monday", &rules, &ReplacementScope::Both, "float"),
+            apply_replacements(
+                "float hashtag Monday",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
             "#monday"
         );
     }
@@ -346,7 +381,12 @@ mod tests {
     fn dictate_scope_skips_transcripts_only_rule() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Transcripts)];
         assert_eq!(
-            apply_replacements("11 float dash may", &rules, &ReplacementScope::Dictate, "float"),
+            apply_replacements(
+                "11 float dash may",
+                &rules,
+                &ReplacementScope::Dictate,
+                "float"
+            ),
             "11 float dash may"
         );
     }
@@ -355,7 +395,12 @@ mod tests {
     fn both_scope_rule_applies_in_transcripts_context() {
         let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("a float dash b", &rules, &ReplacementScope::Transcripts, "float"),
+            apply_replacements(
+                "a float dash b",
+                &rules,
+                &ReplacementScope::Transcripts,
+                "float"
+            ),
             "a - b"
         );
     }
@@ -396,7 +441,12 @@ mod tests {
     fn old_format_embedded_prefix_fires() {
         let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("11 float dash may", &rules, &ReplacementScope::Both, "float"),
+            apply_replacements(
+                "11 float dash may",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
             "11 - may"
         );
     }
@@ -415,7 +465,12 @@ mod tests {
         // Old-format trigger already has "float "; engine must not produce "float float dash".
         let rules = vec![simple_rule("float dash", "-", ReplacementScope::Both)];
         assert_eq!(
-            apply_replacements("eleven float dash may", &rules, &ReplacementScope::Both, "float"),
+            apply_replacements(
+                "eleven float dash may",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
             "eleven - may"
         );
     }
@@ -438,7 +493,12 @@ mod tests {
     fn old_format_newline_bare_trigger_does_not_match() {
         let rules = vec![newline_rule("float new line")];
         assert_eq!(
-            apply_replacements("hello new line world", &rules, &ReplacementScope::Both, "float"),
+            apply_replacements(
+                "hello new line world",
+                &rules,
+                &ReplacementScope::Both,
+                "float"
+            ),
             "hello new line world"
         );
     }

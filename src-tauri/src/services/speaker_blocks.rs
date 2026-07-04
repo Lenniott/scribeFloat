@@ -1,7 +1,5 @@
 use crate::services::voiceprint::{merge_blocks, VoiceprintService};
-use crate::types::{
-    Segment, SegmentSource, SpeakerBlock, CHANNEL_LABEL_IN, CHANNEL_LABEL_OUT,
-};
+use crate::types::{Segment, SegmentSource, SpeakerBlock, CHANNEL_LABEL_IN, CHANNEL_LABEL_OUT};
 
 const IDENTITY_LABEL_OTHER: &str = "Other";
 
@@ -257,8 +255,14 @@ mod tests {
 
     #[test]
     fn display_block_label_maps_in_out_to_config() {
-        assert_eq!(display_block_label(CHANNEL_LABEL_IN, "Mic", "Speaker"), "Mic");
-        assert_eq!(display_block_label(CHANNEL_LABEL_OUT, "Mic", "Speaker"), "Speaker");
+        assert_eq!(
+            display_block_label(CHANNEL_LABEL_IN, "Mic", "Speaker"),
+            "Mic"
+        );
+        assert_eq!(
+            display_block_label(CHANNEL_LABEL_OUT, "Mic", "Speaker"),
+            "Speaker"
+        );
         assert_eq!(display_block_label("You", "Mic", "Speaker"), "You");
     }
 }

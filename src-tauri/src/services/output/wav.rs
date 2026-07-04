@@ -102,8 +102,7 @@ mod tests {
     use super::*;
 
     fn wav_dir() -> std::path::PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("wav-tests-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("wav-tests-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -123,11 +122,13 @@ mod tests {
         let dir = wav_dir();
         let path = dir.join("partial.wav");
         write_streaming_wav_placeholder(&path, 16_000, 1, 16).unwrap();
-        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
         f.write_all(&vec![0u8; 3200]).unwrap();
         sync_wav_header(&path, 16_000, 1, 16, 1600).unwrap();
-        let pcm = crate::services::audio::read_wav_mono_f32(&path)
-            .expect("read checkpointed wav");
+        let pcm = crate::services::audio::read_wav_mono_f32(&path).expect("read checkpointed wav");
         assert_eq!(pcm.len(), 1600);
     }
 
@@ -137,11 +138,13 @@ mod tests {
         let dir = wav_dir();
         let path = dir.join("truncated.wav");
         write_streaming_wav_placeholder(&path, 16_000, 1, 16).unwrap();
-        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
         f.write_all(&vec![0u8; 6400]).unwrap();
         repair_wav_header_from_file_size(&path).expect("repair");
-        let pcm = crate::services::audio::read_wav_mono_f32(&path)
-            .expect("read repaired wav");
+        let pcm = crate::services::audio::read_wav_mono_f32(&path).expect("read repaired wav");
         assert_eq!(pcm.len(), 3200);
     }
 }

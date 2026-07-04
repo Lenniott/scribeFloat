@@ -286,18 +286,12 @@ impl DictateController {
     }
 
     fn arm_key_tracker_toggle(&self) {
-        let mut tracker = self
-            .key_tracker
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let mut tracker = self.key_tracker.lock().unwrap_or_else(|p| p.into_inner());
         tracker.arm_ui_toggle(Instant::now());
     }
 
     fn reset_key_tracker(&self) {
-        let mut tracker = self
-            .key_tracker
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let mut tracker = self.key_tracker.lock().unwrap_or_else(|p| p.into_inner());
         tracker.reset_to_idle();
     }
 
@@ -731,9 +725,10 @@ impl DictateController {
                     },
                 )
                 .ok();
-            let session = inner.session.take().ok_or_else(|| {
-                anyhow!("session missing in Recording state")
-            })?;
+            let session = inner
+                .session
+                .take()
+                .ok_or_else(|| anyhow!("session missing in Recording state"))?;
             inner.processing_wav_path = Some(session.mic.wav_path().to_path_buf());
             session
         };

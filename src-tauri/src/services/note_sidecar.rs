@@ -145,7 +145,10 @@ mod tests {
         )
         .unwrap();
         write_meta_title(&folder, id, "third").unwrap();
-        assert_eq!(read_meta(&folder, id).unwrap().title.as_deref(), Some("third"));
+        assert_eq!(
+            read_meta(&folder, id).unwrap().title.as_deref(),
+            Some("third")
+        );
     }
 
     #[test]

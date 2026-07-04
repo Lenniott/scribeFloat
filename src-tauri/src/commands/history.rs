@@ -14,9 +14,7 @@ pub(crate) struct NoteItemUpdatedPayload {
 fn emit_note_item_updated(app: &AppHandle, id: &str) {
     app.emit(
         NOTE_ITEM_UPDATED_EVENT,
-        NoteItemUpdatedPayload {
-            id: id.to_string(),
-        },
+        NoteItemUpdatedPayload { id: id.to_string() },
     )
     .ok();
 }

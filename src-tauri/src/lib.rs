@@ -175,13 +175,8 @@ fn build_tray_menu(
     open_hotkey: &str,
 ) -> tauri::Result<(MenuItem<tauri::Wry>, Menu<tauri::Wry>)> {
     let dictate_item = MenuItem::with_id(app, DICTATE_MENU_ID, "Dictate", true, None::<&str>)?;
-    let new_note_item = MenuItem::with_id(
-        app,
-        NEW_NOTE_MENU_ID,
-        "New note",
-        true,
-        Some(open_hotkey),
-    )?;
+    let new_note_item =
+        MenuItem::with_id(app, NEW_NOTE_MENU_ID, "New note", true, Some(open_hotkey))?;
     let open_app_item = MenuItem::with_id(
         app,
         OPEN_APP_MENU_ID,
@@ -235,8 +230,7 @@ fn create_tray(app: &mut tauri::App, open_hotkey: &str) -> tauri::Result<()> {
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id().as_ref() {
             DICTATE_MENU_ID => {
-                if let Some(ctrl) =
-                    app.try_state::<Arc<controllers::dictate::DictateController>>()
+                if let Some(ctrl) = app.try_state::<Arc<controllers::dictate::DictateController>>()
                 {
                     ctrl.trigger_toggle();
                 }
@@ -681,6 +675,7 @@ pub fn run() {
                 Arc::clone(&output),
                 Arc::clone(&history),
                 Arc::clone(&config),
+                Arc::clone(&voiceprint),
                 app.handle().clone(),
             );
             let history_ctrl = controllers::history::HistoryController::new(

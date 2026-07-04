@@ -400,6 +400,28 @@ pub struct SpeakerBlock {
     pub start_ms: Option<u64>,
     pub end_ms: Option<u64>,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chunk_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpeakerChunk {
+    pub id: String,
+    pub start_ms: u64,
+    pub end_ms: u64,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_profile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedding: Option<Vec<f32>>,
+    pub audio_duration_s: f32,
+    pub vad_purity: f32,
+    pub rms_energy: f32,
+    pub clipping: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_score: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -808,6 +830,11 @@ pub struct HistoryRecord {
     /// timeline lives in `{session_dir}/analysis.json`, not here (size).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub speaker_change_cuts: Vec<SpeakerChangeCut>,
+    /// Voice-turn chunks used for chunked Whisper and chunk-level speaker
+    /// matching. Empty for legacy records and paths that do not run speaker
+    /// analysis.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub speaker_chunks: Vec<SpeakerChunk>,
     #[serde(default)]
     pub notes: Vec<Note>,
     pub duration_ms: i64,
@@ -905,6 +932,7 @@ impl HistoryRecord {
             segments,
             speaker_blocks: Vec::new(),
             speaker_change_cuts: Vec::new(),
+            speaker_chunks: Vec::new(),
             notes,
             duration_ms,
             word_count,
@@ -1153,7 +1181,9 @@ mod tests {
             time_s: 7.5,
             end_s: 7.9,
             score: 1.4,
-            reasons: [CutReason::Pitch, CutReason::Loudness].into_iter().collect(),
+            reasons: [CutReason::Pitch, CutReason::Loudness]
+                .into_iter()
+                .collect(),
         };
         let json = serde_json::to_value(&cut).expect("serialize");
         assert_eq!(json["reasons"], serde_json::json!(["pitch", "loudness"]));

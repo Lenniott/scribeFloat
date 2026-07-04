@@ -1,5 +1,7 @@
 use crate::services::analysis::{detect_cuts, CutConfig, PitchAnalyzer};
 use crate::services::audio::{read_wav_mono_f32, WHISPER_SAMPLE_RATE};
+use crate::services::speaker_blocks::build_speaker_blocks;
+use crate::services::speaker_chunks::{analyze_chunks, build_blocks_from_chunks};
 use crate::services::{
     audio::{AudioService, MicSession},
     config::ConfigService,
@@ -9,13 +11,12 @@ use crate::services::{
         filter_hallucination_phrases, speaker_pcm_has_signal, OutputService,
         SPEAKER_SILENCE_THRESHOLD,
     },
-    voiceprint::{VoiceprintService},
+    voiceprint::VoiceprintService,
 };
-use crate::services::speaker_blocks::build_speaker_blocks;
 use crate::types::{
     Config, HistoryRecord, Note, ProcessingStage, RecoverySessionInfo, ScribeState,
     ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest, SessionManifestState,
-    SpeakerBlock, SpeakerChangeCut,
+    SpeakerBlock, SpeakerChangeCut, SpeakerChunk,
 };
 use anyhow::{anyhow, Result};
 use serde_json::json;
@@ -75,6 +76,7 @@ struct PreparedAudio {
     pcm_16k: Vec<f32>,
     speaker_pcm_16k: Option<Vec<f32>>,
     speaker_change_cuts: Vec<SpeakerChangeCut>,
+    speaker_chunks: Vec<SpeakerChunk>,
 }
 
 enum ProgressMessage {
@@ -88,6 +90,7 @@ pub struct PendingAttach {
     pub segments: Vec<Segment>,
     pub speaker_blocks: Vec<SpeakerBlock>,
     pub speaker_change_cuts: Vec<SpeakerChangeCut>,
+    pub speaker_chunks: Vec<SpeakerChunk>,
     pub notes: Vec<Note>,
     pub model: String,
     pub speaker_capture: bool,
@@ -319,10 +322,7 @@ impl ScribeController {
                     cfg.preferred_input_device = Some(device_name.clone());
                 });
                 self.app
-                    .emit(
-                        "scribe://mic-fallback",
-                        json!({ "device": device_name }),
-                    )
+                    .emit("scribe://mic-fallback", json!({ "device": device_name }))
                     .ok();
             }
             Err(err) => {
@@ -356,10 +356,7 @@ impl ScribeController {
             cfg.preferred_input_device = Some(resolved_name.clone());
         });
         self.app
-            .emit(
-                "scribe://mic-fallback",
-                json!({ "device": resolved_name }),
-            )
+            .emit("scribe://mic-fallback", json!({ "device": resolved_name }))
             .ok();
         Ok(())
     }
@@ -654,7 +651,7 @@ impl ScribeController {
     /// Whisper + transcript write. Capture is already stopped (`prepare_audio` ran in `stop_and_save`).
     fn do_transcription(
         &self,
-        prepared: PreparedAudio,
+        mut prepared: PreparedAudio,
         notes: Vec<Note>,
         title: &str,
         abort_flag: Arc<AtomicBool>,
@@ -712,7 +709,7 @@ impl ScribeController {
             return Ok(());
         }
 
-        let speaker_blocks = self.label_speaker_blocks(&segments, &prepared, &config);
+        let speaker_blocks = self.build_chunk_speaker_blocks(&segments, &mut prepared, &config);
         let (history_record_id, transcript_path) = match self.write_outputs(
             &segments,
             &speaker_blocks,
@@ -841,6 +838,7 @@ impl ScribeController {
             pcm_16k,
             speaker_pcm_16k,
             speaker_change_cuts,
+            speaker_chunks: Vec::new(),
         })
     }
 
@@ -921,9 +919,7 @@ impl ScribeController {
         let mic_vad = self.model.vad_path_for_pcm(pcm_16k.len());
         let model_loaded_tx = progress_tx.clone();
         let on_model_loaded = move || {
-            model_loaded_tx
-                .send(ProgressMessage::ModelLoaded)
-                .ok();
+            model_loaded_tx.send(ProgressMessage::ModelLoaded).ok();
         };
         let segments = if let Some(speaker_pcm) = &prepared.speaker_pcm_16k {
             let tx1 = progress_tx.clone();
@@ -973,9 +969,7 @@ impl ScribeController {
                     tx.send(ProgressMessage::Progress(p)).ok();
                 },
                 Some(Box::new(move || {
-                    model_loaded_tx
-                        .send(ProgressMessage::ModelLoaded)
-                        .ok();
+                    model_loaded_tx.send(ProgressMessage::ModelLoaded).ok();
                 })),
             )
             .map(|segs| filter_hallucination_phrases(&segs))
@@ -1006,6 +1000,30 @@ impl ScribeController {
                 tracing::warn!(error = %err, "speaker labelling skipped");
                 Vec::new()
             }
+        }
+    }
+
+    fn build_chunk_speaker_blocks(
+        &self,
+        segments: &[Segment],
+        prepared: &mut PreparedAudio,
+        config: &Config,
+    ) -> Vec<SpeakerBlock> {
+        if prepared.speaker_pcm_16k.is_some() {
+            return self.label_speaker_blocks(segments, prepared, config);
+        }
+        prepared.speaker_chunks = analyze_chunks(
+            &prepared.pcm_16k,
+            WHISPER_SAMPLE_RATE,
+            &prepared.speaker_change_cuts,
+            &self.voiceprint,
+            config.voice_similarity_threshold,
+        );
+        let blocks = build_blocks_from_chunks(segments, &prepared.speaker_chunks);
+        if blocks.iter().any(|block| block.label != "Other") {
+            blocks
+        } else {
+            self.label_speaker_blocks(segments, prepared, config)
         }
     }
 
@@ -1108,6 +1126,7 @@ impl ScribeController {
         let mut record = record;
         record.speaker_blocks = speaker_blocks.to_vec();
         record.speaker_change_cuts = prepared.speaker_change_cuts.clone();
+        record.speaker_chunks = prepared.speaker_chunks.clone();
 
         let attach_note_id = self.lock().attach_note_id.take();
         let history_record_id = if attach_note_id.is_some() {
@@ -1115,6 +1134,7 @@ impl ScribeController {
                 segments: segments.to_vec(),
                 speaker_blocks: speaker_blocks.to_vec(),
                 speaker_change_cuts: prepared.speaker_change_cuts.clone(),
+                speaker_chunks: prepared.speaker_chunks.clone(),
                 notes: notes.to_vec(),
                 model: model_name,
                 speaker_capture,

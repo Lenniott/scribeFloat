@@ -174,6 +174,7 @@ impl HistoryService {
         segments: Vec<crate::types::Segment>,
         speaker_blocks: Vec<crate::types::SpeakerBlock>,
         speaker_change_cuts: Vec<crate::types::SpeakerChangeCut>,
+        speaker_chunks: Vec<crate::types::SpeakerChunk>,
         notes: Vec<crate::types::Note>,
         model: String,
         speaker_capture: bool,
@@ -191,11 +192,13 @@ impl HistoryService {
         };
         let mut updated = inner.records[idx].clone();
         let offset_ms = updated.duration_ms.max(0);
-        updated.segments.extend(segments.into_iter().map(|mut segment| {
-            segment.start_ms = segment.start_ms.saturating_add(offset_ms);
-            segment.end_ms = segment.end_ms.saturating_add(offset_ms);
-            segment
-        }));
+        updated
+            .segments
+            .extend(segments.into_iter().map(|mut segment| {
+                segment.start_ms = segment.start_ms.saturating_add(offset_ms);
+                segment.end_ms = segment.end_ms.saturating_add(offset_ms);
+                segment
+            }));
         updated
             .speaker_blocks
             .extend(speaker_blocks.into_iter().map(|mut block| {
@@ -215,6 +218,13 @@ impl HistoryService {
                 cut.end_s += offset_s;
                 cut
             }));
+        updated
+            .speaker_chunks
+            .extend(speaker_chunks.into_iter().map(|mut chunk| {
+                chunk.start_ms = chunk.start_ms.saturating_add(offset_ms as u64);
+                chunk.end_ms = chunk.end_ms.saturating_add(offset_ms as u64);
+                chunk
+            }));
         updated.model = model;
         updated.speaker_capture = speaker_capture;
         updated.dual_source = dual_source;
@@ -228,8 +238,7 @@ impl HistoryService {
             .last()
             .map(|s| s.end_ms.max(0))
             .unwrap_or(0);
-        updated.word_count =
-            crate::services::output::count_words(&updated.segments, rules, prefix);
+        updated.word_count = crate::services::output::count_words(&updated.segments, rules, prefix);
         Self::append_line(save_folder, &updated)?;
         inner.records[idx] = updated;
         Ok(())
@@ -536,13 +545,13 @@ mod tests {
                 start_ms: 0,
                 end_ms: 1_000,
                 text: "Hello".into(),
-            source: None,
+                source: None,
             },
             Segment {
                 start_ms: 1_000,
                 end_ms: 2_500,
                 text: "world".into(),
-            source: None,
+                source: None,
             },
         ];
 
@@ -550,6 +559,7 @@ mod tests {
             &folder,
             &id,
             segments,
+            vec![],
             vec![],
             vec![],
             vec![],
@@ -589,6 +599,7 @@ mod tests {
             }],
             vec![],
             vec![],
+            vec![],
             vec![crate::types::Note {
                 id: "note-1".into(),
                 text: "marker".into(),
@@ -621,6 +632,7 @@ mod tests {
                 score: 1.5,
                 reasons: [crate::types::CutReason::Pitch].into_iter().collect(),
             }],
+            vec![],
             vec![crate::types::Note {
                 id: "note-2".into(),
                 text: "second marker".into(),

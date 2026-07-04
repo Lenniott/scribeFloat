@@ -1,9 +1,15 @@
+use crate::services::analysis::{detect_cuts, CutConfig, PitchAnalyzer};
+use crate::services::audio::WHISPER_SAMPLE_RATE;
 use crate::services::config::ConfigService;
 use crate::services::history::HistoryService;
 use crate::services::model::ModelService;
-use crate::services::output::OutputService;
 use crate::services::output::filter_hallucination_phrases;
+use crate::services::output::OutputService;
+use crate::services::speaker_chunks::{
+    analyze_chunks, build_blocks_from_chunks,
+};
 use crate::services::transcribe_input::{TranscribeInputItem, TranscribeInputService};
+use crate::services::voiceprint::VoiceprintService;
 use crate::types::{
     Config, HistoryRecord, ProcessingStage, TranscribeItemStatus, TranscribeQueueItem,
     TranscribeState, TranscribeStateEvent,
@@ -30,6 +36,7 @@ pub struct TranscribeController {
     output: Arc<OutputService>,
     history: Arc<HistoryService>,
     config: Arc<ConfigService>,
+    voiceprint: Arc<VoiceprintService>,
     app: AppHandle,
 }
 
@@ -40,6 +47,7 @@ impl TranscribeController {
         output: Arc<OutputService>,
         history: Arc<HistoryService>,
         config: Arc<ConfigService>,
+        voiceprint: Arc<VoiceprintService>,
         app: AppHandle,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -51,6 +59,7 @@ impl TranscribeController {
             output,
             history,
             config,
+            voiceprint,
             app,
         })
     }
@@ -232,9 +241,10 @@ impl TranscribeController {
                 }
             };
 
-            let mic_vad = self.model.vad_path_for_pcm(decoded.mic_pcm_16k.len());
-            let mic_vad = mic_vad.as_deref();
+            let speaker_change_cuts = offline_cuts(&decoded.mic_pcm_16k);
             let segments = if let Some(speaker_pcm) = decoded.speaker_pcm_16k.as_ref() {
+                let mic_vad = self.model.vad_path_for_pcm(decoded.mic_pcm_16k.len());
+                let mic_vad = mic_vad.as_deref();
                 let mic_segments = self
                     .model
                     .transcribe_pcm_with_progress(
@@ -324,10 +334,11 @@ impl TranscribeController {
                 self.model
                     .merge_dual_source(&mic_segments, &speaker_segments)
             } else {
+                let mic_vad = self.model.vad_path_for_pcm(decoded.mic_pcm_16k.len());
                 match self.model.transcribe_pcm_with_progress(
                     model_path,
                     &decoded.mic_pcm_16k,
-                    mic_vad,
+                    mic_vad.as_deref(),
                     None,
                     "transcribe/mic",
                     {
@@ -372,20 +383,48 @@ impl TranscribeController {
             );
 
             let dual_source = decoded.speaker_pcm_16k.is_some();
+            let (speaker_blocks, speaker_chunks) = if dual_source {
+                (Vec::new(), Vec::new())
+            } else {
+                let speaker_chunks = analyze_chunks(
+                    &decoded.mic_pcm_16k,
+                    WHISPER_SAMPLE_RATE,
+                    &speaker_change_cuts,
+                    &self.voiceprint,
+                    cfg.voice_similarity_threshold,
+                );
+                let speaker_blocks = build_blocks_from_chunks(&segments, &speaker_chunks);
+                (speaker_blocks, speaker_chunks)
+            };
             // Markdown is opt-in; write `.md` only when the toggle is on.
             let markdown_path = if markdown_on {
                 let output_name = format!("{}_{}.md", slugify(&input.display_name), model_name);
                 let transcript_dest = output_folder.join(output_name);
-                match self.output.write_transcript(
-                    &segments,
-                    &[],
-                    &input.display_name,
-                    model_name,
-                    include_timestamps,
-                    replacement_rules,
-                    replacement_prefix,
-                    &transcript_dest,
-                ) {
+                let write_result = if speaker_blocks.is_empty() {
+                    self.output.write_transcript(
+                        &segments,
+                        &[],
+                        &input.display_name,
+                        model_name,
+                        include_timestamps,
+                        replacement_rules,
+                        replacement_prefix,
+                        &transcript_dest,
+                    )
+                } else {
+                    let cfg = self.config.get();
+                    self.output.write_speaker_blocks_transcript(
+                        &speaker_blocks,
+                        &input.display_name,
+                        model_name,
+                        replacement_rules,
+                        replacement_prefix,
+                        &cfg.input_label,
+                        &cfg.output_label,
+                        &transcript_dest,
+                    )
+                };
+                match write_result {
                     Ok(path) => Some(path),
                     Err(err) => {
                         queue[index].status = TranscribeItemStatus::Error;
@@ -406,7 +445,7 @@ impl TranscribeController {
             };
 
             // Persist the canonical record — always, regardless of the markdown toggle.
-            let record = HistoryRecord::from_transcribe(
+            let mut record = HistoryRecord::from_transcribe(
                 input.display_name.clone(),
                 model_name.to_string(),
                 segments.clone(),
@@ -418,6 +457,9 @@ impl TranscribeController {
                     .as_ref()
                     .map(|p| p.to_string_lossy().into_owned()),
             );
+            record.speaker_blocks = speaker_blocks;
+            record.speaker_change_cuts = speaker_change_cuts;
+            record.speaker_chunks = speaker_chunks;
             if let Err(e) = self.history.append(&save_folder, record) {
                 tracing::warn!(error = %e, "failed to append transcribe history record");
             } else {
@@ -544,6 +586,13 @@ fn overall_progress(items: &[TranscribeQueueItem]) -> f32 {
         })
         .sum();
     (total / items.len() as f32).clamp(0.0, 1.0)
+}
+
+fn offline_cuts(pcm_16k: &[f32]) -> Vec<crate::types::SpeakerChangeCut> {
+    let mut analyzer = PitchAnalyzer::new();
+    analyzer.feed(pcm_16k);
+    let analysis = analyzer.finish();
+    detect_cuts(&analysis, &CutConfig::default())
 }
 
 #[cfg(test)]

@@ -1,8 +1,8 @@
-use crate::types::{Note, ReplacementRule, ReplacementScope, Segment, SegmentSource, SpeakerBlock};
 use crate::services::speaker_blocks::display_block_label;
+use crate::types::{Note, ReplacementRule, ReplacementScope, Segment, SegmentSource, SpeakerBlock};
 
-use super::dedup::{dedup_consecutive_phrases, dedup_repeated_block};
 use super::cleanup::cleanup_text;
+use super::dedup::{dedup_consecutive_phrases, dedup_repeated_block};
 use super::replacements::apply_replacements;
 
 fn segment_channel_key(source: Option<SegmentSource>) -> &'static str {
@@ -177,7 +177,9 @@ pub fn render_transcript_markdown(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Note, ReplacementRule, ReplacementRuleType, ReplacementScope, WordTransform};
+    use crate::types::{
+        Note, ReplacementRule, ReplacementRuleType, ReplacementScope, WordTransform,
+    };
 
     fn simple_rule(trigger: &str, output: &str, scope: ReplacementScope) -> ReplacementRule {
         ReplacementRule {
@@ -236,6 +238,7 @@ mod tests {
             start_ms: Some(0),
             end_ms: Some(5_000),
             text: "[MUSIC] hello hello world".to_string(),
+            chunk_id: None,
         }];
         let body = render_speaker_blocks_body(&blocks, &[], "", "Input", "Output");
         assert!(

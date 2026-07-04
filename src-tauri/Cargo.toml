@@ -4,6 +4,10 @@ version = "0.2.195"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
+default-run = "ScribeFloat"
+
+[features]
+bench = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -46,6 +50,11 @@ symphonia = { version = "0.5", features = ["aac", "flac", "isomp4", "mp3", "ogg"
 regex = "1"
 sha2 = "0.10"
 sherpa-onnx = "1"
+
+[[bin]]
+name = "speaker-chunk-bench"
+path = "src/bin/speaker-chunk-bench.rs"
+required-features = ["bench"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Used directly for sysctlbyname in lib::log_system_info; pinned loose to match the

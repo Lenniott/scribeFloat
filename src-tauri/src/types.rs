@@ -123,6 +123,11 @@ pub struct Config {
     #[serde(default)]
     pub save_transcripts_as_markdown: bool,
 
+    /// Experimental pre-Whisper speaker handover chunking.
+    /// Default OFF until the Rust port matches the benchmark and merge behavior is validated.
+    #[serde(default)]
+    pub speaker_aware_chunking: bool,
+
     /// Display name for the user in speaker-labelled transcripts. Default: "You".
     #[serde(default = "default_user_display_name")]
     pub user_display_name: String,
@@ -176,6 +181,7 @@ impl Default for Config {
             replacement_rules: default_replacement_rules(),
             replacement_prefix: default_replacement_prefix(),
             save_transcripts_as_markdown: false,
+            speaker_aware_chunking: false,
             user_display_name: default_user_display_name(),
             voice_similarity_threshold: default_voice_similarity_threshold(),
         }
@@ -441,6 +447,7 @@ pub struct ScribeStateEvent {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ProcessingStage {
     LoadingModel,
+    AnalyzingAudio,
     TranscribingAudio,
     WritingTranscript,
     CleaningUpAudio,
@@ -667,6 +674,16 @@ pub struct SessionManifest {
     pub transcript_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Speaker handover cuts applied before Whisper (when speaker-aware chunking is enabled).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub speaker_cuts: Vec<ManifestSpeakerCut>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestSpeakerCut {
+    pub time_s: f32,
+    pub evidence: String,
+    pub strength: f32,
 }
 
 #[derive(Debug, Clone, Serialize)]

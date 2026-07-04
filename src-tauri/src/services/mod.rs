@@ -1,12 +1,13 @@
 pub mod audio;
 pub mod config;
 pub mod history;
-pub mod note_sidecar;
 pub mod hotkeys;
 pub mod model;
+pub mod note_sidecar;
 pub mod output;
 pub mod permissions;
+pub mod speaker_blocks;
+pub mod speaker_chunking;
 pub mod transcribe_input;
 pub mod update;
-pub mod speaker_blocks;
 pub mod voiceprint;

@@ -1,4 +1,6 @@
 use crate::services::audio::{read_wav_mono_f32, WHISPER_SAMPLE_RATE};
+use crate::services::speaker_blocks::build_speaker_blocks;
+use crate::services::speaker_chunking::cuts_to_manifest;
 use crate::services::{
     audio::{AudioService, MicSession},
     config::ConfigService,
@@ -8,13 +10,12 @@ use crate::services::{
         filter_hallucination_phrases, speaker_pcm_has_signal, OutputService,
         SPEAKER_SILENCE_THRESHOLD,
     },
-    voiceprint::{VoiceprintService},
+    voiceprint::VoiceprintService,
 };
-use crate::services::speaker_blocks::build_speaker_blocks;
 use crate::types::{
-    Config, HistoryRecord, Note, ProcessingStage, RecoverySessionInfo, ScribeState,
-    ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest, SessionManifestState,
-    SpeakerBlock,
+    Config, HistoryRecord, ManifestSpeakerCut, Note, ProcessingStage, RecoverySessionInfo,
+    ScribeState, ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest,
+    SessionManifestState, SpeakerBlock,
 };
 use anyhow::{anyhow, Result};
 use serde_json::json;
@@ -74,6 +75,7 @@ struct PreparedAudio {
 
 enum ProgressMessage {
     ModelLoaded,
+    ChunkingComplete,
     Progress(f32),
     Finished,
 }
@@ -304,10 +306,7 @@ impl ScribeController {
                     cfg.preferred_input_device = Some(device_name.clone());
                 });
                 self.app
-                    .emit(
-                        "scribe://mic-fallback",
-                        json!({ "device": device_name }),
-                    )
+                    .emit("scribe://mic-fallback", json!({ "device": device_name }))
                     .ok();
             }
             Err(err) => {
@@ -341,10 +340,7 @@ impl ScribeController {
             cfg.preferred_input_device = Some(resolved_name.clone());
         });
         self.app
-            .emit(
-                "scribe://mic-fallback",
-                json!({ "device": resolved_name }),
-            )
+            .emit("scribe://mic-fallback", json!({ "device": resolved_name }))
             .ok();
         Ok(())
     }
@@ -664,29 +660,42 @@ impl ScribeController {
             return Ok(());
         }
 
-        let segments = match self.run_transcription(&model_path, &prepared, &abort_flag) {
-            Ok(segments) => segments,
-            Err(e) => {
-                // An abort interrupting `full()` can surface as an Err; treat that as a clean
-                // stop rather than a transcription error.
-                if abort_flag.load(Ordering::SeqCst) {
-                    self.clear_transcription_tracking();
-                    return Ok(());
+        let (segments, speaker_cuts) =
+            match self.run_transcription(&model_path, &prepared, &abort_flag, &config) {
+                Ok(result) => result,
+                Err(e) => {
+                    // An abort interrupting `full()` can surface as an Err; treat that as a clean
+                    // stop rather than a transcription error.
+                    if abort_flag.load(Ordering::SeqCst) {
+                        self.clear_transcription_tracking();
+                        return Ok(());
+                    }
+                    let _ = self.write_session_manifest(
+                        &prepared.session_dir,
+                        SessionManifestState::Error,
+                        "",
+                        vec![],
+                        None,
+                        None,
+                    );
+                    return Err(e);
                 }
-                let _ = self.write_session_manifest(
-                    &prepared.session_dir,
-                    SessionManifestState::Error,
-                    "",
-                    vec![],
-                    None,
-                    None,
-                );
-                return Err(e);
-            }
-        };
+            };
         if abort_flag.load(Ordering::SeqCst) {
             self.clear_transcription_tracking();
             return Ok(());
+        }
+
+        if !speaker_cuts.is_empty() {
+            let _ = self.write_session_manifest_with_cuts(
+                &prepared.session_dir,
+                SessionManifestState::Transcribing,
+                "",
+                vec![],
+                None,
+                None,
+                speaker_cuts,
+            );
         }
 
         let speaker_blocks = self.label_speaker_blocks(&segments, &prepared, &config);
@@ -820,7 +829,8 @@ impl ScribeController {
         model_path: &Path,
         prepared: &PreparedAudio,
         abort_flag: &Arc<AtomicBool>,
-    ) -> Result<Vec<Segment>> {
+        config: &Config,
+    ) -> Result<(Vec<Segment>, Vec<ManifestSpeakerCut>)> {
         let (progress_tx, progress_rx) = mpsc::channel::<ProgressMessage>();
         let progress_app = self.app.clone();
         let progress_thread = std::thread::spawn(move || {
@@ -832,6 +842,18 @@ impl ScribeController {
                                 "scribe://state-changed",
                                 ScribeStateEvent {
                                     progress: Some(0.0),
+                                    processing_stage: Some(ProcessingStage::TranscribingAudio),
+                                    ..ScribeStateEvent::new(ScribeState::Transcribing)
+                                },
+                            )
+                            .ok();
+                    }
+                    ProgressMessage::ChunkingComplete => {
+                        progress_app
+                            .emit(
+                                "scribe://state-changed",
+                                ScribeStateEvent {
+                                    progress: Some(0.02),
                                     processing_stage: Some(ProcessingStage::TranscribingAudio),
                                     ..ScribeStateEvent::new(ScribeState::Transcribing)
                                 },
@@ -855,19 +877,36 @@ impl ScribeController {
             }
         });
 
+        if config.speaker_aware_chunking {
+            self.app
+                .emit(
+                    "scribe://state-changed",
+                    ScribeStateEvent {
+                        progress: Some(0.01),
+                        processing_stage: Some(ProcessingStage::AnalyzingAudio),
+                        ..ScribeStateEvent::new(ScribeState::Transcribing)
+                    },
+                )
+                .ok();
+        }
+
         // Re-read mic.wav on the blocking thread (same as Dictate) so transcription
         // always sees the finalized file, not a buffer prepared on the async runtime.
         let pcm_16k = read_wav_mono_f32(&prepared.wav_path)?;
         let mic_vad = self.model.vad_path_for_pcm(pcm_16k.len());
         let model_loaded_tx = progress_tx.clone();
         let on_model_loaded = move || {
-            model_loaded_tx
-                .send(ProgressMessage::ModelLoaded)
-                .ok();
+            model_loaded_tx.send(ProgressMessage::ModelLoaded).ok();
         };
-        let segments = if let Some(speaker_pcm) = &prepared.speaker_pcm_16k {
+        let on_chunking_complete = {
+            let chunking_tx = progress_tx.clone();
+            move || {
+                chunking_tx.send(ProgressMessage::ChunkingComplete).ok();
+            }
+        };
+        let segments_result = if let Some(speaker_pcm) = &prepared.speaker_pcm_16k {
             let tx1 = progress_tx.clone();
-            let mic_segs = self.model.transcribe_pcm_with_progress(
+            let (mic_segs, cuts) = self.model.transcribe_pcm_with_speaker_cuts(
                 model_path,
                 &pcm_16k,
                 mic_vad.as_deref(),
@@ -877,12 +916,14 @@ impl ScribeController {
                     tx1.send(ProgressMessage::Progress(p * 0.5)).ok();
                 },
                 Some(Box::new(on_model_loaded)),
+                config.speaker_aware_chunking,
+                Some(Box::new(on_chunking_complete)),
             )?;
             // Skip the second (speaker) pass entirely if the user aborted during the mic pass.
             if abort_flag.load(Ordering::SeqCst) {
                 progress_tx.send(ProgressMessage::Finished).ok();
                 progress_thread.join().ok();
-                return Ok(Vec::new());
+                return Ok((Vec::new(), Vec::new()));
             }
             let tx2 = progress_tx.clone();
             let speaker_vad = self.model.vad_path_for_pcm(speaker_pcm.len());
@@ -899,31 +940,38 @@ impl ScribeController {
             )?;
             let mic_segs = filter_hallucination_phrases(&mic_segs);
             let speaker_segs = filter_hallucination_phrases(&speaker_segs);
-            Ok(self.model.merge_dual_source(&mic_segs, &speaker_segs))
+            Ok((
+                self.model.merge_dual_source(&mic_segs, &speaker_segs),
+                cuts_to_manifest(&cuts),
+            ))
         } else {
             let tx = progress_tx.clone();
+            let chunking_tx = progress_tx.clone();
             let model_loaded_tx = progress_tx.clone();
-            self.model.transcribe_pcm_with_progress(
-                model_path,
-                &pcm_16k,
-                mic_vad.as_deref(),
-                Some(Arc::clone(abort_flag)),
-                "scribe/mic",
-                move |p| {
-                    tx.send(ProgressMessage::Progress(p)).ok();
-                },
-                Some(Box::new(move || {
-                    model_loaded_tx
-                        .send(ProgressMessage::ModelLoaded)
-                        .ok();
-                })),
-            )
-            .map(|segs| filter_hallucination_phrases(&segs))
+            self.model
+                .transcribe_pcm_with_speaker_cuts(
+                    model_path,
+                    &pcm_16k,
+                    mic_vad.as_deref(),
+                    Some(Arc::clone(abort_flag)),
+                    "scribe/mic",
+                    move |p| {
+                        tx.send(ProgressMessage::Progress(p)).ok();
+                    },
+                    Some(Box::new(move || {
+                        model_loaded_tx.send(ProgressMessage::ModelLoaded).ok();
+                    })),
+                    config.speaker_aware_chunking,
+                    Some(Box::new(move || {
+                        chunking_tx.send(ProgressMessage::ChunkingComplete).ok();
+                    })),
+                )
+                .map(|(segs, cuts)| (filter_hallucination_phrases(&segs), cuts_to_manifest(&cuts)))
         };
 
         progress_tx.send(ProgressMessage::Finished).ok();
         progress_thread.join().ok();
-        segments
+        segments_result
     }
 
     fn label_speaker_blocks(
@@ -1420,6 +1468,28 @@ impl ScribeController {
         transcript_path: Option<String>,
         title: Option<String>,
     ) -> Result<()> {
+        self.write_session_manifest_with_cuts(
+            session_dir,
+            state,
+            started_at,
+            speaker_wavs,
+            transcript_path,
+            title,
+            Vec::new(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn write_session_manifest_with_cuts(
+        &self,
+        session_dir: &Path,
+        state: SessionManifestState,
+        started_at: &str,
+        speaker_wavs: Vec<String>,
+        transcript_path: Option<String>,
+        title: Option<String>,
+        speaker_cuts: Vec<ManifestSpeakerCut>,
+    ) -> Result<()> {
         let started_at = if started_at.is_empty() {
             let path = session_dir.join("session.json");
             if path.exists() {
@@ -1434,6 +1504,20 @@ impl ScribeController {
         } else {
             started_at.to_string()
         };
+        let existing_cuts = if speaker_cuts.is_empty() {
+            let path = session_dir.join("session.json");
+            if path.exists() {
+                std::fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|raw| serde_json::from_str::<SessionManifest>(&raw).ok())
+                    .map(|m| m.speaker_cuts)
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            }
+        } else {
+            speaker_cuts
+        };
         self.output.write_session_manifest(
             session_dir,
             &SessionManifest {
@@ -1444,6 +1528,7 @@ impl ScribeController {
                 speaker_wavs,
                 transcript_path,
                 title,
+                speaker_cuts: existing_cuts,
             },
         )
     }

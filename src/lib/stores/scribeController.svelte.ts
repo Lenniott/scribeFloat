@@ -8,6 +8,7 @@ export type ScribePhase = 'idle' | 'recording' | 'transcribing';
 
 export type ScribeProcessingStage =
 	| 'LOADING_MODEL'
+	| 'ANALYZING_AUDIO'
 	| 'TRANSCRIBING_AUDIO'
 	| 'WRITING_TRANSCRIPT'
 	| 'CLEANING_UP_AUDIO';

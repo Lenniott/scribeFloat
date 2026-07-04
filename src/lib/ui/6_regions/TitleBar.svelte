@@ -42,6 +42,13 @@
 	const scribeProgressSequence = $derived([
 		{ label: 'Loading model', complete: scribe.processingStage !== 'LOADING_MODEL' },
 		{
+			label: 'Analyzing audio',
+			complete:
+				scribe.processingStage === 'TRANSCRIBING_AUDIO' ||
+				scribe.processingStage === 'WRITING_TRANSCRIPT' ||
+				scribe.processingStage === 'CLEANING_UP_AUDIO',
+		},
+		{
 			label: 'Transcribing',
 			complete:
 				scribe.processingStage === 'WRITING_TRANSCRIPT' ||

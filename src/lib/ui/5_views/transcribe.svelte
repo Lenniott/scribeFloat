@@ -17,6 +17,7 @@
 
   type ProcessingStage =
     | "LOADING_MODEL"
+    | "ANALYZING_AUDIO"
     | "TRANSCRIBING_AUDIO"
     | "WRITING_TRANSCRIPT"
     | "CLEANING_UP_AUDIO";
@@ -77,6 +78,7 @@
 
   const progressSequence: { label: string; stage: ProcessingStage }[] = [
     { label: "Loading model", stage: "LOADING_MODEL" },
+    { label: "Analyzing audio", stage: "ANALYZING_AUDIO" },
     { label: "Transcribing audio", stage: "TRANSCRIBING_AUDIO" },
     { label: "Writing transcript", stage: "WRITING_TRANSCRIPT" },
   ];

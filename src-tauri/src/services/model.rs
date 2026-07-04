@@ -1,3 +1,5 @@
+use crate::services::audio::WHISPER_SAMPLE_RATE;
+use crate::services::speaker_chunking::{self, SpeakerCut};
 use crate::types::{ModelDownloadEvent, Segment};
 use anyhow::{anyhow, Context, Result};
 use std::collections::{HashMap, HashSet};
@@ -274,9 +276,7 @@ impl ModelService {
     }
 
     pub fn whisper_model_bytes(&self, model_path: &Path) -> u64 {
-        std::fs::metadata(model_path)
-            .map(|m| m.len())
-            .unwrap_or(0)
+        std::fs::metadata(model_path).map(|m| m.len()).unwrap_or(0)
     }
 
     fn catalog_sha256_for_path(&self, model_path: &Path) -> Option<&'static str> {
@@ -805,7 +805,8 @@ impl ModelService {
                     .unwrap_or_default(),
                 "whisper encode failed with VAD enabled, retrying without VAD"
             );
-            result = self.run_inference(model_path, pcm, None, abort, None, Arc::clone(&on_progress));
+            result =
+                self.run_inference(model_path, pcm, None, abort, None, Arc::clone(&on_progress));
             if result.is_ok() {
                 tracing::info!(
                     source,
@@ -840,6 +841,117 @@ impl ModelService {
             }
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// Transcribe PCM with speaker-aware pre-chunking (outer layer — not whisper.cpp windowing).
+    #[allow(clippy::too_many_arguments)]
+    pub fn transcribe_pcm_with_speaker_cuts<F>(
+        &self,
+        model_path: &Path,
+        pcm: &[f32],
+        vad_model_path: Option<&Path>,
+        abort: Option<Arc<AtomicBool>>,
+        source: &str,
+        on_progress: F,
+        on_model_loaded: Option<Box<dyn FnOnce() + Send>>,
+        enable_cuts: bool,
+        on_chunking_complete: Option<Box<dyn FnOnce() + Send>>,
+    ) -> Result<(Vec<Segment>, Vec<SpeakerCut>)>
+    where
+        F: FnMut(f32) + Send + 'static,
+    {
+        if !enable_cuts {
+            return self
+                .transcribe_pcm_with_progress(
+                    model_path,
+                    pcm,
+                    vad_model_path,
+                    abort,
+                    source,
+                    on_progress,
+                    on_model_loaded,
+                )
+                .map(|segments| (segments, Vec::new()));
+        }
+
+        let cuts = speaker_chunking::find_cuts(pcm, WHISPER_SAMPLE_RATE, true);
+        if let Some(done) = on_chunking_complete {
+            done();
+        }
+        tracing::info!(
+            source,
+            pcm_samples = pcm.len(),
+            cut_count = cuts.len(),
+            "speaker chunking analysis complete"
+        );
+        if cuts.is_empty() {
+            return self
+                .transcribe_pcm_with_progress(
+                    model_path,
+                    pcm,
+                    vad_model_path,
+                    abort,
+                    source,
+                    on_progress,
+                    on_model_loaded,
+                )
+                .map(|segments| (segments, cuts));
+        }
+
+        let chunks = speaker_chunking::split_pcm_owned(pcm, &cuts, WHISPER_SAMPLE_RATE);
+        if chunks.len() <= 1 {
+            return self
+                .transcribe_pcm_with_progress(
+                    model_path,
+                    pcm,
+                    vad_model_path,
+                    abort,
+                    source,
+                    on_progress,
+                    on_model_loaded,
+                )
+                .map(|segments| (segments, cuts));
+        }
+
+        let mut on_model_loaded = on_model_loaded;
+        let total_chunks = chunks.len();
+        let on_progress = Arc::new(Mutex::new(on_progress));
+        let mut all_segments: Vec<Segment> = Vec::new();
+        for (idx, (offset_ms, chunk_pcm)) in chunks.into_iter().enumerate() {
+            if abort.as_ref().is_some_and(|f| f.load(Ordering::SeqCst)) {
+                break;
+            }
+            let progress_base = idx as f32 / total_chunks as f32;
+            let progress_span = 1.0 / total_chunks as f32;
+            let progress_arc = Arc::clone(&on_progress);
+            let mut segs = self.transcribe_pcm_with_progress(
+                model_path,
+                &chunk_pcm,
+                vad_model_path,
+                abort.clone(),
+                source,
+                move |p| {
+                    if let Ok(mut f) = progress_arc.lock() {
+                        f(progress_base + p * progress_span);
+                    }
+                },
+                if idx == 0 {
+                    on_model_loaded.take()
+                } else {
+                    None
+                },
+            )?;
+
+            for seg in &mut segs {
+                let off = offset_ms as i64;
+                seg.start_ms = (seg.start_ms + off).max(0);
+                seg.end_ms = (seg.end_ms + off).max(0);
+            }
+
+            all_segments.extend(segs);
+        }
+
+        Ok((all_segments, cuts))
     }
 
     fn uses_gpu_for(&self, model_path: &Path) -> bool {

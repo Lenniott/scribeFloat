@@ -38,7 +38,11 @@ The progress callback (`set_progress_callback_safe`) reports encoder/decoder wor
 
 Scribe finalizes mic audio (`prepare_audio`) synchronously in `stop_and_save` before emitting `TRANSCRIBING`; only Whisper runs on the background blocking task.
 
-Long recordings use whisper.cpp's internal seek/windowing — do not pre-chunk PCM in `services/model.rs`. Manual 10 s windows were a regression source.
+Long recordings use whisper.cpp's internal seek/windowing — do not add arbitrary fixed-duration PCM windows in `services/model.rs`. Manual 10 s windows were a regression source.
+
+**Speaker-aware chunking** — experimental and off by default via `Config.speaker_aware_chunking`: `services/speaker_chunking.rs` finds pitch (inline YIN)/loudness/silence handovers and `transcribe_pcm_with_speaker_cuts` runs Whisper per chunk. Cuts are logged with `tracing::info!` and stored on `SessionManifest.speaker_cuts` (Scribe). Not a substitute for voiceprint speaker ID (`speaker_blocks.rs`). Keep disabled unless actively benchmarking; the current Rust port does not yet match the validated recall target.
+
+Benchmark (local fixture, not in git): `SPEAKER_CHUNKING_FIXTURE=~/Downloads/pitch_test/audio/test_audio.wav cargo test benchmark_recall_on_fixture -- --ignored` or `cargo run --features bench --bin speaker-chunk-bench -- <wav>`.
 
 Silero VAD is disabled for clips under ~2 s (`VAD_MIN_PCM_SAMPLES`); shorter audio with VAD enabled often fails encode with `GenericError(-6)` because VAD strips all speech.
 

@@ -121,7 +121,7 @@ User records mic + system audio (remote call, meeting, etc). Speaker capture can
     - **Model available** → continue
 16. Scribe panel enters **Transcribing** state
 17. Model Service: loads selected model
-18. Model Service: transcribes mic PCM → mic segments (progress 0–50%)
+18. Model Service: transcribes mic PCM → mic segments (progress 0–50%); if experimental `speaker_aware_chunking` is enabled, mic audio is split at likely speaker handovers first (`speaker_chunking.rs`) and cuts are written to `session.json` as `speaker_cuts`
 19. Model Service: transcribes speaker PCM → raw speaker segments (progress 50–100%) when dual-source
 20. `filter_hallucination_phrases` (`services/output/hallucination.rs`): strips known Whisper hallucination phrases from mic and speaker segments (also applied in Dictate before `format_dictate_text` and Transcribe upload)
 21. Model Service: merges mic and speaker segments chronologically; suppresses near-duplicate lines within 1.5 s; applies `in:`/`out:` labels
@@ -202,7 +202,7 @@ User brings an existing audio file. No recording step.
 8b. Model Service: transcribes `speaker.wav` → speaker segments (progress 50–100%)
 8c. Output Service: merges, suppresses bleed, applies `in:`/`out:` labels
 8d. Continue to step 10
-9. Model Service: transcribes audio file → timestamped segments (progress 0–100%)
+9. Model Service: transcribes audio file → timestamped segments (progress 0–100%); if experimental `speaker_aware_chunking` is enabled, audio is split at likely speaker handovers first
 10. Output Service: renders markdown transcript and applies word replacement rules
 11. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting)
 12. Check: `save_transcripts_as_markdown` setting

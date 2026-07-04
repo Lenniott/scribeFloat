@@ -147,6 +147,7 @@ pub(super) fn scan_incomplete_scribe_sessions(
             speaker_wavs: vec![],
             transcript_path: None,
             title: None,
+            speaker_change_cuts: Vec::new(),
         });
         if matches!(manifest.state, SessionManifestState::Complete) {
             continue;

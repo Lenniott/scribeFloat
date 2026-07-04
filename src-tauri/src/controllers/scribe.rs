@@ -1,3 +1,4 @@
+use crate::services::analysis::{detect_cuts, CutConfig, PitchAnalyzer};
 use crate::services::audio::{read_wav_mono_f32, WHISPER_SAMPLE_RATE};
 use crate::services::{
     audio::{AudioService, MicSession},
@@ -14,7 +15,7 @@ use crate::services::speaker_blocks::build_speaker_blocks;
 use crate::types::{
     Config, HistoryRecord, Note, ProcessingStage, RecoverySessionInfo, ScribeState,
     ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest, SessionManifestState,
-    SpeakerBlock,
+    SpeakerBlock, SpeakerChangeCut,
 };
 use anyhow::{anyhow, Result};
 use serde_json::json;
@@ -62,6 +63,9 @@ struct ActiveSession {
     session_dir: PathBuf,
     started_at: Instant,
     started_at_iso: String,
+    /// Fed by the mic writer thread's PCM tap; harvested after `stop_and_finalize`
+    /// joins the writer (so the post-stop lock is uncontended by construction).
+    pitch_analyzer: Arc<Mutex<PitchAnalyzer>>,
 }
 
 /// Intermediate state produced by prepare_audio and consumed by run_transcription / write_outputs.
@@ -70,6 +74,7 @@ struct PreparedAudio {
     wav_path: PathBuf,
     pcm_16k: Vec<f32>,
     speaker_pcm_16k: Option<Vec<f32>>,
+    speaker_change_cuts: Vec<SpeakerChangeCut>,
 }
 
 enum ProgressMessage {
@@ -82,6 +87,7 @@ enum ProgressMessage {
 pub struct PendingAttach {
     pub segments: Vec<Segment>,
     pub speaker_blocks: Vec<SpeakerBlock>,
+    pub speaker_change_cuts: Vec<SpeakerChangeCut>,
     pub notes: Vec<Note>,
     pub model: String,
     pub speaker_capture: bool,
@@ -178,6 +184,8 @@ impl ScribeController {
                 ctrl.try_mic_fallback();
             })
         };
+        let pitch_analyzer = Arc::new(Mutex::new(PitchAnalyzer::new()));
+        let analyzer_tap = Arc::clone(&pitch_analyzer);
         let mic = this.audio.start_mic(
             preferred_mic.as_deref(),
             true,
@@ -186,6 +194,11 @@ impl ScribeController {
                 app.emit("scribe://audio-level", level).ok();
             })),
             Some(on_mic_error),
+            Some(Arc::new(move |pcm_16k: &[f32]| {
+                if let Ok(mut analyzer) = analyzer_tap.lock() {
+                    analyzer.feed(pcm_16k);
+                }
+            })),
         )?;
         let mut speaker_capture_started = false;
         let (speaker_accum, previous_output_device) = if capture_speaker {
@@ -245,6 +258,7 @@ impl ScribeController {
             session_dir: session_dir.clone(),
             started_at: Instant::now(),
             started_at_iso: started_at.clone(),
+            pitch_analyzer,
         });
         inner.notes.clear();
         this.emit_state(&inner);
@@ -267,6 +281,7 @@ impl ScribeController {
             speaker_manifest,
             None,
             None,
+            Vec::new(),
         )?;
         this.spawn_record_start_preload(&cfg);
         Ok(())
@@ -393,6 +408,7 @@ impl ScribeController {
             speaker_paths,
             None,
             None,
+            Vec::new(),
         );
         let _ = self.app.emit(
             "scribe://state-changed",
@@ -486,6 +502,7 @@ impl ScribeController {
             speaker_accum,
             previous_output_device,
             session_dir,
+            pitch_analyzer,
             ..
         } = session;
         // mic.wav was streamed to disk during capture; finalize and we're done. Speaker
@@ -496,6 +513,10 @@ impl ScribeController {
         }
         self.restore_output_device(previous_output_device.as_deref());
         self.emit_capture_levels_idle();
+
+        // Cuts have no durable home in a WAV-only save; analysis.json carries
+        // the full timeline and cuts are recomputable from it.
+        let _ = self.harvest_audio_analysis(&session_dir, &pitch_analyzer);
 
         self.output
             .write_session_notes(&session_dir, &title, "mic.wav", &notes)?;
@@ -651,6 +672,7 @@ impl ScribeController {
                 vec![],
                 None,
                 None,
+                prepared.speaker_change_cuts.clone(),
             );
             self.app
                 .emit(
@@ -680,6 +702,7 @@ impl ScribeController {
                     vec![],
                     None,
                     None,
+                    prepared.speaker_change_cuts.clone(),
                 );
                 return Err(e);
             }
@@ -709,6 +732,7 @@ impl ScribeController {
                     vec![],
                     None,
                     None,
+                    prepared.speaker_change_cuts.clone(),
                 );
                 return Err(e);
             }
@@ -741,6 +765,7 @@ impl ScribeController {
             mut speaker_accum,
             previous_output_device,
             session_dir,
+            pitch_analyzer,
             ..
         } = session;
 
@@ -756,6 +781,9 @@ impl ScribeController {
         let wav_path = mic.stop_and_finalize()?;
         self.restore_output_device(previous_output_device.as_deref());
         self.emit_capture_levels_idle();
+
+        // Writer thread is joined; the analyzer lock is uncontended from here on.
+        let speaker_change_cuts = self.harvest_audio_analysis(&session_dir, &pitch_analyzer);
 
         let pcm_16k = read_wav_mono_f32(&wav_path)?;
         self.lock().transcription_wav_path = Some(wav_path.clone());
@@ -777,6 +805,7 @@ impl ScribeController {
             speaker_wav_names,
             None,
             None,
+            speaker_change_cuts.clone(),
         );
 
         let speaker_pcm_16k = if speaker_capture_enabled {
@@ -811,7 +840,38 @@ impl ScribeController {
             wav_path,
             pcm_16k,
             speaker_pcm_16k,
+            speaker_change_cuts,
         })
+    }
+
+    /// Take the live pitch/loudness timeline out of the analyzer, write the
+    /// `analysis.json` sidecar, and return the detected voice-change cuts.
+    ///
+    /// Contract: analysis must NEVER fail a save — the recording and transcript
+    /// are the product, the analysis is an enrichment. Only call after the mic
+    /// writer thread is joined (`stop_and_finalize` returned).
+    fn harvest_audio_analysis(
+        &self,
+        session_dir: &Path,
+        pitch_analyzer: &Arc<Mutex<PitchAnalyzer>>,
+    ) -> Vec<SpeakerChangeCut> {
+        let analysis = match pitch_analyzer.lock() {
+            Ok(mut analyzer) => analyzer.finish(),
+            Err(poisoned) => poisoned.into_inner().finish(),
+        };
+
+        // Degraded analysis is logged, never surfaced: the recording and
+        // transcript are the product, the analysis is an enrichment.
+        let cuts = detect_cuts(&analysis, &CutConfig::default());
+        if analysis.f0_hz.is_empty() {
+            // Legitimate for sub-128 ms recordings; on anything longer it means
+            // the writer-thread tap never fired.
+            tracing::warn!("pitch analysis produced no frames");
+        }
+        if let Err(e) = self.output.write_audio_analysis(session_dir, &analysis) {
+            tracing::warn!(error = %e, "failed to write analysis.json — timeline lost for this session");
+        }
+        cuts
     }
 
     /// Run Whisper on the prepared audio, reporting progress via state events.
@@ -1047,12 +1107,14 @@ impl ScribeController {
         );
         let mut record = record;
         record.speaker_blocks = speaker_blocks.to_vec();
+        record.speaker_change_cuts = prepared.speaker_change_cuts.clone();
 
         let attach_note_id = self.lock().attach_note_id.take();
         let history_record_id = if attach_note_id.is_some() {
             self.lock().pending_attach = Some(PendingAttach {
                 segments: segments.to_vec(),
                 speaker_blocks: speaker_blocks.to_vec(),
+                speaker_change_cuts: prepared.speaker_change_cuts.clone(),
                 notes: notes.to_vec(),
                 model: model_name,
                 speaker_capture,
@@ -1411,6 +1473,7 @@ fn mic_wav_path_for(session_dir: &Path) -> PathBuf {
 }
 
 impl ScribeController {
+    #[allow(clippy::too_many_arguments)]
     fn write_session_manifest(
         &self,
         session_dir: &Path,
@@ -1419,6 +1482,7 @@ impl ScribeController {
         speaker_wavs: Vec<String>,
         transcript_path: Option<String>,
         title: Option<String>,
+        speaker_change_cuts: Vec<SpeakerChangeCut>,
     ) -> Result<()> {
         let started_at = if started_at.is_empty() {
             let path = session_dir.join("session.json");
@@ -1444,6 +1508,7 @@ impl ScribeController {
                 speaker_wavs,
                 transcript_path,
                 title,
+                speaker_change_cuts,
             },
         )
     }
@@ -1461,6 +1526,7 @@ impl ScribeController {
             speaker_wavs,
             None,
             None,
+            Vec::new(),
         )
     }
 }

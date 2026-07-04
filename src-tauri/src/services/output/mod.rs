@@ -240,6 +240,17 @@ impl OutputService {
         session::write_session_manifest(session_dir, manifest)
     }
 
+    /// Write `{session_dir}/analysis.json` — the pitch/loudness frame timeline
+    /// from live recording analysis. Survives `finalize_scribe_session` when the
+    /// audio is kept; removed with the session dir otherwise.
+    pub fn write_audio_analysis(
+        &self,
+        session_dir: &Path,
+        analysis: &crate::types::AudioAnalysis,
+    ) -> Result<PathBuf> {
+        session::write_audio_analysis(session_dir, analysis)
+    }
+
     /// Move a failed dictate capture into `{save_folder}/dictate_failures/{timestamp}.wav`.
     pub fn salvage_dictate_wav(&self, save_folder: &str, source_wav: &Path) -> Result<PathBuf> {
         legacy::salvage_dictate_wav(save_folder, source_wav)
@@ -618,6 +629,7 @@ mod tests {
                 speaker_wavs: vec![],
                 transcript_path: None,
                 title: None,
+                speaker_change_cuts: Vec::new(),
             },
         )
         .expect("write manifest");
@@ -719,12 +731,19 @@ mod tests {
             speaker_wavs: vec!["speaker_seg_0.wav".to_string()],
             transcript_path: None,
             title: None,
+            speaker_change_cuts: vec![crate::types::SpeakerChangeCut {
+                time_s: 7.5,
+                end_s: 7.5,
+                score: 1.2,
+                reasons: [crate::types::CutReason::Pitch].into_iter().collect(),
+            }],
         };
         svc.write_session_manifest(&dir, &manifest).expect("write");
         let raw = std::fs::read_to_string(dir.join("session.json")).expect("read");
         let parsed: SessionManifest = serde_json::from_str(&raw).expect("parse");
         assert_eq!(parsed.state, SessionManifestState::Recording);
         assert_eq!(parsed.speaker_wavs, vec!["speaker_seg_0.wav".to_string()]);
+        assert_eq!(parsed.speaker_change_cuts, manifest.speaker_change_cuts);
     }
 
     #[test]

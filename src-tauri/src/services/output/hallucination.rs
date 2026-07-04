@@ -5,11 +5,7 @@ pub const SPEAKER_SILENCE_THRESHOLD: f32 = 1e-3;
 
 /// Root-mean-square amplitude of mono PCM samples.
 pub fn pcm_rms(pcm: &[f32]) -> f32 {
-    if pcm.is_empty() {
-        return 0.0;
-    }
-    let sum_sq: f32 = pcm.iter().map(|&s| s * s).sum();
-    (sum_sq / pcm.len() as f32).sqrt()
+    crate::services::analysis::rms(pcm)
 }
 
 /// Returns true when assembled speaker PCM is loud enough to transcribe.

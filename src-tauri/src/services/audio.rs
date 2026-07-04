@@ -36,6 +36,11 @@ struct PcmChunk {
     samples: Vec<f32>,
 }
 
+/// Observer for post-resample 16 kHz mono PCM, invoked on the writer thread with
+/// exactly the samples appended to the WAV (so observed time == mic.wav time).
+/// Runs off the real-time cpal callback; a slow tap delays disk writes, not capture.
+pub type Pcm16kTap = Arc<dyn Fn(&[f32]) + Send + Sync>;
+
 /// Handle for an active capture session that streams mono f32 PCM to a 16 kHz WAV file on
 /// disk. The cpal audio callback only mixes-to-mono and pushes into a channel; a separate
 /// writer thread resamples to 16 kHz and appends to `hound::WavWriter`, keeping resident
@@ -191,6 +196,7 @@ impl AudioService {
             on_level,
             "loopback",
             None,
+            None,
         )
     }
 
@@ -206,6 +212,7 @@ impl AudioService {
         wav_path: PathBuf,
         on_level: Option<Arc<dyn Fn(f32) + Send + Sync>>,
         on_stream_error: Option<Arc<dyn Fn(cpal::StreamError) + Send + Sync>>,
+        on_pcm_16k: Option<Pcm16kTap>,
     ) -> Result<MicSession> {
         let (device, _) = resolve_input_device(preferred_name, allow_fallback_to_default)?;
 
@@ -223,6 +230,7 @@ impl AudioService {
             on_level,
             "mic",
             on_stream_error,
+            on_pcm_16k,
         )
     }
 }
@@ -285,6 +293,7 @@ fn start_capture(
     on_level: Option<Arc<dyn Fn(f32) + Send + Sync>>,
     label: &'static str,
     on_stream_error: Option<Arc<dyn Fn(cpal::StreamError) + Send + Sync>>,
+    on_pcm_16k: Option<Pcm16kTap>,
 ) -> Result<MicSession> {
     if let Some(parent) = wav_path.parent() {
         std::fs::create_dir_all(parent).context("create capture parent dir")?;
@@ -299,7 +308,8 @@ fn start_capture(
 
     let (sender, receiver) = mpsc::channel::<PcmChunk>();
     let stop_signal = Arc::new(AtomicBool::new(false));
-    let writer_handle = spawn_writer_thread(streaming, receiver, Arc::clone(&stop_signal));
+    let writer_handle =
+        spawn_writer_thread(streaming, receiver, Arc::clone(&stop_signal), on_pcm_16k);
 
     let on_stream_error_stored = on_stream_error.clone();
     let stream_result = build_input_stream(
@@ -479,18 +489,22 @@ fn spawn_writer_thread(
     mut streaming: StreamingWavWriter,
     receiver: mpsc::Receiver<PcmChunk>,
     stop_signal: Arc<AtomicBool>,
+    on_pcm_16k: Option<Pcm16kTap>,
 ) -> JoinHandle<Result<()>> {
     std::thread::spawn(move || -> Result<()> {
         let poll = Duration::from_millis(WRITER_POLL_MS);
         loop {
             if stop_signal.load(Ordering::SeqCst) {
-                drain_remaining_chunks(&receiver, &mut streaming)?;
+                drain_remaining_chunks(&receiver, &mut streaming, &on_pcm_16k)?;
                 break;
             }
             match receiver.recv_timeout(poll) {
-                Ok(chunk) => {
-                    write_resampled_chunk(&chunk.samples, chunk.native_rate, &mut streaming)?
-                }
+                Ok(chunk) => write_resampled_chunk(
+                    &chunk.samples,
+                    chunk.native_rate,
+                    &mut streaming,
+                    &on_pcm_16k,
+                )?,
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
             }
@@ -503,10 +517,11 @@ fn spawn_writer_thread(
 fn drain_remaining_chunks(
     receiver: &mpsc::Receiver<PcmChunk>,
     streaming: &mut StreamingWavWriter,
+    on_pcm_16k: &Option<Pcm16kTap>,
 ) -> Result<()> {
     let drain_timeout = Duration::from_millis(WRITER_DRAIN_TIMEOUT_MS);
     while let Ok(chunk) = receiver.recv_timeout(drain_timeout) {
-        write_resampled_chunk(&chunk.samples, chunk.native_rate, streaming)?;
+        write_resampled_chunk(&chunk.samples, chunk.native_rate, streaming, on_pcm_16k)?;
     }
     Ok(())
 }
@@ -515,8 +530,12 @@ fn write_resampled_chunk(
     chunk: &[f32],
     native_rate: u32,
     streaming: &mut StreamingWavWriter,
+    on_pcm_16k: &Option<Pcm16kTap>,
 ) -> Result<()> {
     let resampled = resample_linear(chunk, native_rate, WHISPER_SAMPLE_RATE);
+    if let Some(tap) = on_pcm_16k {
+        tap(&resampled);
+    }
     let samples: Vec<i16> = resampled
         .iter()
         .map(|&s| (s * 32767.0).clamp(-32768.0, 32767.0) as i16)
@@ -698,6 +717,47 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    #[test]
+    fn writer_thread_invokes_pcm_tap_with_resampled_16k_samples() {
+        // The tap must see exactly the post-resample samples that land in the WAV,
+        // so downstream analysis timestamps line up with mic.wav time.
+        let path = temp_wav();
+        let streaming = StreamingWavWriter::create(path.clone()).expect("create writer");
+        let (sender, receiver) = mpsc::channel::<PcmChunk>();
+        let stop_signal = Arc::new(AtomicBool::new(false));
+        let tapped: Arc<std::sync::Mutex<Vec<f32>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let tap_sink = Arc::clone(&tapped);
+        let tap: Pcm16kTap = Arc::new(move |pcm: &[f32]| {
+            tap_sink.lock().unwrap().extend_from_slice(pcm);
+        });
+
+        let handle =
+            spawn_writer_thread(streaming, receiver, Arc::clone(&stop_signal), Some(tap));
+
+        // 100 ms of a 0.25 DC signal at a 48 kHz native rate → 1 600 samples at 16 kHz.
+        sender
+            .send(PcmChunk {
+                native_rate: 48_000,
+                samples: vec![0.25; 4_800],
+            })
+            .expect("send chunk");
+        drop(sender);
+        stop_signal.store(true, Ordering::SeqCst);
+        handle.join().expect("join").expect("writer ok");
+
+        let tapped = tapped.lock().unwrap();
+        let wav = read_wav_mono_f32(&path).expect("read wav");
+        assert_eq!(tapped.len(), wav.len(), "tap and WAV must see the same samples");
+        assert!(tapped.len() >= 1_500, "expected ~1600 samples, got {}", tapped.len());
+        for (tap_sample, wav_sample) in tapped.iter().zip(wav.iter()) {
+            assert!(
+                (tap_sample - wav_sample).abs() < 1e-3,
+                "tap {tap_sample} diverged from wav {wav_sample}"
+            );
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
     // ── Hardware-gated capture tests ──────────────────────────────────────────
     // Skipped by default. Run on a machine with a real mic:
     //   cargo test -- --ignored
@@ -708,7 +768,7 @@ mod tests {
         let path = temp_wav();
         let svc = AudioService::new();
         let session = svc
-            .start_mic(None, true, path.clone(), None, None)
+            .start_mic(None, true, path.clone(), None, None, None)
             .expect("start mic");
 
         std::thread::sleep(std::time::Duration::from_millis(500));
@@ -734,7 +794,7 @@ mod tests {
         let path = temp_wav();
         let svc = AudioService::new();
         let session = svc
-            .start_mic(None, true, path.clone(), None, None)
+            .start_mic(None, true, path.clone(), None, None, None)
             .expect("start mic");
 
         std::thread::sleep(std::time::Duration::from_secs(1));

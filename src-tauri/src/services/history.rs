@@ -173,6 +173,7 @@ impl HistoryService {
         id: &str,
         segments: Vec<crate::types::Segment>,
         speaker_blocks: Vec<crate::types::SpeakerBlock>,
+        speaker_change_cuts: Vec<crate::types::SpeakerChangeCut>,
         notes: Vec<crate::types::Note>,
         model: String,
         speaker_capture: bool,
@@ -206,6 +207,14 @@ impl HistoryService {
             note.recorded_at_ms = note.recorded_at_ms.saturating_add(offset_ms as u64);
             note
         }));
+        let offset_s = offset_ms as f32 / 1000.0;
+        updated
+            .speaker_change_cuts
+            .extend(speaker_change_cuts.into_iter().map(|mut cut| {
+                cut.time_s += offset_s;
+                cut.end_s += offset_s;
+                cut
+            }));
         updated.model = model;
         updated.speaker_capture = speaker_capture;
         updated.dual_source = dual_source;
@@ -543,6 +552,7 @@ mod tests {
             segments,
             vec![],
             vec![],
+            vec![],
             "base".into(),
             false,
             false,
@@ -578,6 +588,7 @@ mod tests {
                 source: None,
             }],
             vec![],
+            vec![],
             vec![crate::types::Note {
                 id: "note-1".into(),
                 text: "marker".into(),
@@ -604,6 +615,12 @@ mod tests {
                 source: None,
             }],
             vec![],
+            vec![crate::types::SpeakerChangeCut {
+                time_s: 0.5,
+                end_s: 0.5,
+                score: 1.5,
+                reasons: [crate::types::CutReason::Pitch].into_iter().collect(),
+            }],
             vec![crate::types::Note {
                 id: "note-2".into(),
                 text: "second marker".into(),
@@ -629,6 +646,9 @@ mod tests {
         assert_eq!(got.notes.len(), 2);
         assert_eq!(got.notes[1].recorded_at_ms, 1_250);
         assert_eq!(got.duration_ms, 3_000);
+        // Cut attached in the second recording shifts by the 1 s offset.
+        assert_eq!(got.speaker_change_cuts.len(), 1);
+        assert!((got.speaker_change_cuts[0].time_s - 1.5).abs() < 1e-6);
     }
 
     #[test]

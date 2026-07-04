@@ -409,6 +409,44 @@ pub struct Note {
     pub recorded_at_ms: u64,
 }
 
+// ── Live audio analysis (pitch / loudness change cuts) ──────────────────────────
+
+/// Windowed pitch/loudness timeline over the 16 kHz mono mic stream.
+/// Frame `i` is centered at `(i * hop_samples + window_samples / 2) / sample_rate`
+/// seconds. Parallel arrays keep the JSON compact (~5× smaller than per-frame objects).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AudioAnalysis {
+    pub format_version: u8,
+    pub sample_rate: u32,
+    pub window_samples: u32,
+    pub hop_samples: u32,
+    /// `None` = unvoiced frame (no pitch in the 65–400 Hz voice band).
+    pub f0_hz: Vec<Option<f32>>,
+    pub rms: Vec<f32>,
+}
+
+/// Why a change cut fired. Ordering matters: `BTreeSet<CutReason>` keeps
+/// serialized reason lists deterministic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CutReason {
+    Pitch,
+    Loudness,
+    Silence,
+}
+
+/// A detected voice-change boundary. Says "the voice changed here" — spans between
+/// cuts are NOT speaker identities (identity is the voiceprint service's job).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpeakerChangeCut {
+    pub time_s: f32,
+    /// Last merged candidate's time; equals `time_s` for an unmerged cut.
+    pub end_s: f32,
+    /// Observed jump / threshold, so >= 1.0 by construction; max over merged candidates.
+    pub score: f32,
+    pub reasons: std::collections::BTreeSet<CutReason>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ScribeState {
@@ -667,6 +705,10 @@ pub struct SessionManifest {
     pub transcript_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Voice-change cuts detected live during recording; populated from the
+    /// Transcribing state onward so crash recovery keeps them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub speaker_change_cuts: Vec<SpeakerChangeCut>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -762,6 +804,10 @@ pub struct HistoryRecord {
     pub segments: Vec<Segment>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub speaker_blocks: Vec<SpeakerBlock>,
+    /// Voice-change cuts from live pitch/loudness analysis. The full frame
+    /// timeline lives in `{session_dir}/analysis.json`, not here (size).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub speaker_change_cuts: Vec<SpeakerChangeCut>,
     #[serde(default)]
     pub notes: Vec<Note>,
     pub duration_ms: i64,
@@ -858,6 +904,7 @@ impl HistoryRecord {
             model,
             segments,
             speaker_blocks: Vec::new(),
+            speaker_change_cuts: Vec::new(),
             notes,
             duration_ms,
             word_count,
@@ -1083,6 +1130,68 @@ mod tests {
     #[test]
     fn default_replacement_prefix_is_float() {
         assert_eq!(default_replacement_prefix(), "float");
+    }
+
+    #[test]
+    fn audio_analysis_serde_roundtrip() {
+        let analysis = AudioAnalysis {
+            format_version: 1,
+            sample_rate: 16_000,
+            window_samples: 2048,
+            hop_samples: 1024,
+            f0_hz: vec![Some(110.0), None, Some(220.0)],
+            rms: vec![0.05, 0.001, 0.08],
+        };
+        let json = serde_json::to_string(&analysis).expect("serialize");
+        let parsed: AudioAnalysis = serde_json::from_str(&json).expect("parse");
+        assert_eq!(parsed, analysis);
+    }
+
+    #[test]
+    fn speaker_change_cut_serializes_lowercase_reasons() {
+        let cut = SpeakerChangeCut {
+            time_s: 7.5,
+            end_s: 7.9,
+            score: 1.4,
+            reasons: [CutReason::Pitch, CutReason::Loudness].into_iter().collect(),
+        };
+        let json = serde_json::to_value(&cut).expect("serialize");
+        assert_eq!(json["reasons"], serde_json::json!(["pitch", "loudness"]));
+        let parsed: SpeakerChangeCut = serde_json::from_value(json).expect("parse");
+        assert_eq!(parsed, cut);
+    }
+
+    #[test]
+    fn session_manifest_without_cuts_field_still_parses() {
+        // Manifests written before speaker_change_cuts existed must keep loading.
+        let legacy = r#"{
+            "format_version": 1,
+            "state": "recording",
+            "started_at": "2026-05-28T12:00:00Z",
+            "mic_wav": "mic.wav"
+        }"#;
+        let manifest: SessionManifest = serde_json::from_str(legacy).expect("parse legacy");
+        assert!(manifest.speaker_change_cuts.is_empty());
+        // And empty cuts stay off the wire.
+        let json = serde_json::to_value(&manifest).expect("serialize");
+        assert!(json.get("speaker_change_cuts").is_none());
+    }
+
+    #[test]
+    fn history_record_without_cuts_field_still_parses() {
+        let legacy = r#"{
+            "format_version": 1,
+            "id": "abc",
+            "kind": "scribe",
+            "created_at": "2026-05-28T12:00:00Z",
+            "title": "t",
+            "model": "m",
+            "segments": [],
+            "duration_ms": 0,
+            "word_count": 0
+        }"#;
+        let record: HistoryRecord = serde_json::from_str(legacy).expect("parse legacy");
+        assert!(record.speaker_change_cuts.is_empty());
     }
 
     #[test]

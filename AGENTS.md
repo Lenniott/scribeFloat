@@ -64,7 +64,7 @@ python3 skills/design-skill/query.py search "X"    # search both
 
 ```bash
 cargo tauri dev                    # Start dev build
-cargo test -p scribefloat          # Unit tests (no hardware required)
+cargo test -p ScribeFloat          # Unit tests (no hardware required)
 cargo clippy -- -D warnings        # Must pass before committing
 cargo check                        # Fast compile check
 ```
@@ -76,8 +76,8 @@ loopback device. They are **skipped in CI and virtual environments** — do not
 run them there. On a developer machine with hardware:
 
 ```bash
-cargo test -p scribefloat -- --ignored          # hardware-gated tests only
-cargo test -p scribefloat -- --include-ignored  # everything
+cargo test -p ScribeFloat -- --ignored          # hardware-gated tests only
+cargo test -p ScribeFloat -- --include-ignored  # everything
 ```
 
 Currently gated: `mic_session_*` (real mic, any OS), `loopback_session_*`
@@ -89,7 +89,7 @@ without hardware — use it only when the test genuinely requires a device.
 ## Before committing
 
 - `cargo clippy -- -D warnings` passes
-- `cargo test -p scribefloat` passes
+- `cargo test -p ScribeFloat` passes
 - If you changed a `#[tauri::command]` signature, verify the JS caller uses matching camelCase argument names
 - If you changed `Config`, verify a file missing the new field still loads (see `docs/engineering/config-rules.md`)
 - If you changed `platform/`, verify the other platform compiles: `cargo check --target x86_64-pc-windows-msvc`

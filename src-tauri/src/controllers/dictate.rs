@@ -553,6 +553,7 @@ impl DictateController {
                 let _ = app.emit(DICTATE_AUDIO_LEVEL_EVENT, level);
             })),
             None,
+            None,
         )?;
 
         let mut inner = self.lock();

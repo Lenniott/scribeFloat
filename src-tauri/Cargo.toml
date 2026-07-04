@@ -46,6 +46,7 @@ symphonia = { version = "0.5", features = ["aac", "flac", "isomp4", "mp3", "ogg"
 regex = "1"
 sha2 = "0.10"
 sherpa-onnx = "1"
+pitch-detection = "0.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Used directly for sysctlbyname in lib::log_system_info; pinned loose to match the

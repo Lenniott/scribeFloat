@@ -287,6 +287,7 @@ graph TB
 - **System Audio Capture**: macOS = BlackHole virtual device via Core Audio; Windows = WASAPI loopback. Speaker capture requires BlackHole + a configured Multi-Output Device name on macOS
 - **MicSession**: `stop_and_finalize()` pauses the stream, signals the writer, and joins the writer thread. Drain uses `recv_timeout` (200 ms) — never blocking `recv()` — because cpal tears down CoreAudio asynchronously on macOS
 - **WAV Writer Thread**: resamples to 16 kHz mono i16 and appends to the target path (`mic.wav`, `speaker_seg_N.wav`, or dictate temp). Checkpoints the RIFF header periodically so crash mid-recording leaves a playable file
+- **PCM Tap (`Pcm16kTap`)**: optional observer on the writer thread, invoked with the post-resample 16 kHz samples — exactly what lands in the WAV, so observed time == mic.wav time. Scribe passes a tap that feeds `services/analysis.rs::PitchAnalyzer` (live pitch/loudness timeline). The cpal callback is untouched; a slow tap delays disk writes, never capture. At stop, `ScribeController::prepare_audio` harvests the analyzer (after the writer joins), runs `detect_cuts`, writes the frame timeline to `{session_dir}/analysis.json`, and stores the voice-change cuts on the session manifest + `HistoryRecord` (ADR-0013)
 - **SpeakerAccumulator** (in `ScribeController`): holds `CapturedSpeakerSegment { start_ms, wav_path }` for each ON/OFF loopback window. At stop, segments are read back and assembled via `assemble_speaker_pcm`; per-segment WAVs are deleted after merge
 - **Platform Adapter**: the only place `#[cfg(target_os)]` lives for audio. Everything above is platform-agnostic
 
@@ -689,7 +690,8 @@ src-tauri/src/
 │
 ├── services/
 │   ├── mod.rs
-│   ├── audio.rs                AudioService, MicSession, streaming WAV writer, read_wav_mono_f32
+│   ├── analysis.rs             Pure pitch/loudness analysis: PitchAnalyzer (streaming, fed by AudioService's PCM tap), detect_cuts (voice-change cuts)
+│   ├── audio.rs                AudioService, MicSession, streaming WAV writer, Pcm16kTap, read_wav_mono_f32
 │   ├── model.rs                ModelService, WhisperContext cache, Downloader, Merger
 │   ├── output.rs               OutputService, markdown rendering (pure), .md writes, manifest, cleanup, legacy reads, delete primitives
 │   ├── history.rs              HistoryService, append-only JSONL record store, compact, tombstone delete

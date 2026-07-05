@@ -29,6 +29,13 @@ pub fn voiceprint_delete_profile(
 }
 
 #[tauri::command]
+pub fn voiceprint_delete_all_profiles(
+    ctrl: State<'_, Arc<VoiceprintController>>,
+) -> Result<usize, AppError> {
+    ctrl.delete_all_profiles().map_err(AppError::from)
+}
+
+#[tauri::command]
 pub fn voiceprint_rename_profile(
     ctrl: State<'_, Arc<VoiceprintController>>,
     slug: String,

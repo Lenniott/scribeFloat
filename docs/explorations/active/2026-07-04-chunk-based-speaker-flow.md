@@ -220,11 +220,18 @@ Voice embeddings should be treated as sensitive local biometric data.
 - Add controls to forget one speaker, delete all voice data, and stop profile learning.
 - Keep global profile learning explicit or opt-in.
 
+Current storage safety slice:
+
+- `delete_after_transcript` strips chunk embeddings and session speaker centroid vectors before new Record and Upload notes are saved.
+- Settings can delete all saved voiceprint profiles.
+- Settings can remove stored voice vectors from all transcripts while keeping text, labels, timings, and quality scores.
+- Encryption is still not implemented, so automatic profile learning remains off.
+
 ## Implementation checkpoints
 
 - [x] Checkpoint 1: Settings controls for voice learning, embedding retention, and encryption requirement. These store preferences only.
 - [x] Checkpoint 2: Transcript speaker evidence model with session speaker centroids. Clean chunks are averaged with duration weighting; evidence is stored on each history record as `session_speakers`; backend speaker rename cascades across the transcript group.
-- [ ] Checkpoint 3: Encrypted storage and voice data deletion controls.
+- [ ] Checkpoint 3: Encrypted storage and voice data deletion controls. Deletion and retention controls are built; encrypted-at-rest profile/evidence storage is still pending.
 - [ ] Checkpoint 4: Rebuildable global profiles from accepted evidence.
 - [ ] Checkpoint 5: Quality-gated learning after user confirmation.
 

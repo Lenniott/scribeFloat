@@ -35,6 +35,7 @@ Story **0050** (ADR-0007) will replace `.notes/{uuid}/` with named per-note fold
 
 - `append` — new capture or empty written note
 - `update_segments` — transcript attached to a note
+- `remove_voice_embeddings` — biometric vectors removed while transcript text/labels remain
 - `set_markdown_path` — export path recorded
 - `delete` — tombstone line
 

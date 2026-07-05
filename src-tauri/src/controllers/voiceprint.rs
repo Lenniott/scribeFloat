@@ -67,6 +67,12 @@ impl VoiceprintController {
         self.service.delete_profile(slug).map_err(|e| e.to_string())
     }
 
+    pub fn delete_all_profiles(&self) -> Result<usize, String> {
+        self.service
+            .delete_all_profiles()
+            .map_err(|e| e.to_string())
+    }
+
     pub fn rename_profile(&self, slug: String, name: String) -> Result<(), String> {
         let slug = slug.trim();
         let name = name.trim();

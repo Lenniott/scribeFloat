@@ -7,7 +7,7 @@ use crate::services::speaker_chunks::{
 use crate::services::{
     audio::{AudioService, MicSession},
     config::ConfigService,
-    history::HistoryService,
+    history::{strip_voice_embeddings, HistoryService},
     model::ModelService,
     output::{
         filter_hallucination_phrases, speaker_pcm_has_signal, OutputService,
@@ -18,7 +18,7 @@ use crate::services::{
 use crate::types::{
     Config, HistoryRecord, Note, ProcessingStage, RecoverySessionInfo, ScribeState,
     ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest, SessionManifestState,
-    SessionSpeaker, SpeakerBlock, SpeakerChangeCut, SpeakerChunk,
+    SessionSpeaker, SpeakerBlock, SpeakerChangeCut, SpeakerChunk, VoiceEmbeddingsRetention,
 };
 use anyhow::{anyhow, Result};
 use serde_json::json;
@@ -1135,6 +1135,9 @@ impl ScribeController {
         record.speaker_change_cuts = prepared.speaker_change_cuts.clone();
         record.speaker_chunks = prepared.speaker_chunks.clone();
         record.session_speakers = prepared.session_speakers.clone();
+        if config.voice_embeddings_retention == VoiceEmbeddingsRetention::DeleteAfterTranscript {
+            strip_voice_embeddings(&mut record);
+        }
 
         let attach_note_id = self.lock().attach_note_id.take();
         let history_record_id = if attach_note_id.is_some() {
@@ -1142,8 +1145,8 @@ impl ScribeController {
                 segments: segments.to_vec(),
                 speaker_blocks: speaker_blocks.to_vec(),
                 speaker_change_cuts: prepared.speaker_change_cuts.clone(),
-                speaker_chunks: prepared.speaker_chunks.clone(),
-                session_speakers: prepared.session_speakers.clone(),
+                speaker_chunks: record.speaker_chunks.clone(),
+                session_speakers: record.session_speakers.clone(),
                 notes: notes.to_vec(),
                 model: model_name,
                 speaker_capture,

@@ -198,6 +198,20 @@ impl VoiceprintService {
         Ok(())
     }
 
+    pub fn delete_all_profiles(&self) -> Result<usize> {
+        std::fs::create_dir_all(&self.profiles_dir)?;
+        let mut deleted = 0usize;
+        for entry in std::fs::read_dir(&self.profiles_dir)? {
+            let path = entry?.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            std::fs::remove_file(path)?;
+            deleted += 1;
+        }
+        Ok(deleted)
+    }
+
     pub fn rename_profile(&self, slug: &str, name: &str) -> Result<VoiceprintProfile> {
         let old_slug = normalize_slug(slug)?;
         let name = normalize_name(name)?;
@@ -485,6 +499,23 @@ mod tests {
         assert_eq!(profiles[0].name, "You");
         assert_eq!(profiles[0].slug, "you");
         assert_eq!(profiles[0].sample_count, 1);
+    }
+
+    #[test]
+    fn delete_all_profiles_removes_only_profile_json_files() {
+        let root = temp_dir("scribefloat-voiceprint-delete-all");
+        let svc = VoiceprintService::new(&root.join(VOICEPRINT_MODEL_FILE), &root, 0.75).unwrap();
+        let you = svc.new_profile("You", None, embedding(1.0)).unwrap();
+        let alice = svc.new_profile("Alice", None, embedding(0.0)).unwrap();
+        svc.save_profile(&you).unwrap();
+        svc.save_profile(&alice).unwrap();
+        std::fs::write(root.join("keep.txt"), "not a profile").unwrap();
+
+        let deleted = svc.delete_all_profiles().unwrap();
+
+        assert_eq!(deleted, 2);
+        assert!(svc.load_profiles().unwrap().is_empty());
+        assert!(root.join("keep.txt").exists());
     }
 
     #[test]

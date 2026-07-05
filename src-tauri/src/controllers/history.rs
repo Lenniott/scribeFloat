@@ -120,6 +120,23 @@ impl HistoryController {
             .map_err(|e| e.to_string())
     }
 
+    pub fn remove_voice_embeddings(&self, id: &str) -> Result<(), String> {
+        if is_legacy(id) {
+            return Err("legacy items are read-only".to_string());
+        }
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .remove_voice_embeddings(&save_folder, id)
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn remove_all_voice_embeddings(&self) -> Result<usize, String> {
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .remove_all_voice_embeddings(&save_folder)
+            .map_err(|e| e.to_string())
+    }
+
     /// Attach transcript segments from a completed recording onto an existing note.
     #[allow(clippy::too_many_arguments)]
     pub fn attach_transcript(

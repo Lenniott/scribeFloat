@@ -184,6 +184,47 @@ impl HistoryService {
         Ok(())
     }
 
+    /// Remove biometric voice vectors from a note while keeping transcript text,
+    /// labels, timing, quality scores, cuts, chunks, and session speaker groups.
+    pub fn remove_voice_embeddings(&self, save_folder: &str, id: &str) -> Result<()> {
+        let mut inner = self.inner.lock().unwrap();
+        self.ensure_loaded(&mut inner, save_folder)?;
+        let Some(&idx) = inner.index.get(id) else {
+            return Ok(());
+        };
+
+        let mut updated = inner.records[idx].clone();
+        strip_voice_embeddings(&mut updated);
+        Self::append_line(save_folder, &updated)?;
+        inner.records[idx] = updated;
+        Ok(())
+    }
+
+    /// Remove biometric voice vectors from all live notes in the save folder.
+    pub fn remove_all_voice_embeddings(&self, save_folder: &str) -> Result<usize> {
+        let mut inner = self.inner.lock().unwrap();
+        self.ensure_loaded(&mut inner, save_folder)?;
+
+        let mut changed = 0usize;
+        let live_indexes: Vec<usize> = inner
+            .records
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, record)| (!record.deleted).then_some(idx))
+            .collect();
+
+        for idx in live_indexes {
+            let mut updated = inner.records[idx].clone();
+            if strip_voice_embeddings(&mut updated) {
+                Self::append_line(save_folder, &updated)?;
+                inner.records[idx] = updated;
+                changed += 1;
+            }
+        }
+
+        Ok(changed)
+    }
+
     /// Update written body text — overwrites `{save_folder}/.notes/{id}/written.md` in place.
     /// Does not append to `history.jsonl` (high-frequency editor autosave).
     pub fn update_written_content(&self, save_folder: &str, id: &str, content: &str) -> Result<()> {
@@ -394,6 +435,26 @@ impl HistoryService {
     }
 }
 
+/// Remove only embedding vectors. Human-readable transcript data stays usable.
+pub fn strip_voice_embeddings(record: &mut HistoryRecord) -> bool {
+    let mut changed = false;
+
+    for chunk in &mut record.speaker_chunks {
+        if chunk.embedding.take().is_some() {
+            changed = true;
+        }
+    }
+
+    for speaker in &mut record.session_speakers {
+        if !speaker.centroid_embedding.is_empty() {
+            speaker.centroid_embedding.clear();
+            changed = true;
+        }
+    }
+
+    changed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -531,6 +592,99 @@ mod tests {
         assert!(got.session_speakers[0].user_confirmed);
         assert_eq!(got.speaker_chunks[0].label, "Gilgamesh");
         assert_eq!(got.speaker_blocks[0].label, "Gilgamesh");
+    }
+
+    #[test]
+    fn remove_voice_embeddings_keeps_transcript_speaker_evidence() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let mut rec = record("hello");
+        rec.session_speakers = vec![crate::types::SessionSpeaker {
+            session_speaker_id: "speaker-1".into(),
+            label: "Speaker A".into(),
+            centroid_embedding: vec![1.0, 0.0],
+            clean_chunk_ids: vec!["chunk-0001".into()],
+            start_ms: 0,
+            end_ms: 2_000,
+            duration_ms: 2_000,
+            radius: 0.0,
+            quality_score: 0.9,
+            user_confirmed: true,
+        }];
+        rec.speaker_chunks = vec![crate::types::SpeakerChunk {
+            id: "chunk-0001".into(),
+            start_ms: 0,
+            end_ms: 2_000,
+            label: "Speaker A".into(),
+            cluster_id: Some("speaker-1".into()),
+            matched_profile: None,
+            embedding: Some(vec![1.0, 0.0]),
+            audio_duration_s: 2.0,
+            vad_purity: 1.0,
+            rms_energy: 0.1,
+            clipping: false,
+            profile_score: Some(0.8),
+        }];
+        let id = svc.append(&folder, rec).expect("append");
+
+        svc.remove_voice_embeddings(&folder, &id)
+            .expect("remove embeddings");
+
+        let got = svc.get(&folder, &id).unwrap().expect("present");
+        assert_eq!(got.speaker_chunks[0].label, "Speaker A");
+        assert_eq!(
+            got.speaker_chunks[0].cluster_id.as_deref(),
+            Some("speaker-1")
+        );
+        assert_eq!(got.speaker_chunks[0].embedding, None);
+        assert_eq!(got.speaker_chunks[0].profile_score, Some(0.8));
+        assert_eq!(got.session_speakers[0].label, "Speaker A");
+        assert!(got.session_speakers[0].centroid_embedding.is_empty());
+        assert_eq!(got.session_speakers[0].clean_chunk_ids, vec!["chunk-0001"]);
+        assert!(got.session_speakers[0].user_confirmed);
+    }
+
+    #[test]
+    fn remove_all_voice_embeddings_only_counts_changed_records() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let mut with_embedding = record("hello");
+        with_embedding.speaker_chunks = vec![crate::types::SpeakerChunk {
+            id: "chunk-0001".into(),
+            start_ms: 0,
+            end_ms: 2_000,
+            label: "Speaker A".into(),
+            cluster_id: Some("speaker-1".into()),
+            matched_profile: None,
+            embedding: Some(vec![1.0, 0.0]),
+            audio_duration_s: 2.0,
+            vad_purity: 1.0,
+            rms_energy: 0.1,
+            clipping: false,
+            profile_score: None,
+        }];
+        let changed_id = svc.append(&folder, with_embedding).expect("append changed");
+        let unchanged_id = svc.append(&folder, record("plain")).expect("append plain");
+
+        let changed = svc
+            .remove_all_voice_embeddings(&folder)
+            .expect("remove all embeddings");
+
+        assert_eq!(changed, 1);
+        assert_eq!(
+            svc.get(&folder, &changed_id)
+                .unwrap()
+                .expect("changed present")
+                .speaker_chunks[0]
+                .embedding,
+            None
+        );
+        assert!(svc
+            .get(&folder, &unchanged_id)
+            .unwrap()
+            .expect("unchanged present")
+            .speaker_chunks
+            .is_empty());
     }
 
     #[test]

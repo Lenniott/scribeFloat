@@ -22,10 +22,13 @@
 	let profiles = $state<ProfileSummary[]>([]);
 	let loadError = $state('');
 	let actionError = $state('');
+	let actionMessage = $state('');
 	let enrolling = $state<{ name?: string; locked: boolean } | null>(null);
 	let editingSlug = $state('');
 	let editingName = $state('');
 	let confirmingDelete = $state('');
+	let confirmingDeleteAllProfiles = $state(false);
+	let confirmingRemoveTranscriptEmbeddings = $state(false);
 	let userDisplayName = $state('You');
 	let savedUserDisplayName = $state('You');
 	let threshold = $state(0.75);
@@ -71,6 +74,7 @@
 
 	function startRename(profile: ProfileSummary) {
 		actionError = '';
+		actionMessage = '';
 		editingSlug = profile.slug;
 		editingName = profile.name;
 		confirmingDelete = '';
@@ -88,6 +92,7 @@
 		);
 		editingSlug = '';
 		actionError = '';
+		actionMessage = '';
 		try {
 			await invoke('voiceprint_rename_profile', { slug, name });
 			await refresh();
@@ -102,11 +107,40 @@
 		profiles = profiles.filter((item) => item.slug !== profile.slug);
 		confirmingDelete = '';
 		actionError = '';
+		actionMessage = '';
 		try {
 			await invoke('voiceprint_delete_profile', { slug: profile.slug });
 		} catch (e) {
 			profiles = previous;
 			actionError = `Could not delete profile: ${appErrorMessage(e)}`;
+		}
+	}
+
+	async function deleteAllProfiles() {
+		const previous = profiles;
+		profiles = [];
+		confirmingDeleteAllProfiles = false;
+		actionError = '';
+		actionMessage = '';
+		try {
+			const deleted = await invoke<number>('voiceprint_delete_all_profiles');
+			actionMessage = `Deleted ${deleted} saved voiceprint ${deleted === 1 ? 'profile' : 'profiles'}.`;
+			await refresh();
+		} catch (e) {
+			profiles = previous;
+			actionError = `Could not delete voiceprints: ${appErrorMessage(e)}`;
+		}
+	}
+
+	async function removeTranscriptEmbeddings() {
+		confirmingRemoveTranscriptEmbeddings = false;
+		actionError = '';
+		actionMessage = '';
+		try {
+			const changed = await invoke<number>('history_remove_all_voice_embeddings');
+			actionMessage = `Removed voice vectors from ${changed} ${changed === 1 ? 'transcript' : 'transcripts'}.`;
+		} catch (e) {
+			actionError = `Could not remove transcript voice data: ${appErrorMessage(e)}`;
 		}
 	}
 
@@ -139,6 +173,7 @@
 			return;
 		}
 		actionError = '';
+		actionMessage = '';
 		try {
 			await invoke('settings_set_user_display_name', { name });
 			userDisplayName = name;
@@ -159,6 +194,7 @@
 
 	async function saveThreshold() {
 		actionError = '';
+		actionMessage = '';
 		try {
 			await invoke('settings_set_voice_similarity_threshold', { threshold });
 		} catch (e) {
@@ -170,6 +206,7 @@
 		const previous = voiceLearningEnabled;
 		voiceLearningEnabled = enabled;
 		actionError = '';
+		actionMessage = '';
 		try {
 			await invoke('settings_set_voice_learning_enabled', { enabled });
 		} catch (e) {
@@ -182,6 +219,7 @@
 		const previous = embeddingsRetention;
 		embeddingsRetention = retention;
 		actionError = '';
+		actionMessage = '';
 		try {
 			await invoke('settings_set_voice_embeddings_retention', { retention });
 		} catch (e) {
@@ -194,6 +232,7 @@
 		const previous = encryptionRequired;
 		encryptionRequired = required;
 		actionError = '';
+		actionMessage = '';
 		try {
 			await invoke('settings_set_voice_embeddings_encryption_required', { required });
 		} catch (e) {
@@ -225,6 +264,11 @@
 		{#if actionError}
 			<p class="rounded-md border border-destructive/40 bg-fill px-3 py-2 sf-label-sm text-destructive">
 				{actionError}
+			</p>
+		{/if}
+		{#if actionMessage}
+			<p class="rounded-md border border-fill bg-panel px-3 py-2 sf-label-sm text-fg-dim">
+				{actionMessage}
 			</p>
 		{/if}
 
@@ -297,6 +341,31 @@
 						</SettingsRow>
 					{/each}
 				</SettingsList>
+				<div class="mt-3 flex flex-col gap-2 rounded-md border border-fill bg-panel px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+					<div>
+						<p class="sf-label-md text-fg">Delete all saved voiceprints</p>
+						<p class="sf-label-sm text-fg-dim">
+							This removes saved profile vectors. Transcript text and labels stay in place.
+						</p>
+					</div>
+					{#if confirmingDeleteAllProfiles}
+						<div class="flex shrink-0 gap-2">
+							<Button variant="ghost" size="small" onclick={() => (confirmingDeleteAllProfiles = false)}>Cancel</Button>
+							<Button variant="destructive" size="small" onclick={() => void deleteAllProfiles()}>Delete all</Button>
+						</div>
+					{:else}
+						<Button
+							variant="destructive"
+							size="small"
+							onclick={() => {
+								confirmingDeleteAllProfiles = true;
+								confirmingRemoveTranscriptEmbeddings = false;
+							}}
+						>
+							Delete all
+						</Button>
+					{/if}
+				</div>
 			{/if}
 		</SettingsSection>
 
@@ -392,9 +461,34 @@
 			</SettingsList>
 
 			<p class="mt-3 rounded-md border border-fill bg-panel px-3 py-2 sf-label-sm text-fg-dim">
-				Voice embeddings stay local. Encryption and transcript-based profile updates are planned next;
-				this release only stores your preference.
+				Voice embeddings stay local. Automatic profile learning still waits for encrypted storage.
 			</p>
+
+			<div class="mt-3 flex flex-col gap-2 rounded-md border border-fill bg-panel px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+				<div>
+					<p class="sf-label-md text-fg">Remove voice vectors from transcripts</p>
+					<p class="sf-label-sm text-fg-dim">
+						Transcript text, speaker names, times, and quality scores stay readable.
+					</p>
+				</div>
+				{#if confirmingRemoveTranscriptEmbeddings}
+					<div class="flex shrink-0 gap-2">
+						<Button variant="ghost" size="small" onclick={() => (confirmingRemoveTranscriptEmbeddings = false)}>Cancel</Button>
+						<Button variant="destructive" size="small" onclick={() => void removeTranscriptEmbeddings()}>Remove vectors</Button>
+					</div>
+				{:else}
+					<Button
+						variant="destructive"
+						size="small"
+						onclick={() => {
+							confirmingRemoveTranscriptEmbeddings = true;
+							confirmingDeleteAllProfiles = false;
+						}}
+					>
+						Remove vectors
+					</Button>
+				{/if}
+			</div>
 		</SettingsSection>
 	</section>
 {/if}

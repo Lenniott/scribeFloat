@@ -1,7 +1,7 @@
 use crate::services::analysis::{detect_cuts, CutConfig, PitchAnalyzer};
 use crate::services::audio::WHISPER_SAMPLE_RATE;
 use crate::services::config::ConfigService;
-use crate::services::history::HistoryService;
+use crate::services::history::{strip_voice_embeddings, HistoryService};
 use crate::services::model::ModelService;
 use crate::services::output::filter_hallucination_phrases;
 use crate::services::output::OutputService;
@@ -12,7 +12,7 @@ use crate::services::transcribe_input::{TranscribeInputItem, TranscribeInputServ
 use crate::services::voiceprint::VoiceprintService;
 use crate::types::{
     Config, HistoryRecord, ProcessingStage, TranscribeItemStatus, TranscribeQueueItem,
-    TranscribeState, TranscribeStateEvent,
+    TranscribeState, TranscribeStateEvent, VoiceEmbeddingsRetention,
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -462,6 +462,9 @@ impl TranscribeController {
             record.speaker_change_cuts = speaker_change_cuts;
             record.speaker_chunks = speaker_chunks;
             record.session_speakers = session_speakers;
+            if cfg.voice_embeddings_retention == VoiceEmbeddingsRetention::DeleteAfterTranscript {
+                strip_voice_embeddings(&mut record);
+            }
             if let Err(e) = self.history.append(&save_folder, record) {
                 tracing::warn!(error = %e, "failed to append transcribe history record");
             } else {

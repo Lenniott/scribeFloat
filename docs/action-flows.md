@@ -313,7 +313,7 @@ Logic lives in `src/lib/services/noteLeaveGuard.ts` (Vitest-covered).
 
 Default save folder: `~/Documents/transcripts_scribefloat/` (configurable in Settings → General).
 
-Voice learning controls live in Settings → Voice. `voice_learning_enabled` defaults off, voice embeddings are kept by default for current speaker matching, and `voice_embeddings_encryption_required` defaults on so automatic long-term learning can be blocked until encrypted storage exists.
+Voice learning controls live in Settings → Voice. `voice_learning_enabled` defaults off, voice embeddings are kept by default for current speaker matching, and `voice_embeddings_encryption_required` defaults on so automatic long-term learning can be blocked until encrypted storage exists. If voice embedding retention is set to delete after transcript, Record and Upload keep transcript text, speaker labels, timings, chunk quality, and session speaker groups, but strip chunk and session speaker vectors before writing `history.jsonl`.
 
 | Workflow | WAV written? | Who writes | Who deletes | When deleted |
 |---|---|---|---|---|

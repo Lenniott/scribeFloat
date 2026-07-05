@@ -215,6 +215,28 @@ pub fn note_rename_session_speaker(
 }
 
 #[tauri::command]
+pub fn note_remove_voice_embeddings(
+    ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
+    id: String,
+) -> Result<(), AppError> {
+    validate_id(&id)?;
+    ctrl.remove_voice_embeddings(&id).map_err(AppError::from)?;
+    emit_note_item_updated(&app, &id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn history_remove_all_voice_embeddings(
+    ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
+) -> Result<usize, AppError> {
+    let changed = ctrl.remove_all_voice_embeddings().map_err(AppError::from)?;
+    app.emit("note://items-reset", ()).ok();
+    Ok(changed)
+}
+
+#[tauri::command]
 pub fn note_attach_transcript(
     history: State<'_, Arc<HistoryController>>,
     scribe: State<'_, Arc<ScribeController>>,

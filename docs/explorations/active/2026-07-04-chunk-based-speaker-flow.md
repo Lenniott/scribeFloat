@@ -223,15 +223,16 @@ Voice embeddings should be treated as sensitive local biometric data.
 Current storage safety slice:
 
 - `delete_after_transcript` strips chunk embeddings and session speaker centroid vectors before new Record and Upload notes are saved.
+- When voice data is kept and a macOS Keychain key is available, transcript chunk embeddings, transcript session speaker centroids, and saved voiceprint profile embeddings are encrypted in JSON storage with AES-256-GCM.
 - Settings can delete all saved voiceprint profiles.
 - Settings can remove stored voice vectors from all transcripts while keeping text, labels, timings, and quality scores.
-- Encryption is still not implemented, so automatic profile learning remains off.
+- Automatic profile learning remains off until rebuildable profile evidence and quality gates are implemented.
 
 ## Implementation checkpoints
 
 - [x] Checkpoint 1: Settings controls for voice learning, embedding retention, and encryption requirement. These store preferences only.
 - [x] Checkpoint 2: Transcript speaker evidence model with session speaker centroids. Clean chunks are averaged with duration weighting; evidence is stored on each history record as `session_speakers`; backend speaker rename cascades across the transcript group.
-- [ ] Checkpoint 3: Encrypted storage and voice data deletion controls. Deletion and retention controls are built; encrypted-at-rest profile/evidence storage is still pending.
+- [x] Checkpoint 3: Encrypted storage and voice data deletion controls. Chunk embeddings, session speaker centroids, and saved profile embeddings encrypt at rest when the macOS Keychain-backed voice key is available. Delete controls can remove saved profiles and transcript vectors while keeping transcript text readable.
 - [ ] Checkpoint 4: Rebuildable global profiles from accepted evidence.
 - [ ] Checkpoint 5: Quality-gated learning after user confirmation.
 

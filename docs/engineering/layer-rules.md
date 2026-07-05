@@ -34,11 +34,12 @@ IPC: JS calls `invoke('command_name', { args })` → Rust `#[tauri::command]` in
 
 | Owner | What it owns |
 |---|---|
-| `HistoryService` | Capture log (`{save_folder}/history.jsonl`): append on create/transcript/export/delete, compact, tombstone. Owns transcript voice-vector scrubbing so embeddings can be removed while labels/timings remain readable. Editor title/body → `note_sidecar` (`.notes/{id}/`), not jsonl. |
+| `HistoryService` | Capture log (`{save_folder}/history.jsonl`): append on create/transcript/export/delete, compact, tombstone. Owns transcript voice-vector encryption/decryption and scrubbing so embeddings can be encrypted at rest or removed while labels/timings remain readable. Editor title/body → `note_sidecar` (`.notes/{id}/`), not jsonl. |
 | `OutputService` | Markdown rendering (pure free functions) and durable file I/O: `.md` writes (opt-in via `save_transcripts_as_markdown`), session manifests, post-transcription cleanup, dictate failure salvage, legacy reads, delete primitives. Dictate never writes `.md`. |
 | `AudioService` | Opens audio streams and streams capture to checkpointed temp/session WAV files (16 kHz writer thread). Exposes an optional `Pcm16kTap` observer on the writer thread for live analysis — `audio.rs` never depends on the analysis module. Do not accumulate PCM in controllers. |
 | `services/analysis.rs` | Pure pitch/loudness analysis (no I/O, no locks): streaming `PitchAnalyzer` fed by the PCM tap, `detect_cuts` for voice-change cuts, canonical `rms`. Constructed per session and orchestrated by `ScribeController`; results persist via `OutputService` (`analysis.json`) and `HistoryService` (`speaker_change_cuts`). See ADR-0013. |
 | `services/speaker_chunks.rs` | Pure chunk orchestration helpers: convert cuts to voice-turn spans, compute chunk quality, assign chunk voiceprints to session speakers, derive transcript speaker centroids from clean chunks, map Whisper segments back to chunk labels. Controllers call it for Record and Upload; it does not own I/O or app state. |
+| `services/voice_crypto.rs` | Pure voice embedding encryption/decryption using AES-256-GCM. Production key material comes from the platform adapter; callers keep plaintext vectors in memory and store ciphertext at persistence boundaries. |
 | `PermissionsService` | The only code that checks OS permissions. |
 
 ---

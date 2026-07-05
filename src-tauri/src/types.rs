@@ -452,6 +452,8 @@ pub struct SpeakerChunk {
     pub matched_profile: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub embedding: Option<Vec<f32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypted_embedding: Option<EncryptedEmbedding>,
     pub audio_duration_s: f32,
     pub vad_purity: f32,
     pub rms_energy: f32,
@@ -465,6 +467,8 @@ pub struct SessionSpeaker {
     pub session_speaker_id: String,
     pub label: String,
     pub centroid_embedding: Vec<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypted_centroid_embedding: Option<EncryptedEmbedding>,
     pub clean_chunk_ids: Vec<String>,
     pub start_ms: u64,
     pub end_ms: u64,
@@ -660,8 +664,18 @@ pub struct VoiceprintProfile {
     pub slug: String,
     pub mic_device_id: Option<String>,
     pub embedding: Vec<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypted_embedding: Option<EncryptedEmbedding>,
     pub sample_count: u32,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EncryptedEmbedding {
+    pub version: u8,
+    pub algorithm: String,
+    pub nonce_b64: String,
+    pub ciphertext_b64: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

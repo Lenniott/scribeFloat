@@ -1,8 +1,9 @@
+use crate::services::voice_crypto::VoiceCryptoService;
 use crate::types::{SpeakerBlock, VoiceprintModelDownloadEvent, VoiceprintProfile};
 use anyhow::{anyhow, Context, Result};
 use sherpa_onnx::{SpeakerEmbeddingExtractor, SpeakerEmbeddingExtractorConfig};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use tauri::{AppHandle, Emitter};
 use tokio::io::AsyncWriteExt;
 
@@ -16,6 +17,7 @@ pub struct VoiceprintService {
     #[allow(dead_code)]
     threshold: RwLock<f32>,
     extractor: Mutex<Option<SpeakerEmbeddingExtractor>>,
+    crypto: RwLock<Option<Arc<VoiceCryptoService>>>,
 }
 
 impl VoiceprintService {
@@ -32,7 +34,16 @@ impl VoiceprintService {
             profiles_dir: profiles_dir.to_path_buf(),
             threshold: RwLock::new(clamp_threshold(threshold)),
             extractor: Mutex::new(None),
+            crypto: RwLock::new(None),
         })
+    }
+
+    pub fn set_crypto(&self, crypto: Arc<VoiceCryptoService>) {
+        *self.crypto.write().unwrap_or_else(|p| p.into_inner()) = Some(crypto);
+    }
+
+    fn crypto(&self) -> Option<Arc<VoiceCryptoService>> {
+        self.crypto.read().unwrap_or_else(|p| p.into_inner()).clone()
     }
 
     pub fn model_path(&self) -> &Path {
@@ -155,6 +166,7 @@ impl VoiceprintService {
     pub fn load_profiles(&self) -> Result<Vec<VoiceprintProfile>> {
         std::fs::create_dir_all(&self.profiles_dir)?;
         let mut profiles = Vec::new();
+        let crypto = self.crypto();
         for entry in std::fs::read_dir(&self.profiles_dir)? {
             let path = entry?.path();
             if path.extension().and_then(|e| e.to_str()) != Some("json") {
@@ -165,6 +177,16 @@ impl VoiceprintService {
             match serde_json::from_str::<VoiceprintProfile>(&raw) {
                 Ok(mut profile) => {
                     profile.slug = slugify(&profile.slug);
+                    if let Some(crypto) = crypto.as_deref() {
+                        if let Err(err) = decrypt_profile_embedding(&mut profile, crypto) {
+                            tracing::warn!(
+                                path = %path.display(),
+                                error = %err,
+                                "voiceprint profile embedding could not be decrypted"
+                            );
+                            continue;
+                        }
+                    }
                     profiles.push(profile);
                 }
                 Err(err) => {
@@ -183,7 +205,11 @@ impl VoiceprintService {
         std::fs::create_dir_all(&self.profiles_dir)?;
         let path = self.profile_path(&profile.slug);
         let tmp = path.with_extension("json.tmp");
-        let data = serde_json::to_string_pretty(&profile)?;
+        let mut disk_profile = profile.clone();
+        if let Some(crypto) = self.crypto().as_deref() {
+            encrypt_profile_embedding(&mut disk_profile, crypto)?;
+        }
+        let data = serde_json::to_string_pretty(&disk_profile)?;
         std::fs::write(&tmp, data)?;
         std::fs::rename(&tmp, &path)?;
         Ok(())
@@ -319,6 +345,7 @@ impl VoiceprintService {
             name,
             mic_device_id,
             embedding: l2_normalize(embedding),
+            encrypted_embedding: None,
             sample_count: 1,
             updated_at: chrono::Utc::now(),
         };
@@ -439,6 +466,37 @@ fn validate_profile(profile: &VoiceprintProfile) -> Result<()> {
     Ok(())
 }
 
+fn encrypt_profile_embedding(
+    profile: &mut VoiceprintProfile,
+    crypto: &VoiceCryptoService,
+) -> Result<()> {
+    if profile.embedding.is_empty() {
+        return Ok(());
+    }
+    profile.encrypted_embedding = Some(
+        crypto.encrypt_embedding(&profile.embedding, &profile_embedding_context(&profile.slug))?,
+    );
+    profile.embedding.clear();
+    Ok(())
+}
+
+fn decrypt_profile_embedding(
+    profile: &mut VoiceprintProfile,
+    crypto: &VoiceCryptoService,
+) -> Result<()> {
+    if profile.embedding.is_empty() {
+        if let Some(encrypted) = profile.encrypted_embedding.as_ref() {
+            profile.embedding =
+                crypto.decrypt_embedding(encrypted, &profile_embedding_context(&profile.slug))?;
+        }
+    }
+    Ok(())
+}
+
+fn profile_embedding_context(slug: &str) -> String {
+    format!("voiceprint-profile:{slug}:embedding")
+}
+
 #[allow(dead_code)]
 fn l2_normalize(mut values: Vec<f32>) -> Vec<f32> {
     let mag = values.iter().map(|v| v * v).sum::<f32>().sqrt();
@@ -470,6 +528,8 @@ fn clamp_threshold(threshold: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::voice_crypto::{StaticVoiceCryptoKeyProvider, VoiceCryptoService};
+    use std::sync::Arc;
 
     fn temp_dir(prefix: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("{prefix}-{}", uuid::Uuid::new_v4()));
@@ -482,6 +542,10 @@ mod tests {
         values[0] = first;
         values[1] = 1.0 - first;
         l2_normalize(values)
+    }
+
+    fn test_crypto() -> Arc<VoiceCryptoService> {
+        VoiceCryptoService::new(Arc::new(StaticVoiceCryptoKeyProvider::new(13)))
     }
 
     #[test]
@@ -516,6 +580,27 @@ mod tests {
         assert_eq!(deleted, 2);
         assert!(svc.load_profiles().unwrap().is_empty());
         assert!(root.join("keep.txt").exists());
+    }
+
+    #[test]
+    fn configured_crypto_encrypts_profile_embedding_at_rest_and_decrypts_on_load() {
+        let root = temp_dir("scribefloat-voiceprint-encrypted");
+        let crypto = test_crypto();
+        let svc = VoiceprintService::new(&root.join(VOICEPRINT_MODEL_FILE), &root, 0.75).unwrap();
+        svc.set_crypto(Arc::clone(&crypto));
+        let profile = svc.new_profile("You", None, embedding(1.0)).unwrap();
+
+        svc.save_profile(&profile).unwrap();
+
+        let raw = std::fs::read_to_string(root.join("you.json")).unwrap();
+        assert!(raw.contains("encrypted_embedding"));
+        assert!(!raw.contains(r#""embedding":["#));
+
+        let fresh = VoiceprintService::new(&root.join(VOICEPRINT_MODEL_FILE), &root, 0.75).unwrap();
+        fresh.set_crypto(crypto);
+        let profiles = fresh.load_profiles().unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].embedding, profile.embedding);
     }
 
     #[test]

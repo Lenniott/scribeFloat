@@ -11,4 +11,5 @@ pub mod speaker_blocks;
 pub mod speaker_chunks;
 pub mod transcribe_input;
 pub mod update;
+pub mod voice_crypto;
 pub mod voiceprint;

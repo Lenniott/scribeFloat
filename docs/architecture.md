@@ -288,7 +288,8 @@ graph TB
 - **MicSession**: `stop_and_finalize()` pauses the stream, signals the writer, and joins the writer thread. Drain uses `recv_timeout` (200 ms) — never blocking `recv()` — because cpal tears down CoreAudio asynchronously on macOS
 - **WAV Writer Thread**: resamples to 16 kHz mono i16 and appends to the target path (`mic.wav`, `speaker_seg_N.wav`, or dictate temp). Checkpoints the RIFF header periodically so crash mid-recording leaves a playable file
 - **PCM Tap (`Pcm16kTap`)**: optional observer on the writer thread, invoked with the post-resample 16 kHz samples — exactly what lands in the WAV, so observed time == mic.wav time. Scribe passes a tap that feeds `services/analysis.rs::PitchAnalyzer` (live pitch/loudness timeline). The cpal callback is untouched; a slow tap delays disk writes, never capture. At stop, `ScribeController::prepare_audio` harvests the analyzer (after the writer joins), runs `detect_cuts`, writes the frame timeline to `{session_dir}/analysis.json`, and stores the voice-change cuts on the session manifest + `HistoryRecord` (ADR-0013)
-- **Speaker Chunks**: mic-only Record uses live cuts; Upload computes the same cuts offline after decode. `services/speaker_chunks.rs` turns cuts into voice-turn spans, embeds those spans as chunk voiceprints, stores chunk evidence on `HistoryRecord.speaker_chunks`, derives transcript-level speaker centroids on `HistoryRecord.session_speakers`, and maps Whisper segments to local speaker labels such as `Speaker A` or saved profile names. If retention is set to delete after transcript, controllers strip chunk/session vectors before persisting while keeping readable labels and quality data. Whisper still runs once over the full mic PCM; true Whisper-per-chunk needs a batched ModelService path that reuses one loaded context.
+- **Speaker Chunks**: mic-only Record uses live cuts; Upload computes the same cuts offline after decode. `services/speaker_chunks.rs` turns cuts into voice-turn spans, embeds those spans as chunk voiceprints, stores chunk evidence on `HistoryRecord.speaker_chunks`, derives transcript-level speaker centroids on `HistoryRecord.session_speakers`, and maps Whisper segments to local speaker labels such as `Speaker A` or saved profile names. If retention is set to delete after transcript, controllers strip chunk/session vectors before persisting while keeping readable labels and quality data. If retention keeps vectors and the macOS Keychain-backed voice key is available, `HistoryService` encrypts those vectors before writing `history.jsonl` and decrypts them on load. Whisper still runs once over the full mic PCM; true Whisper-per-chunk needs a batched ModelService path that reuses one loaded context.
+- **Voice Crypto**: `services/voice_crypto.rs` encrypts voice embeddings with AES-256-GCM. The production key provider stores a local random key in macOS Keychain via the platform adapter. Voiceprint profile JSON and history JSONL store ciphertext fields; plaintext vectors stay in memory only.
 - **SpeakerAccumulator** (in `ScribeController`): holds `CapturedSpeakerSegment { start_ms, wav_path }` for each ON/OFF loopback window. At stop, segments are read back and assembled via `assemble_speaker_pcm`; per-segment WAVs are deleted after merge
 - **Platform Adapter**: the only place `#[cfg(target_os)]` lives for audio. Everything above is platform-agnostic
 
@@ -697,11 +698,13 @@ src-tauri/src/
 │   ├── audio.rs                AudioService, MicSession, streaming WAV writer, Pcm16kTap, read_wav_mono_f32
 │   ├── model.rs                ModelService, WhisperContext cache, Downloader, Merger
 │   ├── output.rs               OutputService, markdown rendering (pure), .md writes, manifest, cleanup, legacy reads, delete primitives
-│   ├── history.rs              HistoryService, append-only JSONL record store, compact, tombstone delete
+│   ├── history.rs              HistoryService, append-only JSONL record store, compact, tombstone delete, voice-vector encryption/scrub
 │   ├── config.rs               ConfigService, atomic save, get/update
 │   ├── hotkeys.rs              HotkeyService, HotkeyRegistrar trait, TauriHotkeyRegistrar
 │   ├── permissions.rs          PermissionsService (delegates to platform/permissions_impl)
 │   ├── speaker_chunks.rs       Chunk spans, chunk quality, chunk voiceprint grouping, segment-to-chunk speaker blocks
+│   ├── voice_crypto.rs         AES-256-GCM embedding encryption with platform key provider
+│   ├── voiceprint.rs           Voiceprint model download, embedding, profile storage, profile matching
 │   └── transcribe_input.rs     TranscribeInputService, expand_inputs, decode_input
 │
 └── platform/

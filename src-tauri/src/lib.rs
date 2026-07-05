@@ -565,6 +565,23 @@ pub fn run() {
             }
             let config = services::config::ConfigService::load(data_dir.join("config.json"))?;
             app.manage(Arc::clone(&config));
+            let voice_crypto = match platform::get_or_create_voice_crypto_key() {
+                Ok(_) => {
+                    let provider = services::voice_crypto::CachedVoiceCryptoKeyProvider::new(
+                        Arc::new(services::voice_crypto::KeychainVoiceCryptoKeyProvider),
+                    );
+                    let crypto = services::voice_crypto::VoiceCryptoService::new(provider);
+                    history.set_crypto(Arc::clone(&crypto));
+                    Some(crypto)
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        "voice embedding encryption unavailable; long-term voice learning remains blocked"
+                    );
+                    None
+                }
+            };
             {
                 let save_folder = config.get().save_folder;
                 if platform::windows_save_folder_needs_migration(&save_folder) {
@@ -628,6 +645,9 @@ pub fn run() {
                 &data_dir.join("voiceprints"),
                 config.get().voice_similarity_threshold,
             )?);
+            if let Some(crypto) = voice_crypto.as_ref() {
+                voiceprint.set_crypto(Arc::clone(crypto));
+            }
             let model_ctrl =
                 controllers::model::ModelController::new(Arc::clone(&model), Arc::clone(&config));
             let voiceprint_ctrl = controllers::voiceprint::VoiceprintController::new(

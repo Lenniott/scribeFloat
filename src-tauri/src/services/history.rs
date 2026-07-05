@@ -1,4 +1,5 @@
 use crate::services::note_sidecar;
+use crate::services::voice_crypto::VoiceCryptoService;
 use crate::types::{HistoryListItem, HistoryRecord};
 use anyhow::{Context, Result};
 use std::collections::{HashMap, HashSet};
@@ -15,6 +16,7 @@ use std::sync::{Arc, Mutex};
 /// call. When it changes the in-memory cache is reloaded for the new folder (no migration).
 pub struct HistoryService {
     inner: Mutex<HistoryInner>,
+    crypto: Mutex<Option<Arc<VoiceCryptoService>>>,
 }
 
 struct HistoryInner {
@@ -34,7 +36,16 @@ impl HistoryService {
                 records: Vec::new(),
                 index: HashMap::new(),
             }),
+            crypto: Mutex::new(None),
         })
+    }
+
+    pub fn set_crypto(&self, crypto: Arc<VoiceCryptoService>) {
+        *self.crypto.lock().unwrap_or_else(|p| p.into_inner()) = Some(crypto);
+    }
+
+    fn crypto(&self) -> Option<Arc<VoiceCryptoService>> {
+        self.crypto.lock().unwrap_or_else(|p| p.into_inner()).clone()
     }
 
     fn store_path(save_folder: &str) -> PathBuf {
@@ -58,12 +69,24 @@ impl HistoryService {
         let raw = std::fs::read_to_string(&path).context("read history.jsonl")?;
         let lines: Vec<&str> = raw.lines().collect();
         let last = lines.len().saturating_sub(1);
+        let crypto = self.crypto();
         for (i, line) in lines.iter().enumerate() {
             if line.trim().is_empty() {
                 continue;
             }
             match serde_json::from_str::<HistoryRecord>(line) {
-                Ok(record) => Self::apply_record(inner, record),
+                Ok(mut record) => {
+                    if let Some(crypto) = crypto.as_deref() {
+                        if let Err(err) = decrypt_record_embeddings(&mut record, crypto) {
+                            tracing::warn!(
+                                id = %record.id,
+                                error = %err,
+                                "voice embeddings could not be decrypted"
+                            );
+                        }
+                    }
+                    Self::apply_record(inner, record)
+                }
                 Err(e) => {
                     // A corrupt *trailing* line is a partial append after a crash — ignore it.
                     // A corrupt middle line is unexpected; log and skip (matches ConfigService).
@@ -91,12 +114,20 @@ impl HistoryService {
     }
 
     /// Append a single record line to `history.jsonl` (creating the folder/file if needed).
-    fn append_line(save_folder: &str, record: &HistoryRecord) -> Result<()> {
+    fn append_line(
+        save_folder: &str,
+        record: &HistoryRecord,
+        crypto: Option<&VoiceCryptoService>,
+    ) -> Result<()> {
         let path = Self::store_path(save_folder);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).context("create save folder for history store")?;
         }
-        let line = serde_json::to_string(record).context("serialize history record")?;
+        let mut disk_record = record.clone();
+        if let Some(crypto) = crypto {
+            encrypt_record_embeddings(&mut disk_record, crypto)?;
+        }
+        let line = serde_json::to_string(&disk_record).context("serialize history record")?;
         let mut file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -114,7 +145,8 @@ impl HistoryService {
         let mut inner = self.inner.lock().unwrap();
         self.ensure_loaded(&mut inner, save_folder)?;
         let id = record.id.clone();
-        Self::append_line(save_folder, &record)?;
+        let crypto = self.crypto();
+        Self::append_line(save_folder, &record, crypto.as_deref())?;
         Self::apply_record(&mut inner, record);
         Ok(id)
     }
@@ -128,7 +160,8 @@ impl HistoryService {
         };
         let mut updated = inner.records[idx].clone();
         updated.markdown_path = Some(md_path.to_string());
-        Self::append_line(save_folder, &updated)?;
+        let crypto = self.crypto();
+        Self::append_line(save_folder, &updated, crypto.as_deref())?;
         inner.records[idx] = updated;
         Ok(())
     }
@@ -179,7 +212,8 @@ impl HistoryService {
             }
         }
 
-        Self::append_line(save_folder, &updated)?;
+        let crypto = self.crypto();
+        Self::append_line(save_folder, &updated, crypto.as_deref())?;
         inner.records[idx] = updated;
         Ok(())
     }
@@ -195,7 +229,8 @@ impl HistoryService {
 
         let mut updated = inner.records[idx].clone();
         strip_voice_embeddings(&mut updated);
-        Self::append_line(save_folder, &updated)?;
+        let crypto = self.crypto();
+        Self::append_line(save_folder, &updated, crypto.as_deref())?;
         inner.records[idx] = updated;
         Ok(())
     }
@@ -216,7 +251,8 @@ impl HistoryService {
         for idx in live_indexes {
             let mut updated = inner.records[idx].clone();
             if strip_voice_embeddings(&mut updated) {
-                Self::append_line(save_folder, &updated)?;
+                let crypto = self.crypto();
+                Self::append_line(save_folder, &updated, crypto.as_deref())?;
                 inner.records[idx] = updated;
                 changed += 1;
             }
@@ -339,7 +375,8 @@ impl HistoryService {
             .map(|s| s.end_ms.max(0))
             .unwrap_or(0);
         updated.word_count = crate::services::output::count_words(&updated.segments, rules, prefix);
-        Self::append_line(save_folder, &updated)?;
+        let crypto = self.crypto();
+        Self::append_line(save_folder, &updated, crypto.as_deref())?;
         inner.records[idx] = updated;
         Ok(())
     }
@@ -358,7 +395,8 @@ impl HistoryService {
         let before = inner.records[idx].clone();
         let mut tombstone = before.clone();
         tombstone.deleted = true;
-        Self::append_line(save_folder, &tombstone)?;
+        let crypto = self.crypto();
+        Self::append_line(save_folder, &tombstone, crypto.as_deref())?;
         inner.records[idx] = tombstone;
         note_sidecar::remove_note_dir(save_folder, id);
         Ok(Some(before))
@@ -423,7 +461,13 @@ impl HistoryService {
         {
             let mut file = std::fs::File::create(&tmp).context("create history.jsonl.tmp")?;
             for record in &live {
-                let line = serde_json::to_string(record).context("serialize history record")?;
+                let mut disk_record = (*record).clone();
+                let crypto = self.crypto();
+                if let Some(crypto) = crypto.as_deref() {
+                    encrypt_record_embeddings(&mut disk_record, crypto)?;
+                }
+                let line = serde_json::to_string(&disk_record)
+                    .context("serialize history record")?;
                 file.write_all(line.as_bytes())?;
                 file.write_all(b"\n")?;
             }
@@ -443,6 +487,9 @@ pub fn strip_voice_embeddings(record: &mut HistoryRecord) -> bool {
         if chunk.embedding.take().is_some() {
             changed = true;
         }
+        if chunk.encrypted_embedding.take().is_some() {
+            changed = true;
+        }
     }
 
     for speaker in &mut record.session_speakers {
@@ -450,15 +497,77 @@ pub fn strip_voice_embeddings(record: &mut HistoryRecord) -> bool {
             speaker.centroid_embedding.clear();
             changed = true;
         }
+        if speaker.encrypted_centroid_embedding.take().is_some() {
+            changed = true;
+        }
     }
 
     changed
+}
+
+fn encrypt_record_embeddings(record: &mut HistoryRecord, crypto: &VoiceCryptoService) -> Result<()> {
+    for chunk in &mut record.speaker_chunks {
+        if let Some(embedding) = chunk.embedding.as_deref() {
+            chunk.encrypted_embedding = Some(crypto.encrypt_embedding(
+                embedding,
+                &chunk_embedding_context(&record.id, &chunk.id),
+            )?);
+            chunk.embedding = None;
+        }
+    }
+
+    for speaker in &mut record.session_speakers {
+        if !speaker.centroid_embedding.is_empty() {
+            speaker.encrypted_centroid_embedding = Some(crypto.encrypt_embedding(
+                &speaker.centroid_embedding,
+                &speaker_embedding_context(&record.id, &speaker.session_speaker_id),
+            )?);
+            speaker.centroid_embedding.clear();
+        }
+    }
+
+    Ok(())
+}
+
+fn decrypt_record_embeddings(record: &mut HistoryRecord, crypto: &VoiceCryptoService) -> Result<()> {
+    for chunk in &mut record.speaker_chunks {
+        if chunk.embedding.is_none() {
+            if let Some(encrypted) = chunk.encrypted_embedding.as_ref() {
+                chunk.embedding = Some(crypto.decrypt_embedding(
+                    encrypted,
+                    &chunk_embedding_context(&record.id, &chunk.id),
+                )?);
+            }
+        }
+    }
+
+    for speaker in &mut record.session_speakers {
+        if speaker.centroid_embedding.is_empty() {
+            if let Some(encrypted) = speaker.encrypted_centroid_embedding.as_ref() {
+                speaker.centroid_embedding = crypto.decrypt_embedding(
+                    encrypted,
+                    &speaker_embedding_context(&record.id, &speaker.session_speaker_id),
+                )?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn chunk_embedding_context(record_id: &str, chunk_id: &str) -> String {
+    format!("history:{record_id}:chunk:{chunk_id}:embedding")
+}
+
+fn speaker_embedding_context(record_id: &str, session_speaker_id: &str) -> String {
+    format!("history:{record_id}:session-speaker:{session_speaker_id}:centroid")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::services::note_sidecar;
+    use crate::services::voice_crypto::{StaticVoiceCryptoKeyProvider, VoiceCryptoService};
     use crate::types::{HistoryKind, Segment};
 
     fn temp_folder() -> String {
@@ -476,6 +585,10 @@ mod tests {
             source: None,
         }];
         HistoryRecord::from_dictate(&segs, text, "tiny".to_string())
+    }
+
+    fn test_crypto() -> Arc<VoiceCryptoService> {
+        VoiceCryptoService::new(Arc::new(StaticVoiceCryptoKeyProvider::new(11)))
     }
 
     #[test]
@@ -553,6 +666,7 @@ mod tests {
             session_speaker_id: "speaker-1".into(),
             label: "Speaker A".into(),
             centroid_embedding: vec![1.0, 0.0],
+            encrypted_centroid_embedding: None,
             clean_chunk_ids: vec!["chunk-0001".into()],
             start_ms: 0,
             end_ms: 2_000,
@@ -569,6 +683,7 @@ mod tests {
             cluster_id: Some("speaker-1".into()),
             matched_profile: None,
             embedding: Some(vec![1.0, 0.0]),
+            encrypted_embedding: None,
             audio_duration_s: 2.0,
             vad_purity: 1.0,
             rms_energy: 0.1,
@@ -603,6 +718,7 @@ mod tests {
             session_speaker_id: "speaker-1".into(),
             label: "Speaker A".into(),
             centroid_embedding: vec![1.0, 0.0],
+            encrypted_centroid_embedding: None,
             clean_chunk_ids: vec!["chunk-0001".into()],
             start_ms: 0,
             end_ms: 2_000,
@@ -619,6 +735,7 @@ mod tests {
             cluster_id: Some("speaker-1".into()),
             matched_profile: None,
             embedding: Some(vec![1.0, 0.0]),
+            encrypted_embedding: None,
             audio_duration_s: 2.0,
             vad_purity: 1.0,
             rms_energy: 0.1,
@@ -657,6 +774,7 @@ mod tests {
             cluster_id: Some("speaker-1".into()),
             matched_profile: None,
             embedding: Some(vec![1.0, 0.0]),
+            encrypted_embedding: None,
             audio_duration_s: 2.0,
             vad_purity: 1.0,
             rms_energy: 0.1,
@@ -685,6 +803,91 @@ mod tests {
             .expect("unchanged present")
             .speaker_chunks
             .is_empty());
+    }
+
+    #[test]
+    fn configured_crypto_encrypts_history_embeddings_at_rest_and_decrypts_on_load() {
+        let folder = temp_folder();
+        let crypto = test_crypto();
+        let svc = HistoryService::new();
+        svc.set_crypto(Arc::clone(&crypto));
+        let mut rec = record("encrypted");
+        rec.speaker_chunks = vec![crate::types::SpeakerChunk {
+            id: "chunk-0001".into(),
+            start_ms: 0,
+            end_ms: 2_000,
+            label: "Speaker A".into(),
+            cluster_id: Some("speaker-1".into()),
+            matched_profile: None,
+            embedding: Some(vec![1.0, 0.0]),
+            encrypted_embedding: None,
+            audio_duration_s: 2.0,
+            vad_purity: 1.0,
+            rms_energy: 0.1,
+            clipping: false,
+            profile_score: None,
+        }];
+        rec.session_speakers = vec![crate::types::SessionSpeaker {
+            session_speaker_id: "speaker-1".into(),
+            label: "Speaker A".into(),
+            centroid_embedding: vec![0.0, 1.0],
+            encrypted_centroid_embedding: None,
+            clean_chunk_ids: vec!["chunk-0001".into()],
+            start_ms: 0,
+            end_ms: 2_000,
+            duration_ms: 2_000,
+            radius: 0.0,
+            quality_score: 0.9,
+            user_confirmed: false,
+        }];
+        let id = svc.append(&folder, rec).expect("append encrypted");
+
+        let raw = std::fs::read_to_string(HistoryService::store_path(&folder)).unwrap();
+        assert!(raw.contains("encrypted_embedding"));
+        assert!(raw.contains("encrypted_centroid_embedding"));
+        assert!(!raw.contains(r#""embedding":[1.0,0.0]"#));
+        assert!(!raw.contains(r#""centroid_embedding":[0.0,1.0]"#));
+
+        let fresh = HistoryService::new();
+        fresh.set_crypto(crypto);
+        let got = fresh.get(&folder, &id).unwrap().expect("present");
+        assert_eq!(got.speaker_chunks[0].embedding, Some(vec![1.0, 0.0]));
+        assert_eq!(got.session_speakers[0].centroid_embedding, vec![0.0, 1.0]);
+    }
+
+    #[test]
+    fn remove_voice_embeddings_clears_encrypted_history_vectors_too() {
+        let folder = temp_folder();
+        let crypto = test_crypto();
+        let svc = HistoryService::new();
+        svc.set_crypto(crypto);
+        let mut rec = record("encrypted");
+        rec.speaker_chunks = vec![crate::types::SpeakerChunk {
+            id: "chunk-0001".into(),
+            start_ms: 0,
+            end_ms: 2_000,
+            label: "Speaker A".into(),
+            cluster_id: Some("speaker-1".into()),
+            matched_profile: None,
+            embedding: Some(vec![1.0, 0.0]),
+            encrypted_embedding: None,
+            audio_duration_s: 2.0,
+            vad_purity: 1.0,
+            rms_energy: 0.1,
+            clipping: false,
+            profile_score: None,
+        }];
+        let id = svc.append(&folder, rec).expect("append encrypted");
+
+        svc.remove_voice_embeddings(&folder, &id)
+            .expect("remove encrypted embeddings");
+
+        let raw = std::fs::read_to_string(HistoryService::store_path(&folder)).unwrap();
+        let last_line = raw.lines().last().unwrap();
+        assert!(!last_line.contains("encrypted_embedding"));
+        let got = svc.get(&folder, &id).unwrap().expect("present");
+        assert_eq!(got.speaker_chunks[0].label, "Speaker A");
+        assert_eq!(got.speaker_chunks[0].embedding, None);
     }
 
     #[test]
@@ -902,6 +1105,7 @@ mod tests {
                 session_speaker_id: "speaker-1".into(),
                 label: "Speaker A".into(),
                 centroid_embedding: vec![1.0, 0.0],
+                encrypted_centroid_embedding: None,
                 clean_chunk_ids: vec!["chunk-0001".into()],
                 start_ms: 0,
                 end_ms: 2_000,

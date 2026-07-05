@@ -7,6 +7,7 @@ name = "ScribeFloat"
 version = "0.2.195"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "cpal",
  "enigo",
@@ -18,6 +19,7 @@ dependencies = [
  "rdev",
  "regex",
  "reqwest 0.12.28",
+ "ring",
  "serde",
  "serde_json",
  "sha2",

@@ -6,7 +6,7 @@ use crate::services::model::ModelService;
 use crate::services::output::filter_hallucination_phrases;
 use crate::services::output::OutputService;
 use crate::services::speaker_chunks::{
-    analyze_chunks, build_blocks_from_chunks,
+    analyze_chunks, build_blocks_from_chunks, build_session_speakers,
 };
 use crate::services::transcribe_input::{TranscribeInputItem, TranscribeInputService};
 use crate::services::voiceprint::VoiceprintService;
@@ -383,8 +383,8 @@ impl TranscribeController {
             );
 
             let dual_source = decoded.speaker_pcm_16k.is_some();
-            let (speaker_blocks, speaker_chunks) = if dual_source {
-                (Vec::new(), Vec::new())
+            let (speaker_blocks, speaker_chunks, session_speakers) = if dual_source {
+                (Vec::new(), Vec::new(), Vec::new())
             } else {
                 let speaker_chunks = analyze_chunks(
                     &decoded.mic_pcm_16k,
@@ -393,8 +393,9 @@ impl TranscribeController {
                     &self.voiceprint,
                     cfg.voice_similarity_threshold,
                 );
+                let session_speakers = build_session_speakers(&speaker_chunks);
                 let speaker_blocks = build_blocks_from_chunks(&segments, &speaker_chunks);
-                (speaker_blocks, speaker_chunks)
+                (speaker_blocks, speaker_chunks, session_speakers)
             };
             // Markdown is opt-in; write `.md` only when the toggle is on.
             let markdown_path = if markdown_on {
@@ -460,6 +461,7 @@ impl TranscribeController {
             record.speaker_blocks = speaker_blocks;
             record.speaker_change_cuts = speaker_change_cuts;
             record.speaker_chunks = speaker_chunks;
+            record.session_speakers = session_speakers;
             if let Err(e) = self.history.append(&save_folder, record) {
                 tracing::warn!(error = %e, "failed to append transcribe history record");
             } else {

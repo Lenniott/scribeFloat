@@ -223,7 +223,7 @@ Voice embeddings should be treated as sensitive local biometric data.
 ## Implementation checkpoints
 
 - [x] Checkpoint 1: Settings controls for voice learning, embedding retention, and encryption requirement. These store preferences only.
-- [ ] Checkpoint 2: Transcript speaker evidence model with session speaker centroids.
+- [x] Checkpoint 2: Transcript speaker evidence model with session speaker centroids. Clean chunks are averaged with duration weighting; evidence is stored on each history record as `session_speakers`; backend speaker rename cascades across the transcript group.
 - [ ] Checkpoint 3: Encrypted storage and voice data deletion controls.
 - [ ] Checkpoint 4: Rebuildable global profiles from accepted evidence.
 - [ ] Checkpoint 5: Quality-gated learning after user confirmation.

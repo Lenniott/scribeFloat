@@ -200,6 +200,21 @@ pub fn note_set_tags(
 }
 
 #[tauri::command]
+pub fn note_rename_session_speaker(
+    ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
+    id: String,
+    session_speaker_id: String,
+    label: String,
+) -> Result<(), AppError> {
+    validate_id(&id)?;
+    ctrl.rename_session_speaker(&id, &session_speaker_id, &label)
+        .map_err(AppError::from)?;
+    emit_note_item_updated(&app, &id);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn note_attach_transcript(
     history: State<'_, Arc<HistoryController>>,
     scribe: State<'_, Arc<ScribeController>>,
@@ -217,6 +232,7 @@ pub fn note_attach_transcript(
             pending.speaker_blocks,
             pending.speaker_change_cuts,
             pending.speaker_chunks,
+            pending.session_speakers,
             pending.notes,
             pending.model,
             pending.speaker_capture,

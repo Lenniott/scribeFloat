@@ -461,6 +461,21 @@ pub struct SpeakerChunk {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionSpeaker {
+    pub session_speaker_id: String,
+    pub label: String,
+    pub centroid_embedding: Vec<f32>,
+    pub clean_chunk_ids: Vec<String>,
+    pub start_ms: u64,
+    pub end_ms: u64,
+    pub duration_ms: u64,
+    pub radius: f32,
+    pub quality_score: f32,
+    #[serde(default)]
+    pub user_confirmed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
     pub id: String,
     pub text: String,
@@ -871,6 +886,10 @@ pub struct HistoryRecord {
     /// analysis.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub speaker_chunks: Vec<SpeakerChunk>,
+    /// Transcript-level speaker centroids derived from clean chunks. Empty for
+    /// legacy records and paths that do not run speaker analysis.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub session_speakers: Vec<SessionSpeaker>,
     #[serde(default)]
     pub notes: Vec<Note>,
     pub duration_ms: i64,
@@ -969,6 +988,7 @@ impl HistoryRecord {
             speaker_blocks: Vec::new(),
             speaker_change_cuts: Vec::new(),
             speaker_chunks: Vec::new(),
+            session_speakers: Vec::new(),
             notes,
             duration_ms,
             word_count,
@@ -1258,6 +1278,8 @@ mod tests {
         }"#;
         let record: HistoryRecord = serde_json::from_str(legacy).expect("parse legacy");
         assert!(record.speaker_change_cuts.is_empty());
+        assert!(record.speaker_chunks.is_empty());
+        assert!(record.session_speakers.is_empty());
     }
 
     #[test]

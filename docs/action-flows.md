@@ -79,7 +79,7 @@ User records mic only. No system audio capture.
 13. Model Service: loads selected model (from cache or disk; tiny/base may already be preloaded)
 14. Model Service: transcribes the mic PCM once → returns timestamped segments
 15. ScribeController uses live voice-change cuts to build mic chunks
-16. Speaker chunk service: embeds each chunk, groups chunk voiceprints into local speakers, and maps Whisper segments to their parent chunk labels
+16. Speaker chunk service: embeds each chunk, groups chunk voiceprints into local speakers, derives transcript-level session speaker centroids from clean chunks, and maps Whisper segments to their parent chunk labels
 17. Output Service: renders transcript markdown and applies word replacement rules
 18. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting), including `speaker_change_cuts` and `speaker_chunks`
 19. Check: `save_transcripts_as_markdown` setting

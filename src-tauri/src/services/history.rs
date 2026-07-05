@@ -1,7 +1,7 @@
 use crate::services::note_sidecar;
 use crate::types::{HistoryListItem, HistoryRecord};
 use anyhow::{Context, Result};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -133,6 +133,57 @@ impl HistoryService {
         Ok(())
     }
 
+    /// Rename a transcript-local speaker group and cascade that label to its
+    /// chunks and rendered speaker blocks. This is a log-structured update.
+    pub fn rename_session_speaker(
+        &self,
+        save_folder: &str,
+        id: &str,
+        session_speaker_id: &str,
+        label: &str,
+    ) -> Result<()> {
+        let mut inner = self.inner.lock().unwrap();
+        self.ensure_loaded(&mut inner, save_folder)?;
+        let Some(&idx) = inner.index.get(id) else {
+            return Ok(());
+        };
+
+        let mut updated = inner.records[idx].clone();
+        let Some(speaker) = updated
+            .session_speakers
+            .iter_mut()
+            .find(|speaker| speaker.session_speaker_id == session_speaker_id)
+        else {
+            return Ok(());
+        };
+        speaker.label = label.to_string();
+        speaker.user_confirmed = true;
+
+        let chunk_ids: HashSet<String> = updated
+            .speaker_chunks
+            .iter_mut()
+            .filter(|chunk| chunk.cluster_id.as_deref() == Some(session_speaker_id))
+            .map(|chunk| {
+                chunk.label = label.to_string();
+                chunk.id.clone()
+            })
+            .collect();
+
+        for block in &mut updated.speaker_blocks {
+            if block
+                .chunk_id
+                .as_ref()
+                .is_some_and(|chunk_id| chunk_ids.contains(chunk_id))
+            {
+                block.label = label.to_string();
+            }
+        }
+
+        Self::append_line(save_folder, &updated)?;
+        inner.records[idx] = updated;
+        Ok(())
+    }
+
     /// Update written body text — overwrites `{save_folder}/.notes/{id}/written.md` in place.
     /// Does not append to `history.jsonl` (high-frequency editor autosave).
     pub fn update_written_content(&self, save_folder: &str, id: &str, content: &str) -> Result<()> {
@@ -175,6 +226,7 @@ impl HistoryService {
         speaker_blocks: Vec<crate::types::SpeakerBlock>,
         speaker_change_cuts: Vec<crate::types::SpeakerChangeCut>,
         speaker_chunks: Vec<crate::types::SpeakerChunk>,
+        session_speakers: Vec<crate::types::SessionSpeaker>,
         notes: Vec<crate::types::Note>,
         model: String,
         speaker_capture: bool,
@@ -224,6 +276,13 @@ impl HistoryService {
                 chunk.start_ms = chunk.start_ms.saturating_add(offset_ms as u64);
                 chunk.end_ms = chunk.end_ms.saturating_add(offset_ms as u64);
                 chunk
+            }));
+        updated
+            .session_speakers
+            .extend(session_speakers.into_iter().map(|mut speaker| {
+                speaker.start_ms = speaker.start_ms.saturating_add(offset_ms as u64);
+                speaker.end_ms = speaker.end_ms.saturating_add(offset_ms as u64);
+                speaker
             }));
         updated.model = model;
         updated.speaker_capture = speaker_capture;
@@ -425,6 +484,56 @@ mod tests {
     }
 
     #[test]
+    fn rename_session_speaker_cascades_to_chunks_and_blocks() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let mut rec = record("hello");
+        rec.session_speakers = vec![crate::types::SessionSpeaker {
+            session_speaker_id: "speaker-1".into(),
+            label: "Speaker A".into(),
+            centroid_embedding: vec![1.0, 0.0],
+            clean_chunk_ids: vec!["chunk-0001".into()],
+            start_ms: 0,
+            end_ms: 2_000,
+            duration_ms: 2_000,
+            radius: 0.0,
+            quality_score: 0.9,
+            user_confirmed: false,
+        }];
+        rec.speaker_chunks = vec![crate::types::SpeakerChunk {
+            id: "chunk-0001".into(),
+            start_ms: 0,
+            end_ms: 2_000,
+            label: "Speaker A".into(),
+            cluster_id: Some("speaker-1".into()),
+            matched_profile: None,
+            embedding: Some(vec![1.0, 0.0]),
+            audio_duration_s: 2.0,
+            vad_purity: 1.0,
+            rms_energy: 0.1,
+            clipping: false,
+            profile_score: None,
+        }];
+        rec.speaker_blocks = vec![crate::types::SpeakerBlock {
+            label: "Speaker A".into(),
+            start_ms: Some(0),
+            end_ms: Some(2_000),
+            text: "hello".into(),
+            chunk_id: Some("chunk-0001".into()),
+        }];
+        let id = svc.append(&folder, rec).expect("append");
+
+        svc.rename_session_speaker(&folder, &id, "speaker-1", "Gilgamesh")
+            .expect("rename speaker");
+
+        let got = svc.get(&folder, &id).unwrap().expect("present");
+        assert_eq!(got.session_speakers[0].label, "Gilgamesh");
+        assert!(got.session_speakers[0].user_confirmed);
+        assert_eq!(got.speaker_chunks[0].label, "Gilgamesh");
+        assert_eq!(got.speaker_blocks[0].label, "Gilgamesh");
+    }
+
+    #[test]
     fn delete_tombstones_and_returns_record() {
         let folder = temp_folder();
         let svc = HistoryService::new();
@@ -563,6 +672,7 @@ mod tests {
             vec![],
             vec![],
             vec![],
+            vec![],
             "base".into(),
             false,
             false,
@@ -600,6 +710,7 @@ mod tests {
             vec![],
             vec![],
             vec![],
+            vec![],
             vec![crate::types::Note {
                 id: "note-1".into(),
                 text: "marker".into(),
@@ -633,6 +744,18 @@ mod tests {
                 reasons: [crate::types::CutReason::Pitch].into_iter().collect(),
             }],
             vec![],
+            vec![crate::types::SessionSpeaker {
+                session_speaker_id: "speaker-1".into(),
+                label: "Speaker A".into(),
+                centroid_embedding: vec![1.0, 0.0],
+                clean_chunk_ids: vec!["chunk-0001".into()],
+                start_ms: 0,
+                end_ms: 2_000,
+                duration_ms: 2_000,
+                radius: 0.0,
+                quality_score: 0.9,
+                user_confirmed: false,
+            }],
             vec![crate::types::Note {
                 id: "note-2".into(),
                 text: "second marker".into(),
@@ -661,6 +784,9 @@ mod tests {
         // Cut attached in the second recording shifts by the 1 s offset.
         assert_eq!(got.speaker_change_cuts.len(), 1);
         assert!((got.speaker_change_cuts[0].time_s - 1.5).abs() < 1e-6);
+        assert_eq!(got.session_speakers.len(), 1);
+        assert_eq!(got.session_speakers[0].start_ms, 1_000);
+        assert_eq!(got.session_speakers[0].end_ms, 3_000);
     }
 
     #[test]

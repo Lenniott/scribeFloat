@@ -1,6 +1,8 @@
 use crate::services::analysis::rms;
 use crate::services::voiceprint::VoiceprintService;
-use crate::types::{Segment, SpeakerBlock, SpeakerChangeCut, SpeakerChunk, VoiceprintProfile};
+use crate::types::{
+    Segment, SessionSpeaker, SpeakerBlock, SpeakerChangeCut, SpeakerChunk, VoiceprintProfile,
+};
 
 const MIN_EMBED_MS: u64 = 2_000;
 const MIN_TURN_CUT_MS: u64 = 1_500;
@@ -8,6 +10,7 @@ const VAD_FRAME_SAMPLES: usize = 1024;
 const SPEECH_RMS_GATE: f32 = 1e-3;
 const CLIP_GATE: f32 = 0.999;
 const LOCAL_CLUSTER_THRESHOLD: f32 = 0.60;
+const CLEAN_CHUNK_MIN_PURITY: f32 = 0.60;
 const LOCAL_SPEAKER_PREFIX: &str = "Speaker ";
 const OTHER_LABEL: &str = "Other";
 
@@ -202,10 +205,129 @@ pub fn build_blocks_from_chunks(
     merge_blocks_same_label_and_chunk(blocks)
 }
 
+pub fn build_session_speakers(chunks: &[SpeakerChunk]) -> Vec<SessionSpeaker> {
+    let mut groups: Vec<(String, Vec<&SpeakerChunk>)> = Vec::new();
+    for chunk in chunks
+        .iter()
+        .filter(|chunk| clean_for_session_speaker(chunk))
+    {
+        let id = chunk.cluster_id.clone().unwrap_or_else(|| chunk.id.clone());
+        if let Some((_, members)) = groups.iter_mut().find(|(group_id, _)| *group_id == id) {
+            members.push(chunk);
+        } else {
+            groups.push((id, vec![chunk]));
+        }
+    }
+
+    groups
+        .into_iter()
+        .filter_map(|(session_speaker_id, members)| {
+            let centroid_embedding = weighted_centroid(&members)?;
+            let start_ms = members
+                .iter()
+                .map(|chunk| chunk.start_ms)
+                .min()
+                .unwrap_or(0);
+            let end_ms = members
+                .iter()
+                .map(|chunk| chunk.end_ms)
+                .max()
+                .unwrap_or(start_ms);
+            let duration_ms = members.iter().map(|chunk| chunk_duration_ms(chunk)).sum();
+            let radius = speaker_radius(&centroid_embedding, &members);
+            let quality_score = speaker_quality_score(&members, radius);
+            let label = members
+                .iter()
+                .find(|chunk| chunk.label != OTHER_LABEL)
+                .or_else(|| members.first())
+                .map(|chunk| chunk.label.clone())
+                .unwrap_or_else(|| OTHER_LABEL.to_string());
+
+            Some(SessionSpeaker {
+                session_speaker_id,
+                label,
+                centroid_embedding,
+                clean_chunk_ids: members.iter().map(|chunk| chunk.id.clone()).collect(),
+                start_ms,
+                end_ms,
+                duration_ms,
+                radius,
+                quality_score,
+                user_confirmed: false,
+            })
+        })
+        .collect()
+}
+
 pub fn pcm_slice(pcm: &[f32], sample_rate: u32, span: ChunkSpan) -> &[f32] {
     let start = ms_to_samples(span.start_ms, sample_rate).min(pcm.len());
     let end = ms_to_samples(span.end_ms, sample_rate).min(pcm.len());
     &pcm[start..end.max(start)]
+}
+
+fn clean_for_session_speaker(chunk: &SpeakerChunk) -> bool {
+    chunk.embedding.is_some()
+        && chunk.audio_duration_s >= MIN_EMBED_MS as f32 / 1000.0
+        && chunk.vad_purity >= CLEAN_CHUNK_MIN_PURITY
+        && !chunk.clipping
+}
+
+fn weighted_centroid(chunks: &[&SpeakerChunk]) -> Option<Vec<f32>> {
+    let first = chunks.first()?.embedding.as_ref()?;
+    let len = first.len();
+    let mut centroid = vec![0.0; len];
+    let mut total_weight = 0.0_f32;
+    for chunk in chunks {
+        let embedding = chunk.embedding.as_deref()?;
+        if embedding.len() != len {
+            continue;
+        }
+        let weight = chunk_duration_ms(chunk).max(1) as f32;
+        total_weight += weight;
+        for (dst, value) in centroid.iter_mut().zip(embedding.iter()) {
+            *dst += *value * weight;
+        }
+    }
+    if total_weight <= 0.0 {
+        return None;
+    }
+    for value in &mut centroid {
+        *value /= total_weight;
+    }
+    Some(l2_normalize(centroid))
+}
+
+fn speaker_radius(centroid: &[f32], chunks: &[&SpeakerChunk]) -> f32 {
+    let mut distances = Vec::new();
+    for chunk in chunks {
+        if let Some(embedding) = chunk.embedding.as_deref() {
+            distances.push(1.0 - cosine(centroid, embedding));
+        }
+    }
+    if distances.is_empty() {
+        return 0.0;
+    }
+    distances.iter().copied().fold(0.0_f32, f32::max).max(0.0)
+}
+
+fn speaker_quality_score(chunks: &[&SpeakerChunk], radius: f32) -> f32 {
+    let total_duration = chunks
+        .iter()
+        .map(|chunk| chunk_duration_ms(chunk).max(1) as f32)
+        .sum::<f32>();
+    if total_duration <= 0.0 {
+        return 0.0;
+    }
+    let purity = chunks
+        .iter()
+        .map(|chunk| chunk.vad_purity * chunk_duration_ms(chunk).max(1) as f32)
+        .sum::<f32>()
+        / total_duration;
+    (purity * (1.0 - radius).clamp(0.0, 1.0)).clamp(0.0, 1.0)
+}
+
+fn chunk_duration_ms(chunk: &SpeakerChunk) -> u64 {
+    chunk.end_ms.saturating_sub(chunk.start_ms)
 }
 
 fn cluster_chunks(
@@ -551,6 +673,44 @@ mod tests {
         assert_eq!(clusters.len(), 2);
         assert_eq!(clusters[0].members, vec![0, 1]);
         assert_eq!(clusters[1].members, vec![2]);
+    }
+
+    #[test]
+    fn session_speaker_centroid_prefers_long_clean_chunks() {
+        let mut short = test_chunk_with_embedding("chunk-0001", 0, 2_000, vec![1.0, 0.0]);
+        short.label = "Gilgamesh".to_string();
+        let mut long = test_chunk_with_embedding("chunk-0002", 2_000, 17_000, vec![0.0, 1.0]);
+        long.label = "Gilgamesh".to_string();
+
+        let speakers = build_session_speakers(&[short, long]);
+        assert_eq!(speakers.len(), 1);
+        assert_eq!(speakers[0].label, "Gilgamesh");
+        assert_eq!(
+            speakers[0].clean_chunk_ids,
+            vec!["chunk-0001".to_string(), "chunk-0002".to_string()]
+        );
+        assert_eq!(speakers[0].duration_ms, 17_000);
+        assert!(
+            speakers[0].centroid_embedding[1] > speakers[0].centroid_embedding[0],
+            "long clean chunk should carry more centroid weight: {:?}",
+            speakers[0].centroid_embedding
+        );
+        assert!(!speakers[0].user_confirmed);
+    }
+
+    #[test]
+    fn session_speaker_uses_only_clean_chunks() {
+        let clean = test_chunk_with_embedding("chunk-0001", 0, 5_000, vec![1.0, 0.0]);
+        let mut clipped = test_chunk_with_embedding("chunk-0002", 5_000, 12_000, vec![0.0, 1.0]);
+        clipped.clipping = true;
+        let mut low_purity =
+            test_chunk_with_embedding("chunk-0003", 12_000, 20_000, vec![0.0, 1.0]);
+        low_purity.vad_purity = 0.2;
+
+        let speakers = build_session_speakers(&[clean, clipped, low_purity]);
+        assert_eq!(speakers.len(), 1);
+        assert_eq!(speakers[0].clean_chunk_ids, vec!["chunk-0001"]);
+        assert_eq!(speakers[0].duration_ms, 5_000);
     }
 
     #[test]

@@ -97,6 +97,29 @@ impl HistoryController {
         crate::services::note_sidecar::write_tags(&save_folder, id, tags).map_err(|e| e.to_string())
     }
 
+    pub fn rename_session_speaker(
+        &self,
+        id: &str,
+        session_speaker_id: &str,
+        label: &str,
+    ) -> Result<(), String> {
+        if is_legacy(id) {
+            return Err("legacy items are read-only".to_string());
+        }
+        let session_speaker_id = session_speaker_id.trim();
+        let label = label.trim();
+        if session_speaker_id.is_empty() {
+            return Err("session speaker id cannot be empty".to_string());
+        }
+        if label.is_empty() {
+            return Err("speaker label cannot be empty".to_string());
+        }
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .rename_session_speaker(&save_folder, id, session_speaker_id, label)
+            .map_err(|e| e.to_string())
+    }
+
     /// Attach transcript segments from a completed recording onto an existing note.
     #[allow(clippy::too_many_arguments)]
     pub fn attach_transcript(
@@ -106,6 +129,7 @@ impl HistoryController {
         speaker_blocks: Vec<crate::types::SpeakerBlock>,
         speaker_change_cuts: Vec<crate::types::SpeakerChangeCut>,
         speaker_chunks: Vec<crate::types::SpeakerChunk>,
+        session_speakers: Vec<crate::types::SessionSpeaker>,
         notes: Vec<crate::types::Note>,
         model: String,
         speaker_capture: bool,
@@ -123,6 +147,7 @@ impl HistoryController {
                 speaker_blocks,
                 speaker_change_cuts,
                 speaker_chunks,
+                session_speakers,
                 notes,
                 model,
                 speaker_capture,

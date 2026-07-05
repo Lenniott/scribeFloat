@@ -1,7 +1,9 @@
 use crate::services::analysis::{detect_cuts, CutConfig, PitchAnalyzer};
 use crate::services::audio::{read_wav_mono_f32, WHISPER_SAMPLE_RATE};
 use crate::services::speaker_blocks::build_speaker_blocks;
-use crate::services::speaker_chunks::{analyze_chunks, build_blocks_from_chunks};
+use crate::services::speaker_chunks::{
+    analyze_chunks, build_blocks_from_chunks, build_session_speakers,
+};
 use crate::services::{
     audio::{AudioService, MicSession},
     config::ConfigService,
@@ -16,7 +18,7 @@ use crate::services::{
 use crate::types::{
     Config, HistoryRecord, Note, ProcessingStage, RecoverySessionInfo, ScribeState,
     ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest, SessionManifestState,
-    SpeakerBlock, SpeakerChangeCut, SpeakerChunk,
+    SessionSpeaker, SpeakerBlock, SpeakerChangeCut, SpeakerChunk,
 };
 use anyhow::{anyhow, Result};
 use serde_json::json;
@@ -77,6 +79,7 @@ struct PreparedAudio {
     speaker_pcm_16k: Option<Vec<f32>>,
     speaker_change_cuts: Vec<SpeakerChangeCut>,
     speaker_chunks: Vec<SpeakerChunk>,
+    session_speakers: Vec<SessionSpeaker>,
 }
 
 enum ProgressMessage {
@@ -91,6 +94,7 @@ pub struct PendingAttach {
     pub speaker_blocks: Vec<SpeakerBlock>,
     pub speaker_change_cuts: Vec<SpeakerChangeCut>,
     pub speaker_chunks: Vec<SpeakerChunk>,
+    pub session_speakers: Vec<SessionSpeaker>,
     pub notes: Vec<Note>,
     pub model: String,
     pub speaker_capture: bool,
@@ -839,6 +843,7 @@ impl ScribeController {
             speaker_pcm_16k,
             speaker_change_cuts,
             speaker_chunks: Vec::new(),
+            session_speakers: Vec::new(),
         })
     }
 
@@ -959,20 +964,21 @@ impl ScribeController {
         } else {
             let tx = progress_tx.clone();
             let model_loaded_tx = progress_tx.clone();
-            self.model.transcribe_pcm_with_progress(
-                model_path,
-                &pcm_16k,
-                mic_vad.as_deref(),
-                Some(Arc::clone(abort_flag)),
-                "scribe/mic",
-                move |p| {
-                    tx.send(ProgressMessage::Progress(p)).ok();
-                },
-                Some(Box::new(move || {
-                    model_loaded_tx.send(ProgressMessage::ModelLoaded).ok();
-                })),
-            )
-            .map(|segs| filter_hallucination_phrases(&segs))
+            self.model
+                .transcribe_pcm_with_progress(
+                    model_path,
+                    &pcm_16k,
+                    mic_vad.as_deref(),
+                    Some(Arc::clone(abort_flag)),
+                    "scribe/mic",
+                    move |p| {
+                        tx.send(ProgressMessage::Progress(p)).ok();
+                    },
+                    Some(Box::new(move || {
+                        model_loaded_tx.send(ProgressMessage::ModelLoaded).ok();
+                    })),
+                )
+                .map(|segs| filter_hallucination_phrases(&segs))
         };
 
         progress_tx.send(ProgressMessage::Finished).ok();
@@ -1019,6 +1025,7 @@ impl ScribeController {
             &self.voiceprint,
             config.voice_similarity_threshold,
         );
+        prepared.session_speakers = build_session_speakers(&prepared.speaker_chunks);
         let blocks = build_blocks_from_chunks(segments, &prepared.speaker_chunks);
         if blocks.iter().any(|block| block.label != "Other") {
             blocks
@@ -1127,6 +1134,7 @@ impl ScribeController {
         record.speaker_blocks = speaker_blocks.to_vec();
         record.speaker_change_cuts = prepared.speaker_change_cuts.clone();
         record.speaker_chunks = prepared.speaker_chunks.clone();
+        record.session_speakers = prepared.session_speakers.clone();
 
         let attach_note_id = self.lock().attach_note_id.take();
         let history_record_id = if attach_note_id.is_some() {
@@ -1135,6 +1143,7 @@ impl ScribeController {
                 speaker_blocks: speaker_blocks.to_vec(),
                 speaker_change_cuts: prepared.speaker_change_cuts.clone(),
                 speaker_chunks: prepared.speaker_chunks.clone(),
+                session_speakers: prepared.session_speakers.clone(),
                 notes: notes.to_vec(),
                 model: model_name,
                 speaker_capture,

@@ -623,6 +623,7 @@ graph TB
         panel["Settings Screen\nsettings.svelte"]
         general["General Tab\nsetting_general.svelte"]
         models["Models Tab\nsetting_models.svelte"]
+        voice["Voice Tab\nsetting_voice.svelte"]
         hotkeys["Hotkeys Tab (planned)"]
         replacements["Replacements Tab\nsetting_replace.svelte"]
         permissions["Permissions Tab\nsetting_permissions.svelte"]
@@ -644,6 +645,7 @@ graph TB
     general --> ctrl_settings
     models --> ctrl_model
     models --> ctrl_settings
+    voice --> ctrl_settings
     replacements --> ctrl_settings
     permissions --> svc_permissions
 ```

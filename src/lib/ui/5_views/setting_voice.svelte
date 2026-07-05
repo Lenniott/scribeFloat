@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import Button from '@components/controls/Button.svelte';
+	import ToggleSwitch from '@components/controls/Toggle.svelte';
 	import TextField from '@primitives/form/TextField.svelte';
 	import SettingsList from '@sections/SettingList.svelte';
 	import SettingsRow from '@components/cards/SettingRow.svelte';
@@ -28,6 +29,9 @@
 	let userDisplayName = $state('You');
 	let savedUserDisplayName = $state('You');
 	let threshold = $state(0.75);
+	let voiceLearningEnabled = $state(false);
+	let embeddingsRetention = $state<'keep' | 'delete_after_transcript'>('keep');
+	let encryptionRequired = $state(true);
 	let thresholdSaveTimer: ReturnType<typeof setTimeout> | undefined;
 
 	onMount(async () => {
@@ -49,9 +53,17 @@
 				invoke<string>('settings_get_user_display_name'),
 				invoke<number>('settings_get_voice_similarity_threshold'),
 			]);
+			const [learningEnabled, retention, encryption] = await Promise.all([
+				invoke<boolean>('settings_get_voice_learning_enabled'),
+				invoke<'keep' | 'delete_after_transcript'>('settings_get_voice_embeddings_retention'),
+				invoke<boolean>('settings_get_voice_embeddings_encryption_required'),
+			]);
 			userDisplayName = name;
 			savedUserDisplayName = name;
 			threshold = nextThreshold;
+			voiceLearningEnabled = learningEnabled;
+			embeddingsRetention = retention;
+			encryptionRequired = encryption;
 		} catch (e) {
 			actionError = `Could not load voice settings: ${appErrorMessage(e)}`;
 		}
@@ -151,6 +163,42 @@
 			await invoke('settings_set_voice_similarity_threshold', { threshold });
 		} catch (e) {
 			actionError = `Could not save matching sensitivity: ${appErrorMessage(e)}`;
+		}
+	}
+
+	async function setVoiceLearningEnabled(enabled: boolean) {
+		const previous = voiceLearningEnabled;
+		voiceLearningEnabled = enabled;
+		actionError = '';
+		try {
+			await invoke('settings_set_voice_learning_enabled', { enabled });
+		} catch (e) {
+			voiceLearningEnabled = previous;
+			actionError = `Could not save voice learning setting: ${appErrorMessage(e)}`;
+		}
+	}
+
+	async function setEmbeddingsRetention(retention: 'keep' | 'delete_after_transcript') {
+		const previous = embeddingsRetention;
+		embeddingsRetention = retention;
+		actionError = '';
+		try {
+			await invoke('settings_set_voice_embeddings_retention', { retention });
+		} catch (e) {
+			embeddingsRetention = previous;
+			actionError = `Could not save voice data setting: ${appErrorMessage(e)}`;
+		}
+	}
+
+	async function setEncryptionRequired(required: boolean) {
+		const previous = encryptionRequired;
+		encryptionRequired = required;
+		actionError = '';
+		try {
+			await invoke('settings_set_voice_embeddings_encryption_required', { required });
+		} catch (e) {
+			encryptionRequired = previous;
+			actionError = `Could not save encryption setting: ${appErrorMessage(e)}`;
 		}
 	}
 </script>
@@ -295,6 +343,58 @@
 					{/snippet}
 				</SettingsRow>
 			</SettingsList>
+		</SettingsSection>
+
+		<SettingsSection
+			title="Voice learning"
+			description="These controls prepare transcript-based speaker learning. Automatic profile updates stay off until encrypted voice evidence storage is implemented."
+		>
+			<SettingsList>
+				<SettingsRow
+					title="Learn speakers from corrected transcripts"
+					description="When this is on, confirmed speaker names may be used later to improve saved voiceprints after quality checks pass."
+				>
+					{#snippet control()}
+						<ToggleSwitch
+							checked={voiceLearningEnabled}
+							onchange={(next) => void setVoiceLearningEnabled(next)}
+							aria-label="Learn speakers from corrected transcripts"
+						/>
+					{/snippet}
+				</SettingsRow>
+
+				<SettingsRow
+					title="Keep voice data for future speaker matching"
+					description="When off, transcripts can keep text and labels while embedding vectors are removed after processing."
+				>
+					{#snippet control()}
+						<ToggleSwitch
+							checked={embeddingsRetention === 'keep'}
+							onchange={(next) =>
+								void setEmbeddingsRetention(next ? 'keep' : 'delete_after_transcript')}
+							aria-label="Keep voice data for future speaker matching"
+						/>
+					{/snippet}
+				</SettingsRow>
+
+				<SettingsRow
+					title="Require encryption before learning"
+					description="Automatic long-term learning should not run unless stored voice embeddings are encrypted at rest."
+				>
+					{#snippet control()}
+						<ToggleSwitch
+							checked={encryptionRequired}
+							onchange={(next) => void setEncryptionRequired(next)}
+							aria-label="Require encryption before learning"
+						/>
+					{/snippet}
+				</SettingsRow>
+			</SettingsList>
+
+			<p class="mt-3 rounded-md border border-fill bg-panel px-3 py-2 sf-label-sm text-fg-dim">
+				Voice embeddings stay local. Encryption and transcript-based profile updates are planned next;
+				this release only stores your preference.
+			</p>
 		</SettingsSection>
 	</section>
 {/if}

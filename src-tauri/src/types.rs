@@ -131,6 +131,21 @@ pub struct Config {
     /// Lower values are more inclusive; higher values are stricter.
     #[serde(default = "default_voice_similarity_threshold")]
     pub voice_similarity_threshold: f32,
+
+    /// Whether confirmed transcript speaker labels may improve saved voiceprints.
+    /// Default OFF until encrypted long-term evidence storage is implemented.
+    #[serde(default)]
+    pub voice_learning_enabled: bool,
+
+    /// Whether voice embedding vectors may be kept with transcripts for future
+    /// speaker matching. Default keeps current behaviour.
+    #[serde(default)]
+    pub voice_embeddings_retention: VoiceEmbeddingsRetention,
+
+    /// Require encrypted-at-rest embedding storage before automatic long-term
+    /// voice learning can run. Default ON.
+    #[serde(default = "default_true")]
+    pub voice_embeddings_encryption_required: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -178,6 +193,9 @@ impl Default for Config {
             save_transcripts_as_markdown: false,
             user_display_name: default_user_display_name(),
             voice_similarity_threshold: default_voice_similarity_threshold(),
+            voice_learning_enabled: false,
+            voice_embeddings_retention: VoiceEmbeddingsRetention::Keep,
+            voice_embeddings_encryption_required: true,
         }
     }
 }
@@ -188,6 +206,24 @@ fn default_user_display_name() -> String {
 
 fn default_voice_similarity_threshold() -> f32 {
     0.75
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceEmbeddingsRetention {
+    #[default]
+    Keep,
+    DeleteAfterTranscript,
+}
+
+impl VoiceEmbeddingsRetention {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "keep" => Ok(Self::Keep),
+            "delete_after_transcript" => Ok(Self::DeleteAfterTranscript),
+            other => Err(format!("unsupported voice embeddings retention `{other}`")),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -1265,6 +1301,18 @@ mod tests {
         let old = r#"{"save_folder":"/tmp/x"}"#;
         let cfg: Config = serde_json::from_str(old).expect("deserialize old config");
         assert!(!cfg.save_transcripts_as_markdown);
+    }
+
+    #[test]
+    fn config_voice_learning_fields_default_from_old_config() {
+        let old = r#"{"save_folder":"/tmp/x"}"#;
+        let cfg: Config = serde_json::from_str(old).expect("deserialize old config");
+        assert!(!cfg.voice_learning_enabled);
+        assert_eq!(
+            cfg.voice_embeddings_retention,
+            VoiceEmbeddingsRetention::Keep
+        );
+        assert!(cfg.voice_embeddings_encryption_required);
     }
 
     #[test]

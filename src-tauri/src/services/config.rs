@@ -134,6 +134,12 @@ mod tests {
         assert_eq!(cfg.theme_mode, crate::types::ThemeMode::System);
         assert_eq!(cfg.user_display_name, "You");
         assert_eq!(cfg.voice_similarity_threshold, 0.75);
+        assert!(!cfg.voice_learning_enabled);
+        assert_eq!(
+            cfg.voice_embeddings_retention,
+            crate::types::VoiceEmbeddingsRetention::Keep
+        );
+        assert!(cfg.voice_embeddings_encryption_required);
     }
 
     #[test]

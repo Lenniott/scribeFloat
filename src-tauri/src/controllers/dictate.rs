@@ -1,13 +1,14 @@
 use crate::services::audio::read_wav_mono_f32;
+use crate::services::transcription::{transcribe_capture, CaptureAudio, TranscribeOptions};
 use crate::services::{
     audio::{AudioService, MicSession, WHISPER_SAMPLE_RATE},
     config::ConfigService,
     history::HistoryService,
     model::ModelService,
-    output::{filter_hallucination_phrases, OutputService},
+    output::OutputService,
 };
 use crate::types::{
-    Config, DictateProcessingStage, DictateState, DictateStateEvent, HistoryRecord,
+    Config, DictateState, DictateStateEvent, HistoryRecord, ProcessingStage,
 };
 use anyhow::{anyhow, Result};
 use std::path::{Path, PathBuf};
@@ -570,17 +571,19 @@ impl DictateController {
         Ok(())
     }
 
-    /// Warm the model file in the OS page cache while recording. Does not create a
-    /// `WhisperContext` — loading Metal during capture races with stop-and-transcribe.
+    /// Bring the Dictate model fully to ready while the user is speaking, so
+    /// stop-and-transcribe starts as a cache hit. Dictate resolves its own (usually
+    /// smaller, faster) model via `preload_path_for_dictate` — never the Record
+    /// model — and skips the voiceprint extractor because Dictate does no speaker
+    /// analysis. The model service's per-path load lock makes a Stop that lands
+    /// mid-preload wait for this load rather than duplicate it.
     fn spawn_record_start_preload(&self) {
         let cfg = self.config.get();
         let path = preload_path_for_dictate(&cfg, &self.model);
-        if !self.model.model_available(&path) {
-            return;
-        }
+        let model = Arc::clone(&self.model);
         tauri::async_runtime::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
-                ModelService::warm_model_file_on_disk(&path);
+                model.preload_context(&path);
             })
             .await;
         });
@@ -807,28 +810,32 @@ impl DictateController {
             return Ok(false);
         }
 
-        let vad_path_buf = self.model.vad_path_for_pcm(pcm_16k.len());
-        let vad = vad_path_buf.as_deref();
         let app_clone = self.app.clone();
-        let segments = match self.model.transcribe_pcm_with_progress(
-            &model_path,
-            &pcm_16k,
-            vad,
-            None,
-            "dictate",
-            move |p| {
-                app_clone
-                    .emit(
-                        DICTATE_STATE_EVENT,
-                        DictateStateEvent {
-                            progress: Some(p),
-                            processing_stage: Some(DictateProcessingStage::TranscribingAudio),
-                            ..DictateStateEvent::new(DictateState::Transcribing)
-                        },
-                    )
-                    .ok();
+        let progress_reporter = move |p: f32| {
+            app_clone
+                .emit(
+                    DICTATE_STATE_EVENT,
+                    DictateStateEvent {
+                        progress: Some(p),
+                        processing_stage: Some(ProcessingStage::TranscribingAudio),
+                        ..DictateStateEvent::new(DictateState::Transcribing)
+                    },
+                )
+                .ok();
+        };
+        let segments = match transcribe_capture(
+            &self.model,
+            CaptureAudio {
+                mic_pcm_16k: &pcm_16k,
+                speaker_pcm_16k: None,
             },
-            None,
+            TranscribeOptions {
+                model_path: &model_path,
+                source: "dictate",
+                abort: None,
+                on_model_loaded: None,
+            },
+            progress_reporter,
         ) {
             Ok(segments) => segments,
             Err(e) => {
@@ -848,8 +855,6 @@ impl DictateController {
             self.transition_to_idle();
             return Ok(false);
         }
-
-        let segments = filter_hallucination_phrases(&segments);
 
         if segments.is_empty() {
             self.delete_dictate_wav(&wav_path);

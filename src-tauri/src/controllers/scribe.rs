@@ -1,24 +1,22 @@
 use crate::services::analysis::{detect_cuts, CutConfig, PitchAnalyzer};
 use crate::services::audio::{read_wav_mono_f32, WHISPER_SAMPLE_RATE};
 use crate::services::speaker_blocks::build_speaker_blocks;
-use crate::services::speaker_chunks::{
-    analyze_chunks, build_blocks_from_chunks, build_session_speakers,
+use crate::services::transcription::{
+    analyze_capture_speakers, transcribe_capture, CaptureAudio, TranscribeOptions,
 };
 use crate::services::{
     audio::{AudioService, MicSession},
     config::ConfigService,
     history::{strip_voice_embeddings, HistoryService},
     model::ModelService,
-    output::{
-        filter_hallucination_phrases, speaker_pcm_has_signal, OutputService,
-        SPEAKER_SILENCE_THRESHOLD,
-    },
+    output::{speaker_pcm_has_signal, OutputService, SPEAKER_SILENCE_THRESHOLD},
     voiceprint::VoiceprintService,
 };
 use crate::types::{
     Config, HistoryRecord, Note, ProcessingStage, RecoverySessionInfo, ScribeState,
     ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest, SessionManifestState,
-    SessionSpeaker, SpeakerBlock, SpeakerChangeCut, SpeakerChunk, VoiceEmbeddingsRetention,
+    SessionSpeaker, SpeakerBlock, SpeakerChangeCut, SpeakerChunk, TranscriptAttachment,
+    VoiceEmbeddingsRetention,
 };
 use anyhow::{anyhow, Result};
 use serde_json::json;
@@ -88,21 +86,6 @@ enum ProgressMessage {
     Finished,
 }
 
-/// Transcript payload held after note-editor recording completes, until `note_attach_transcript`.
-pub struct PendingAttach {
-    pub segments: Vec<Segment>,
-    pub speaker_blocks: Vec<SpeakerBlock>,
-    pub speaker_change_cuts: Vec<SpeakerChangeCut>,
-    pub speaker_chunks: Vec<SpeakerChunk>,
-    pub session_speakers: Vec<SessionSpeaker>,
-    pub notes: Vec<Note>,
-    pub model: String,
-    pub speaker_capture: bool,
-    pub dual_source: bool,
-    pub session_dir: Option<String>,
-    pub audio_path: Option<String>,
-    pub markdown_path: Option<String>,
-}
 
 struct Inner {
     state: ScribeState,
@@ -115,7 +98,8 @@ struct Inner {
     /// When set, the next completed recording attaches to this note instead of creating a Scribe record.
     attach_note_id: Option<String>,
     /// Cached transcript from the most recent note-editor recording stop.
-    pending_attach: Option<PendingAttach>,
+    /// Transcript held after a note-editor recording completes, until `note_attach_transcript`.
+    pending_attach: Option<TranscriptAttachment>,
 }
 
 pub struct ScribeController {
@@ -417,16 +401,21 @@ impl ScribeController {
         );
     }
 
-    /// Warm the model file in the OS page cache while recording. Does not create a
-    /// `WhisperContext` — loading Metal during capture races with stop-and-transcribe.
+    /// Bring the Record model and the voiceprint extractor fully to ready while the
+    /// user is still speaking, so stop-and-transcribe starts as a cache hit instead
+    /// of a frozen "Loading model". Safe against stop-and-transcribe: the model
+    /// service's per-path load lock makes a Stop that lands mid-preload wait for
+    /// this load rather than duplicate it.
     fn spawn_record_start_preload(&self, cfg: &Config) {
         let path = preload_path_for_config(cfg, &self.model);
-        if !self.model.model_available(&path) {
-            return;
-        }
+        let model = Arc::clone(&self.model);
+        let voiceprint = Arc::clone(&self.voiceprint);
         tauri::async_runtime::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
-                ModelService::warm_model_file_on_disk(&path);
+                model.preload_context(&path);
+                if let Err(err) = voiceprint.preload_extractor() {
+                    tracing::warn!(error = %err, "voiceprint extractor preload failed");
+                }
             })
             .await;
         });
@@ -438,7 +427,7 @@ impl ScribeController {
     }
 
     /// Take the cached transcript from the most recent note-editor recording.
-    pub fn take_pending_attach(&self) -> Option<PendingAttach> {
+    pub fn take_pending_attach(&self) -> Option<TranscriptAttachment> {
         self.lock().pending_attach.take()
     }
 
@@ -921,65 +910,30 @@ impl ScribeController {
         // Re-read mic.wav on the blocking thread (same as Dictate) so transcription
         // always sees the finalized file, not a buffer prepared on the async runtime.
         let pcm_16k = read_wav_mono_f32(&prepared.wav_path)?;
-        let mic_vad = self.model.vad_path_for_pcm(pcm_16k.len());
         let model_loaded_tx = progress_tx.clone();
         let on_model_loaded = move || {
             model_loaded_tx.send(ProgressMessage::ModelLoaded).ok();
         };
-        let segments = if let Some(speaker_pcm) = &prepared.speaker_pcm_16k {
-            let tx1 = progress_tx.clone();
-            let mic_segs = self.model.transcribe_pcm_with_progress(
-                model_path,
-                &pcm_16k,
-                mic_vad.as_deref(),
-                Some(Arc::clone(abort_flag)),
-                "scribe/mic",
-                move |p| {
-                    tx1.send(ProgressMessage::Progress(p * 0.5)).ok();
-                },
-                Some(Box::new(on_model_loaded)),
-            )?;
-            // Skip the second (speaker) pass entirely if the user aborted during the mic pass.
-            if abort_flag.load(Ordering::SeqCst) {
-                progress_tx.send(ProgressMessage::Finished).ok();
-                progress_thread.join().ok();
-                return Ok(Vec::new());
-            }
-            let tx2 = progress_tx.clone();
-            let speaker_vad = self.model.vad_path_for_pcm(speaker_pcm.len());
-            let speaker_segs = self.model.transcribe_pcm_with_progress(
-                model_path,
-                speaker_pcm,
-                speaker_vad.as_deref(),
-                Some(Arc::clone(abort_flag)),
-                "scribe/speaker",
-                move |p| {
-                    tx2.send(ProgressMessage::Progress(0.5 + p * 0.5)).ok();
-                },
-                None,
-            )?;
-            let mic_segs = filter_hallucination_phrases(&mic_segs);
-            let speaker_segs = filter_hallucination_phrases(&speaker_segs);
-            Ok(self.model.merge_dual_source(&mic_segs, &speaker_segs))
-        } else {
+        let progress_reporter = {
             let tx = progress_tx.clone();
-            let model_loaded_tx = progress_tx.clone();
-            self.model
-                .transcribe_pcm_with_progress(
-                    model_path,
-                    &pcm_16k,
-                    mic_vad.as_deref(),
-                    Some(Arc::clone(abort_flag)),
-                    "scribe/mic",
-                    move |p| {
-                        tx.send(ProgressMessage::Progress(p)).ok();
-                    },
-                    Some(Box::new(move || {
-                        model_loaded_tx.send(ProgressMessage::ModelLoaded).ok();
-                    })),
-                )
-                .map(|segs| filter_hallucination_phrases(&segs))
+            move |p: f32| {
+                tx.send(ProgressMessage::Progress(p)).ok();
+            }
         };
+        let segments = transcribe_capture(
+            &self.model,
+            CaptureAudio {
+                mic_pcm_16k: &pcm_16k,
+                speaker_pcm_16k: prepared.speaker_pcm_16k.as_deref(),
+            },
+            TranscribeOptions {
+                model_path,
+                source: "scribe",
+                abort: Some(Arc::clone(abort_flag)),
+                on_model_loaded: Some(Box::new(on_model_loaded)),
+            },
+            progress_reporter,
+        );
 
         progress_tx.send(ProgressMessage::Finished).ok();
         progress_thread.join().ok();
@@ -1018,15 +972,17 @@ impl ScribeController {
         if prepared.speaker_pcm_16k.is_some() {
             return self.label_speaker_blocks(segments, prepared, config);
         }
-        prepared.speaker_chunks = analyze_chunks(
+        let evidence = analyze_capture_speakers(
             &prepared.pcm_16k,
             WHISPER_SAMPLE_RATE,
             &prepared.speaker_change_cuts,
             &self.voiceprint,
             config.voice_similarity_threshold,
+            segments,
         );
-        prepared.session_speakers = build_session_speakers(&prepared.speaker_chunks);
-        let blocks = build_blocks_from_chunks(segments, &prepared.speaker_chunks);
+        prepared.speaker_chunks = evidence.speaker_chunks;
+        prepared.session_speakers = evidence.session_speakers;
+        let blocks = evidence.speaker_blocks;
         if blocks.iter().any(|block| block.label != "Other") {
             blocks
         } else {
@@ -1141,7 +1097,7 @@ impl ScribeController {
 
         let attach_note_id = self.lock().attach_note_id.take();
         let history_record_id = if attach_note_id.is_some() {
-            self.lock().pending_attach = Some(PendingAttach {
+            self.lock().pending_attach = Some(TranscriptAttachment {
                 segments: segments.to_vec(),
                 speaker_blocks: speaker_blocks.to_vec(),
                 speaker_change_cuts: prepared.speaker_change_cuts.clone(),

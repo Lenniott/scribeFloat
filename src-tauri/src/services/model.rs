@@ -644,14 +644,20 @@ impl ModelService {
     }
 
     /// Clear the sticky CPU-only flag for `model_path` so the next transcription
-    /// retries GPU. Evicts any cached context so `get_or_load_context` does not
-    /// return a CPU-only context left over from a prior failure.
-    fn reset_gpu_preference(&self, model_path: &Path) {
-        self.cpu_fallback_paths
+    /// retries GPU. Only when the flag was actually set is the cached context
+    /// evicted (it was loaded with `use_gpu = false` and must not be reused) —
+    /// a healthy cached context survives, so preloads and prior transcriptions
+    /// keep paying off. Returns whether a context was evicted.
+    fn reset_gpu_preference(&self, model_path: &Path) -> bool {
+        let was_cpu_fallback = self
+            .cpu_fallback_paths
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .remove(model_path);
-        self.evict_context(model_path);
+        if was_cpu_fallback {
+            self.evict_context(model_path);
+        }
+        was_cpu_fallback
     }
 
     /// Transcribe mono f32 PCM at 16 kHz and report Whisper's own progress.
@@ -1486,6 +1492,30 @@ mod tests {
         svc.reset_gpu_preference(path);
         assert!(!svc.cpu_fallback_paths.lock().unwrap().contains(path));
         assert!(svc.lock_contexts().get(path).is_none());
+    }
+
+    #[test]
+    fn reset_gpu_preference_keeps_context_for_healthy_path() {
+        let svc = ModelService::new(temp_models_dir());
+        let path = Path::new("/tmp/healthy_model.bin");
+        // Never marked for CPU fallback → nothing to reset; a context cached by a
+        // preload or a prior transcription must survive.
+        assert!(!svc.reset_gpu_preference(path));
+        svc.mark_cpu_fallback(path);
+        assert!(svc.reset_gpu_preference(path));
+    }
+
+    #[test]
+    fn preload_context_handles_missing_and_corrupt_models_without_panicking() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        // Missing file: silently skipped, nothing cached.
+        svc.preload_context(Path::new("/tmp/definitely-missing-model.bin"));
+        // Corrupt file: load fails, warns, nothing cached.
+        let corrupt = dir.join("corrupt.bin");
+        std::fs::write(&corrupt, b"not a ggml model").unwrap();
+        svc.preload_context(&corrupt);
+        assert!(svc.lock_contexts().is_empty());
     }
 
     #[test]

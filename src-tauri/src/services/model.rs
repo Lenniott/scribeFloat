@@ -7,14 +7,21 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use whisper_rs::{
-    FullParams, SamplingStrategy, SegmentCallbackData, WhisperContext, WhisperContextParameters,
-    WhisperError, WhisperVadParams,
+    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperError,
+    WhisperVadParams,
 };
 
 /// Cap inference threads at the number of physical cores. Hyperthreading does not help
 /// matmul-heavy workloads and creates lock contention. The 8-thread upper bound matches
 /// ggml's own scaling curve — adding threads beyond that on speech-length audio is a wash.
 const MAX_INFERENCE_THREADS: usize = 8;
+
+/// Absolute minimum PCM length passed to Whisper (100 ms at 16 kHz).
+pub const MIN_PCM_SAMPLES_16K: usize = 1_600;
+
+/// Silero VAD on shorter clips often strips all speech; the encoder then fails with
+/// `GenericError(-6)` even though the model and PCM shape are valid.
+const VAD_MIN_PCM_SAMPLES: usize = 32_000;
 
 pub const SMALL_MODEL_FILENAME: &str = "ggml-small.en-q5_1.bin";
 
@@ -37,7 +44,7 @@ pub struct ModelCatalogItem {
     pub rtfx: Option<u32>,
     /// Verified lowercase-hex SHA-256 of the model file. When `Some`, the download is
     /// rejected unless the bytes hash to this value (see `verify_sha256`). When `None`,
-    /// the download is accepted unverified — fill these in (TODO(S1)) to enable pinning.
+    /// the download is accepted unverified.
     pub sha256: Option<&'static str>,
 }
 
@@ -169,6 +176,11 @@ pub struct ModelService {
     /// Serializes all in-flight `whisper_full` calls. `WhisperContext` is shared across
     /// Scribe, Dictate, and Transcribe; concurrent encode passes corrupt Metal/ggml state.
     inference_gate: Mutex<()>,
+    /// SHA-256-verified model files, stamped with (mtime, len). Hashing a model is
+    /// hundreds of ms (181 MB small) to seconds (large) — without this cache every
+    /// transcription paid it under the "loading model" phase. A changed stamp
+    /// (re-download, manual replacement) re-hashes automatically.
+    verified_models: Mutex<HashMap<PathBuf, (std::time::SystemTime, u64)>>,
 }
 
 impl ModelService {
@@ -181,6 +193,7 @@ impl ModelService {
             loading_locks: Mutex::new(HashMap::new()),
             cpu_fallback_paths: Mutex::new(HashSet::new()),
             inference_gate: Mutex::new(()),
+            verified_models: Mutex::new(HashMap::new()),
         })
     }
 
@@ -217,6 +230,109 @@ impl ModelService {
 
     pub fn vad_model_available(&self) -> bool {
         self.model_available(&self.vad_model_path())
+    }
+
+    /// Whether the on-disk VAD file matches the catalog SHA-256.
+    pub fn vad_model_integrity_ok(&self) -> bool {
+        let path = self.vad_model_path();
+        if !self.vad_model_available() {
+            return false;
+        }
+        let Some(expected) = VAD_MODEL_SHA256 else {
+            return true;
+        };
+        file_sha256_hex(&path)
+            .map(|actual| actual == expected.to_ascii_lowercase())
+            .unwrap_or(false)
+    }
+
+    /// True when VAD is missing or fails the integrity check (stale manual download).
+    pub fn vad_model_needs_redownload(&self) -> bool {
+        !self.vad_model_available() || !self.vad_model_integrity_ok()
+    }
+
+    /// VAD model path when the file is present, passes integrity, and PCM is long enough
+    /// for Silero trimming without starving the encoder.
+    pub fn vad_path_for_pcm(&self, pcm_samples: usize) -> Option<PathBuf> {
+        if pcm_samples < VAD_MIN_PCM_SAMPLES {
+            return None;
+        }
+        self.vad_path_for_inference()
+    }
+
+    /// VAD model path when the file is present and passes the catalog SHA-256 check.
+    pub fn vad_path_for_inference(&self) -> Option<PathBuf> {
+        (self.vad_model_available() && self.vad_model_integrity_ok()).then(|| self.vad_model_path())
+    }
+
+    /// Whether a catalog Whisper model on disk matches its published SHA-256.
+    /// Custom/non-catalog paths skip verification and only require a non-empty file.
+    pub fn whisper_model_integrity_ok(&self, model_path: &Path) -> bool {
+        if !self.model_available(model_path) {
+            return false;
+        }
+        let Some(expected) = self.catalog_sha256_for_path(model_path) else {
+            return true;
+        };
+        file_sha256_hex(model_path)
+            .map(|actual| actual == expected.to_ascii_lowercase())
+            .unwrap_or(false)
+    }
+
+    /// Integrity check with a session cache: hash once, then trust the file
+    /// identity (mtime + len). The stamp — not the `expected` argument — is the
+    /// cache key, so a changed file always re-hashes and a failed hash is never
+    /// remembered. Use on hot paths; `whisper_model_integrity_ok` stays uncached
+    /// for diagnostics.
+    pub fn model_integrity_ok_cached(&self, model_path: &Path, expected: &str) -> bool {
+        let Ok(meta) = std::fs::metadata(model_path) else {
+            return false;
+        };
+        let Ok(modified) = meta.modified() else {
+            // No usable stamp on this filesystem — fall back to hashing every time.
+            return self.hash_matches(model_path, expected);
+        };
+        let stamp = (modified, meta.len());
+        {
+            let cache = self.lock_verified_models();
+            if cache.get(model_path) == Some(&stamp) {
+                return true;
+            }
+        }
+        let ok = self.hash_matches(model_path, expected);
+        if ok {
+            self.lock_verified_models()
+                .insert(model_path.to_path_buf(), stamp);
+        }
+        ok
+    }
+
+    fn hash_matches(&self, model_path: &Path, expected: &str) -> bool {
+        file_sha256_hex(model_path)
+            .map(|actual| actual == expected.to_ascii_lowercase())
+            .unwrap_or(false)
+    }
+
+    fn lock_verified_models(
+        &self,
+    ) -> std::sync::MutexGuard<'_, HashMap<PathBuf, (std::time::SystemTime, u64)>> {
+        self.verified_models
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+    }
+
+    pub fn whisper_model_bytes(&self, model_path: &Path) -> u64 {
+        std::fs::metadata(model_path)
+            .map(|m| m.len())
+            .unwrap_or(0)
+    }
+
+    fn catalog_sha256_for_path(&self, model_path: &Path) -> Option<&'static str> {
+        let name = model_path.file_name()?.to_str()?;
+        MODEL_CATALOG
+            .iter()
+            .find(|item| item.file_name == name)
+            .and_then(|item| item.sha256)
     }
 
     pub async fn download_vad_model(&self, app: &AppHandle) -> Result<()> {
@@ -477,6 +593,29 @@ impl ModelService {
         }
     }
 
+    /// Bring the Whisper context for `model_path` fully to ready (disk parse plus
+    /// GPU/CPU backend setup) so the next transcription starts as a cache hit.
+    /// Shares the per-path load lock with inference: a stop-and-transcribe that
+    /// lands mid-preload waits for this load instead of duplicating it. Failures
+    /// are logged and deferred — transcription will retry the load and surface
+    /// the error to the user. Blocking; call from a background thread.
+    pub fn preload_context(&self, model_path: &Path) {
+        if !self.model_available(model_path) {
+            return;
+        }
+        // Pay the SHA-256 integrity hash here too, so stop-and-transcribe finds
+        // both the context and the verification already warm.
+        if let Some(expected) = self.catalog_sha256_for_path(model_path) {
+            let _ = self.model_integrity_ok_cached(model_path, expected);
+        }
+        if let Err(err) = self.get_or_load_context(model_path) {
+            tracing::warn!(
+                error = %err,
+                "whisper preload failed; model will load at transcription time"
+            );
+        }
+    }
+
     /// Load a Whisper context for `model_path`, or return the cached one. Loads block on
     /// disk I/O and model parsing, so callers should invoke this from `spawn_blocking` (or
     /// off the async runtime). Subsequent calls for the same path are O(hash lookup).
@@ -556,11 +695,34 @@ impl ModelService {
     /// Evicts any cached GPU context so it is reloaded with `use_gpu = false`.
     fn mark_cpu_fallback(&self, path: &Path) {
         let path = path.to_path_buf();
-        self.lock_contexts().remove(&path);
+        self.evict_context(&path);
         self.cpu_fallback_paths
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .insert(path);
+    }
+
+    /// Drop a cached `WhisperContext` so the next inference loads a fresh one.
+    /// Reusing a context after Metal encode failures can poison later passes.
+    fn evict_context(&self, model_path: &Path) {
+        self.lock_contexts().remove(model_path);
+    }
+
+    /// Clear the sticky CPU-only flag for `model_path` so the next transcription
+    /// retries GPU. Only when the flag was actually set is the cached context
+    /// evicted (it was loaded with `use_gpu = false` and must not be reused) —
+    /// a healthy cached context survives, so preloads and prior transcriptions
+    /// keep paying off. Returns whether a context was evicted.
+    fn reset_gpu_preference(&self, model_path: &Path) -> bool {
+        let was_cpu_fallback = self
+            .cpu_fallback_paths
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(model_path);
+        if was_cpu_fallback {
+            self.evict_context(model_path);
+        }
+        was_cpu_fallback
     }
 
     /// Transcribe mono f32 PCM at 16 kHz and report Whisper's own progress.
@@ -570,10 +732,12 @@ impl ModelService {
     ///
     /// On GPU encode failure (e.g. Metal `GenericError(-6)` on M1) the context is evicted and
     /// the inference is retried automatically on CPU. If encode still fails with Silero VAD
-    /// enabled, a final retry runs without VAD. Subsequent calls for the same model path
-    /// use CPU without re-attempting GPU.
+    /// enabled, a final retry runs without VAD. GPU is retried again on the next transcription.
+    ///
+    /// Long audio uses whisper.cpp's internal seek/windowing — do not pre-chunk PCM here.
     ///
     /// `source` identifies the caller workflow (e.g. `"scribe/mic"`) for failure diagnostics.
+    #[allow(clippy::too_many_arguments)]
     pub fn transcribe_pcm_with_progress<F>(
         &self,
         model_path: &Path,
@@ -582,6 +746,7 @@ impl ModelService {
         abort: Option<Arc<AtomicBool>>,
         source: &str,
         on_progress: F,
+        on_model_loaded: Option<Box<dyn FnOnce() + Send>>,
     ) -> Result<Vec<Segment>>
     where
         F: FnMut(f32) + Send + 'static,
@@ -590,6 +755,50 @@ impl ModelService {
             .inference_gate
             .lock()
             .unwrap_or_else(|p| p.into_inner());
+        self.reset_gpu_preference(model_path);
+
+        if let Some(expected) = self.catalog_sha256_for_path(model_path) {
+            if !self.model_integrity_ok_cached(model_path, expected) {
+                let actual = file_sha256_hex(model_path).unwrap_or_default();
+                return Err(anyhow!(
+                    "Whisper model failed SHA-256 integrity check (expected {expected}, got {actual}). Re-download from Settings."
+                ));
+            }
+        } else if !self.model_available(model_path) {
+            return Err(anyhow!(
+                "Whisper model not found at {}",
+                model_path.display()
+            ));
+        }
+
+        if pcm.is_empty() {
+            return Err(anyhow!("cannot transcribe empty PCM buffer"));
+        }
+        if pcm.len() < MIN_PCM_SAMPLES_16K {
+            return Err(anyhow!(
+                "recording too short to transcribe ({} samples, need at least {})",
+                pcm.len(),
+                MIN_PCM_SAMPLES_16K
+            ));
+        }
+        let pcm_diag = pcm_diagnostics(pcm);
+        if pcm_diag.nan_count > 0 || pcm_diag.inf_count > 0 {
+            return Err(anyhow!(
+                "PCM contains invalid samples (nan={}, inf={})",
+                pcm_diag.nan_count,
+                pcm_diag.inf_count
+            ));
+        }
+
+        let vad_model_path = vad_model_path.filter(|_| pcm.len() >= VAD_MIN_PCM_SAMPLES);
+        if vad_model_path.is_none() && pcm.len() < VAD_MIN_PCM_SAMPLES {
+            tracing::debug!(
+                source,
+                pcm_samples = pcm.len(),
+                "VAD disabled for short clip"
+            );
+        }
+
         let on_progress = Arc::new(Mutex::new(on_progress));
         let vad_requested = vad_model_path.is_some();
         let mut gpu_retried = false;
@@ -599,8 +808,13 @@ impl ModelService {
             pcm,
             vad_model_path,
             abort.clone(),
+            on_model_loaded,
             Arc::clone(&on_progress),
         );
+
+        if abort.as_ref().is_some_and(|a| a.load(Ordering::SeqCst)) {
+            return Ok(Vec::new());
+        }
 
         if matches!(&result, Err(InferError::Encode(_))) && self.uses_gpu_for(model_path) {
             if let Err(InferError::Encode(ref e)) = result {
@@ -632,8 +846,13 @@ impl ModelService {
                 pcm,
                 vad_model_path,
                 abort.clone(),
+                None,
                 Arc::clone(&on_progress),
             );
+        }
+
+        if abort.as_ref().is_some_and(|a| a.load(Ordering::SeqCst)) {
+            return Ok(Vec::new());
         }
 
         if matches!(&result, Err(InferError::Encode(_))) && vad_requested {
@@ -657,7 +876,7 @@ impl ModelService {
                     .unwrap_or_default(),
                 "whisper encode failed with VAD enabled, retrying without VAD"
             );
-            result = self.run_inference(model_path, pcm, None, abort, Arc::clone(&on_progress));
+            result = self.run_inference(model_path, pcm, None, abort, None, Arc::clone(&on_progress));
             if result.is_ok() {
                 tracing::info!(
                     source,
@@ -667,7 +886,16 @@ impl ModelService {
         }
 
         match result {
-            Ok(segments) => Ok(segments),
+            Ok(segments) => {
+                if segments.is_empty() {
+                    tracing::debug!(
+                        source,
+                        pcm_samples = pcm.len(),
+                        "whisper returned no segments (silence or skipped chunk)"
+                    );
+                }
+                Ok(segments)
+            }
             Err(InferError::Encode(e)) => {
                 self.record_encode_failure(
                     source,
@@ -679,7 +907,7 @@ impl ModelService {
                     vad_requested,
                     &e,
                 );
-                Err(e.into())
+                Err(e)
             }
             Err(e) => Err(e.into()),
         }
@@ -693,6 +921,7 @@ impl ModelService {
             .contains(model_path)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn record_encode_failure(
         &self,
         source: &str,
@@ -705,12 +934,17 @@ impl ModelService {
         error: &anyhow::Error,
     ) {
         let diag = pcm_diagnostics(pcm);
+        let model_integrity_ok = self.whisper_model_integrity_ok(model_path);
+        let model_bytes = self.whisper_model_bytes(model_path);
+        let model_sha256 = file_sha256_hex(model_path).ok();
         tracing::error!(
             source,
             attempt,
             retried_from_gpu,
             use_gpu,
             vad_enabled,
+            model_integrity_ok,
+            model_bytes,
             model = model_path
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
@@ -737,6 +971,9 @@ impl ModelService {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| model_path.display().to_string()),
+            model_bytes,
+            model_integrity_ok,
+            model_sha256,
             pcm_samples: diag.samples,
             duration_secs: diag.duration_secs,
             rms: diag.rms,
@@ -768,6 +1005,7 @@ impl ModelService {
         pcm: &[f32],
         vad_model_path: Option<&Path>,
         abort: Option<Arc<AtomicBool>>,
+        on_model_loaded: Option<Box<dyn FnOnce() + Send>>,
         on_progress: Arc<Mutex<F>>,
     ) -> Result<Vec<Segment>, InferError>
     where
@@ -777,6 +1015,12 @@ impl ModelService {
         let ctx = self
             .get_or_load_context(model_path)
             .map_err(InferError::Other)?;
+        if let Some(cb) = on_model_loaded {
+            cb();
+        }
+        if let Ok(mut f) = on_progress.lock() {
+            f(INFERENCE_MODEL_LOAD_PROGRESS);
+        }
         let mut state = ctx
             .create_state()
             .map_err(|e| InferError::Other(anyhow!("failed to create whisper state: {e:?}")))?;
@@ -795,18 +1039,26 @@ impl ModelService {
             params.set_vad_params(WhisperVadParams::default());
         }
         let prog = Arc::clone(&on_progress);
-        params.set_segment_callback_safe_lossy(move |segment: SegmentCallbackData| {
-            let p = progress_from_segment_end(segment.end_timestamp, total_ms);
+        let throttle = Arc::new(Mutex::new(WhisperProgressThrottle::new()));
+        let throttle_arc = Arc::clone(&throttle);
+        params.set_progress_callback_safe(move |percent| {
+            let mut guard = match throttle_arc.lock() {
+                Ok(g) => g,
+                Err(_) => return,
+            };
+            if !guard.should_emit(percent) {
+                return;
+            }
+            guard.record(percent);
+            let p = inference_progress_from_whisper_percent(percent);
             if let Ok(mut f) = prog.lock() {
                 f(p);
             }
         });
-        // Let an in-flight inference be interrupted: whisper.cpp polls this between work units
-        // and bails out of `full()` early when it returns true. Without this, an abort is only
-        // observed after the entire pass completes.
-        if let Some(abort) = abort {
-            params.set_abort_callback_safe(move || abort.load(Ordering::SeqCst));
-        }
+        // Do not call `set_abort_callback_safe` — on whisper-rs 0.16 / Metal, registering
+        // an abort callback (even one that always returns false) can fail encode with
+        // GenericError(-6). Cooperative cancel is checked via `abort_flag` between retries.
+        let _abort = abort;
 
         let infer_started = Instant::now();
         match state.full(params, pcm) {
@@ -850,6 +1102,7 @@ impl ModelService {
                     start_ms: seg.start_timestamp() * 10,
                     end_ms: seg.end_timestamp() * 10,
                     text,
+                    source: None,
                 });
             }
         }
@@ -857,8 +1110,8 @@ impl ModelService {
         Ok(segments)
     }
 
-    /// Merge dual-source segments chronologically and label channel origin.
-    /// `in:` = speaker/system audio, `out:` = local microphone.
+    /// Merge dual-source segments chronologically with channel metadata.
+    /// `SegmentSource::Mic` = local microphone; `SegmentSource::Speaker` = loopback/system audio.
     pub fn merge_dual_source(
         &self,
         mic_segments: &[Segment],
@@ -884,14 +1137,9 @@ impl ModelService {
 
         let mut out: Vec<Segment> = Vec::with_capacity(merged.len());
         for item in merged {
-            // Product semantics:
-            // in: local microphone (what I say)
-            // out: speaker/system audio (what I hear)
-            let label = if item.is_speaker { "out:" } else { "in:" };
-            let text = format!("{label} {}", item.seg.text.trim());
-            // Suppress likely mic bleed duplicates when same text appears very close in time.
+            let text = item.seg.text.trim().to_string();
             let is_near_duplicate = out.last().is_some_and(|prev| {
-                prev.text.ends_with(item.seg.text.trim())
+                prev.text.ends_with(text.as_str())
                     && (item.seg.start_ms - prev.start_ms).abs() <= 1_500
             });
             if is_near_duplicate {
@@ -901,6 +1149,11 @@ impl ModelService {
                 start_ms: item.seg.start_ms,
                 end_ms: item.seg.end_ms,
                 text,
+                source: Some(if item.is_speaker {
+                    crate::types::SegmentSource::Speaker
+                } else {
+                    crate::types::SegmentSource::Mic
+                }),
             });
         }
         out
@@ -914,8 +1167,58 @@ fn transcription_failure_log_path(models_dir: &Path) -> PathBuf {
         .unwrap_or_else(|| models_dir.join("transcription-failures.jsonl"))
 }
 
-fn progress_from_segment_end(end_timestamp: i64, total_ms: f32) -> f32 {
-    ((end_timestamp as f32 * 10.0) / total_ms).clamp(0.0, 1.0)
+fn progress_from_whisper_percent(percent: i32) -> f32 {
+    (percent as f32 / 100.0).clamp(0.0, 1.0)
+}
+
+/// Reserve the first slice of the 0–1 bar for model load; Whisper's callback covers encode+decode.
+pub const INFERENCE_MODEL_LOAD_PROGRESS: f32 = 0.05;
+
+fn inference_progress_from_whisper_percent(percent: i32) -> f32 {
+    INFERENCE_MODEL_LOAD_PROGRESS
+        + progress_from_whisper_percent(percent) * (1.0 - INFERENCE_MODEL_LOAD_PROGRESS)
+}
+
+struct WhisperProgressThrottle {
+    last_percent: Option<i32>,
+    last_emit: Instant,
+}
+
+impl WhisperProgressThrottle {
+    fn new() -> Self {
+        Self {
+            last_percent: None,
+            last_emit: Instant::now(),
+        }
+    }
+
+    fn should_emit(&self, percent: i32) -> bool {
+        should_emit_whisper_progress(self.last_percent, self.last_emit.elapsed(), percent)
+    }
+
+    fn record(&mut self, percent: i32) {
+        self.last_percent = Some(percent);
+        self.last_emit = Instant::now();
+    }
+}
+
+fn should_emit_whisper_progress(
+    last_percent: Option<i32>,
+    since_last_emit: Duration,
+    percent: i32,
+) -> bool {
+    if percent >= 100 {
+        return true;
+    }
+    if last_percent.is_none() {
+        return true;
+    }
+    if let Some(last) = last_percent {
+        if (percent - last).abs() >= 1 {
+            return true;
+        }
+    }
+    since_last_emit >= Duration::from_millis(100)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -980,6 +1283,9 @@ struct TranscriptionFailureRecord {
     use_gpu: bool,
     vad_enabled: bool,
     model: String,
+    model_bytes: u64,
+    model_integrity_ok: bool,
+    model_sha256: Option<String>,
     pcm_samples: usize,
     duration_secs: f64,
     rms: f64,
@@ -1053,12 +1359,50 @@ mod tests {
     }
 
     #[test]
-    fn progress_from_segment_end_uses_audio_time_and_clamps() {
-        assert_eq!(progress_from_segment_end(-10, 1_000.0), 0.0);
-        assert_eq!(progress_from_segment_end(0, 1_000.0), 0.0);
-        assert_eq!(progress_from_segment_end(50, 1_000.0), 0.5);
-        assert_eq!(progress_from_segment_end(100, 1_000.0), 1.0);
-        assert_eq!(progress_from_segment_end(150, 1_000.0), 1.0);
+    fn progress_from_whisper_percent_maps_0_to_100() {
+        assert_eq!(progress_from_whisper_percent(-10), 0.0);
+        assert_eq!(progress_from_whisper_percent(0), 0.0);
+        assert_eq!(progress_from_whisper_percent(50), 0.5);
+        assert_eq!(progress_from_whisper_percent(100), 1.0);
+        assert_eq!(progress_from_whisper_percent(150), 1.0);
+    }
+
+    #[test]
+    fn inference_progress_reserves_headroom_for_model_load() {
+        assert_eq!(
+            inference_progress_from_whisper_percent(0),
+            INFERENCE_MODEL_LOAD_PROGRESS
+        );
+        assert_eq!(inference_progress_from_whisper_percent(100), 1.0);
+    }
+
+    #[test]
+    fn whisper_progress_throttle_emits_on_first_percent_change_or_10hz() {
+        assert!(should_emit_whisper_progress(
+            None,
+            Duration::from_millis(0),
+            0
+        ));
+        assert!(!should_emit_whisper_progress(
+            Some(5),
+            Duration::from_millis(50),
+            5
+        ));
+        assert!(should_emit_whisper_progress(
+            Some(5),
+            Duration::from_millis(50),
+            6
+        ));
+        assert!(should_emit_whisper_progress(
+            Some(6),
+            Duration::from_millis(100),
+            6
+        ));
+        assert!(should_emit_whisper_progress(
+            Some(99),
+            Duration::from_millis(0),
+            100
+        ));
     }
 
     #[test]
@@ -1078,17 +1422,20 @@ mod tests {
             start_ms: 2_000,
             end_ms: 2_500,
             text: "hello from mic".to_string(),
+            source: None,
         }];
         let speaker = vec![Segment {
             start_ms: 1_000,
             end_ms: 1_500,
             text: "hello from speaker".to_string(),
+            source: None,
         }];
         let merged = service.merge_dual_source(&mic, &speaker);
         assert_eq!(merged.len(), 2);
-        // Sorted by start_ms: speaker (1000ms) before mic (2000ms).
-        assert!(merged[0].text.starts_with("out: "));
-        assert!(merged[1].text.starts_with("in: "));
+        assert_eq!(merged[0].source, Some(crate::types::SegmentSource::Speaker));
+        assert_eq!(merged[1].source, Some(crate::types::SegmentSource::Mic));
+        assert_eq!(merged[0].text, "hello from speaker");
+        assert_eq!(merged[1].text, "hello from mic");
     }
 
     #[test]
@@ -1114,6 +1461,163 @@ mod tests {
                 .unwrap()
                 .join("transcription-failures.jsonl")
         );
+    }
+
+    #[test]
+    fn vad_model_needs_redownload_when_corrupt() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        assert!(svc.vad_model_needs_redownload());
+
+        let path = dir.join(VAD_MODEL_FILENAME);
+        std::fs::write(&path, b"not a real vad model").unwrap();
+        assert!(svc.vad_model_available());
+        assert!(!svc.vad_model_integrity_ok());
+        assert!(svc.vad_model_needs_redownload());
+        assert!(svc.vad_path_for_inference().is_none());
+    }
+
+    #[test]
+    fn vad_path_for_pcm_skips_short_clips() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        let path = dir.join(VAD_MODEL_FILENAME);
+        // Write bytes that won't match SHA but path exists — integrity fails, so inference path is None.
+        std::fs::write(&path, b"stub").unwrap();
+        assert!(svc.vad_path_for_pcm(16_000).is_none());
+        assert!(svc.vad_path_for_pcm(32_000).is_none());
+    }
+
+    #[test]
+    fn whisper_model_integrity_fails_when_catalog_hash_mismatch() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        let path = dir.join("ggml-tiny.en-q5_1.bin");
+        std::fs::write(&path, b"truncated or corrupt download").unwrap();
+        assert!(svc.model_available(&path));
+        assert!(!svc.whisper_model_integrity_ok(&path));
+    }
+
+    #[test]
+    fn whisper_model_integrity_skips_non_catalog_paths() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        let path = dir.join("custom-whisper.bin");
+        std::fs::write(&path, [1, 2, 3]).unwrap();
+        assert!(svc.whisper_model_integrity_ok(&path));
+    }
+
+    #[test]
+    fn verified_model_is_not_rehashed_while_unchanged() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        let path = dir.join("model.bin");
+        std::fs::write(&path, b"model bytes").unwrap();
+        let sha = file_sha256_hex(&path).unwrap();
+        assert!(svc.model_integrity_ok_cached(&path, &sha));
+        // The cache trusts the unchanged file identity (mtime + len); a second
+        // call must not re-hash — observable because a bogus expected hash
+        // still passes while the file is unchanged.
+        assert!(svc.model_integrity_ok_cached(&path, "not-a-real-hash"));
+    }
+
+    #[test]
+    fn changing_the_file_invalidates_the_verification_cache() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        let path = dir.join("model.bin");
+        std::fs::write(&path, b"model bytes").unwrap();
+        let sha = file_sha256_hex(&path).unwrap();
+        assert!(svc.model_integrity_ok_cached(&path, &sha));
+        std::fs::write(&path, b"different bytes, different length").unwrap();
+        assert!(!svc.model_integrity_ok_cached(&path, &sha));
+    }
+
+    #[test]
+    fn failed_verification_is_not_cached() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        let path = dir.join("model.bin");
+        std::fs::write(&path, b"model bytes").unwrap();
+        let sha = file_sha256_hex(&path).unwrap();
+        assert!(!svc.model_integrity_ok_cached(&path, "wrong"));
+        assert!(svc.model_integrity_ok_cached(&path, &sha));
+    }
+
+    #[test]
+    #[ignore = "hardware: set SCRIBE_REGRESSION_WAV to a saved scribe mic.wav"]
+    fn transcribe_saved_scribe_mic_wav_matches_dictate_path() {
+        use crate::services::audio::read_wav_mono_f32;
+        let wav = std::env::var("SCRIBE_REGRESSION_WAV")
+            .map(PathBuf::from)
+            .ok()
+            .filter(|p| p.exists());
+        let Some(wav) = wav else {
+            eprintln!("skip: set SCRIBE_REGRESSION_WAV to a scribe session mic.wav");
+            return;
+        };
+        let models_dir = std::env::var("SCRIBEFLOAT_MODELS_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                PathBuf::from(
+                    "/Users/benjamin/Library/Application Support/com.benjamin.scribefloat-v8/models",
+                )
+            });
+        let model_path = models_dir.join("ggml-tiny.en-q5_1.bin");
+        if !model_path.exists() {
+            eprintln!("skip: tiny model not present at {}", model_path.display());
+            return;
+        }
+        let svc = ModelService::new(models_dir);
+        let pcm = read_wav_mono_f32(&wav).expect("read scribe mic.wav");
+        eprintln!("pcm samples = {}", pcm.len());
+        let result = svc.transcribe_pcm_with_progress(
+            &model_path,
+            &pcm,
+            svc.vad_path_for_pcm(pcm.len()).as_deref(),
+            None,
+            "test/scribe-wav",
+            |_| {},
+            None,
+        );
+        eprintln!("result = {result:?}");
+        result.expect("scribe session wav should transcribe via dictate-identical path");
+    }
+
+    #[test]
+    fn reset_gpu_preference_clears_cpu_fallback_and_evicts_context() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir);
+        let path = Path::new("/tmp/gpu_reset_test_model.bin");
+        svc.mark_cpu_fallback(path);
+        assert!(svc.cpu_fallback_paths.lock().unwrap().contains(path));
+        svc.reset_gpu_preference(path);
+        assert!(!svc.cpu_fallback_paths.lock().unwrap().contains(path));
+        assert!(svc.lock_contexts().get(path).is_none());
+    }
+
+    #[test]
+    fn reset_gpu_preference_keeps_context_for_healthy_path() {
+        let svc = ModelService::new(temp_models_dir());
+        let path = Path::new("/tmp/healthy_model.bin");
+        // Never marked for CPU fallback → nothing to reset; a context cached by a
+        // preload or a prior transcription must survive.
+        assert!(!svc.reset_gpu_preference(path));
+        svc.mark_cpu_fallback(path);
+        assert!(svc.reset_gpu_preference(path));
+    }
+
+    #[test]
+    fn preload_context_handles_missing_and_corrupt_models_without_panicking() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        // Missing file: silently skipped, nothing cached.
+        svc.preload_context(Path::new("/tmp/definitely-missing-model.bin"));
+        // Corrupt file: load fails, warns, nothing cached.
+        let corrupt = dir.join("corrupt.bin");
+        std::fs::write(&corrupt, b"not a ggml model").unwrap();
+        svc.preload_context(&corrupt);
+        assert!(svc.lock_contexts().is_empty());
     }
 
     #[test]

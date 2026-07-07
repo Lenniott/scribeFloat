@@ -34,9 +34,12 @@ IPC: JS calls `invoke('command_name', { args })` → Rust `#[tauri::command]` in
 
 | Owner | What it owns |
 |---|---|
-| `HistoryService` | Structured record store (`{save_folder}/history.jsonl`): append, compact, tombstone delete. Every transcript-bearing flow always appends a record here on completion. |
+| `HistoryService` | Capture log (`{save_folder}/history.jsonl`): append on create/transcript/export/delete, compact, tombstone. Owns transcript voice-vector encryption/decryption and scrubbing so embeddings can be encrypted at rest or removed while labels/timings remain readable. Editor title/body → `note_sidecar` (`.notes/{id}/`), not jsonl. |
 | `OutputService` | Markdown rendering (pure free functions) and durable file I/O: `.md` writes (opt-in via `save_transcripts_as_markdown`), session manifests, post-transcription cleanup, dictate failure salvage, legacy reads, delete primitives. Dictate never writes `.md`. |
-| `AudioService` | Opens audio streams and streams capture to checkpointed temp/session WAV files (16 kHz writer thread). Do not accumulate PCM in controllers. |
+| `AudioService` | Opens audio streams and streams capture to checkpointed temp/session WAV files (16 kHz writer thread). Exposes an optional `Pcm16kTap` observer on the writer thread for live analysis — `audio.rs` never depends on the analysis module. Do not accumulate PCM in controllers. |
+| `services/analysis.rs` | Pure pitch/loudness analysis (no I/O, no locks): streaming `PitchAnalyzer` fed by the PCM tap, `detect_cuts` for voice-change cuts, canonical `rms`. Constructed per session and orchestrated by `ScribeController`; results persist via `OutputService` (`analysis.json`) and `HistoryService` (`speaker_change_cuts`). See ADR-0013. |
+| `services/speaker_chunks.rs` | Pure chunk orchestration helpers: convert cuts to voice-turn spans, compute chunk quality, assign chunk voiceprints to session speakers, derive transcript speaker centroids from clean chunks, map Whisper segments back to chunk labels. Controllers call it for Record and Upload; it does not own I/O or app state. |
+| `services/voice_crypto.rs` | Pure voice embedding encryption/decryption using AES-256-GCM. Production key material comes from the platform adapter; callers keep plaintext vectors in memory and store ciphertext at persistence boundaries. |
 | `PermissionsService` | The only code that checks OS permissions. |
 
 ---
@@ -83,5 +86,5 @@ struct WindowsAdapter;
 2. Decide which layer it belongs to (controller, service, or platform adapter).
 3. If it requires OS-specific behaviour, define a trait in `platform/mod.rs` and implement it per platform. The controller calls the trait, never the concrete type.
 4. If it writes durable transcript **files** (`.md`, WAV cleanup, manifests), route through `OutputService`.
-5. If it appends or updates the structured session **record** (`history.jsonl`), route through `HistoryService` (controllers orchestrate; never append JSONL from the frontend).
+5. If it appends a capture **event** to `history.jsonl`, route through `HistoryService`. Editor title/body/metadata sidecars go through `note_sidecar` via `HistoryService` update methods — never append jsonl from the frontend.
 6. If it needs config, add a field to `Config` in `types.rs` with a `#[serde(default)]` so existing config files keep loading.

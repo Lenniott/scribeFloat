@@ -122,6 +122,30 @@ pub struct Config {
     /// truth. Dictate never writes `.md` regardless of this flag.
     #[serde(default)]
     pub save_transcripts_as_markdown: bool,
+
+    /// Display name for the user in speaker-labelled transcripts. Default: "You".
+    #[serde(default = "default_user_display_name")]
+    pub user_display_name: String,
+
+    /// Cosine similarity gate for voiceprint matching. Default: 0.75.
+    /// Lower values are more inclusive; higher values are stricter.
+    #[serde(default = "default_voice_similarity_threshold")]
+    pub voice_similarity_threshold: f32,
+
+    /// Whether confirmed transcript speaker labels may improve saved voiceprints.
+    /// Default OFF until encrypted long-term evidence storage is implemented.
+    #[serde(default)]
+    pub voice_learning_enabled: bool,
+
+    /// Whether voice embedding vectors may be kept with transcripts for future
+    /// speaker matching. Default keeps current behaviour.
+    #[serde(default)]
+    pub voice_embeddings_retention: VoiceEmbeddingsRetention,
+
+    /// Require encrypted-at-rest embedding storage before automatic long-term
+    /// voice learning can run. Default ON.
+    #[serde(default = "default_true")]
+    pub voice_embeddings_encryption_required: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -167,6 +191,37 @@ impl Default for Config {
             replacement_rules: default_replacement_rules(),
             replacement_prefix: default_replacement_prefix(),
             save_transcripts_as_markdown: false,
+            user_display_name: default_user_display_name(),
+            voice_similarity_threshold: default_voice_similarity_threshold(),
+            voice_learning_enabled: false,
+            voice_embeddings_retention: VoiceEmbeddingsRetention::Keep,
+            voice_embeddings_encryption_required: true,
+        }
+    }
+}
+
+fn default_user_display_name() -> String {
+    "You".to_string()
+}
+
+fn default_voice_similarity_threshold() -> f32 {
+    0.75
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceEmbeddingsRetention {
+    #[default]
+    Keep,
+    DeleteAfterTranscript,
+}
+
+impl VoiceEmbeddingsRetention {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "keep" => Ok(Self::Keep),
+            "delete_after_transcript" => Ok(Self::DeleteAfterTranscript),
+            other => Err(format!("unsupported voice embeddings retention `{other}`")),
         }
     }
 }
@@ -343,11 +398,85 @@ fn default_output_label() -> String {
     "Speaker".to_string()
 }
 
+/// Stored speaker-block labels for dual-source channel tier (tier 2).
+pub const CHANNEL_LABEL_IN: &str = "In";
+/// Stored speaker-block labels for dual-source channel tier (tier 2).
+pub const CHANNEL_LABEL_OUT: &str = "Out";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SegmentSource {
+    Mic,
+    Speaker,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Segment {
     pub start_ms: i64,
     pub end_ms: i64,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<SegmentSource>,
+}
+
+impl Segment {
+    pub fn new(start_ms: i64, end_ms: i64, text: impl Into<String>) -> Self {
+        Self {
+            start_ms,
+            end_ms,
+            text: text.into(),
+            source: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpeakerBlock {
+    pub label: String,
+    pub start_ms: Option<u64>,
+    pub end_ms: Option<u64>,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chunk_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpeakerChunk {
+    pub id: String,
+    pub start_ms: u64,
+    pub end_ms: u64,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_profile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedding: Option<Vec<f32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypted_embedding: Option<EncryptedEmbedding>,
+    pub audio_duration_s: f32,
+    pub vad_purity: f32,
+    pub rms_energy: f32,
+    pub clipping: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_score: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionSpeaker {
+    pub session_speaker_id: String,
+    pub label: String,
+    pub centroid_embedding: Vec<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypted_centroid_embedding: Option<EncryptedEmbedding>,
+    pub clean_chunk_ids: Vec<String>,
+    pub start_ms: u64,
+    pub end_ms: u64,
+    pub duration_ms: u64,
+    pub radius: f32,
+    pub quality_score: f32,
+    #[serde(default)]
+    pub user_confirmed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -355,6 +484,44 @@ pub struct Note {
     pub id: String,
     pub text: String,
     pub recorded_at_ms: u64,
+}
+
+// ── Live audio analysis (pitch / loudness change cuts) ──────────────────────────
+
+/// Windowed pitch/loudness timeline over the 16 kHz mono mic stream.
+/// Frame `i` is centered at `(i * hop_samples + window_samples / 2) / sample_rate`
+/// seconds. Parallel arrays keep the JSON compact (~5× smaller than per-frame objects).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AudioAnalysis {
+    pub format_version: u8,
+    pub sample_rate: u32,
+    pub window_samples: u32,
+    pub hop_samples: u32,
+    /// `None` = unvoiced frame (no pitch in the 65–400 Hz voice band).
+    pub f0_hz: Vec<Option<f32>>,
+    pub rms: Vec<f32>,
+}
+
+/// Why a change cut fired. Ordering matters: `BTreeSet<CutReason>` keeps
+/// serialized reason lists deterministic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CutReason {
+    Pitch,
+    Loudness,
+    Silence,
+}
+
+/// A detected voice-change boundary. Says "the voice changed here" — spans between
+/// cuts are NOT speaker identities (identity is the voiceprint service's job).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpeakerChangeCut {
+    pub time_s: f32,
+    /// Last merged candidate's time; equals `time_s` for an unmerged cut.
+    pub end_s: f32,
+    /// Observed jump / threshold, so >= 1.0 by construction; max over merged candidates.
+    pub score: f32,
+    pub reasons: std::collections::BTreeSet<CutReason>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -388,6 +555,9 @@ pub struct ScribeStateEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ProcessingStage {
+    /// Audio finalize/merge (Record, Dictate) or per-item decode (Upload) —
+    /// the pre-model wait the UI must not blame on model loading.
+    PreparingAudio,
     LoadingModel,
     TranscribingAudio,
     WritingTranscript,
@@ -470,7 +640,10 @@ impl TranscribeStateEvent {
     }
 }
 
-/// Emitted on `model://download-progress` while the default model downloads.
+/// Emitted on `model://download-progress` for every model the app downloads —
+/// Whisper catalog models, the Silero VAD model (`model_id = "vad"`), and the
+/// voiceprint ONNX model (`model_id = "voiceprint"`). One channel, one payload;
+/// consumers filter by `model_id`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelDownloadEvent {
     pub model_id: String,
@@ -492,6 +665,82 @@ pub struct ModelListItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintProfile {
+    pub name: String,
+    pub slug: String,
+    pub mic_device_id: Option<String>,
+    pub embedding: Vec<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypted_embedding: Option<EncryptedEmbedding>,
+    pub sample_count: u32,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EncryptedEmbedding {
+    pub version: u8,
+    pub algorithm: String,
+    pub nonce_b64: String,
+    pub ciphertext_b64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintProfileSummary {
+    pub slug: String,
+    pub name: String,
+    pub mic_device_id: Option<String>,
+    pub mic_device_label: Option<String>,
+    pub sample_count: u32,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintModelStatus {
+    pub downloaded: bool,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceprintClipState {
+    Pending,
+    Recording,
+    Safe,
+    Optimal,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintClipStatus {
+    pub clip_id: String,
+    pub duration_s: f32,
+    pub speech_s: f32,
+    pub purity: f32,
+    pub state: VoiceprintClipState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionCaptureStart {
+    pub capture_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionCaptureStatus {
+    pub capture_id: String,
+    pub speech_s: f32,
+    pub purity: f32,
+    pub state: VoiceprintClipState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceprintClipResult {
+    pub duration_s: f32,
+    pub speech_s: f32,
+    pub purity: f32,
+    pub accepted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionStatus {
     pub kind: String,
     pub granted: bool,
@@ -510,13 +759,6 @@ pub enum DictateState {
     /// Transcription complete, text pasted. Window stays visible briefly.
     Done,
     Error,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum DictateProcessingStage {
-    LoadingModel,
-    TranscribingAudio,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -542,6 +784,10 @@ pub struct SessionManifest {
     pub transcript_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Voice-change cuts detected live during recording; populated from the
+    /// Transcribing state onward so crash recovery keeps them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub speaker_change_cuts: Vec<SpeakerChangeCut>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -557,7 +803,9 @@ pub struct DictateStateEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub processing_stage: Option<DictateProcessingStage>,
+    /// Shares the capture-wide [`ProcessingStage`] vocabulary; Dictate only ever
+    /// emits `LoadingModel` and `TranscribingAudio` (no transcript file, no kept audio).
+    pub processing_stage: Option<ProcessingStage>,
     /// Populated on Done state — the text that was pasted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
@@ -619,6 +867,7 @@ pub enum HistoryKind {
     Scribe,
     Dictate,
     Transcribe,
+    Written,
 }
 
 /// The canonical, source-of-truth record persisted to `{save_folder}/history.jsonl`.
@@ -632,8 +881,23 @@ pub struct HistoryRecord {
     pub created_at: String,
     pub title: String,
     pub model: String,
-    /// Raw merged segments (preserving `in:`/`out:` speaker labels) — re-renderable.
+    /// Raw merged segments with optional channel metadata — re-renderable.
     pub segments: Vec<Segment>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub speaker_blocks: Vec<SpeakerBlock>,
+    /// Voice-change cuts from live pitch/loudness analysis. The full frame
+    /// timeline lives in `{session_dir}/analysis.json`, not here (size).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub speaker_change_cuts: Vec<SpeakerChangeCut>,
+    /// Voice-turn chunks used for chunked Whisper and chunk-level speaker
+    /// matching. Empty for legacy records and paths that do not run speaker
+    /// analysis.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub speaker_chunks: Vec<SpeakerChunk>,
+    /// Transcript-level speaker centroids derived from clean chunks. Empty for
+    /// legacy records and paths that do not run speaker analysis.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub session_speakers: Vec<SessionSpeaker>,
     #[serde(default)]
     pub notes: Vec<Note>,
     pub duration_ms: i64,
@@ -654,9 +918,32 @@ pub struct HistoryRecord {
     /// Primary kept audio file (e.g. `{session_dir}/mic.wav`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio_path: Option<String>,
+    /// Markdown text for the `written` Source. None for non-Written records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub written_content: Option<String>,
     /// Tombstone: a later line with `deleted = true` removes the record from the live view.
     #[serde(default)]
     pub deleted: bool,
+}
+
+/// One completed transcription pass, ready to attach to an existing record.
+/// All time-bearing fields are pass-local (t = 0 at the start of the pass);
+/// `HistoryRecord::attach_transcript` shifts them into absolute recording time.
+#[derive(Debug, Clone, Default)]
+pub struct TranscriptAttachment {
+    pub segments: Vec<Segment>,
+    pub speaker_blocks: Vec<SpeakerBlock>,
+    pub speaker_change_cuts: Vec<SpeakerChangeCut>,
+    pub speaker_chunks: Vec<SpeakerChunk>,
+    pub session_speakers: Vec<SessionSpeaker>,
+    pub notes: Vec<Note>,
+    pub model: String,
+    pub speaker_capture: bool,
+    pub dual_source: bool,
+    pub session_dir: Option<String>,
+    pub audio_path: Option<String>,
+    /// None = keep the record's existing markdown path.
+    pub markdown_path: Option<String>,
 }
 
 /// Where a history list item originated. Legacy sources are read-only.
@@ -678,10 +965,31 @@ pub struct HistoryListItem {
     pub model: String,
     pub word_count: usize,
     pub duration_ms: i64,
+    pub duration_secs: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub excerpt: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
     pub has_markdown: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub markdown_path: Option<String>,
     pub source: HistoryItemSource,
+}
+
+/// Aggregated dashboard metrics for the home screen.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardStats {
+    pub transcript_count: usize,
+    pub recorded_this_week_secs: Option<i64>,
+    pub float_layers: Option<usize>,
+    pub drafts_to_review: Option<usize>,
+}
+
+/// One tag name and how many store transcripts reference it (filter panel vocabulary).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TagVocabularyEntry {
+    pub name: String,
+    pub count: usize,
 }
 
 impl HistoryRecord {
@@ -705,6 +1013,10 @@ impl HistoryRecord {
             title,
             model,
             segments,
+            speaker_blocks: Vec::new(),
+            speaker_change_cuts: Vec::new(),
+            speaker_chunks: Vec::new(),
+            session_speakers: Vec::new(),
             notes,
             duration_ms,
             word_count,
@@ -714,6 +1026,7 @@ impl HistoryRecord {
             markdown_path: None,
             session_dir: None,
             audio_path: None,
+            written_content: None,
             deleted: false,
         }
     }
@@ -758,11 +1071,7 @@ impl HistoryRecord {
         let duration_ms = segments.last().map(|s| s.end_ms.max(0)).unwrap_or(0);
         let word_count = text.split_whitespace().count();
         let title = title_from_text(text);
-        let stored = vec![Segment {
-            start_ms: 0,
-            end_ms: duration_ms,
-            text: text.to_string(),
-        }];
+        let stored = vec![Segment::new(0, duration_ms, text)];
         Self::base(
             HistoryKind::Dictate,
             title,
@@ -800,8 +1109,109 @@ impl HistoryRecord {
         rec
     }
 
+    /// Build a Written note record. Content starts empty — filled in via `update_written_content`.
+    pub fn from_written(title: String) -> Self {
+        Self::base(
+            HistoryKind::Written,
+            title,
+            String::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+        )
+    }
+
+    /// Attach one transcription pass to this record. The attachment's timelines are
+    /// pass-local (t = 0 at the start of the pass); every time-bearing structure is
+    /// shifted by this record's current duration so the combined timeline stays in
+    /// absolute recording time. Duration and word count are recomputed here — they
+    /// are derived fields and must never be shifted or set by callers.
+    ///
+    /// The destructure is exhaustive on purpose: adding a field to
+    /// `TranscriptAttachment` will not compile until this method decides whether
+    /// and how it shifts.
+    pub fn attach_transcript(
+        &mut self,
+        attachment: TranscriptAttachment,
+        rules: &[ReplacementRule],
+        prefix: &str,
+    ) {
+        let TranscriptAttachment {
+            segments,
+            speaker_blocks,
+            speaker_change_cuts,
+            speaker_chunks,
+            session_speakers,
+            notes,
+            model,
+            speaker_capture,
+            dual_source,
+            session_dir,
+            audio_path,
+            markdown_path,
+        } = attachment;
+        let offset_ms = self.duration_ms.max(0);
+        let offset_u64 = offset_ms as u64;
+        let offset_s = offset_ms as f32 / 1000.0;
+
+        self.segments.extend(segments.into_iter().map(|mut segment| {
+            segment.start_ms = segment.start_ms.saturating_add(offset_ms);
+            segment.end_ms = segment.end_ms.saturating_add(offset_ms);
+            segment
+        }));
+        self.speaker_blocks
+            .extend(speaker_blocks.into_iter().map(|mut block| {
+                block.start_ms = block.start_ms.map(|ms| ms.saturating_add(offset_u64));
+                block.end_ms = block.end_ms.map(|ms| ms.saturating_add(offset_u64));
+                block
+            }));
+        self.speaker_change_cuts
+            .extend(speaker_change_cuts.into_iter().map(|mut cut| {
+                cut.time_s += offset_s;
+                cut.end_s += offset_s;
+                cut
+            }));
+        self.speaker_chunks
+            .extend(speaker_chunks.into_iter().map(|mut chunk| {
+                chunk.start_ms = chunk.start_ms.saturating_add(offset_u64);
+                chunk.end_ms = chunk.end_ms.saturating_add(offset_u64);
+                chunk
+            }));
+        self.session_speakers
+            .extend(session_speakers.into_iter().map(|mut speaker| {
+                speaker.start_ms = speaker.start_ms.saturating_add(offset_u64);
+                speaker.end_ms = speaker.end_ms.saturating_add(offset_u64);
+                speaker
+            }));
+        self.notes.extend(notes.into_iter().map(|mut note| {
+            note.recorded_at_ms = note.recorded_at_ms.saturating_add(offset_u64);
+            note
+        }));
+
+        self.model = model;
+        self.speaker_capture = speaker_capture;
+        self.dual_source = dual_source;
+        self.session_dir = session_dir;
+        self.audio_path = audio_path;
+        if markdown_path.is_some() {
+            self.markdown_path = markdown_path;
+        }
+        self.duration_ms = self
+            .segments
+            .last()
+            .map(|s| s.end_ms.max(0))
+            .unwrap_or(0);
+        self.word_count = crate::services::output::count_words(&self.segments, rules, prefix);
+    }
+
     /// Project to the lightweight list item shown in History.
     pub fn to_list_item(&self) -> HistoryListItem {
+        let excerpt = if self.kind == HistoryKind::Written {
+            excerpt_from_written_content(self.written_content.as_deref())
+                .or_else(|| excerpt_from_segments(&self.segments))
+        } else {
+            excerpt_from_segments(&self.segments)
+        };
         HistoryListItem {
             id: self.id.clone(),
             kind: self.kind,
@@ -810,10 +1220,43 @@ impl HistoryRecord {
             model: self.model.clone(),
             word_count: self.word_count,
             duration_ms: self.duration_ms,
+            duration_secs: self.duration_ms / 1000,
+            excerpt,
+            tags: Vec::new(),
             has_markdown: self.markdown_path.is_some(),
             markdown_path: self.markdown_path.clone(),
             source: HistoryItemSource::Store,
         }
+    }
+}
+
+const EXCERPT_MAX_CHARS: usize = 120;
+
+fn excerpt_from_segments(segments: &[Segment]) -> Option<String> {
+    let text = segments
+        .iter()
+        .map(|s| s.text.trim())
+        .find(|t| !t.is_empty())?;
+    truncate_excerpt(&text.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+fn excerpt_from_written_content(content: Option<&str>) -> Option<String> {
+    let text = content?.trim();
+    if text.is_empty() {
+        return None;
+    }
+    truncate_excerpt(text)
+}
+
+fn truncate_excerpt(flat: &str) -> Option<String> {
+    if flat.is_empty() {
+        return None;
+    }
+    if flat.chars().count() <= EXCERPT_MAX_CHARS {
+        Some(flat.to_string())
+    } else {
+        let truncated: String = flat.chars().take(EXCERPT_MAX_CHARS).collect();
+        Some(format!("{truncated}…"))
     }
 }
 
@@ -885,6 +1328,72 @@ mod tests {
     }
 
     #[test]
+    fn audio_analysis_serde_roundtrip() {
+        let analysis = AudioAnalysis {
+            format_version: 1,
+            sample_rate: 16_000,
+            window_samples: 2048,
+            hop_samples: 1024,
+            f0_hz: vec![Some(110.0), None, Some(220.0)],
+            rms: vec![0.05, 0.001, 0.08],
+        };
+        let json = serde_json::to_string(&analysis).expect("serialize");
+        let parsed: AudioAnalysis = serde_json::from_str(&json).expect("parse");
+        assert_eq!(parsed, analysis);
+    }
+
+    #[test]
+    fn speaker_change_cut_serializes_lowercase_reasons() {
+        let cut = SpeakerChangeCut {
+            time_s: 7.5,
+            end_s: 7.9,
+            score: 1.4,
+            reasons: [CutReason::Pitch, CutReason::Loudness]
+                .into_iter()
+                .collect(),
+        };
+        let json = serde_json::to_value(&cut).expect("serialize");
+        assert_eq!(json["reasons"], serde_json::json!(["pitch", "loudness"]));
+        let parsed: SpeakerChangeCut = serde_json::from_value(json).expect("parse");
+        assert_eq!(parsed, cut);
+    }
+
+    #[test]
+    fn session_manifest_without_cuts_field_still_parses() {
+        // Manifests written before speaker_change_cuts existed must keep loading.
+        let legacy = r#"{
+            "format_version": 1,
+            "state": "recording",
+            "started_at": "2026-05-28T12:00:00Z",
+            "mic_wav": "mic.wav"
+        }"#;
+        let manifest: SessionManifest = serde_json::from_str(legacy).expect("parse legacy");
+        assert!(manifest.speaker_change_cuts.is_empty());
+        // And empty cuts stay off the wire.
+        let json = serde_json::to_value(&manifest).expect("serialize");
+        assert!(json.get("speaker_change_cuts").is_none());
+    }
+
+    #[test]
+    fn history_record_without_cuts_field_still_parses() {
+        let legacy = r#"{
+            "format_version": 1,
+            "id": "abc",
+            "kind": "scribe",
+            "created_at": "2026-05-28T12:00:00Z",
+            "title": "t",
+            "model": "m",
+            "segments": [],
+            "duration_ms": 0,
+            "word_count": 0
+        }"#;
+        let record: HistoryRecord = serde_json::from_str(legacy).expect("parse legacy");
+        assert!(record.speaker_change_cuts.is_empty());
+        assert!(record.speaker_chunks.is_empty());
+        assert!(record.session_speakers.is_empty());
+    }
+
+    #[test]
     fn scribe_state_event_serializes_ui_expected_keys() {
         let mut event = ScribeStateEvent::new(ScribeState::Done);
         event.transcript_path = Some("/tmp/result.md".to_string());
@@ -920,6 +1429,19 @@ mod tests {
     }
 
     #[test]
+    fn dictate_event_keeps_wire_format_with_unified_processing_stage() {
+        // Dictate shares ProcessingStage with Record/Upload; the serialized strings
+        // must stay what the frontend has always received.
+        let mut event = DictateStateEvent::new(DictateState::Transcribing);
+        event.processing_stage = Some(ProcessingStage::LoadingModel);
+        let json = serde_json::to_value(&event).expect("serialize");
+        assert_eq!(json["processing_stage"], "LOADING_MODEL");
+        event.processing_stage = Some(ProcessingStage::TranscribingAudio);
+        let json = serde_json::to_value(&event).expect("serialize");
+        assert_eq!(json["processing_stage"], "TRANSCRIBING_AUDIO");
+    }
+
+    #[test]
     fn config_save_transcripts_as_markdown_defaults_false_from_old_config() {
         // An old config file missing the new field must still deserialize.
         let old = r#"{"save_folder":"/tmp/x"}"#;
@@ -928,17 +1450,31 @@ mod tests {
     }
 
     #[test]
+    fn config_voice_learning_fields_default_from_old_config() {
+        let old = r#"{"save_folder":"/tmp/x"}"#;
+        let cfg: Config = serde_json::from_str(old).expect("deserialize old config");
+        assert!(!cfg.voice_learning_enabled);
+        assert_eq!(
+            cfg.voice_embeddings_retention,
+            VoiceEmbeddingsRetention::Keep
+        );
+        assert!(cfg.voice_embeddings_encryption_required);
+    }
+
+    #[test]
     fn from_scribe_sets_dual_source_duration_and_kept_audio() {
         let segments = vec![
             Segment {
                 start_ms: 0,
                 end_ms: 1_000,
-                text: "in: hi".to_string(),
+                text: "hi".to_string(),
+                source: Some(crate::types::SegmentSource::Mic),
             },
             Segment {
                 start_ms: 1_200,
                 end_ms: 5_000,
-                text: "out: hello there".to_string(),
+                text: "hello there".to_string(),
+                source: Some(crate::types::SegmentSource::Speaker),
             },
         ];
         let rec = HistoryRecord::from_scribe(
@@ -969,6 +1505,7 @@ mod tests {
             start_ms: 0,
             end_ms: 2_000,
             text: "mic only".to_string(),
+            source: None,
         }];
         let rec = HistoryRecord::from_scribe(
             "Call".to_string(),
@@ -993,6 +1530,7 @@ mod tests {
             start_ms: 0,
             end_ms: 2_000,
             text: "raw".to_string(),
+            source: None,
         }];
         let rec = HistoryRecord::from_dictate(&segments, "hello there friend", "tiny".to_string());
         assert_eq!(rec.kind, HistoryKind::Dictate);
@@ -1008,6 +1546,7 @@ mod tests {
             start_ms: 0,
             end_ms: 3_000,
             text: "one two".to_string(),
+            source: None,
         }];
         let rec = HistoryRecord::from_transcribe(
             "clip".to_string(),
@@ -1022,5 +1561,146 @@ mod tests {
         assert_eq!(rec.kind, HistoryKind::Transcribe);
         assert_eq!(rec.source_path.as_deref(), Some("/in/clip.mp3"));
         assert_eq!(rec.word_count, 2);
+    }
+
+    #[test]
+    fn written_record_has_correct_kind() {
+        let rec = HistoryRecord::from_written("Title".into());
+        assert_eq!(rec.kind, HistoryKind::Written);
+        assert!(rec.segments.is_empty());
+        assert_eq!(rec.model, "");
+        assert_eq!(rec.duration_ms, 0);
+        assert_eq!(rec.word_count, 0);
+        assert!(rec.written_content.is_none());
+        assert!(!rec.id.is_empty());
+    }
+
+    #[test]
+    fn written_record_deserialises_without_written_content_field() {
+        let json = r#"{"format_version":1,"id":"abc","kind":"written","created_at":"2026-01-01T00:00:00Z","title":"T","model":"","segments":[],"notes":[],"duration_ms":0,"word_count":0}"#;
+        let rec: HistoryRecord = serde_json::from_str(json).expect("deserialise");
+        assert_eq!(rec.kind, HistoryKind::Written);
+        assert!(rec.written_content.is_none());
+    }
+
+    fn full_attachment() -> TranscriptAttachment {
+        TranscriptAttachment {
+            segments: vec![Segment::new(0, 2_000, "second part")],
+            speaker_blocks: vec![SpeakerBlock {
+                label: "You".into(),
+                start_ms: Some(0),
+                end_ms: Some(2_000),
+                text: "second part".into(),
+                chunk_id: Some("chunk-1".into()),
+            }],
+            speaker_change_cuts: vec![SpeakerChangeCut {
+                time_s: 0.5,
+                end_s: 0.5,
+                score: 1.5,
+                reasons: [CutReason::Pitch].into_iter().collect(),
+            }],
+            speaker_chunks: vec![SpeakerChunk {
+                id: "chunk-1".into(),
+                start_ms: 0,
+                end_ms: 2_000,
+                label: "Speaker A".into(),
+                cluster_id: None,
+                matched_profile: None,
+                embedding: None,
+                encrypted_embedding: None,
+                audio_duration_s: 2.0,
+                vad_purity: 0.9,
+                rms_energy: 0.1,
+                clipping: false,
+                profile_score: None,
+            }],
+            session_speakers: vec![SessionSpeaker {
+                session_speaker_id: "s-1".into(),
+                label: "Speaker A".into(),
+                centroid_embedding: vec![1.0, 0.0],
+                encrypted_centroid_embedding: None,
+                clean_chunk_ids: vec!["chunk-1".into()],
+                start_ms: 0,
+                end_ms: 2_000,
+                duration_ms: 2_000,
+                radius: 0.0,
+                quality_score: 0.9,
+                user_confirmed: false,
+            }],
+            notes: vec![Note {
+                id: "n-1".into(),
+                text: "marker".into(),
+                recorded_at_ms: 250,
+            }],
+            model: "base".into(),
+            speaker_capture: true,
+            dual_source: false,
+            session_dir: Some("/sess".into()),
+            audio_path: Some("/sess/mic.wav".into()),
+            markdown_path: None,
+        }
+    }
+
+    #[test]
+    fn attach_transcript_shifts_every_timeline_structure_by_prior_duration() {
+        let mut rec = HistoryRecord::from_scribe(
+            "t".into(),
+            "tiny".into(),
+            vec![Segment::new(0, 1_000, "first")],
+            vec![],
+            &[],
+            "",
+            false,
+            false,
+            None,
+            None,
+            None,
+        );
+        rec.attach_transcript(full_attachment(), &[], "");
+
+        assert_eq!(rec.segments.len(), 2);
+        assert_eq!(rec.segments[1].start_ms, 1_000);
+        assert_eq!(rec.segments[1].end_ms, 3_000);
+        assert_eq!(rec.speaker_blocks[0].start_ms, Some(1_000));
+        assert_eq!(rec.speaker_blocks[0].end_ms, Some(3_000));
+        assert!((rec.speaker_change_cuts[0].time_s - 1.5).abs() < 1e-6);
+        assert!((rec.speaker_change_cuts[0].end_s - 1.5).abs() < 1e-6);
+        assert_eq!(rec.speaker_chunks[0].start_ms, 1_000);
+        assert_eq!(rec.speaker_chunks[0].end_ms, 3_000);
+        assert_eq!(rec.session_speakers[0].start_ms, 1_000);
+        assert_eq!(rec.session_speakers[0].end_ms, 3_000);
+        assert_eq!(rec.notes[0].recorded_at_ms, 1_250);
+        assert_eq!(rec.duration_ms, 3_000);
+        // "first" + "second part"
+        assert_eq!(rec.word_count, 3);
+        assert_eq!(rec.model, "base");
+        assert!(rec.speaker_capture);
+        assert_eq!(rec.session_dir.as_deref(), Some("/sess"));
+        assert_eq!(rec.audio_path.as_deref(), Some("/sess/mic.wav"));
+    }
+
+    #[test]
+    fn attach_transcript_to_record_without_audio_applies_no_offset() {
+        let mut rec = HistoryRecord::from_written("T".into());
+        rec.attach_transcript(full_attachment(), &[], "");
+        assert_eq!(rec.segments[0].start_ms, 0);
+        assert_eq!(rec.segments[0].end_ms, 2_000);
+        assert!((rec.speaker_change_cuts[0].time_s - 0.5).abs() < 1e-6);
+        assert_eq!(rec.notes[0].recorded_at_ms, 250);
+        assert_eq!(rec.duration_ms, 2_000);
+    }
+
+    #[test]
+    fn attach_transcript_keeps_existing_markdown_path_unless_replaced() {
+        let mut rec = HistoryRecord::from_written("T".into());
+        rec.markdown_path = Some("/old.md".into());
+
+        rec.attach_transcript(full_attachment(), &[], "");
+        assert_eq!(rec.markdown_path.as_deref(), Some("/old.md"));
+
+        let mut with_md = full_attachment();
+        with_md.markdown_path = Some("/new.md".into());
+        rec.attach_transcript(with_md, &[], "");
+        assert_eq!(rec.markdown_path.as_deref(), Some("/new.md"));
     }
 }

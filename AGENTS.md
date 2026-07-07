@@ -24,6 +24,7 @@ Pull only the docs relevant to the task. Do not load everything.
 ```
 docs/architecture.md                    ← System diagrams (C4), component maps, module map
 docs/engineering/layer-rules.md         ← Adding a feature or IPC command; layer ownership rules
+docs/engineering/history-storage.md     ← Note jsonl vs sidecar persistence, autosave
 docs/engineering/async-rules.md         ← Controller threading, state machines, Whisper paths
 docs/engineering/platform-rules.md      ← macOS threading, audio drain, paste behaviour
 docs/engineering/debugging.md           ← Bug investigation table, Whisper debugging
@@ -63,17 +64,32 @@ python3 skills/design-skill/query.py search "X"    # search both
 
 ```bash
 cargo tauri dev                    # Start dev build
-cargo test -p scribefloat          # Unit tests
+cargo test -p ScribeFloat          # Unit tests (no hardware required)
 cargo clippy -- -D warnings        # Must pass before committing
 cargo check                        # Fast compile check
 ```
+
+### Hardware-gated tests
+
+Some tests are marked `#[ignore]` because they require a real mic or macOS
+loopback device. They are **skipped in CI and virtual environments** — do not
+run them there. On a developer machine with hardware:
+
+```bash
+cargo test -p ScribeFloat -- --ignored          # hardware-gated tests only
+cargo test -p ScribeFloat -- --include-ignored  # everything
+```
+
+Currently gated: `mic_session_*` (real mic, any OS), `loopback_session_*`
+(macOS speaker capture). Do **not** add `#[ignore]` to tests that can run
+without hardware — use it only when the test genuinely requires a device.
 
 ---
 
 ## Before committing
 
 - `cargo clippy -- -D warnings` passes
-- `cargo test -p scribefloat` passes
+- `cargo test -p ScribeFloat` passes
 - If you changed a `#[tauri::command]` signature, verify the JS caller uses matching camelCase argument names
 - If you changed `Config`, verify a file missing the new field still loads (see `docs/engineering/config-rules.md`)
 - If you changed `platform/`, verify the other platform compiles: `cargo check --target x86_64-pc-windows-msvc`

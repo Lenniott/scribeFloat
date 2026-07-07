@@ -1,7 +1,23 @@
 use crate::controllers::history::HistoryController;
-use crate::types::{AppError, HistoryListItem, HistoryRecord};
+use crate::controllers::scribe::ScribeController;
+use crate::types::{AppError, DashboardStats, HistoryListItem, HistoryRecord, TagVocabularyEntry};
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
+
+pub(crate) const NOTE_ITEM_UPDATED_EVENT: &str = "note://item-updated";
+
+#[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
+pub(crate) struct NoteItemUpdatedPayload {
+    pub id: String,
+}
+
+fn emit_note_item_updated(app: &AppHandle, id: &str) {
+    app.emit(
+        NOTE_ITEM_UPDATED_EVENT,
+        NoteItemUpdatedPayload { id: id.to_string() },
+    )
+    .ok();
+}
 
 fn validate_id(id: &str) -> Result<(), AppError> {
     if id.trim().is_empty() {
@@ -36,6 +52,17 @@ mod tests {
     #[test]
     fn uuid_style_id_accepted() {
         assert!(validate_id("550e8400-e29b-41d4-a716-446655440000").is_ok());
+    }
+
+    #[test]
+    fn item_updated_payload_serializes_id() {
+        let payload = NoteItemUpdatedPayload {
+            id: "note-abc".to_string(),
+        };
+        assert_eq!(
+            serde_json::to_string(&payload).unwrap(),
+            r#"{"id":"note-abc"}"#
+        );
     }
 }
 
@@ -88,4 +115,148 @@ pub fn history_read_legacy(
         return Err(AppError::InvalidInput("path must not be empty".to_string()));
     }
     ctrl.read_legacy(&path).map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn get_dashboard_stats(
+    ctrl: State<'_, Arc<HistoryController>>,
+) -> Result<DashboardStats, AppError> {
+    ctrl.dashboard_stats().map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn history_tag_vocabulary(
+    ctrl: State<'_, Arc<HistoryController>>,
+) -> Result<Vec<TagVocabularyEntry>, AppError> {
+    ctrl.tag_vocabulary().map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn note_create_empty(
+    ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
+) -> Result<String, AppError> {
+    let id = ctrl.create_written_note().map_err(AppError::from)?;
+    app.emit("note://item-added", ()).ok();
+    Ok(id)
+}
+
+#[tauri::command]
+pub fn note_save_written_content(
+    ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
+    id: String,
+    content: String,
+) -> Result<(), AppError> {
+    validate_id(&id)?;
+    ctrl.save_written_content(&id, &content)
+        .map_err(AppError::from)?;
+    emit_note_item_updated(&app, &id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn note_save_title(
+    ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
+    id: String,
+    title: String,
+) -> Result<(), AppError> {
+    validate_id(&id)?;
+    ctrl.save_title(&id, &title).map_err(AppError::from)?;
+    emit_note_item_updated(&app, &id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn note_is_empty(
+    ctrl: State<'_, Arc<HistoryController>>,
+    id: String,
+) -> Result<bool, AppError> {
+    validate_id(&id)?;
+    ctrl.is_empty(&id).map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn note_has_metadata(
+    ctrl: State<'_, Arc<HistoryController>>,
+    id: String,
+) -> Result<bool, AppError> {
+    validate_id(&id)?;
+    ctrl.has_metadata(&id).map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn note_set_tags(
+    ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
+    id: String,
+    tags: Vec<String>,
+) -> Result<(), AppError> {
+    validate_id(&id)?;
+    ctrl.update_tags(&id, tags).map_err(AppError::from)?;
+    emit_note_item_updated(&app, &id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn note_rename_session_speaker(
+    ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
+    id: String,
+    session_speaker_id: String,
+    label: String,
+) -> Result<(), AppError> {
+    validate_id(&id)?;
+    ctrl.rename_session_speaker(&id, &session_speaker_id, &label)
+        .map_err(AppError::from)?;
+    emit_note_item_updated(&app, &id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn note_remove_voice_embeddings(
+    ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
+    id: String,
+) -> Result<(), AppError> {
+    validate_id(&id)?;
+    ctrl.remove_voice_embeddings(&id).map_err(AppError::from)?;
+    emit_note_item_updated(&app, &id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn history_remove_all_voice_embeddings(
+    ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
+) -> Result<usize, AppError> {
+    let changed = ctrl.remove_all_voice_embeddings().map_err(AppError::from)?;
+    app.emit("note://items-reset", ()).ok();
+    Ok(changed)
+}
+
+#[tauri::command]
+pub fn note_attach_transcript(
+    history: State<'_, Arc<HistoryController>>,
+    scribe: State<'_, Arc<ScribeController>>,
+    app: AppHandle,
+    id: String,
+) -> Result<(), AppError> {
+    validate_id(&id)?;
+    let pending = scribe
+        .take_pending_attach()
+        .ok_or_else(|| AppError::InvalidInput("no transcript ready to attach".to_string()))?;
+    history.attach_transcript(&id, pending).map_err(AppError::from)?;
+    app.emit("note://item-added", ()).ok();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn note_render_transcript_html(
+    ctrl: State<'_, Arc<HistoryController>>,
+    id: String,
+) -> Result<String, AppError> {
+    validate_id(&id)?;
+    ctrl.render_transcript_html(&id).map_err(AppError::from)
 }

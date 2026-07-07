@@ -295,7 +295,14 @@ html {
    */
   .sf-panel   { @apply bg-panel rounded-md; }
   .sf-card    { @apply bg-card rounded-md; }
-  .sf-input   { @apply bg-card border border-fill rounded-md text-fg font-sans text-label-md; }
+  .sf-input   { @apply bg-card border border-rim rounded-md text-fg font-sans text-label-md focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-card; }
+  .sf-select  {
+    @apply h-10 w-full cursor-pointer appearance-none rounded-md border border-rim bg-card py-2 pl-2 pr-8 font-sans text-body-md font-light text-fg outline-none disabled:cursor-not-allowed disabled:opacity-40;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='oklch(0.55 0 0)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 1rem;
+  }
   .sf-divider { @apply border-t border-card; }
   .sf-scrim   { @apply bg-overlay; }
 
@@ -309,11 +316,22 @@ html {
   .sf-btn-destructive {
     @apply bg-destructive text-on-destructive font-sans text-label-md font-normal tracking-stamped capitalize rounded-md px-3 py-1.5;
   }
+
+  /* Keyboard focus — use on interactive controls; checkbox uses peer-focus-visible on its box */
+  .sf-focus-ring {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-panel;
+  }
+
+  .sf-checkbox-box {
+    @apply relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border border-rim bg-panel text-transparent transition-colors peer-checked:border-brand peer-checked:bg-brand peer-checked:text-on-brand peer-focus-visible:ring-2 peer-focus-visible:ring-focus peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-panel;
+  }
 }
 
 @layer base {
-  /* Replace UA outline with design-system ring */
   :focus {
+    @apply outline-none;
+  }
+  :focus-visible {
     @apply outline-none ring-2 ring-focus ring-offset-2 ring-offset-canvas;
   }
   a{
@@ -321,3 +339,19 @@ html {
   }
 }
 
+
+/* CodeMirror markdown token styles */
+.cm-line .cmt-heading1 { font-size: 1.5rem; font-weight: 700; }
+.cm-line .cmt-heading2 { font-size: 1.25rem; font-weight: 700; }
+.cm-line .cmt-heading3 { font-size: 1.125rem; font-weight: 600; }
+.cm-line .cmt-heading4,
+.cm-line .cmt-heading5,
+.cm-line .cmt-heading6 { font-weight: 600; }
+.cmt-heading1, .cmt-heading2, .cmt-heading3 { color: var(--color-fg); }
+.cmt-strong { font-weight: 700; }
+.cmt-emphasis { font-style: italic; }
+.cmt-strikethrough { text-decoration: line-through; color: var(--color-fg-dim); }
+.cmt-link { color: var(--color-brand); text-decoration: underline; }
+.cmt-monospace { font-family: var(--font-mono); background: var(--color-fill); border-radius: 2px; padding: 0 3px; }
+.cmt-quote { color: var(--color-fg-dim); border-left: 2px solid var(--color-card); padding-left: 0.5rem; }
+.cmt-processingInstruction, .cmt-meta { color: var(--color-fg-dim); }

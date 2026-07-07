@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
-import { copyTranscript } from '$lib/services/clipboard';
-import { loadTranscriptPreview } from '$lib/services/historyTranscript';
+import { copyTranscript } from '@services/clipboard';
+import { loadTranscriptPreview } from '@services/historyTranscript';
 
 export type HistoryListItem = {
 	id: string;
@@ -11,10 +11,33 @@ export type HistoryListItem = {
 	model: string;
 	word_count: number;
 	duration_ms: number;
+	duration_secs: number;
+	excerpt?: string | null;
+	tags?: string[];
 	has_markdown: boolean;
 	markdown_path?: string;
 	source: string;
 };
+
+export type DashboardStats = {
+	transcript_count: number;
+	recorded_this_week_secs: number | null;
+	float_layers: number | null;
+	drafts_to_review: number | null;
+};
+
+export type TagVocabularyEntry = {
+	name: string;
+	count: number;
+};
+
+export async function fetchDashboardStats(): Promise<DashboardStats> {
+	return invoke<DashboardStats>('get_dashboard_stats');
+}
+
+export async function fetchTagVocabulary(): Promise<TagVocabularyEntry[]> {
+	return invoke<TagVocabularyEntry[]>('history_tag_vocabulary');
+}
 
 export async function copyHistoryItem(item: HistoryListItem): Promise<void> {
 	if (item.has_markdown && item.markdown_path) {

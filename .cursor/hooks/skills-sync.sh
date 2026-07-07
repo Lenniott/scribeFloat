@@ -5,7 +5,7 @@ set -euo pipefail
 input=$(cat)
 path=$(echo "$input" | jq -r '.tool_input.path // .tool_input.file_path // .tool_input.target_file // empty')
 
-if [[ "$path" == *skills/* ]] || [[ "$path" == */CLAUDE.md ]] || [[ "$path" == */AGENTS.md ]]; then
+if [[ "$path" == *skills/* ]]; then
   bash skills/build.sh
 fi
 

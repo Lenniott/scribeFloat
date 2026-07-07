@@ -105,11 +105,9 @@ C4Container
         }
     }
 
-    Rel(user, tray, "opens panels via menu")
-    Rel(tray, scribe_ui, "shows window")
-    Rel(tray, transcribe_ui, "shows window")
-    Rel(tray, dictate_ui, "shows HUD")
-    Rel(tray, history_ui, "shows window")
+    Rel(user, tray, "opens actions via menu")
+    Rel(tray, dictate_ui, "Dictate toggle")
+    Rel(tray, history_ui, "New note / Open app")
     Rel(tray, settings_ui, "shows window")
 
     Rel(scribe_ui, cmd_scribe, "invoke()", "Tauri IPC")
@@ -182,85 +180,69 @@ C4Container
 
 ### Frontend Component Map
 
-How Svelte screens compose shared components. A new frontend developer should start here.
+How routes, views, and components compose. A new frontend developer should start here.
 
 ```mermaid
 graph TB
-    subgraph screens["Screens — src/lib/screens/"]
-        scribe_s["scribe.svelte\nRecording idle + active state"]
-        scribe_p["scribe-processing.svelte\nTranscribing / Done / No-model / Error"]
-        transcribe_s["transcribe.svelte\nFile import and queue"]
-        dictate_s["dictate.svelte\nFloating HUD near cursor"]
-        history_s["history.svelte\nList mode + fullscreen detail"]
-        settings_s["settings.svelte\nTab shell"]
-        setting_tabs["setting_general.svelte\nsetting_models.svelte\nsetting_replace.svelte\nsetting_permissions.svelte\nsetting_help.svelte\nsetting_webhook.svelte"]
+    subgraph routes["Routes — src/routes/"]
+        layout["+layout.svelte\nApp shell: sidebar + TitleBar +\ncapture overlay + toast + modal"]
+        home_r["+page.svelte\nHome"]
+        notes_r["notes/+page.svelte\nNotes"]
+        notes_new_r["notes/new/+page.svelte\nCreate Written note → redirect"]
+        notes_id_r["notes/[id]/+page.svelte\nNote editor"]
+        upload_r["upload/+page.svelte\nUpload"]
+        settings_r["settings/+page.svelte\nSettings"]
     end
 
-    subgraph layout["Layout — src/lib/components/layout/"]
-        shell["PanelShell\nOuter frame for all panels"]
-        header["PanelHeader\nTitle bar with close / back"]
-        footer["PanelFooter\nflex shrink-0, below scroll — History detail only"]
+    subgraph views["Views — src/lib/5_views/"]
+        home_v["home.svelte\nRecent notes + stats"]
+        notes_v["notes.svelte\nList + detail"]
+        note_editor_v["note-editor.svelte\nUnified note editor:\nheader + two-panel shell"]
+        capture_v["capture.svelte\nScribe overlay"]
+        transcribe_v["transcribe.svelte\nFile import queue"]
+        setting_tabs["setting_general.svelte\nsetting_models.svelte\nsetting_permissions.svelte\nsetting_replace.svelte\nsetting_help.svelte"]
     end
 
-    subgraph audio_comp["Audio — src/lib/components/audio/"]
-        waveform["AudioWaveFormVisualizer\nLive PCM bars — Scribe + Dictate"]
-        dot["RecordingStatusDot\nPulsing red dot"]
-        timer["RecordingTimer\nElapsed display"]
+    subgraph regions["Regions — src/lib/ui/6_regions/"]
+        sidebar["AppSidebar / SettingsSidebar"]
+        titlebar["TitleBar"]
     end
 
-    subgraph history_comp["History — src/lib/components/history/"]
-        list_card["HistoryListCard\nTitle = button (opens detail)\nAction icons use stopPropagation"]
-        detail_pane["HistoryDetailPane\nFullscreen transcript + metadata"]
+    subgraph sections["Sections — src/lib/ui/4_sections/"]
+        detail_pane["NoteDetailPane"]
+        settings_panel["SettingsPanel"]
+        filter_panel["FilterPanel"]
     end
 
-    subgraph notes_comp["Notes — src/lib/components/notes/"]
-        notes_panel["NotesPanel\nContainer"]
-        note_composer["NoteComposer\nInput field"]
-        notes_list["NotesList + NoteCard\nTimestamped note rows"]
+    subgraph primitives["Primitives"]
+        panel_header["PanelHeader"]
+        panel_footer["PanelFooter"]
+        scroll_body["ScrollBody"]
+        waveform["Waveform"]
+        status_dot["StatusDot"]
     end
 
-    subgraph transcribe_comp["Transcribe — src/lib/components/transcribe/"]
-        queue_list["TranscribeQueueList\nScroll list of items"]
-        queue_row["TranscribeQueueRow\nPer-item progress + status"]
-    end
-
-    subgraph form_comp["Form — src/lib/components/form/"]
-        device_sel["DeviceSelect"]
-        toggle["ToggleSwitch"]
-        path_sel["PathSelectorField"]
-        option_grp["OptionGroup"]
-    end
-
-    scribe_s --> shell
-    scribe_s --> waveform
-    scribe_s --> dot
-    scribe_s --> timer
-    scribe_s --> notes_panel
-    notes_panel --> note_composer
-    notes_panel --> notes_list
-
-    scribe_p --> shell
-
-    transcribe_s --> shell
-    transcribe_s --> queue_list
-    queue_list --> queue_row
-
-    dictate_s --> waveform
-
-    history_s --> shell
-    history_s --> list_card
-    history_s --> detail_pane
-    detail_pane --> footer
-
-    settings_s --> shell
-    settings_s --> setting_tabs
-    setting_tabs --> form_comp
+    layout --> sidebar
+    layout --> titlebar
+    layout --> capture_v
+    home_r --> home_v
+    notes_r --> notes_v
+    notes_new_r --> note_editor_v
+    notes_id_r --> note_editor_v
+    upload_r --> transcribe_v
+    settings_r --> settings_panel
+    notes_v --> detail_pane
+    notes_v --> filter_panel
+    settings_panel --> setting_tabs
+    capture_v --> panel_header
+    transcribe_v --> scroll_body
+    transcribe_v --> panel_footer
 ```
 
 **Key UI rules for new contributors:**
 - **List vs detail** in `history.svelte` are separate full-height modes — no split pane. Detail opens when a card title or View icon is clicked; list tabs stay hidden until Close is pressed.
-- **`HistoryListCard`**: title is a `<button>` that opens detail. Action icons (`stopPropagation`) are siblings — never nested inside the title button.
-- **`PanelFooter`** (`flex shrink-0`) belongs below the scroll area in History detail. Do not use `FixedFooterBar` there.
+- **`NoteCard (deleted)`**: title is a `<button>` that opens detail. Action icons (`stopPropagation`) are siblings — never nested inside the title button.
+- **`PanelFooter`** (`flex shrink-0`) belongs below the scroll area in History detail. Do not use `deleted` there.
 - **`dictate.svelte` HUD** never calls `set_focus()` — the app may be in `.accessory` activation policy at any time.
 
 ---
@@ -305,6 +287,9 @@ graph TB
 - **System Audio Capture**: macOS = BlackHole virtual device via Core Audio; Windows = WASAPI loopback. Speaker capture requires BlackHole + a configured Multi-Output Device name on macOS
 - **MicSession**: `stop_and_finalize()` pauses the stream, signals the writer, and joins the writer thread. Drain uses `recv_timeout` (200 ms) — never blocking `recv()` — because cpal tears down CoreAudio asynchronously on macOS
 - **WAV Writer Thread**: resamples to 16 kHz mono i16 and appends to the target path (`mic.wav`, `speaker_seg_N.wav`, or dictate temp). Checkpoints the RIFF header periodically so crash mid-recording leaves a playable file
+- **PCM Tap (`Pcm16kTap`)**: optional observer on the writer thread, invoked with the post-resample 16 kHz samples — exactly what lands in the WAV, so observed time == mic.wav time. Scribe passes a tap that feeds `services/analysis.rs::PitchAnalyzer` (live pitch/loudness timeline). The cpal callback is untouched; a slow tap delays disk writes, never capture. At stop, `ScribeController::prepare_audio` harvests the analyzer (after the writer joins), runs `detect_cuts`, writes the frame timeline to `{session_dir}/analysis.json`, and stores the voice-change cuts on the session manifest + `HistoryRecord` (ADR-0013)
+- **Speaker Chunks**: mic-only Record uses live cuts; Upload computes the same cuts offline after decode. `services/speaker_chunks.rs` turns cuts into voice-turn spans, embeds those spans as chunk voiceprints, stores chunk evidence on `HistoryRecord.speaker_chunks`, derives transcript-level speaker centroids on `HistoryRecord.session_speakers`, and maps Whisper segments to local speaker labels such as `Speaker A` or saved profile names. If retention is set to delete after transcript, controllers strip chunk/session vectors before persisting while keeping readable labels and quality data. If retention keeps vectors and the macOS Keychain-backed voice key is available, `HistoryService` encrypts those vectors before writing `history.jsonl` and decrypts them on load. Whisper still runs once over the full mic PCM; true Whisper-per-chunk needs a batched ModelService path that reuses one loaded context.
+- **Voice Crypto**: `services/voice_crypto.rs` encrypts voice embeddings with AES-256-GCM. The production key provider stores a local random key in macOS Keychain via the platform adapter. Voiceprint profile JSON and history JSONL store ciphertext fields; plaintext vectors stay in memory only.
 - **SpeakerAccumulator** (in `ScribeController`): holds `CapturedSpeakerSegment { start_ms, wav_path }` for each ON/OFF loopback window. At stop, segments are read back and assembled via `assemble_speaker_pcm`; per-segment WAVs are deleted after merge
 - **Platform Adapter**: the only place `#[cfg(target_os)]` lives for audio. Everything above is platform-agnostic
 
@@ -355,11 +340,11 @@ graph TB
 - **Downloader**: fetches `ggml-*.bin` from Hugging Face over HTTPS, streams progress via `AppHandle::emit`. _See fix-later A1 — emit should be moved to `ModelController`._
 - **Model Loader**: loads ggml weights into a `WhisperContext` via whisper-rs, caches one context per model ID for the app session
 - **Transcriber**: runs Whisper inference inside `tokio::task::spawn_blocking`. Calls `on_tick` per segment to report progress. Use `eprintln!` / `std::time::Instant` for timing — tracing spans do not propagate into blocking threads
-- **Dual Source Merger**: sorts mic and speaker segments chronologically by timestamp; suppresses near-duplicate lines within 1.5 s (mic bleed); applies `in:`/`out:` labels. Before merging, speaker segments are filtered by `filter_hallucination_phrases` — segments matching known Whisper hallucination phrases ("Thank you.", "Thanks for watching.", etc.) are stripped. Upstream, `ScribeController` also applies an RMS silence gate: if the assembled speaker PCM has RMS < −60 dBFS (1e-3), the speaker channel is skipped entirely and the session is treated as single-source
+- **Dual Source Merger**: sorts mic and speaker segments chronologically by timestamp; suppresses near-duplicate lines within 1.5 s (mic bleed); applies `in:`/`out:` labels. Before merging, both mic and speaker segments are filtered by `filter_hallucination_phrases` in `services/output/hallucination.rs` — segments matching known Whisper hallucination phrases ("Thank you.", "Thanks for watching.", "[Music]", etc.) are stripped. Upstream, an RMS silence gate (`speaker_pcm_has_signal`, threshold −60 dBFS / 1e-3) skips speaker transcription when the assembled speaker PCM is effectively silent — applied in Scribe `prepare_audio` and Transcribe `decode_input`
 
 **Loading strategy:**
 - Whisper contexts cached in `ModelService` keyed by model path (`get_or_load_context`) — eliminates cold-load on every transcribe
-- Tiny/base models preloaded in background when a Scribe or Dictate recording starts (`PRELOAD_ELIGIBLE_MODEL_IDS` in `services/model.rs`)
+- Record-start preload warms the model file in the OS page cache (`warm_model_file_on_disk`) — does not create a `WhisperContext` during capture
 - Transcribe model → loaded when a Transcribe job starts
 - Inference thread count capped at physical cores (max 8)
 
@@ -397,7 +382,7 @@ graph TB
 
 ### History Service
 
-Owns the structured record store at `{save_folder}/history.jsonl` — an append-only, one-compact-JSON-object-per-line log. Every transcript-bearing flow (Scribe, Dictate, Transcribe) appends a record here on completion. Updates (`set_markdown_path`) and deletes (tombstone `deleted = true`) also append a new line for the same id; the loader does last-writer-wins by id. Startup `compact()` rewrites the live set atomically (temp file + rename). Mirrors `OutputService`'s stateless-with-folder style: save_folder is passed per call and the cache reloads when the folder changes.
+Owns the structured record store at `{save_folder}/history.jsonl` — append-only for **capture lifecycle** events (new record, attach transcript, export path, delete tombstone). Editor title and written body are **not** appended; they live in `{save_folder}/.notes/{id}/` via `note_sidecar` and are hydrated on load. See `docs/engineering/history-storage.md`. Startup `compact()` rewrites the live jsonl set atomically.
 
 ```mermaid
 graph TB
@@ -430,7 +415,7 @@ graph TB
 
 **Component notes:**
 - **Appender**: appends a new JSON object line to `history.jsonl` for a completed session. Called by ScribeController, DictateController, and TranscribeController on every successful completion — independent of whether a `.md` file was written
-- **Updater**: `set_markdown_path` appends a new line for an existing id (sets the `markdown_path` field). The loader's last-writer-wins semantics mean the updated record supersedes the original
+- **Updater**: `set_markdown_path` and `update_segments` append a new line for an existing id (structural/capture changes). Title and written body updates use `note_sidecar` instead — see `docs/engineering/history-storage.md`
 - **Tombstone**: `delete` appends a line with `deleted = true` for the id. The loader excludes tombstoned records from the live set
 - **Loader**: reads all lines, groups by id, and returns the last-written record per id, excluding any with `deleted = true`
 - **Compactor**: `compact()` runs at startup — rewrites only the live (non-tombstoned) records to a temp file, then renames it over `history.jsonl`. Keeps the file from growing unboundedly
@@ -510,8 +495,8 @@ graph TB
         processing["Scribe Processing Screen\nscribe-processing.svelte"]
         controller["ScribeController\ncontrollers/scribe.rs"]
         state["State Machine\nIDLE → RECORDING → TRANSCRIBING → DONE | NO_MODEL | ERROR"]
-        waveform["Waveform Visualizer\nAudioWaveFormVisualizer.svelte"]
-        notes["Notes Manager\nNotesPanel.svelte + NotesList.svelte"]
+        waveform["Waveform Visualizer\nWaveform.svelte"]
+        notes["Notes Manager\nNoteList.svelte + NoteList.svelte"]
     end
 
     svc_audio["AudioService"]
@@ -540,7 +525,7 @@ graph TB
 ```
 
 **State transitions:**
-- `IDLE → RECORDING`: user presses **Start Recording** in panel (hotkey `CmdOrCtrl+Shift+L` or tray click opens the panel; recording does not start automatically)
+- `IDLE → RECORDING`: user presses **Record** in TitleBar (sets `scribeAutoStart` and navigates to `/notes/new` when not already on a note; `scribeController` auto-starts on editor mount). On an open note, Record starts capture immediately. New note hotkey `CmdOrCtrl+Shift+L` opens the editor without auto-start.
 - `RECORDING → TRANSCRIBING`: Stop & Save pressed
 - `RECORDING → IDLE`: Cancel pressed — audio discarded
 - `TRANSCRIBING → DONE`: history record appended; `.md` written if `save_transcripts_as_markdown` is on
@@ -597,7 +582,7 @@ graph TB
         state["State Machine\nIDLE → RECORDING → TRANSCRIBING → PASTING → DONE | ERROR"]
         key_listener["Key Listener\nplatform/key_listener.rs — CGEventTap (macOS) / win32 hook"]
         hud["Floating HUD\ndictate.svelte — near cursor, does not steal focus"]
-        waveform["Waveform Visualizer\nAudioWaveFormVisualizer.svelte"]
+        waveform["Waveform Visualizer\nWaveform.svelte"]
         paste_handler["Paste Handler\nplatform/paste_impl.rs"]
     end
 
@@ -639,6 +624,7 @@ graph TB
         panel["Settings Screen\nsettings.svelte"]
         general["General Tab\nsetting_general.svelte"]
         models["Models Tab\nsetting_models.svelte"]
+        voice["Voice Tab\nsetting_voice.svelte"]
         hotkeys["Hotkeys Tab (planned)"]
         replacements["Replacements Tab\nsetting_replace.svelte"]
         permissions["Permissions Tab\nsetting_permissions.svelte"]
@@ -660,6 +646,7 @@ graph TB
     general --> ctrl_settings
     models --> ctrl_model
     models --> ctrl_settings
+    voice --> ctrl_settings
     replacements --> ctrl_settings
     permissions --> svc_permissions
 ```
@@ -692,7 +679,7 @@ src-tauri/src/
 │   ├── scribe.rs               scribe_start, scribe_stop, scribe_cancel, scribe_state
 │   ├── transcribe.rs           transcribe_add, transcribe_start, transcribe_cancel
 │   ├── dictate.rs              dictate_start, dictate_stop
-│   ├── history.rs              history_list, history_get_detail, history_render_markdown, history_export_markdown, history_delete, history_read_legacy
+│   ├── history.rs              history_list, history_get_detail, history_render_markdown, history_export_markdown, history_delete, history_read_legacy, note_create_empty, note_save_written_content, note_save_title
 │   ├── model.rs                model_list, model_download, model_delete, model_select
 │   └── settings.rs             config_get, config_update, permissions_status, open_settings, settings_get/set_save_transcripts_as_markdown
 │
@@ -707,13 +694,17 @@ src-tauri/src/
 │
 ├── services/
 │   ├── mod.rs
-│   ├── audio.rs                AudioService, MicSession, streaming WAV writer, read_wav_mono_f32
+│   ├── analysis.rs             Pure pitch/loudness analysis: PitchAnalyzer (streaming, fed by AudioService's PCM tap), detect_cuts (voice-change cuts)
+│   ├── audio.rs                AudioService, MicSession, streaming WAV writer, Pcm16kTap, read_wav_mono_f32
 │   ├── model.rs                ModelService, WhisperContext cache, Downloader, Merger
 │   ├── output.rs               OutputService, markdown rendering (pure), .md writes, manifest, cleanup, legacy reads, delete primitives
-│   ├── history.rs              HistoryService, append-only JSONL record store, compact, tombstone delete
+│   ├── history.rs              HistoryService, append-only JSONL record store, compact, tombstone delete, voice-vector encryption/scrub
 │   ├── config.rs               ConfigService, atomic save, get/update
 │   ├── hotkeys.rs              HotkeyService, HotkeyRegistrar trait, TauriHotkeyRegistrar
 │   ├── permissions.rs          PermissionsService (delegates to platform/permissions_impl)
+│   ├── speaker_chunks.rs       Chunk spans, chunk quality, chunk voiceprint grouping, segment-to-chunk speaker blocks
+│   ├── voice_crypto.rs         AES-256-GCM embedding encryption with platform key provider
+│   ├── voiceprint.rs           Voiceprint model download, embedding, profile storage, profile matching
 │   └── transcribe_input.rs     TranscribeInputService, expand_inputs, decode_input
 │
 └── platform/
@@ -725,24 +716,44 @@ src-tauri/src/
 
 src/
 ├── lib/
-│   ├── components/             Reusable Svelte components
-│   │   ├── audio/              AudioWaveFormVisualizer, RecordingStatusDot, RecordingTimer
-│   │   ├── form/               DeviceSelect, ToggleSwitch, PathSelectorField, OptionGroup, …
-│   │   ├── layout/             PanelShell, PanelHeader, PanelFooter, SplitPane, FixedFooterBar
-│   │   ├── history/            HistoryListCard, HistoryDetailPane
-│   │   ├── notes/              NotesPanel, NoteCard, NotesList, NoteComposer
-│   │   └── transcribe/         TranscribeQueueList, TranscribeQueueRow
-│   ├── screens/                Full panel screens
-│   │   ├── scribe.svelte       Recording UI
-│   │   ├── scribe-processing.svelte   Transcribing / Done / No-model UI
-│   │   ├── transcribe.svelte   File import and queue UI
-│   │   ├── dictate.svelte      Floating HUD
-│   │   ├── history.svelte      Unified history (list mode + fullscreen detail)
-│   │   ├── settings.svelte     Settings shell with tab routing
-│   │   └── setting_*.svelte    Individual settings tabs
+│   ├── ui/                     All UI code (@ui → src/lib/ui)
+│   │   ├── 1_primitives/       Structural/display building blocks (@primitives)
+│   │   │   ├── layout/         ScrollBody, PanelHeader, PanelFooter, Modal, StepFrame
+│   │   │   ├── display/        Chip, Timestamp, SourceIcon, StatusDot, RecordingTimer, ProgressBar
+│   │   │   └── form/           TextField, FieldRow, Checkbox, SettingsSection
+│   │   ├── 2_components/       Single user action components (@components)
+│   │   │   ├── controls/       Button, IconButton, Toggle, EditableTitle, PathPicker, OptionGroup
+│   │   │   ├── cards/          NoteCard, InlineNote, RecentNoteCard, SettingRow, UploadItem, FilterRow
+│   │   │   ├── nav/            NavItem, AccordionRow
+│   │   │   └── indicators/     Toast, StatTile, StepIndicator, Waveform
+│   │   ├── 3_patterns/         Multi-component single-action flows (@patterns)
+│   │   │   └── Accordion, NoteComposer, NoteList, UploadQueue
+│   │   ├── 4_sections/         Contained mental model areas (@sections)
+│   │   │   ├── FilterPanel, NoteDetailPane, SettingsPanel, SettingList
+│   │   │   └── onboarding/     WelcomeStep, FeatureTourStep, DictatePracticeStep, PermissionsStep, ModelDownloadStep
+│   │   ├── 6_regions/          Fixed structural layout areas (@regions)
+│   │   │   └── AppSidebar, SettingsSidebar, TitleBar
+│   │   └── views/              Route-level view components and window-specific views (@views)
+│   │       ├── home.svelte     Home area content
+│   │       ├── notes.svelte    Notes area content
+│   │       ├── capture.svelte  Scribe capture overlay (recording → processing)
+│   │       ├── transcribe.svelte  Upload/transcribe workflow
+│   │       ├── scribe.svelte   Recording UI
+│   │       ├── scribe-processing.svelte  Transcribing / Done / No-model UI
+│   │       ├── dictate.svelte  Floating HUD (separate Tauri window)
+│   │       ├── onboarding.svelte  Onboarding flow (separate Tauri window)
+│   │       └── setting_*.svelte   Individual settings tab content
+│   ├── utils/                  Shared utilities (@utils): platform.ts, theme.ts, types.ts
 │   └── stores/
-│       └── modelDownload.svelte.ts   Download progress store
-└── routes/
-    ├── +page.svelte            Root — selects panel based on window label
-    └── +layout.svelte          Theme provider
+│       ├── appState.svelte.ts  Singleton reactive state (notes, capture, toast, delete)
+│       ├── appActions.ts       State mutation actions (loadNotes, copyItem, delete, etc.)
+│       └── modelDownload.svelte.ts  Download progress store
+└── routes/                     SvelteKit routes (SPA, ssr=false)
+    ├── +layout.svelte          App shell: ?view= branching, sidebar, CaptureView overlay,
+    │                           global toast + delete modal, IPC listeners, theme
+    ├── +page.svelte            / → Home
+    ├── notes/+page.svelte      /notes → Notes
+    ├── upload/+page.svelte     /upload → Upload
+    ├── float/+page.svelte      /float → Float (placeholder)
+    └── settings/+page.svelte   /settings → Settings
 ```

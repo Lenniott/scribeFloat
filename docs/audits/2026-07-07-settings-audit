@@ -1,0 +1,180 @@
+Here is a full audit of every user-facing control in Settings, plus in-flow controls that duplicate or shadow settings. Scores are **1–5** for how important it is that users can change this vs. a fixed default.
+
+**Score key:** 5 = essential control · 4 = important for some users · 3 = nice preference · 2 = low value · 1 = should be fixed/hidden
+
+---
+
+## General
+
+| Tab | Section | Name | Action | Interaction | Score | Reason |
+|-----|---------|------|--------|-------------|-------|--------|
+| General | Appearance | Theme (System / Dark / Light) | Sets app colour scheme | Pick option → **Save** | 3 | Cosmetic; System default is fine for most. Worth keeping but not critical. |
+| General | Keyboard shortcuts | Scribe keyboard shortcut | Shows global hotkey to open Scribe | **Read-only** display | 1 | Already fixed (`Cmd/Ctrl+Shift+L`). Display-only is correct — editable global hotkeys are a support nightmare. |
+| General | Keyboard shortcuts | Dictate keyboard shortcut | Shows Dictate activation pattern | **Read-only** display | 1 | Fixed double-tap modifier behaviour. No reason to expose editing. |
+| General | Scribe | Default save folder | Where transcripts, dictate history, failures are saved | Path picker → **Save** | 5 | Users must control output location (Documents vs project folder vs cloud sync path). |
+| General | Scribe | Save transcripts as Markdown | Also writes `.md` files alongside JSONL history | Toggle → **Save** | 3 | Power-user / workflow choice. Default OFF is sensible; many users never need this. |
+| General | Scribe | Keep audio after transcription | Retains WAV after successful Scribe transcription | Toggle → **Save** | 4 | Important for re-transcription, archival, legal use. Default OFF is right; option should stay somewhere. |
+| General | Scribe | Open transcripts with | App used to open `.md` files (when markdown export on) | Path picker → **Save** | 2 | Only matters if markdown export is on. Could be inferred from OS default. |
+| General | Scribe speaker capture | Speaker capture device name *(macOS only)* | Names the Multi-Output / BlackHole device for loopback | Text field → **Save** | 5 *(mac)* / N/A *(Win)* | Required for macOS speaker capture to work at all. Cannot be predetermined. |
+| General | Scribe speaker capture | Input label | Prefix for mic lines in dual-source transcripts (default `in:`) | Text field → **Save** | 2 | `in:` / `out:` defaults work for 95% of users. Custom labels are niche. |
+| General | Scribe speaker capture | Output label | Prefix for speaker lines (default `out:`) | Text field → **Save** | 2 | Same as input label — low value to expose. |
+| General | Scribe speaker capture | Capture speaker by default | Pre-enables speaker capture when Scribe opens | Toggle → **Save** | 4 | Meeting-heavy users want this on; solo note-takers don't. Per-session toggle also exists (see below). |
+| General | Dictate | Press Enter after dictate | Sends Enter keystroke after paste | Toggle → **Save** | 4 | Messaging/search apps need it; word processors don't. Real workflow split. |
+| General | *(footer)* | Save | Persists all General changes in one batch | Button click | — | Batch save adds friction; most toggles elsewhere auto-save. |
+
+**Hidden config (no UI):** `preferred_input_device` is loaded/saved with General but has **no field** — mic choice lives in the TitleBar recording popover instead. `dictate_auto_paste` defaults ON with **no UI** (paste always attempted when Accessibility granted).
+
+---
+
+## Permissions
+
+| Tab | Section | Name | Action | Interaction | Score | Reason |
+|-----|---------|------|--------|-------------|-------|--------|
+| Permissions | System access | Microphone | Required for recording & Dictate | **Grant permission** button, or "Granted" | 5 | App is unusable without it. Must stay, but it's OS consent not a "preference". |
+| Permissions | System access | Accessibility *(macOS)* | Enables auto-paste for Dictate | Grant button | 5 | Core Dictate UX depends on it. Not optional for target workflow. |
+| Permissions | System access | Input monitoring *(macOS)* | Enables global Dictate hotkey | Grant button | 5 | Without it Dictate can't be triggered globally. |
+| Permissions | System access | Speaker capture *(macOS)* | Loopback audio permission | Grant button | 4 | Only needed for meeting capture. Windows uses different mechanism. |
+
+On Windows, Permissions tab shows **mic only** (`micOnly`).
+
+---
+
+## Models
+
+| Tab | Section | Name | Action | Interaction | Score | Reason |
+|-----|---------|------|--------|-------------|-------|--------|
+| Models | Default models | Default Scribe transcription model | Sets Whisper model for Scribe recordings | Dropdown → immediate | 5 | Hardware varies wildly; wrong model = unusably slow or poor quality. |
+| Models | Default models | Dictate transcription model override | Separate model for Dictate vs Scribe | Dropdown → immediate | 2 | Most users want one model. "Same as Scribe" default is fine; override is power-user. **Candidate to hide.** |
+| Models | Voice activity detection | Silero VAD | Downloads automatically for silence skipping / voiceprint checks | **No user control** — auto | 1 | Infrastructure dependency. Correct to hide. |
+| Models | Installed models | Tiny (~31 MB) | Fastest, lowest accuracy Whisper model | Download / Trash icons | 4 | Users on slow machines or tight disk need the small option. |
+| Models | Installed models | Base (~57 MB) | Fast, basic accuracy | Download / Trash | 3 | Middle ground; less critical now Small exists. |
+| Models | Installed models | Small (~181 MB) | Recommended balance | Download / Trash | 5 | Default recommendation; most users need to pick/install at least one. |
+| Models | Installed models | Medium (~514 MB) | High accuracy, slow | Download / Trash | 3 | Workstation users want it; others shouldn't be pushed toward it. |
+| Models | Installed models | Large Turbo (~547 MB) | Best accuracy, heavy | Download / Trash | 2 | Enthusiast tier. Fine in list but not essential to surface prominently. |
+
+**Onboarding duplicate:** Model download step mirrors Models tab (download + continue). Same controls, first-run only.
+
+---
+
+## Voice
+
+| Tab | Section | Name | Action | Interaction | Score | Reason |
+|-----|---------|------|--------|-------------|-------|--------|
+| Voice | Voiceprints | Enroll a voice | Records clips to build a speaker profile | Button → enrollment flow | 4 | Core to speaker labelling. Optional feature but valuable when used. |
+| Voice | Voiceprints | Add print *(per profile)* | Adds more clips to existing profile | Button per row | 3 | Improves accuracy; not required for basic use. |
+| Voice | Voiceprints | Rename *(per profile)* | Changes display name of profile | Button → inline edit → Save | 3 | Standard CRUD; expected for multi-speaker setups. |
+| Voice | Voiceprints | Delete *(per profile)* | Removes one voiceprint | Button → confirm → Delete | 4 | Privacy / mistake recovery. Must exist somewhere. |
+| Voice | Voiceprints | Delete all saved voiceprints | Wipes all profile vectors | Button → confirm | 3 | Privacy reset; rare but important for trust. |
+| Voice | Speaker labels | Your display name | How you appear in transcripts (`[You]`) | Text field → blur auto-save | 4 | Personalisation; default "You" works but feels impersonal. |
+| Voice | Speaker labels | Speaker matching sensitivity | Cosine threshold for auto-labelling (0–1 slider) | Slider → auto-save (300ms debounce) | 2 | Tuning knob for edge cases. Default 0.75 is reasonable; most users won't understand this. **Candidate to hide behind Advanced.** |
+| Voice | Voice learning | Learn speakers from corrected transcripts | Opt-in to future auto-learning from edits | Toggle → auto-save | 2 | **Feature not active yet** (waits on encrypted storage). Exposing dead controls adds confusion. |
+| Voice | Voice learning | Keep voice data for future matching | Retain embedding vectors on transcripts | Toggle → auto-save | 3 | Privacy-sensitive; some users will want delete-after-processing. |
+| Voice | Voice learning | Require encryption before learning | Gate for auto-learning | Toggle → auto-save | 1 | **Feature not active.** Security policy should be fixed ON, not user-toggled. |
+| Voice | Voice learning | Remove voice vectors from transcripts | Strips embeddings from all history records | Button → confirm | 3 | Privacy tool; keep but doesn't need prime placement. |
+
+**Onboarding duplicate:** Voice enrollment step (step 5) mirrors Voice tab enrollment.
+
+---
+
+## Replacements *(tab you're considering removing)*
+
+| Tab | Section | Name | Action | Interaction | Score | Reason |
+|-----|---------|------|--------|-------------|-------|--------|
+| Replacements | Trigger prefix | Trigger prefix | Spoken gate word before replacements fire (default `float`) | Text + **Save** | 2 | Power-user dictation syntax. Default `float` works; empty = no prefix. |
+| Replacements | Word replacements | Add rule | Creates custom spoken → text substitution | **Add rule** → form → Add/Update | 2 | Advanced dictation feature. Competes with OS dictation vocab. |
+| Replacements | Add/Edit rule form | Trigger word or phrase | What you say to fire the rule | Text field | 2 | Part of rule CRUD. |
+| Replacements | Add/Edit rule form | Type (Replace / New line / Wrap) | Substitution behaviour | Dropdown | 2 | Complexity most users won't need. |
+| Replacements | Add/Edit rule form | Apply to (Both / Transcripts / Dictate) | Scope of rule | Dropdown | 2 | Useful for power users only. |
+| Replacements | Add/Edit rule form | Also matches (aliases) | Alternate phrases | Text field | 1 | Edge of edge case. |
+| Replacements | Add/Edit rule form | Replace with / Wrap output | Output text or wrap pattern | Text fields | 2 | — |
+| Replacements | Rule list | Edit / Delete *(per rule)* | Modify or remove a rule | Icon buttons | 2 | — |
+
+**Shipped defaults (no UI to disable individually):** `to do` → checkbox, `open/close bracket`, `dash`, `new line`. These live in config and fire on `"float …"` triggers even if the Replacements tab were removed.
+
+---
+
+## Help
+
+| Tab | Section | Name | Action | Interaction | Score | Reason |
+|-----|---------|------|--------|-------------|-------|--------|
+| Help | Setup and updates | Restart setup wizard | Re-runs onboarding (permissions, model, dictate practice) | Button | 3 | Recovery path when setup breaks. Could live under a single "Troubleshooting" area. |
+| Help | Setup and updates | Check for updates | Queries release server | Button | 4 | Expected in desktop apps. |
+| Help | Setup and updates | Open download page | Opens release URL when update found | Button (conditional) | 4 | Follow-on from update check. |
+| Help | *(body)* | Scribe / Dictate / Transcribe / Models docs | Read-only usage guides | Read | 2 | Documentation, not settings. Could move to external docs or tooltips. |
+| Help | *(footer)* | Go to Design System | Dev route | Button | 0 | Dev-only; shouldn't be in user Settings. |
+| Help | *(footer)* | Buy me a coffee link | Tip link | Link | 0 | Not a setting. |
+
+---
+
+## In-flow controls *(not in Settings sidebar, but same config)*
+
+| Location | Section | Name | Action | Interaction | Score | Reason |
+|----------|---------|------|--------|-------------|-------|--------|
+| TitleBar popover | Recording settings | Microphone | Select input device for this session | Dropdown (locked while recording) | 4 | Must be reachable during recording. **Belongs in-flow, not General.** |
+| TitleBar popover | Recording settings | Speaker capture | Toggle dual-source for this session | Toggle | 4 | Per-session override of "capture by default". Right place. |
+| TitleBar popover | Recording settings | Timestamps | Include timestamps in Scribe output | Toggle → persists to config | 3 | Per-session feel but global config. Duplicated in Transcribe. |
+| Transcribe view | Options | Save path | Output folder for this batch | Path picker (session only; loads default from settings) | 4 | Per-job override is useful; global default in General is enough for most. |
+| Transcribe view | Options | Transcription model | Model for this batch | Dropdown (downloaded models) | 3 | Duplicates Models tab. Could default to Scribe model only. |
+| Transcribe view | Options | Timestamps | Include timestamps in output | Toggle (session only) | 3 | Duplicates TitleBar setting; doesn't write back to config on change. |
+| Onboarding | Dictate practice | Press Enter after dictate | Same as General setting | Toggle → immediate save | 4 | Good first-run placement; duplicate of General. |
+| Settings banner | Warnings | Go to Permissions / Models / General links | Navigates to fix setup gaps | Inline links | — | Not a setting; useful guardrail. |
+
+---
+
+## Summary counts
+
+| Tab | Interactive controls | Score ≤2 (candidates to fix/hide) |
+|-----|---------------------|-----------------------------------|
+| General | 12 (+ Save) | 4 (hotkey displays, labels, open-with) |
+| Permissions | 4 (mac) / 1 (Win) | 0 — all essential |
+| Models | 7 models + 2 dropdowns | 2 (Dictate override, Large Turbo prominence) |
+| Voice | 11 | 3 (sensitivity slider, 2 inactive learning toggles) |
+| **Replacements** | **~10 + rule list** | **~8 — almost entire tab** |
+| Help | 2 buttons + docs | Docs + design system link |
+| In-flow | 6 | 1 (Transcribe model picker) |
+
+---
+
+## Opinion on removing Replacements
+
+**Yes — removing the Replacements tab is the highest-leverage simplification.**
+
+Reasons:
+1. **It's the most complex surface for the smallest audience.** Rule types (Replace / New line / Wrap), scopes, aliases, and prefix gating are a mini programming environment inside a transcription app.
+2. **Defaults already cover the common case.** Five built-in rules (`to do`, brackets, dash, new line) ship in config and work with the `float` prefix without any UI.
+3. **Dictate users who need custom vocabulary** usually expect that from the OS or from inline correction, not a rules engine.
+4. **Keeping the engine, dropping the tab** is viable: defaults stay in `Config`, power users could edit `config.json`, or you add rules incrementally via "teach this replacement" in Dictate later.
+
+What to keep if you remove the tab:
+- Default replacement rules (hardcoded or in config defaults)
+- `replacement_prefix` fixed to `float` (or empty)
+- Maybe one future entry point: "Add spoken shortcut" from Dictate feedback, not a full rules admin UI
+
+---
+
+## Suggested "reduced settings" shape
+
+If the goal is **one view, less stuff**, I'd consolidate to roughly:
+
+| Keep (score ≥4) | Move in-flow / onboarding | Hide or fix (score ≤2) |
+|-----------------|---------------------------|------------------------|
+| Save folder | Mic picker (TitleBar) | Hotkey displays → Help text only |
+| Model install + Scribe model pick | Permissions (first-run + banner) | Input/output labels → fixed `in:`/`out:` |
+| Press Enter after dictate | Speaker capture toggles | Dictate model override |
+| Capture speaker by default + device name (mac) | Voice enrollment | Replacements tab entirely |
+| Keep WAV | Theme (optional single toggle) | Voice learning toggles (inactive) |
+| Permissions | | Sensitivity slider |
+| Display name | | Encryption toggle |
+| Update check | | Design system link |
+
+That cuts **6 tabs → ~3 areas**: **Setup** (permissions, model, folder), **Preferences** (theme, dictate enter, keep wav, markdown), **Voice** (enrollment + display name + delete tools).
+
+---
+
+`★ Insight ─────────────────────────────────────`
+- **General uses batch Save; everything else auto-saves.** That inconsistency makes General feel heavier than Voice or Models — a simplification pass could auto-save toggles there too and drop the Save button.
+- **Several "settings" are config fields with no UI** (`dictate_auto_paste` always on, `preferred_input_device` only in TitleBar). The audit surface is larger than what users actually see — good sign you can delete UI without deleting capability.
+- **Replacements is the only tab that's mostly author-time configuration.** Permissions and Models are setup; General/Voice are preferences; Replacements is a rules DSL — the odd one out for a "just transcribe" product.
+`─────────────────────────────────────────────────`
+
+Want me to turn this into a concrete removal plan (what to delete vs. keep in config defaults), or a wireframe for the consolidated 3-area layout? I'm in Ask mode so I can only advise — switch to Agent mode if you want implementation.

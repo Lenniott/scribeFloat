@@ -1,9 +1,17 @@
+pub mod analysis;
 pub mod audio;
 pub mod config;
 pub mod history;
 pub mod hotkeys;
 pub mod model;
+pub mod note_sidecar;
 pub mod output;
 pub mod permissions;
+pub mod speaker_blocks;
+pub mod speaker_chunks;
 pub mod transcribe_input;
+pub mod transcription;
 pub mod update;
+pub mod voice_crypto;
+pub mod voice_embeddings;
+pub mod voiceprint;

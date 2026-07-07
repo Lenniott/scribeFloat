@@ -17,8 +17,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // \"\"'); (echo \"$f\" | grep -q '/skills/' || echo \"$f\" | grep -qE '(CLAUDE\\.md|AGENTS\\.md)$') && bash skills/build.sh 2>/dev/null || true",
-            "statusMessage": "Syncing skills and agent files..."
+            "command": "f=$(jq -r '.tool_input.file_path // \"\"'); echo \"$f\" | grep -q '/skills/' && bash skills/build.sh 2>/dev/null || true",
+            "statusMessage": "Syncing skills..."
           },
           {
             "type": "command",

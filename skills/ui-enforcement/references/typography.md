@@ -64,19 +64,18 @@ Fix these once; screens inherit correct typography:
 
 | Component | Target |
 |-----------|--------|
-| `ConfigField`, `LabeledTextField`, `PathSelectorField`, `HotkeyCaptureField`, `OptionGroup` | `sf-field-label` |
+| `FieldRow`, `TextField`, `PathPicker`, `OptionGroup` | `sf-field-label` |
 | `Button` | `sf-label-md` / `sf-label-sm` (or future `sf-btn-*` alignment) |
-| `NavButton` | `sf-label-md` (currently off-scale `text-sm`) |
-| `TabPage` | `sf-label-md` / `sf-label-sm` (capitalize, no uppercase) |
-| `TimestampLabel`, `RecordingTimer` | `sf-meta-sm` |
+| `NavItem` | `sf-label-md` |
+| `Timestamp`, `RecordingTimer` | `sf-meta-sm` |
 | `Toast` | `sf-body-md` |
-| `AccordionItem` | `sf-section-label` |
+| `AccordionRow` | `sf-section-label` |
 
 ## Migration pass order
 
 1. `setting_help.svelte` — retire `text-base` / `text-sm`
 2. Form primitives — `sf-field-label`
-3. `Button`, `NavButton`, `TabPage`, timestamp components
+3. `Button`, `NavItem`, timestamp components
 4. Feature screens: history, scribe, transcribe, onboarding
 5. Tighten `check:ds` from warn → error on inline size tokens
 

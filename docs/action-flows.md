@@ -62,7 +62,7 @@ On mount, `onboarding.svelte` calls `model_list`. If any model is already downlo
 
 User records mic only. No system audio capture.
 
-1. User triggers Scribe via tray or hotkey
+1. User triggers Scribe via **New note** tray item or hotkey (`CmdOrCtrl+Shift+L` default)
 2. Scribe panel opens
 3. Audio Service: Device Manager checks preferred mic → falls back to system default if unavailable
 4. Audio Service: Mic Capture opens mic input stream
@@ -77,17 +77,19 @@ User records mic only. No system audio capture.
     - **Model available** → continue
 12. Scribe panel enters **Transcribing** state — progress bar shown
 13. Model Service: loads selected model (from cache or disk; tiny/base may already be preloaded)
-14. Model Service: transcribes PCM → returns timestamped segments
-15. Output Service: renders single-source markdown transcript and applies word replacement rules
-16. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting)
-17. Check: `save_transcripts_as_markdown` setting
+14. Model Service: transcribes the mic PCM once → returns timestamped segments
+15. ScribeController uses live voice-change cuts to build mic chunks
+16. Speaker chunk service: embeds each chunk, groups chunk voiceprints into local speakers, derives transcript-level session speaker centroids from clean chunks, and maps Whisper segments to their parent chunk labels
+17. Output Service: renders transcript markdown and applies word replacement rules
+18. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting), including `speaker_change_cuts` and `speaker_chunks`
+19. Check: `save_transcripts_as_markdown` setting
     - **On** → Output Service writes `{title}_{model}.md` to **save folder root** (appends `_1`, `_2`, … on collision); Done event carries `transcript_path`
     - **Off** → no `.md` written; Done event carries `transcript_path = None`
-18. Check: WAV retention setting
+20. Check: WAV retention setting
     - **Keep** → staging folder and WAVs kept
     - **Delete** → Output Service removes staging folder after transcript confirmed non-empty
-19. Scribe panel enters **Done** state — file path shown when available, Open Transcript button shown when path is present
-20. **No model path**: staging WAV kept regardless of retention setting. Panel shows "Open in Transcribe →" with session path pre-filled
+21. Scribe panel enters **Done** state — file path shown when available, Open Transcript button shown when path is present
+22. **No model path**: staging WAV kept regardless of retention setting. Panel shows "Open in Transcribe →" with session path pre-filled
 
 ---
 
@@ -95,7 +97,7 @@ User records mic only. No system audio capture.
 
 User records mic + system audio (remote call, meeting, etc). Speaker capture can be toggled on/off at any point during the recording — the mic never stops.
 
-1. User triggers Scribe via tray or hotkey
+1. User triggers Scribe via **New note** tray item or hotkey (`CmdOrCtrl+Shift+L` default)
 2. Scribe panel opens; `captureSpeaker` initialised from the persistent settings default (off by default on fresh install)
 3. Audio Service: Device Manager checks preferred mic → fallback if unavailable
 4. Audio Service: Mic Capture opens mic input stream; Sleep Prevention acquired
@@ -123,7 +125,7 @@ User records mic + system audio (remote call, meeting, etc). Speaker capture can
 17. Model Service: loads selected model
 18. Model Service: transcribes mic PCM → mic segments (progress 0–50%)
 19. Model Service: transcribes speaker PCM → raw speaker segments (progress 50–100%) when dual-source
-20. `filter_hallucination_phrases`: strips known Whisper hallucination phrases from speaker segments
+20. `filter_hallucination_phrases` (`services/output/hallucination.rs`): strips known Whisper hallucination phrases from mic and speaker segments (also applied in Dictate before `format_dictate_text` and Transcribe upload)
 21. Model Service: merges mic and speaker segments chronologically; suppresses near-duplicate lines within 1.5 s; applies `in:`/`out:` labels
 22. Output Service: groups segments, builds dual-source markdown, applies word replacement rules
 23. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting)
@@ -140,6 +142,8 @@ User records mic + system audio (remote call, meeting, etc). Speaker capture can
 ---
 
 ## 3. Dictate
+
+Tray menu **Dictate** toggles the same pipeline as the key listener (default modifier is Left Control on macOS).
 
 Key listener (always on): **Left Control** only (`CGEventTap` on macOS, low-level hook on Windows). Two sequences after an initial tap + release:
 
@@ -187,7 +191,7 @@ Key listener (always on): **Left Control** only (`CGEventTap` on macOS, low-leve
 
 User brings an existing audio file. No recording step.
 
-1. User triggers Transcribe via tray
+1. User triggers Transcribe via the Upload area in the app shell
 2. Transcribe panel opens
 3. User selects audio file (WAV, MP3, M4A, FLAC)
 4. User selects output folder (defaults to config save folder)
@@ -200,13 +204,14 @@ User brings an existing audio file. No recording step.
 8b. Model Service: transcribes `speaker.wav` → speaker segments (progress 50–100%)
 8c. Output Service: merges, suppresses bleed, applies `in:`/`out:` labels
 8d. Continue to step 10
-9. Model Service: transcribes audio file → timestamped segments (progress 0–100%)
-10. Output Service: renders markdown transcript and applies word replacement rules
-11. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting)
-12. Check: `save_transcripts_as_markdown` setting
+9. Model Service: transcribes the decoded mic PCM once → returns timestamped segments
+10. TranscribeController runs pitch/loudness analysis offline, builds chunks, embeds each chunk, and maps Whisper segments to their parent chunk labels
+11. Output Service: renders markdown transcript and applies word replacement rules
+12. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting), including `speaker_change_cuts` and `speaker_chunks` for single-audio uploads
+13. Check: `save_transcripts_as_markdown` setting
     - **On** → Output Service writes `<source_filename>_<model>.md` to selected output folder; Done event carries `transcript_path`
     - **Off** → no `.md` written; Done event carries `transcript_path = None`
-13. Transcribe panel enters **Done** state — file path shown when available, Open Transcript button shown when path is present
+14. Transcribe panel enters **Done** state — file path shown when available, Open Transcript button shown when path is present
 
 ---
 
@@ -216,7 +221,7 @@ Unified read-only and management view across all transcript-bearing flows.
 
 ### 5a. List
 
-1. User opens History via tray
+1. User opens the app via **Open scribefloat** tray item (navigates to Home) or uses in-app navigation
 2. `history_list` IPC command → `HistoryController::list`
 3. HistoryController reads all live records from `HistoryService` (last-writer-wins by id from `history.jsonl`; deleted tombstones excluded)
 4. HistoryController reads legacy on-disk items: existing `.md` files via `OutputService::list_transcripts`, legacy dictate entries via `OutputService::read_dictate_history` (`dictate_history.json`)
@@ -225,30 +230,30 @@ Unified read-only and management view across all transcript-bearing flows.
 
 ### 5b. Select and preview
 
-1. User selects a history item from the list (title row or **View** icon on `HistoryListCard`)
-2. List and filter tabs hide; **fullscreen detail** (`HistoryDetailPane`) fills the window until Close
+1. User selects a history item from the list (title row or **View** icon on `NoteCard`)
+2. List and filter tabs hide; **fullscreen detail** (`NoteDetailPane`) fills the window until Close
 3. `history_get_detail` IPC command → HistoryController returns metadata for the selected record (`speaker_capture`, `dual_source`, etc.)
     - **Dual source** chip: `dual_source` true — merged speaker transcription ran
     - **Speaker capture** chip: `speaker_capture` true — setting was on when the record was written (may be true without dual source)
 4. `history_render_markdown` IPC command → OutputService renders markdown from the record's segments (pure function, no disk read required unless already exported)
-5. `HistoryDetailPane` renders scrollable transcript preview, muted metadata chips, prev/next in the header, and item actions (Export / Open / Copy / Close) in `PanelFooter`
+5. `NoteDetailPane` renders scrollable transcript preview, muted metadata chips, prev/next in the header, and item actions (Export / Open / Copy / Close) in `PanelFooter`
 6. **Prev/next** (chevrons or Arrow keys) cycles within the active filter tab (All / Scribe / Dictate); changing tabs while detail is open closes detail if the item is not in the new filter
 
 ### 5c. Export to markdown (on demand)
 
-1. User clicks **Export to Markdown** in `HistoryDetailPane`
+1. User clicks **Export to Markdown** in `NoteDetailPane`
 2. `history_export_markdown` IPC command → HistoryController
 3. Output Service writes `.md` to save folder; HistoryService updates the record (`set_markdown_path`) — a new line for the same id is appended to `history.jsonl`
 4. Detail pane updates to show the new file path and enables the **Open** button
 
 ### 5d. Open exported file
 
-1. User clicks **Open** in `HistoryDetailPane` (only shown when `markdown_path` is set)
+1. User clicks **Open** in `NoteDetailPane` (only shown when `markdown_path` is set)
 2. OS opens the `.md` file in the configured or default viewer
 
 ### 5e. Delete
 
-1. User clicks **Delete** on `HistoryListCard` (only available for store records, not legacy items); `history.svelte` opens a confirm modal
+1. User clicks **Delete** on `NoteCard` (only available for store records, not legacy items); `history.svelte` opens a confirm modal
 2. `history_delete` IPC command → HistoryController
 3. HistoryService appends a tombstone (`deleted = true`) for the record id to `history.jsonl`
 4. If the record has a `markdown_path`, Output Service deletes the `.md` file
@@ -262,9 +267,53 @@ Unified read-only and management view across all transcript-bearing flows.
 
 ---
 
+## 6. Note editor (`/notes/[id]`)
+
+Unified editor for store records (written, scribe, dictate with segments). Legacy `md::` / `dictate::` items stay on the list + `NoteDetailPane` read-only path.
+
+### 6a. Create
+
+1. User clicks **Record** in the TitleBar (or **+ New Note** on the Notes list) → `/notes/new` → `note_create_empty` appends one **written** line to `history.jsonl`
+2. Redirect to `/notes/[id]`; if started from TitleBar **Record**, `note-editor` auto-starts capture via `appState.scribeAutoStart`
+
+### 6b. Load
+
+1. `history_get_detail` returns the record; `HistoryService` hydrates `.notes/{id}/written.md` and `meta.json` when present
+
+### 6c. Autosave (editor)
+
+1. CodeMirror debounce (~800 ms) → `note_save_written_content` only if body changed (dirty-check in UI)
+2. Title debounce (~500 ms) → `note_save_title` only if title changed
+3. Metadata sidebar → `note_set_tags` (and related metadata commands) on change
+4. Backend overwrites sidecar files — **no new jsonl line**
+5. Each metadata/content save emits `note://item-updated` with `{ id }`; `+layout.svelte` listens and calls `loadNotes()` so the notes list reflects title/tag changes without a full reload
+
+### 6d. Attach transcript (recording strip)
+
+1. TitleBar **Record** or `scribeController` → `scribe_*` commands → on completion `note_attach_transcript`
+2. `update_segments` **appends** one jsonl line (capture event)
+
+### 6e. Delete
+
+1. Same as §5e; also removes `{save_folder}/.notes/{id}/`
+
+### 6f. Leave guard (navigate away)
+
+1. `note-editor.svelte` registers `appState.noteLeaveGuard`; `+layout.svelte` `beforeNavigate` and sidebar navigation call it when leaving `/notes/[id]`
+2. **While recording** (`scribeController.phase === 'recording'`): navigate immediately — recording continues in background; note is not deleted
+3. **`note_is_empty`** (no written body, no segments, default title unchanged) **and no metadata** → `history_delete` silently, then navigate
+4. **Empty with metadata** (tags/keywords/layers in sidecar, no body or transcript) → “Discard empty note?” modal; Discard deletes, Keep cancels navigation
+5. **Otherwise** → navigate; note persists
+
+Logic lives in `src/lib/services/noteLeaveGuard.ts` (Vitest-covered).
+
+---
+
 ## WAV lifecycle summary
 
 Default save folder: `~/Documents/transcripts_scribefloat/` (configurable in Settings → General).
+
+Voice learning controls live in Settings → Voice. `voice_learning_enabled` defaults off, voice embeddings are kept by default for current speaker matching, and `voice_embeddings_encryption_required` defaults on so automatic long-term learning can be blocked when encrypted storage is unavailable. If voice embedding retention is set to delete after transcript, Record and Upload keep transcript text, speaker labels, timings, chunk quality, and session speaker groups, but strip chunk and session speaker vectors before writing `history.jsonl`. If retention keeps vectors and the macOS Keychain-backed voice key is available, those vectors are encrypted at rest.
 
 | Workflow | WAV written? | Who writes | Who deletes | When deleted |
 |---|---|---|---|---|

@@ -1,4 +1,5 @@
 use crate::services::audio::read_wav_mono_f32;
+use crate::services::transcription::{transcribe_capture, CaptureAudio, TranscribeOptions};
 use crate::services::{
     audio::{AudioService, MicSession, WHISPER_SAMPLE_RATE},
     config::ConfigService,
@@ -7,7 +8,7 @@ use crate::services::{
     output::OutputService,
 };
 use crate::types::{
-    Config, DictateProcessingStage, DictateState, DictateStateEvent, HistoryRecord,
+    Config, DictateState, DictateStateEvent, HistoryRecord, ProcessingStage,
 };
 use anyhow::{anyhow, Result};
 use std::path::{Path, PathBuf};
@@ -47,6 +48,10 @@ const DOUBLE_TAP_WINDOW_MS: u128 = 400;
 const TOGGLE_STOP_COOLDOWN_MS: u128 = 1000;
 /// How long (ms) failure Done/Error panels stay visible before auto-dismissing.
 const FAILURE_DISMISS_MS: u64 = 800;
+
+/// How long the completed (100%) progress bar stays visible before the window
+/// hides — long enough for ProgressBar's capped catch-up (350ms) to finish.
+const DICTATE_COMPLETE_HOLD: std::time::Duration = std::time::Duration::from_millis(450);
 
 // ── Key tracker state machine ────────────────────────────────────────────────
 
@@ -207,6 +212,15 @@ impl DictateKeyTracker {
             _ => DictateAction::None,
         }
     }
+
+    /// UI title-bar start — keyboard third-tap stop must see toggle mode.
+    fn arm_ui_toggle(&mut self, now: Instant) {
+        self.state = DictateKeyState::ToggleRecording { started_at: now };
+    }
+
+    fn reset_to_idle(&mut self) {
+        self.state = DictateKeyState::Idle;
+    }
 }
 
 // ── Controller ───────────────────────────────────────────────────────────────
@@ -241,6 +255,8 @@ pub struct DictateController {
     paste_once: AtomicBool,
     /// Bumped on new activity so stale auto-dismiss timers cannot hide a new session HUD.
     dismiss_generation: Arc<AtomicU64>,
+    /// Shared with the global key listener — kept in sync when dictate starts/stops from the UI.
+    key_tracker: Arc<Mutex<DictateKeyTracker>>,
 }
 
 impl DictateController {
@@ -270,7 +286,24 @@ impl DictateController {
             restore_paste_target_pid: Arc::new(Mutex::new(None)),
             paste_once: AtomicBool::new(false),
             dismiss_generation: Arc::new(AtomicU64::new(0)),
+            key_tracker: Arc::new(Mutex::new(DictateKeyTracker::new())),
         })
+    }
+
+    fn arm_key_tracker_toggle(&self) {
+        let mut tracker = self
+            .key_tracker
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        tracker.arm_ui_toggle(Instant::now());
+    }
+
+    fn reset_key_tracker(&self) {
+        let mut tracker = self
+            .key_tracker
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        tracker.reset_to_idle();
     }
 
     fn bump_dismiss_generation(&self) {
@@ -318,7 +351,7 @@ impl DictateController {
     /// Spawn the global key listener on a background thread.
     /// Must be called once after the controller is created.
     pub fn start_key_listener(self: Arc<Self>) {
-        let tracker = Arc::new(Mutex::new(DictateKeyTracker::new()));
+        let tracker = Arc::clone(&self.key_tracker);
 
         // Timeout thread: advances timed states so the state machine resets
         // to Idle when tap windows expire without a second keypress.
@@ -461,6 +494,35 @@ impl DictateController {
         self.lock().state.clone()
     }
 
+    /// Start or stop dictate from the dashboard title-bar button.
+    pub fn trigger_toggle(self: &Arc<Self>) {
+        match self.current_state() {
+            DictateState::Recording => {
+                self.reset_key_tracker();
+                if let Err(e) = Self::stop_and_transcribe(Arc::clone(self)) {
+                    tracing::warn!(error = %e, "dictate UI stop failed");
+                }
+            }
+            DictateState::Idle => {
+                self.arm_key_tracker_toggle();
+                Self::dispatch_action(
+                    Arc::clone(self),
+                    DictateAction::Start(DictateStartSource::Toggle),
+                );
+            }
+            DictateState::Done | DictateState::Error => {
+                self.bump_dismiss_generation();
+                self.dismiss();
+                self.arm_key_tracker_toggle();
+                Self::dispatch_action(
+                    Arc::clone(self),
+                    DictateAction::Start(DictateStartSource::Toggle),
+                );
+            }
+            DictateState::Transcribing | DictateState::Pasting => {}
+        }
+    }
+
     /// Transition Idle → Recording. Opens mic stream, emits audio level events.
     pub fn start(&self) -> Result<()> {
         self.bump_dismiss_generation();
@@ -495,6 +557,8 @@ impl DictateController {
                 drop(gate);
                 let _ = app.emit(DICTATE_AUDIO_LEVEL_EVENT, level);
             })),
+            None,
+            None,
         )?;
 
         let mut inner = self.lock();
@@ -511,20 +575,19 @@ impl DictateController {
         Ok(())
     }
 
-    /// Eagerly load the configured model into the shared context cache while recording.
-    /// Mirrors `ScribeController::spawn_record_start_preload`.
+    /// Bring the Dictate model fully to ready while the user is speaking, so
+    /// stop-and-transcribe starts as a cache hit. Dictate resolves its own (usually
+    /// smaller, faster) model via `preload_path_for_dictate` — never the Record
+    /// model — and skips the voiceprint extractor because Dictate does no speaker
+    /// analysis. The model service's per-path load lock makes a Stop that lands
+    /// mid-preload wait for this load rather than duplicate it.
     fn spawn_record_start_preload(&self) {
         let cfg = self.config.get();
         let path = preload_path_for_dictate(&cfg, &self.model);
-        if !self.model.model_available(&path) {
-            return;
-        }
         let model = Arc::clone(&self.model);
         tauri::async_runtime::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
-                if let Err(e) = model.get_or_load_context(&path) {
-                    tracing::debug!(error = %e, "dictate record-start model preload failed");
-                }
+                model.preload_context(&path);
             })
             .await;
         });
@@ -568,6 +631,7 @@ impl DictateController {
 
         self.bump_dismiss_generation();
         self.clear_restore_paste_target_pid();
+        self.reset_key_tracker();
         let session = {
             let mut inner = self.lock();
             inner.state = DictateState::Idle;
@@ -619,6 +683,7 @@ impl DictateController {
         if let Some(path) = wav_path {
             self.delete_dictate_wav(&path);
         }
+        self.reset_key_tracker();
         self.clear_restore_paste_target_pid();
         let _ = self.app.emit(DICTATE_AUDIO_LEVEL_EVENT, 0.0_f32);
         self.hide_window();
@@ -639,6 +704,7 @@ impl DictateController {
             true
         };
         if should_hide {
+            self.reset_key_tracker();
             self.clear_restore_paste_target_pid();
             self.hide_window();
         }
@@ -668,12 +734,16 @@ impl DictateController {
                     DICTATE_STATE_EVENT,
                     DictateStateEvent {
                         progress: Some(0.0),
-                        processing_stage: Some(DictateProcessingStage::LoadingModel),
+                        // The model is preloaded during recording; the wait
+                        // here is WAV finalize + read, so label it as such.
+                        processing_stage: Some(ProcessingStage::PreparingAudio),
                         ..DictateStateEvent::new(DictateState::Transcribing)
                     },
                 )
                 .ok();
-            let session = inner.session.take().expect("session exists when Recording");
+            let session = inner.session.take().ok_or_else(|| {
+                anyhow!("session missing in Recording state")
+            })?;
             inner.processing_wav_path = Some(session.mic.wav_path().to_path_buf());
             session
         };
@@ -746,30 +816,32 @@ impl DictateController {
             return Ok(false);
         }
 
-        let vad_path = self.model.vad_model_path();
-        let vad = self
-            .model
-            .model_available(&vad_path)
-            .then_some(vad_path.as_path());
         let app_clone = self.app.clone();
-        let segments = match self.model.transcribe_pcm_with_progress(
-            &model_path,
-            &pcm_16k,
-            vad,
-            None,
-            "dictate",
-            move |p| {
-                app_clone
-                    .emit(
-                        DICTATE_STATE_EVENT,
-                        DictateStateEvent {
-                            progress: Some(p),
-                            processing_stage: Some(DictateProcessingStage::TranscribingAudio),
-                            ..DictateStateEvent::new(DictateState::Transcribing)
-                        },
-                    )
-                    .ok();
+        let progress_reporter = move |p: f32| {
+            app_clone
+                .emit(
+                    DICTATE_STATE_EVENT,
+                    DictateStateEvent {
+                        progress: Some(p),
+                        processing_stage: Some(ProcessingStage::TranscribingAudio),
+                        ..DictateStateEvent::new(DictateState::Transcribing)
+                    },
+                )
+                .ok();
+        };
+        let segments = match transcribe_capture(
+            &self.model,
+            CaptureAudio {
+                mic_pcm_16k: &pcm_16k,
+                speaker_pcm_16k: None,
             },
+            TranscribeOptions {
+                model_path: &model_path,
+                source: "dictate",
+                abort: None,
+                on_model_loaded: None,
+            },
+            progress_reporter,
         ) {
             Ok(segments) => segments,
             Err(e) => {
@@ -811,10 +883,16 @@ impl DictateController {
         {
             let mut inner = self.lock();
             inner.state = DictateState::Pasting;
+            // Terminal progress: the bar must reach 100% before the window
+            // hides, even when Whisper's sparse ticks never got there.
             self.app
                 .emit(
                     DICTATE_STATE_EVENT,
-                    DictateStateEvent::new(DictateState::Pasting),
+                    DictateStateEvent {
+                        progress: Some(1.0),
+                        processing_stage: Some(ProcessingStage::TranscribingAudio),
+                        ..DictateStateEvent::new(DictateState::Pasting)
+                    },
                 )
                 .ok();
         }
@@ -835,7 +913,7 @@ impl DictateController {
             tracing::warn!(error = %e, "dictate failed to write history");
             true
         } else {
-            self.app.emit("history://item-added", ()).ok();
+            self.app.emit("note://item-added", ()).ok();
             false
         };
 
@@ -903,6 +981,9 @@ impl DictateController {
             return Ok(true);
         }
 
+        // Hold the completed bar briefly — hiding the window on the same tick
+        // as the terminal progress event means the user never sees 100%.
+        std::thread::sleep(DICTATE_COMPLETE_HOLD);
         self.transition_to_idle();
         Ok(false)
     }
@@ -1242,6 +1323,18 @@ mod tests {
         t.on_key_down(down);
         t.on_key_up(Instant::now());
         assert!(matches!(t.state, DictateKeyState::AwaitingSecondTap { .. }));
+    }
+
+    /// AC 0048-1: A short first-press tap (key down then up within FIRST_PRESS_MAX_MS)
+    /// must return DictateAction::None — no recording starts on a single brief press.
+    #[test]
+    fn short_tap_returns_no_action() {
+        let mut t = DictateKeyTracker::new();
+        let down = ms_ago(FIRST_PRESS_MAX_MS as u64 - 50); // well within limit
+        let action_down = t.on_key_down(down);
+        let action_up = t.on_key_up(Instant::now());
+        assert_eq!(action_down, DictateAction::None);
+        assert_eq!(action_up, DictateAction::None);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { appErrorMessage, type ModelListItem, type ModelProgressPayload } from '$lib/types';
+import { appErrorMessage, type ModelListItem, type ModelProgressPayload } from '@utils/types';
 
 export type { ModelListItem };
 

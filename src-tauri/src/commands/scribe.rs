@@ -10,7 +10,12 @@ pub fn scribe_start(
     preferred_speaker: Option<String>,
     capture_speaker: bool,
 ) -> Result<(), AppError> {
-    ctrl.start(preferred_mic, preferred_speaker, capture_speaker)
+    ScribeController::start(
+        Arc::clone(&ctrl),
+        preferred_mic,
+        preferred_speaker,
+        capture_speaker,
+    )
         .map_err(AppError::from)
 }
 
@@ -42,20 +47,22 @@ pub fn scribe_abort_transcription(ctrl: State<'_, Arc<ScribeController>>) -> Res
     ctrl.abort_transcription_keep_wav().map_err(AppError::from)
 }
 
-/// Hide the Scribe window without destroying it. Destroying the last window would quit the
-/// tray-backed process; hide matches native close behaviour (`CloseRequested` → hide).
-///
-/// Always tries to end an active recording first so mic/speaker streams release even if the
-/// frontend hid the window without awaiting `scribe_cancel`.
+/// No-op: Scribe lives in the main shell window; kept for legacy frontend callers.
 #[tauri::command]
 pub fn scribe_destroy_window(app: tauri::AppHandle) -> Result<(), AppError> {
     if let Some(ctrl) = app.try_state::<Arc<ScribeController>>() {
         let _ = ctrl.cancel();
     }
-    if let Some(w) = app.get_webview_window(crate::SCRIBE_WINDOW_LABEL) {
-        w.hide().map_err(|e| AppError::Internal(e.to_string()))?;
-    }
     crate::platform::window_impl::sync_activation_policy(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn scribe_set_attach_note(
+    ctrl: State<'_, Arc<ScribeController>>,
+    note_id: Option<String>,
+) -> Result<(), AppError> {
+    ctrl.set_attach_note(note_id);
     Ok(())
 }
 
@@ -99,6 +106,14 @@ pub fn scribe_list_output_devices(
     ctrl: State<'_, Arc<ScribeController>>,
 ) -> Result<Vec<String>, AppError> {
     Ok(ctrl.list_output_devices())
+}
+
+#[tauri::command]
+pub fn scribe_switch_mic(
+    ctrl: State<'_, Arc<ScribeController>>,
+    device: String,
+) -> Result<(), AppError> {
+    ctrl.switch_mic(device).map_err(AppError::from)
 }
 
 #[tauri::command]

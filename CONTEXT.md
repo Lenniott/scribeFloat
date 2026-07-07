@@ -1,7 +1,7 @@
 # ScribeFloat — Domain Glossary
 
 > Canonical terms for this codebase. When code and this glossary disagree, fix one of them.
-> Implementation details belong in `CLAUDE.md` or `docs/architecture.md` — not here.
+> Implementation details belong in `AGENTS.md` or `docs/architecture.md` — not here.
 
 ---
 
@@ -21,7 +21,7 @@
 |---|---|
 | **Note** | The primary information entity in ScribeFloat. A composition of one or more Sources, plus Metadata. What Float processes. What accumulates into the knowledge layer. |
 | **Source** | An individual content piece inside a Note. Each Source has a type and origin. Sources are individually addressable — Float can process them separately or together. |
-| **Note Metadata** | Structured fields on a Note: title, tags, Layer Item assignments, and any other Float-derived or user-assigned data. Editable by both user and Float. |
+| **Note Metadata** | Structured fields on a Note: title, tags, Layer Item assignments, and any other Float-derived or user-assigned data. Editable by both user and Float. Includes `quick: bool` (captured via fast/solo path) and `origin: mic \| upload` (where audio came from). |
 | **Transcript** | The text output produced by Whisper from audio capture. One type of Source. |
 
 **Source types:**
@@ -47,13 +47,13 @@ Capture methods are ways of creating a Note. They are not distinct object types 
 
 | Term | Definition |
 |---|---|
-| **Scribe** | Long-form capture profile. Audio recording inside a markdown writing area. Durable audio (saved to Note folder). Better transcription model. Stop confirmation safeguard. In-app output. |
-| **Dictate** | Quick-capture profile. Hotkey-triggered from anywhere. Temp audio (deleted on success). Fast transcription model. No stop confirmation. Output pastes to active app or clipboard. Also produces a Note. |
+| **Record** | Long-form in-app recording. Durable audio (saved to Note folder). Refined transcription model by default. Stop confirmation safeguard. Previously called "Scribe." |
+| **Dictate** | Quick-capture. Hotkey-triggered from anywhere. Temp audio (deleted on success). Fast transcription model by default. No stop confirmation. Output pastes to active app or clipboard. Produces a `quick` Note. |
 | **Upload** | Bulk Note creation from external sources: audio files, markdown files, URLs, video URLs. Previously called "Transcribe." |
 | **Recording** | The act of capturing audio. A UI state and verb-noun, not a domain object. Bounded by Start / Stop. |
 | **Session** | One complete capture event — from initiation to completion, including audio processing. A Session produces one Note. |
 
-**Architectural note:** Scribe and Dictate are the same recording capability under the hood — same audio technology, same Whisper transcription. The differences are capture configuration (audio durability, model choice, stop safeguards, activation method, output destination). The current two-controller architecture (`ScribeController`, `DictateController`) is an artefact of how the app evolved, not a domain distinction. Future refactoring may unify them.
+**Architectural note:** Record and Dictate are the same recording capability under the hood — same audio technology, same Whisper transcription. The differences are capture configuration (audio durability, model quality tier, stop safeguards, activation method, output destination). The current two-controller architecture (`ScribeController`, `DictateController`) is an artefact of how the app evolved, not a domain distinction. Future refactoring may unify them.
 
 ---
 
@@ -64,8 +64,8 @@ The full UI taxonomy lives in `ui-taxonomy.md`. Summary of levels relevant to ap
 | Taxonomy level | Definition | Examples in ScribeFloat |
 |---|---|---|
 | **Token** | A single named design value | colour, spacing, radius values |
-| **Primitive** | Styled HTML reused by multiple components | `Button`, `Chip`, `ScrollablePanel` |
-| **Component** | A single, indivisible user action | `TranscriptListCard`, `StatTile`, `ToggleSwitch` |
+| **Primitive** | Structural or display building block, not used standalone | `ScrollBody`, `PanelHeader`, `StatusDot` |
+| **Component** | A single, indivisible user action | `Button`, `NoteCard`, `Toggle` |
 | **Pattern** | Multiple components working together as one action | Note triage flow, recording controls |
 | **Section** | A contained mental model — about one clearly-named thing | Note detail, Filter panel, Settings group |
 | **Region** | A fixed structural area of the layout, regardless of content | Sidebar, title bar, main content area |
@@ -81,7 +81,7 @@ The full UI taxonomy lives in `ui-taxonomy.md`. Summary of levels relevant to ap
 | **Float** | Build and manage Layers, Steps, Flows, Vocabulary. |
 | **Settings** | Config, models, permissions, hotkeys. |
 
-Capture (Scribe) is not a sidebar Area — accessed via a persistent "New Note" action in the title bar. Dictate is a persistent hotkey-triggered action in the title bar, available from any Area.
+Record is not a sidebar Area — accessed via a persistent "New Note" action in the title bar. Dictate is a persistent hotkey-triggered action in the title bar, available from any Area.
 
 ---
 
@@ -129,6 +129,7 @@ Capture (Scribe) is not a sidebar Area — accessed via a persistent "New Note" 
 | ~~Shell~~ | **App** | Too technical |
 | ~~Dashboard~~ | **Home** | "Home" is a more natural user destination |
 | ~~Transcribe~~ (as a workflow name) | **Upload** | Describes the user action, not the backend process |
+| ~~Scribe~~ | **Record** | "Record" is a verb like Dictate and Upload; "Scribe" was a product-era name that leaked into the domain |
 | ~~NotePanel / NoteComposer / NoteCard~~ | Markdown text area in Note Body | Chat-style note taking deprecated; replaced by a unified editable Note Body |
 
 ---
@@ -164,4 +165,4 @@ Storage: Domains are folders. Artifacts are markdown files with YAML frontmatter
 
 ## Open questions
 
-- [ ] The existing code uses "Panel" (`PanelHeader`, `PanelFooter`, `ScrollablePanel`) — these are Regions in the taxonomy. Rename in code when touching those files, or do a dedicated migration pass?
+None.

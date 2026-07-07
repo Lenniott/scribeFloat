@@ -37,7 +37,8 @@ Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other a
 | `SourceIcon` | `1_primitives/display/SourceIcon.svelte` | Icon indicating the source kind of a note (mic, speaker, etc.). |
 | `StatusDot` | `1_primitives/display/StatusDot.svelte` | Pulsing dot for recording state. Changes appearance for idle, recording, paused, error. |
 | `RecordingTimer` | `1_primitives/display/RecordingTimer.svelte` | Elapsed-time display. Shows formatted session time such as `00:00` from external state. |
-| `ProgressBar` | `1_primitives/display/ProgressBar.svelte` | Horizontal stacked-bar progress indicator. Supports `indeterminate` shimmer mode. |
+| `AnimatedEllipsis` | `1_primitives/display/AnimatedEllipsis.svelte` | Animated trailing dots for indeterminate waits ("Loading model…"). Inherits surrounding font/color; `aria-hidden` — the caller provides the real label text. Static under `prefers-reduced-motion`. |
+| `ProgressBar` | `1_primitives/display/ProgressBar.svelte` | 2D cube-grid progress indicator. Cubes fall in with staggered timing; total grid maps to 100%. Props: `progress`, `indeterminate`, `fluid` (span parent width; columns derive from measured space), optional tuning (`rows`, `columns`, `color`, `cube`, `gap`, `scale`, `speed`). Uses `role="progressbar"` with `aria-valuenow` / `aria-valuetext`. Capture views feed it from `stores/captureProgress.svelte.ts` (monotonic, self-creeping display percent) rather than raw backend progress. |
 
 ### Form
 

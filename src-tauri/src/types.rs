@@ -555,6 +555,9 @@ pub struct ScribeStateEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ProcessingStage {
+    /// Audio finalize/merge (Record, Dictate) or per-item decode (Upload) —
+    /// the pre-model wait the UI must not blame on model loading.
+    PreparingAudio,
     LoadingModel,
     TranscribingAudio,
     WritingTranscript,
@@ -637,7 +640,10 @@ impl TranscribeStateEvent {
     }
 }
 
-/// Emitted on `model://download-progress` while the default model downloads.
+/// Emitted on `model://download-progress` for every model the app downloads —
+/// Whisper catalog models, the Silero VAD model (`model_id = "vad"`), and the
+/// voiceprint ONNX model (`model_id = "voiceprint"`). One channel, one payload;
+/// consumers filter by `model_id`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelDownloadEvent {
     pub model_id: String,
@@ -692,13 +698,6 @@ pub struct VoiceprintProfileSummary {
 pub struct VoiceprintModelStatus {
     pub downloaded: bool,
     pub path: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VoiceprintModelDownloadEvent {
-    pub progress: f32,
-    pub bytes_downloaded: u64,
-    pub total_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -763,13 +762,6 @@ pub enum DictateState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum DictateProcessingStage {
-    LoadingModel,
-    TranscribingAudio,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionManifestState {
     Recording,
@@ -811,7 +803,9 @@ pub struct DictateStateEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub processing_stage: Option<DictateProcessingStage>,
+    /// Shares the capture-wide [`ProcessingStage`] vocabulary; Dictate only ever
+    /// emits `LoadingModel` and `TranscribingAudio` (no transcript file, no kept audio).
+    pub processing_stage: Option<ProcessingStage>,
     /// Populated on Done state — the text that was pasted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
@@ -1432,6 +1426,19 @@ mod tests {
         let json = serde_json::to_value(&event).expect("serialize transcribing event");
         assert_eq!(json["state"], "TRANSCRIBING");
         assert_eq!(json["progress"], 0.25);
+    }
+
+    #[test]
+    fn dictate_event_keeps_wire_format_with_unified_processing_stage() {
+        // Dictate shares ProcessingStage with Record/Upload; the serialized strings
+        // must stay what the frontend has always received.
+        let mut event = DictateStateEvent::new(DictateState::Transcribing);
+        event.processing_stage = Some(ProcessingStage::LoadingModel);
+        let json = serde_json::to_value(&event).expect("serialize");
+        assert_eq!(json["processing_stage"], "LOADING_MODEL");
+        event.processing_stage = Some(ProcessingStage::TranscribingAudio);
+        let json = serde_json::to_value(&event).expect("serialize");
+        assert_eq!(json["processing_stage"], "TRANSCRIBING_AUDIO");
     }
 
     #[test]

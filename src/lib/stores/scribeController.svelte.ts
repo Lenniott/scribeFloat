@@ -3,20 +3,16 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { appState } from './appState.svelte';
 import { buildMicOptions, resolveSelectedMic } from '@utils/micOptions';
+import { RECORD_STEPS, type ProcessingStage } from '@utils/processingFeedback';
+import { createCaptureProgress } from './captureProgress.svelte';
 
 export type ScribePhase = 'idle' | 'recording' | 'transcribing';
-
-export type ScribeProcessingStage =
-	| 'LOADING_MODEL'
-	| 'TRANSCRIBING_AUDIO'
-	| 'WRITING_TRANSCRIPT'
-	| 'CLEANING_UP_AUDIO';
 
 type ScribePayload = {
 	state: string;
 	error?: string;
 	progress?: number;
-	processing_stage?: ScribeProcessingStage;
+	processing_stage?: ProcessingStage;
 };
 
 class ScribeController {
@@ -30,7 +26,9 @@ class ScribeController {
 	micOptions = $state([{ value: '', label: 'System Default' }]);
 	errorMessage = $state('');
 	progress = $state(0);
-	processingStage = $state<ScribeProcessingStage>('LOADING_MODEL');
+	processingStage = $state<ProcessingStage>('LOADING_MODEL');
+	/** Display progress for the transcribing bar — monotonic, glide-paced. */
+	display = createCaptureProgress(RECORD_STEPS, { estimateKey: 'scribe-transcribe' });
 	/** Set when a transcript was attached; note editor clears after handling. */
 	transcriptReadyNoteId = $state<string | null>(null);
 
@@ -40,7 +38,6 @@ class ScribeController {
 	private initialized = false;
 
 	elapsedSeconds = $derived(Math.floor(this.elapsedMs / 1000));
-	progressPercent = $derived(Math.round(Math.max(0, Math.min(1, this.progress)) * 100));
 	/** Mic/speaker controls are unavailable only while transcribing. */
 	captureSettingsLocked = $derived(this.phase === 'transcribing');
 
@@ -171,7 +168,14 @@ class ScribeController {
 		if (this.phase !== 'recording') return;
 		this.phase = 'transcribing';
 		this.progress = 0;
-		this.processingStage = 'LOADING_MODEL';
+		this.processingStage = 'PREPARING_AUDIO';
+		this.display.reset();
+		// Rough transcribe-phase estimate from the recording length (model load
+		// is a separate loading phase); the store corrects it from past runs.
+		this.display.begin(2 + 0.3 * this.elapsedSeconds);
+		// Label the wait truthfully from the first frame — the backend's
+		// PREPARING_AUDIO event follows, but only after the stop IPC lands.
+		this.display.update('PREPARING_AUDIO', 0);
 		this.stopTimer();
 		this.audioLevel = 0;
 		this.speakerLevel = 0;
@@ -249,6 +253,9 @@ class ScribeController {
 		if (p.processing_stage) {
 			this.processingStage = p.processing_stage;
 		}
+		if (p.progress != null || p.processing_stage) {
+			this.display.update(this.processingStage, this.progress);
+		}
 
 		switch (p.state) {
 			case 'IDLE':
@@ -256,6 +263,7 @@ class ScribeController {
 					this.phase = 'idle';
 					this.progress = 0;
 					this.processingStage = 'LOADING_MODEL';
+					this.display.reset();
 					this.stopTimer();
 					this.audioLevel = 0;
 					this.speakerLevel = 0;
@@ -275,6 +283,7 @@ class ScribeController {
 				break;
 			case 'DONE':
 				this.progress = 1;
+				this.display.complete();
 				void this.handleDone();
 				break;
 			case 'ERROR':
@@ -282,6 +291,7 @@ class ScribeController {
 				appState.scribeNoteId = null;
 				appState.scribeAwaitingAttach = false;
 				this.phase = 'idle';
+				this.display.reset();
 				this.stopTimer();
 				this.errorMessage = p.error ?? 'Recording failed';
 				void this.reloadSpeakerDefault();

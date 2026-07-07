@@ -230,11 +230,12 @@ impl TranscribeController {
             queue[index].status = TranscribeItemStatus::Processing;
             queue[index].progress = 0.0;
             queue[index].error = None;
+            // The per-item wait here is decode_input, not model loading.
             self.emit_queue_state(
                 TranscribeState::Transcribing,
                 queue.to_vec(),
                 Some(overall_progress(queue)),
-                Some(ProcessingStage::LoadingModel),
+                Some(ProcessingStage::PreparingAudio),
                 None,
             );
 

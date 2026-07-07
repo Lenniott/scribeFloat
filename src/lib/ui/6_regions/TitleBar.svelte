@@ -14,6 +14,7 @@
 	import RecordingStatusDot from '@primitives/display/StatusDot.svelte';
 	import RecordingTimer from '@primitives/display/RecordingTimer.svelte';
 	import ProgressBar from '@primitives/display/ProgressBar.svelte';
+	import AnimatedEllipsis from '@primitives/display/AnimatedEllipsis.svelte';
 	import { appState } from '@stores/appState.svelte';
 	import { scribe } from '@stores/scribeController.svelte';
 
@@ -38,20 +39,6 @@
 	const isRecording = $derived(dictateState === 'RECORDING');
 	const isBusy = $derived(dictateState === 'TRANSCRIBING' || dictateState === 'PASTING');
 	const dictateDisabled = $derived(isBusy || scribe.phase !== 'idle');
-
-	const scribeProgressSequence = $derived([
-		{ label: 'Loading model', complete: scribe.processingStage !== 'LOADING_MODEL' },
-		{
-			label: 'Transcribing',
-			complete:
-				scribe.processingStage === 'WRITING_TRANSCRIPT' ||
-				scribe.processingStage === 'CLEANING_UP_AUDIO',
-		},
-		{
-			label: 'Writing transcript',
-			complete: scribe.processingStage === 'CLEANING_UP_AUDIO',
-		},
-	]);
 
 	const isOnRecordingNote = $derived(
 		appState.scribeNoteId !== null &&
@@ -141,15 +128,13 @@
 				onclick={() => (showDiscardConfirm = true)}
 			/>
 		{:else if scribe.phase === 'transcribing'}
-			<ProgressBar
-				progress={scribe.progressPercent}
-				variant="small"
-				sequence={scribeProgressSequence}
-				indeterminate={
-					scribe.processingStage === 'LOADING_MODEL' ||
-					(scribe.processingStage === 'TRANSCRIBING_AUDIO' && scribe.progressPercent === 0)
-				}
-			/>
+			{#if scribe.display.loading}
+				<span class="sf-label-sm text-fg-dim"
+					>{scribe.display.stageLabel}<AnimatedEllipsis /></span
+				>
+			{:else}
+				<ProgressBar progress={scribe.display.percentExact} />
+			{/if}
 		{/if}
 
 		{#if onNewNote || scribe.phase !== 'idle'}
@@ -168,7 +153,7 @@
 				/>
 				{#if settingsOpen}
 					<div
-						class="absolute right-0 top-full z-50 mt-1 w-64 space-y-4 rounded-md border border-fill bg-card p-3 shadow-lg"
+						class="absolute right-0 top-full z-50 mt-1 w-64 space-y-4 rounded-md border border-fill bg-card p-3 shadow-ambient"
 						role="group"
 						aria-label="Recording settings"
 					>

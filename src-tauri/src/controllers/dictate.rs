@@ -49,6 +49,10 @@ const TOGGLE_STOP_COOLDOWN_MS: u128 = 1000;
 /// How long (ms) failure Done/Error panels stay visible before auto-dismissing.
 const FAILURE_DISMISS_MS: u64 = 800;
 
+/// How long the completed (100%) progress bar stays visible before the window
+/// hides — long enough for ProgressBar's capped catch-up (350ms) to finish.
+const DICTATE_COMPLETE_HOLD: std::time::Duration = std::time::Duration::from_millis(450);
+
 // ── Key tracker state machine ────────────────────────────────────────────────
 
 #[derive(Debug)]
@@ -730,7 +734,9 @@ impl DictateController {
                     DICTATE_STATE_EVENT,
                     DictateStateEvent {
                         progress: Some(0.0),
-                        processing_stage: Some(DictateProcessingStage::LoadingModel),
+                        // The model is preloaded during recording; the wait
+                        // here is WAV finalize + read, so label it as such.
+                        processing_stage: Some(ProcessingStage::PreparingAudio),
                         ..DictateStateEvent::new(DictateState::Transcribing)
                     },
                 )
@@ -877,10 +883,16 @@ impl DictateController {
         {
             let mut inner = self.lock();
             inner.state = DictateState::Pasting;
+            // Terminal progress: the bar must reach 100% before the window
+            // hides, even when Whisper's sparse ticks never got there.
             self.app
                 .emit(
                     DICTATE_STATE_EVENT,
-                    DictateStateEvent::new(DictateState::Pasting),
+                    DictateStateEvent {
+                        progress: Some(1.0),
+                        processing_stage: Some(ProcessingStage::TranscribingAudio),
+                        ..DictateStateEvent::new(DictateState::Pasting)
+                    },
                 )
                 .ok();
         }
@@ -969,6 +981,9 @@ impl DictateController {
             return Ok(true);
         }
 
+        // Hold the completed bar briefly — hiding the window on the same tick
+        // as the terminal progress event means the user never sees 100%.
+        std::thread::sleep(DICTATE_COMPLETE_HOLD);
         self.transition_to_idle();
         Ok(false)
     }

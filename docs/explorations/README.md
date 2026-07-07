@@ -21,6 +21,8 @@ Lightweight captures of ideation and design sessions. Not decisions — decision
 | [knowledge-layer-intent.md](active/knowledge-layer-intent.md) | Knowledge layer intent doc |
 | [2026-06-23-voiceprint-engine.md](active/2026-06-23-voiceprint-engine.md) | ADR-0011, stories 0052–0058 |
 | [2026-07-04-chunk-based-speaker-flow.md](active/2026-07-04-chunk-based-speaker-flow.md) | rewrite stories 0059-0063 around chunk embeddings |
+| [2026-07-05-architecture-deepening-candidates.md](active/2026-07-05-architecture-deepening-candidates.md) | future stories: types.rs invariants, transcript formatter, voice-embedding seam, frontend view state |
+| [2026-07-06-capture-progress-signal.md](active/2026-07-06-capture-progress-signal.md) | display-progress contract implemented 2026-07-06; optional ADR: one 0–100 display-progress definition |
 
 ### captured/
 | File | Date | Produces |

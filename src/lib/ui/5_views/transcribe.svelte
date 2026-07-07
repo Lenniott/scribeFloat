@@ -8,18 +8,15 @@
   import Button from "@components/controls/Button.svelte";
   import ToggleSwitch from "@components/controls/Toggle.svelte";
   import PathPicker from "@components/controls/PathPicker.svelte";
-  import StackProgressBar from "@primitives/display/ProgressBar.svelte";
+  import ProgressBar from "@primitives/display/ProgressBar.svelte";
+  import AnimatedEllipsis from "@primitives/display/AnimatedEllipsis.svelte";
   import { createModelDownloadStore } from "$lib/stores/modelDownload.svelte";
   import TranscribeQueueList from "@patterns/UploadQueue.svelte";
   import ScrollablePanel from "@primitives/layout/ScrollBody.svelte";
   import PanelFooter from "@primitives/layout/PanelFooter.svelte";
   import type { TranscribeQueueItemView } from "@components/cards/UploadItem.svelte";
-
-  type ProcessingStage =
-    | "LOADING_MODEL"
-    | "TRANSCRIBING_AUDIO"
-    | "WRITING_TRANSCRIPT"
-    | "CLEANING_UP_AUDIO";
+  import { UPLOAD_STEPS, type ProcessingStage } from "@utils/processingFeedback";
+  import { createCaptureProgress } from "@stores/captureProgress.svelte";
 
   type TranscribeStatePayload = {
     state: "IDLE" | "TRANSCRIBING" | "DONE" | "ERROR";
@@ -46,8 +43,9 @@
   let outputFolder = $state("");
   let includeTimestamps = $state(true);
   let selectedModelId = $state("");
-  let progress = $state(0);
-  let stage = $state<ProcessingStage>("LOADING_MODEL");
+  /** Queue-average progress 0..1; display derives via the capture store. */
+  let rawProgress = 0;
+  let stage: ProcessingStage = "LOADING_MODEL";
   let errorMessage = $state("");
   let isDraggingOverDropZone = $state(false);
 
@@ -75,18 +73,9 @@
     ].join(" "),
   );
 
-  const progressSequence: { label: string; stage: ProcessingStage }[] = [
-    { label: "Loading model", stage: "LOADING_MODEL" },
-    { label: "Transcribing audio", stage: "TRANSCRIBING_AUDIO" },
-    { label: "Writing transcript", stage: "WRITING_TRANSCRIPT" },
-  ];
-  const stageOrder = progressSequence.map((step) => step.stage);
-  const currentStageIndex = $derived(Math.max(0, stageOrder.indexOf(stage)));
-  const sequence = $derived(
-    progressSequence.map((step) => ({
-      label: step.label,
-      complete: stageOrder.indexOf(step.stage) <= currentStageIndex,
-    })),
+  const capture = createCaptureProgress(UPLOAD_STEPS, { batch: true });
+  const currentStepLabel = $derived(
+    capture.sequence.find((step) => !step.complete)?.label ?? "Processing",
   );
 
   function uniquePaths(paths: string[]): string[] {
@@ -206,8 +195,10 @@
     try {
       errorMessage = "";
       phase = "processing";
-      progress = 0;
+      rawProgress = 0;
       stage = "LOADING_MODEL";
+      capture.reset();
+      capture.update(stage, rawProgress);
       await invoke("transcribe_start", {
         inputPaths: queue.map((item) => item.source_path),
         outputFolder: outputFolder || null,
@@ -227,10 +218,13 @@
   function handleTranscribeState(payload: TranscribeStatePayload) {
     queue = payload.items || queue;
     if (payload.progress != null) {
-      progress = Math.round(Math.max(0, Math.min(1, payload.progress)) * 100);
+      rawProgress = Math.max(0, Math.min(1, payload.progress));
     }
     if (payload.processing_stage) {
       stage = payload.processing_stage;
+    }
+    if (payload.progress != null || payload.processing_stage) {
+      capture.update(stage, rawProgress);
     }
 
     if (payload.state === "TRANSCRIBING") {
@@ -238,16 +232,19 @@
       return;
     }
     if (payload.state === "DONE") {
-      progress = 100;
+      rawProgress = 1;
+      capture.complete();
       phase = "done";
       return;
     }
     if (payload.state === "ERROR") {
       phase = "error";
+      capture.reset();
       errorMessage = payload.error || "Transcribe failed.";
       return;
     }
     phase = "idle";
+    capture.reset();
   }
 
   function handleItemProgress(payload: ItemProgressPayload) {
@@ -265,7 +262,7 @@
 
   function resetForAnotherRun() {
     phase = "idle";
-    progress = 0;
+    rawProgress = 0;
     stage = "LOADING_MODEL";
     errorMessage = "";
     queue = [];
@@ -319,6 +316,7 @@
   onDestroy(() => {
     unlisteners.forEach((unlisten) => unlisten());
     modelUnlisteners.forEach((unlisten) => unlisten());
+    capture.reset();
   });
 </script>
 
@@ -335,7 +333,11 @@
       {/if}
       {#if phase === "processing"}
         <p class="sf-label-sm text-fg-dim">
-          Processing {progress}%
+          {#if capture.loading}
+            {capture.stageLabel}<AnimatedEllipsis />
+          {:else}
+            Processing {capture.percent}%
+          {/if}
         </p>
       {/if}
       {#if errorMessage}
@@ -443,14 +445,16 @@
         class="absolute inset-0 z-10 flex items-center justify-center bg-canvas/70 backdrop-blur-[1px]"
       >
         <div class="w-full max-w-2xl rounded-md border border-rim bg-panel p-4">
-          <p class="mb-3 sf-label-sm text-fg-dim">
-            {progressSequence.find((step) => step.stage === stage)?.label ?? "Processing"} · {progress}%
-          </p>
-          <StackProgressBar
-            {progress}
-            {sequence}
-            indeterminate={stage === "LOADING_MODEL"}
-          />
+          {#if capture.loading}
+            <p class="sf-label-sm text-fg-dim">
+              {capture.stageLabel}<AnimatedEllipsis />
+            </p>
+          {:else}
+            <p class="mb-3 sf-label-sm text-fg-dim">
+              {currentStepLabel} · {capture.percent}%
+            </p>
+            <ProgressBar progress={capture.percentExact} fluid />
+          {/if}
         </div>
       </div>
     {/if}

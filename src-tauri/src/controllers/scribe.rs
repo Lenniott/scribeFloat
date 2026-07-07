@@ -558,6 +558,20 @@ impl ScribeController {
             (session, inner.notes.clone())
         };
 
+        // prepare_audio finalizes and merges WAVs — seconds of I/O on long
+        // recordings. Emit its stage first so the wait is labelled truthfully
+        // rather than shown as model loading.
+        this.app
+            .emit(
+                "scribe://state-changed",
+                ScribeStateEvent {
+                    progress: Some(0.0),
+                    processing_stage: Some(ProcessingStage::PreparingAudio),
+                    ..ScribeStateEvent::new(ScribeState::Transcribing)
+                },
+            )
+            .ok();
+
         // Stop capture before emitting TRANSCRIBING so the mic is never active while we are not Recording.
         let prepared = match this.prepare_audio(session) {
             Ok(p) => p,

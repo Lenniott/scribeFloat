@@ -176,6 +176,11 @@ pub struct ModelService {
     /// Serializes all in-flight `whisper_full` calls. `WhisperContext` is shared across
     /// Scribe, Dictate, and Transcribe; concurrent encode passes corrupt Metal/ggml state.
     inference_gate: Mutex<()>,
+    /// SHA-256-verified model files, stamped with (mtime, len). Hashing a model is
+    /// hundreds of ms (181 MB small) to seconds (large) — without this cache every
+    /// transcription paid it under the "loading model" phase. A changed stamp
+    /// (re-download, manual replacement) re-hashes automatically.
+    verified_models: Mutex<HashMap<PathBuf, (std::time::SystemTime, u64)>>,
 }
 
 impl ModelService {
@@ -188,6 +193,7 @@ impl ModelService {
             loading_locks: Mutex::new(HashMap::new()),
             cpu_fallback_paths: Mutex::new(HashSet::new()),
             inference_gate: Mutex::new(()),
+            verified_models: Mutex::new(HashMap::new()),
         })
     }
 
@@ -271,6 +277,48 @@ impl ModelService {
         file_sha256_hex(model_path)
             .map(|actual| actual == expected.to_ascii_lowercase())
             .unwrap_or(false)
+    }
+
+    /// Integrity check with a session cache: hash once, then trust the file
+    /// identity (mtime + len). The stamp — not the `expected` argument — is the
+    /// cache key, so a changed file always re-hashes and a failed hash is never
+    /// remembered. Use on hot paths; `whisper_model_integrity_ok` stays uncached
+    /// for diagnostics.
+    pub fn model_integrity_ok_cached(&self, model_path: &Path, expected: &str) -> bool {
+        let Ok(meta) = std::fs::metadata(model_path) else {
+            return false;
+        };
+        let Ok(modified) = meta.modified() else {
+            // No usable stamp on this filesystem — fall back to hashing every time.
+            return self.hash_matches(model_path, expected);
+        };
+        let stamp = (modified, meta.len());
+        {
+            let cache = self.lock_verified_models();
+            if cache.get(model_path) == Some(&stamp) {
+                return true;
+            }
+        }
+        let ok = self.hash_matches(model_path, expected);
+        if ok {
+            self.lock_verified_models()
+                .insert(model_path.to_path_buf(), stamp);
+        }
+        ok
+    }
+
+    fn hash_matches(&self, model_path: &Path, expected: &str) -> bool {
+        file_sha256_hex(model_path)
+            .map(|actual| actual == expected.to_ascii_lowercase())
+            .unwrap_or(false)
+    }
+
+    fn lock_verified_models(
+        &self,
+    ) -> std::sync::MutexGuard<'_, HashMap<PathBuf, (std::time::SystemTime, u64)>> {
+        self.verified_models
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
     }
 
     pub fn whisper_model_bytes(&self, model_path: &Path) -> u64 {
@@ -545,10 +593,27 @@ impl ModelService {
         }
     }
 
-    /// Read the model file into the OS page cache without creating a `WhisperContext`.
-    /// Safe to run while recording — unlike `get_or_load_context`, this does not touch Metal.
-    pub fn warm_model_file_on_disk(model_path: &Path) {
-        let _ = std::fs::read(model_path);
+    /// Bring the Whisper context for `model_path` fully to ready (disk parse plus
+    /// GPU/CPU backend setup) so the next transcription starts as a cache hit.
+    /// Shares the per-path load lock with inference: a stop-and-transcribe that
+    /// lands mid-preload waits for this load instead of duplicating it. Failures
+    /// are logged and deferred — transcription will retry the load and surface
+    /// the error to the user. Blocking; call from a background thread.
+    pub fn preload_context(&self, model_path: &Path) {
+        if !self.model_available(model_path) {
+            return;
+        }
+        // Pay the SHA-256 integrity hash here too, so stop-and-transcribe finds
+        // both the context and the verification already warm.
+        if let Some(expected) = self.catalog_sha256_for_path(model_path) {
+            let _ = self.model_integrity_ok_cached(model_path, expected);
+        }
+        if let Err(err) = self.get_or_load_context(model_path) {
+            tracing::warn!(
+                error = %err,
+                "whisper preload failed; model will load at transcription time"
+            );
+        }
     }
 
     /// Load a Whisper context for `model_path`, or return the cached one. Loads block on
@@ -693,7 +758,7 @@ impl ModelService {
         self.reset_gpu_preference(model_path);
 
         if let Some(expected) = self.catalog_sha256_for_path(model_path) {
-            if !self.whisper_model_integrity_ok(model_path) {
+            if !self.model_integrity_ok_cached(model_path, expected) {
                 let actual = file_sha256_hex(model_path).unwrap_or_default();
                 return Err(anyhow!(
                     "Whisper model failed SHA-256 integrity check (expected {expected}, got {actual}). Re-download from Settings."
@@ -1440,6 +1505,43 @@ mod tests {
         let path = dir.join("custom-whisper.bin");
         std::fs::write(&path, [1, 2, 3]).unwrap();
         assert!(svc.whisper_model_integrity_ok(&path));
+    }
+
+    #[test]
+    fn verified_model_is_not_rehashed_while_unchanged() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        let path = dir.join("model.bin");
+        std::fs::write(&path, b"model bytes").unwrap();
+        let sha = file_sha256_hex(&path).unwrap();
+        assert!(svc.model_integrity_ok_cached(&path, &sha));
+        // The cache trusts the unchanged file identity (mtime + len); a second
+        // call must not re-hash — observable because a bogus expected hash
+        // still passes while the file is unchanged.
+        assert!(svc.model_integrity_ok_cached(&path, "not-a-real-hash"));
+    }
+
+    #[test]
+    fn changing_the_file_invalidates_the_verification_cache() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        let path = dir.join("model.bin");
+        std::fs::write(&path, b"model bytes").unwrap();
+        let sha = file_sha256_hex(&path).unwrap();
+        assert!(svc.model_integrity_ok_cached(&path, &sha));
+        std::fs::write(&path, b"different bytes, different length").unwrap();
+        assert!(!svc.model_integrity_ok_cached(&path, &sha));
+    }
+
+    #[test]
+    fn failed_verification_is_not_cached() {
+        let dir = temp_models_dir();
+        let svc = ModelService::new(dir.clone());
+        let path = dir.join("model.bin");
+        std::fs::write(&path, b"model bytes").unwrap();
+        let sha = file_sha256_hex(&path).unwrap();
+        assert!(!svc.model_integrity_ok_cached(&path, "wrong"));
+        assert!(svc.model_integrity_ok_cached(&path, &sha));
     }
 
     #[test]

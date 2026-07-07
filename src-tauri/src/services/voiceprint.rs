@@ -1,5 +1,5 @@
-use crate::services::voice_crypto::VoiceCryptoService;
-use crate::types::{SpeakerBlock, VoiceprintModelDownloadEvent, VoiceprintProfile};
+use crate::services::voice_embeddings::VoiceEmbeddingStore;
+use crate::types::{ModelDownloadEvent, SpeakerBlock, VoiceprintProfile};
 use anyhow::{anyhow, Context, Result};
 use sherpa_onnx::{SpeakerEmbeddingExtractor, SpeakerEmbeddingExtractorConfig};
 use std::path::{Path, PathBuf};
@@ -8,6 +8,9 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::AsyncWriteExt;
 
 pub const VOICEPRINT_MODEL_FILE: &str = "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx";
+/// `model_id` used on the shared `model://download-progress` channel (alongside
+/// Whisper catalog ids and `"vad"`).
+pub const VOICEPRINT_MODEL_ID: &str = "voiceprint";
 const VOICEPRINT_MODEL_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx";
 const EMBEDDING_DIM: usize = 192;
 
@@ -17,7 +20,9 @@ pub struct VoiceprintService {
     #[allow(dead_code)]
     threshold: RwLock<f32>,
     extractor: Mutex<Option<SpeakerEmbeddingExtractor>>,
-    crypto: RwLock<Option<Arc<VoiceCryptoService>>>,
+    /// How profile embeddings rest on disk. Plaintext until
+    /// [`set_embedding_store`] injects the store chosen at startup.
+    embedding_store: RwLock<Arc<VoiceEmbeddingStore>>,
 }
 
 impl VoiceprintService {
@@ -34,16 +39,22 @@ impl VoiceprintService {
             profiles_dir: profiles_dir.to_path_buf(),
             threshold: RwLock::new(clamp_threshold(threshold)),
             extractor: Mutex::new(None),
-            crypto: RwLock::new(None),
+            embedding_store: RwLock::new(VoiceEmbeddingStore::plaintext()),
         })
     }
 
-    pub fn set_crypto(&self, crypto: Arc<VoiceCryptoService>) {
-        *self.crypto.write().unwrap_or_else(|p| p.into_inner()) = Some(crypto);
+    pub fn set_embedding_store(&self, store: Arc<VoiceEmbeddingStore>) {
+        *self
+            .embedding_store
+            .write()
+            .unwrap_or_else(|p| p.into_inner()) = store;
     }
 
-    fn crypto(&self) -> Option<Arc<VoiceCryptoService>> {
-        self.crypto.read().unwrap_or_else(|p| p.into_inner()).clone()
+    fn embedding_store(&self) -> Arc<VoiceEmbeddingStore> {
+        self.embedding_store
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
     }
 
     pub fn model_path(&self) -> &Path {
@@ -62,8 +73,9 @@ impl VoiceprintService {
     pub async fn download_model(&self, app: &AppHandle) -> Result<()> {
         if self.model_downloaded() {
             app.emit(
-                "voiceprint://model-downloading",
-                VoiceprintModelDownloadEvent {
+                "model://download-progress",
+                ModelDownloadEvent {
+                    model_id: VOICEPRINT_MODEL_ID.to_string(),
                     progress: 1.0,
                     bytes_downloaded: self.model_path.metadata().map(|m| m.len()).unwrap_or(0),
                     total_bytes: self.model_path.metadata().map(|m| m.len()).ok(),
@@ -103,8 +115,9 @@ impl VoiceprintService {
             file.write_all(&chunk).await?;
             downloaded += chunk.len() as u64;
             app.emit(
-                "voiceprint://model-downloading",
-                VoiceprintModelDownloadEvent {
+                "model://download-progress",
+                ModelDownloadEvent {
+                    model_id: VOICEPRINT_MODEL_ID.to_string(),
                     progress: total.map(|t| downloaded as f32 / t as f32).unwrap_or(0.0),
                     bytes_downloaded: downloaded,
                     total_bytes: total,
@@ -121,8 +134,9 @@ impl VoiceprintService {
         self.clear_extractor();
 
         app.emit(
-            "voiceprint://model-downloading",
-            VoiceprintModelDownloadEvent {
+            "model://download-progress",
+            ModelDownloadEvent {
+                model_id: VOICEPRINT_MODEL_ID.to_string(),
                 progress: 1.0,
                 bytes_downloaded: downloaded,
                 total_bytes: total,
@@ -130,6 +144,21 @@ impl VoiceprintService {
         )
         .ok();
         Ok(())
+    }
+
+    /// Construct the ONNX extractor ahead of first use so `embed` doesn't pay the
+    /// ~500 ms graph build inside a user-visible pipeline stage. Returns `Ok(false)`
+    /// when the model isn't downloaded yet; idempotent once built. Blocking; call
+    /// from a background thread.
+    pub fn preload_extractor(&self) -> Result<bool> {
+        if !self.model_downloaded() {
+            return Ok(false);
+        }
+        let mut guard = self.extractor.lock().unwrap_or_else(|p| p.into_inner());
+        if guard.is_none() {
+            *guard = Some(self.create_extractor()?);
+        }
+        Ok(true)
     }
 
     #[allow(dead_code)]
@@ -166,7 +195,7 @@ impl VoiceprintService {
     pub fn load_profiles(&self) -> Result<Vec<VoiceprintProfile>> {
         std::fs::create_dir_all(&self.profiles_dir)?;
         let mut profiles = Vec::new();
-        let crypto = self.crypto();
+        let store = self.embedding_store();
         for entry in std::fs::read_dir(&self.profiles_dir)? {
             let path = entry?.path();
             if path.extension().and_then(|e| e.to_str()) != Some("json") {
@@ -177,15 +206,14 @@ impl VoiceprintService {
             match serde_json::from_str::<VoiceprintProfile>(&raw) {
                 Ok(mut profile) => {
                     profile.slug = slugify(&profile.slug);
-                    if let Some(crypto) = crypto.as_deref() {
-                        if let Err(err) = decrypt_profile_embedding(&mut profile, crypto) {
-                            tracing::warn!(
-                                path = %path.display(),
-                                error = %err,
-                                "voiceprint profile embedding could not be decrypted"
-                            );
-                            continue;
-                        }
+                    // A profile without its embedding cannot match anyone — skip it.
+                    if let Err(err) = store.unseal_profile(&mut profile) {
+                        tracing::warn!(
+                            path = %path.display(),
+                            error = %err,
+                            "voiceprint profile embedding could not be decrypted"
+                        );
+                        continue;
                     }
                     profiles.push(profile);
                 }
@@ -206,9 +234,7 @@ impl VoiceprintService {
         let path = self.profile_path(&profile.slug);
         let tmp = path.with_extension("json.tmp");
         let mut disk_profile = profile.clone();
-        if let Some(crypto) = self.crypto().as_deref() {
-            encrypt_profile_embedding(&mut disk_profile, crypto)?;
-        }
+        self.embedding_store().seal_profile(&mut disk_profile)?;
         let data = serde_json::to_string_pretty(&disk_profile)?;
         std::fs::write(&tmp, data)?;
         std::fs::rename(&tmp, &path)?;
@@ -466,37 +492,6 @@ fn validate_profile(profile: &VoiceprintProfile) -> Result<()> {
     Ok(())
 }
 
-fn encrypt_profile_embedding(
-    profile: &mut VoiceprintProfile,
-    crypto: &VoiceCryptoService,
-) -> Result<()> {
-    if profile.embedding.is_empty() {
-        return Ok(());
-    }
-    profile.encrypted_embedding = Some(
-        crypto.encrypt_embedding(&profile.embedding, &profile_embedding_context(&profile.slug))?,
-    );
-    profile.embedding.clear();
-    Ok(())
-}
-
-fn decrypt_profile_embedding(
-    profile: &mut VoiceprintProfile,
-    crypto: &VoiceCryptoService,
-) -> Result<()> {
-    if profile.embedding.is_empty() {
-        if let Some(encrypted) = profile.encrypted_embedding.as_ref() {
-            profile.embedding =
-                crypto.decrypt_embedding(encrypted, &profile_embedding_context(&profile.slug))?;
-        }
-    }
-    Ok(())
-}
-
-fn profile_embedding_context(slug: &str) -> String {
-    format!("voiceprint-profile:{slug}:embedding")
-}
-
 #[allow(dead_code)]
 fn l2_normalize(mut values: Vec<f32>) -> Vec<f32> {
     let mag = values.iter().map(|v| v * v).sum::<f32>().sqrt();
@@ -544,8 +539,19 @@ mod tests {
         l2_normalize(values)
     }
 
-    fn test_crypto() -> Arc<VoiceCryptoService> {
-        VoiceCryptoService::new(Arc::new(StaticVoiceCryptoKeyProvider::new(13)))
+    fn test_store() -> Arc<VoiceEmbeddingStore> {
+        VoiceEmbeddingStore::encrypted(VoiceCryptoService::new(Arc::new(
+            StaticVoiceCryptoKeyProvider::new(13),
+        )))
+    }
+
+    #[test]
+    fn preload_extractor_returns_false_when_model_missing() {
+        let root = temp_dir("scribefloat-voiceprint-preload");
+        let svc = VoiceprintService::new(&root.join(VOICEPRINT_MODEL_FILE), &root, 0.75).unwrap();
+        assert!(!svc.preload_extractor().expect("missing model is not an error"));
+        // Idempotent: repeated calls stay quiet.
+        assert!(!svc.preload_extractor().expect("still not an error"));
     }
 
     #[test]
@@ -585,9 +591,9 @@ mod tests {
     #[test]
     fn configured_crypto_encrypts_profile_embedding_at_rest_and_decrypts_on_load() {
         let root = temp_dir("scribefloat-voiceprint-encrypted");
-        let crypto = test_crypto();
+        let store = test_store();
         let svc = VoiceprintService::new(&root.join(VOICEPRINT_MODEL_FILE), &root, 0.75).unwrap();
-        svc.set_crypto(Arc::clone(&crypto));
+        svc.set_embedding_store(Arc::clone(&store));
         let profile = svc.new_profile("You", None, embedding(1.0)).unwrap();
 
         svc.save_profile(&profile).unwrap();
@@ -597,7 +603,7 @@ mod tests {
         assert!(!raw.contains(r#""embedding":["#));
 
         let fresh = VoiceprintService::new(&root.join(VOICEPRINT_MODEL_FILE), &root, 0.75).unwrap();
-        fresh.set_crypto(crypto);
+        fresh.set_embedding_store(store);
         let profiles = fresh.load_profiles().unwrap();
         assert_eq!(profiles.len(), 1);
         assert_eq!(profiles[0].embedding, profile.embedding);

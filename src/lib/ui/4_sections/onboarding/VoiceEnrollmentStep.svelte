@@ -126,10 +126,14 @@
 
 	async function downloadModel() {
 		error = '';
-		const stop = await listen<{ progress: number }>('voiceprint://model-downloading', (event) => {
-			modelProgress = Math.round((event.payload.progress ?? 0) * 100);
-			if (event.payload.progress >= 1) modelReady = true;
-		});
+		const stop = await listen<{ model_id: string; progress: number }>(
+			'model://download-progress',
+			(event) => {
+				if (event.payload.model_id !== 'voiceprint') return;
+				modelProgress = Math.round((event.payload.progress ?? 0) * 100);
+				if (event.payload.progress >= 1) modelReady = true;
+			},
+		);
 		try {
 			await invoke('voiceprint_download_model');
 		} catch (e) {

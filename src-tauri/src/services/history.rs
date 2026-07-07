@@ -1,5 +1,5 @@
 use crate::services::note_sidecar;
-use crate::services::voice_crypto::VoiceCryptoService;
+use crate::services::voice_embeddings::VoiceEmbeddingStore;
 use crate::types::{HistoryListItem, HistoryRecord};
 use anyhow::{Context, Result};
 use std::collections::{HashMap, HashSet};
@@ -16,7 +16,9 @@ use std::sync::{Arc, Mutex};
 /// call. When it changes the in-memory cache is reloaded for the new folder (no migration).
 pub struct HistoryService {
     inner: Mutex<HistoryInner>,
-    crypto: Mutex<Option<Arc<VoiceCryptoService>>>,
+    /// How voice embeddings rest on disk. Plaintext until [`set_embedding_store`]
+    /// injects the store chosen at startup.
+    embedding_store: Mutex<Arc<VoiceEmbeddingStore>>,
 }
 
 struct HistoryInner {
@@ -36,16 +38,22 @@ impl HistoryService {
                 records: Vec::new(),
                 index: HashMap::new(),
             }),
-            crypto: Mutex::new(None),
+            embedding_store: Mutex::new(VoiceEmbeddingStore::plaintext()),
         })
     }
 
-    pub fn set_crypto(&self, crypto: Arc<VoiceCryptoService>) {
-        *self.crypto.lock().unwrap_or_else(|p| p.into_inner()) = Some(crypto);
+    pub fn set_embedding_store(&self, store: Arc<VoiceEmbeddingStore>) {
+        *self
+            .embedding_store
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = store;
     }
 
-    fn crypto(&self) -> Option<Arc<VoiceCryptoService>> {
-        self.crypto.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    fn embedding_store(&self) -> Arc<VoiceEmbeddingStore> {
+        self.embedding_store
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
     }
 
     fn store_path(save_folder: &str) -> PathBuf {
@@ -69,21 +77,21 @@ impl HistoryService {
         let raw = std::fs::read_to_string(&path).context("read history.jsonl")?;
         let lines: Vec<&str> = raw.lines().collect();
         let last = lines.len().saturating_sub(1);
-        let crypto = self.crypto();
+        let store = self.embedding_store();
         for (i, line) in lines.iter().enumerate() {
             if line.trim().is_empty() {
                 continue;
             }
             match serde_json::from_str::<HistoryRecord>(line) {
                 Ok(mut record) => {
-                    if let Some(crypto) = crypto.as_deref() {
-                        if let Err(err) = decrypt_record_embeddings(&mut record, crypto) {
-                            tracing::warn!(
-                                id = %record.id,
-                                error = %err,
-                                "voice embeddings could not be decrypted"
-                            );
-                        }
+                    // Transcript data stays usable without embeddings, so a failed
+                    // unseal degrades the record instead of dropping it.
+                    if let Err(err) = store.unseal_record(&mut record) {
+                        tracing::warn!(
+                            id = %record.id,
+                            error = %err,
+                            "voice embeddings could not be decrypted"
+                        );
                     }
                     Self::apply_record(inner, record)
                 }
@@ -117,16 +125,14 @@ impl HistoryService {
     fn append_line(
         save_folder: &str,
         record: &HistoryRecord,
-        crypto: Option<&VoiceCryptoService>,
+        store: &VoiceEmbeddingStore,
     ) -> Result<()> {
         let path = Self::store_path(save_folder);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).context("create save folder for history store")?;
         }
         let mut disk_record = record.clone();
-        if let Some(crypto) = crypto {
-            encrypt_record_embeddings(&mut disk_record, crypto)?;
-        }
+        store.seal_record(&mut disk_record)?;
         let line = serde_json::to_string(&disk_record).context("serialize history record")?;
         let mut file = std::fs::OpenOptions::new()
             .create(true)
@@ -145,8 +151,8 @@ impl HistoryService {
         let mut inner = self.inner.lock().unwrap();
         self.ensure_loaded(&mut inner, save_folder)?;
         let id = record.id.clone();
-        let crypto = self.crypto();
-        Self::append_line(save_folder, &record, crypto.as_deref())?;
+        let store = self.embedding_store();
+        Self::append_line(save_folder, &record, &store)?;
         Self::apply_record(&mut inner, record);
         Ok(id)
     }
@@ -160,8 +166,8 @@ impl HistoryService {
         };
         let mut updated = inner.records[idx].clone();
         updated.markdown_path = Some(md_path.to_string());
-        let crypto = self.crypto();
-        Self::append_line(save_folder, &updated, crypto.as_deref())?;
+        let store = self.embedding_store();
+        Self::append_line(save_folder, &updated, &store)?;
         inner.records[idx] = updated;
         Ok(())
     }
@@ -212,8 +218,8 @@ impl HistoryService {
             }
         }
 
-        let crypto = self.crypto();
-        Self::append_line(save_folder, &updated, crypto.as_deref())?;
+        let store = self.embedding_store();
+        Self::append_line(save_folder, &updated, &store)?;
         inner.records[idx] = updated;
         Ok(())
     }
@@ -229,8 +235,8 @@ impl HistoryService {
 
         let mut updated = inner.records[idx].clone();
         strip_voice_embeddings(&mut updated);
-        let crypto = self.crypto();
-        Self::append_line(save_folder, &updated, crypto.as_deref())?;
+        let store = self.embedding_store();
+        Self::append_line(save_folder, &updated, &store)?;
         inner.records[idx] = updated;
         Ok(())
     }
@@ -251,8 +257,8 @@ impl HistoryService {
         for idx in live_indexes {
             let mut updated = inner.records[idx].clone();
             if strip_voice_embeddings(&mut updated) {
-                let crypto = self.crypto();
-                Self::append_line(save_folder, &updated, crypto.as_deref())?;
+                let store = self.embedding_store();
+                Self::append_line(save_folder, &updated, &store)?;
                 inner.records[idx] = updated;
                 changed += 1;
             }
@@ -293,24 +299,14 @@ impl HistoryService {
         Ok(())
     }
 
-    /// Attach transcript segments to an existing note (log-structured update).
-    #[allow(clippy::too_many_arguments)]
-    pub fn update_segments(
+    /// Attach a transcription pass to an existing note (log-structured update).
+    /// Timeline shifting, duration, and word count are owned by
+    /// `HistoryRecord::attach_transcript`; this method only persists the result.
+    pub fn attach_transcript(
         &self,
         save_folder: &str,
         id: &str,
-        segments: Vec<crate::types::Segment>,
-        speaker_blocks: Vec<crate::types::SpeakerBlock>,
-        speaker_change_cuts: Vec<crate::types::SpeakerChangeCut>,
-        speaker_chunks: Vec<crate::types::SpeakerChunk>,
-        session_speakers: Vec<crate::types::SessionSpeaker>,
-        notes: Vec<crate::types::Note>,
-        model: String,
-        speaker_capture: bool,
-        dual_source: bool,
-        session_dir: Option<String>,
-        audio_path: Option<String>,
-        markdown_path: Option<String>,
+        attachment: crate::types::TranscriptAttachment,
         rules: &[crate::types::ReplacementRule],
         prefix: &str,
     ) -> Result<()> {
@@ -320,63 +316,9 @@ impl HistoryService {
             return Ok(());
         };
         let mut updated = inner.records[idx].clone();
-        let offset_ms = updated.duration_ms.max(0);
-        updated
-            .segments
-            .extend(segments.into_iter().map(|mut segment| {
-                segment.start_ms = segment.start_ms.saturating_add(offset_ms);
-                segment.end_ms = segment.end_ms.saturating_add(offset_ms);
-                segment
-            }));
-        updated
-            .speaker_blocks
-            .extend(speaker_blocks.into_iter().map(|mut block| {
-                block.start_ms = block.start_ms.map(|ms| ms.saturating_add(offset_ms as u64));
-                block.end_ms = block.end_ms.map(|ms| ms.saturating_add(offset_ms as u64));
-                block
-            }));
-        updated.notes.extend(notes.into_iter().map(|mut note| {
-            note.recorded_at_ms = note.recorded_at_ms.saturating_add(offset_ms as u64);
-            note
-        }));
-        let offset_s = offset_ms as f32 / 1000.0;
-        updated
-            .speaker_change_cuts
-            .extend(speaker_change_cuts.into_iter().map(|mut cut| {
-                cut.time_s += offset_s;
-                cut.end_s += offset_s;
-                cut
-            }));
-        updated
-            .speaker_chunks
-            .extend(speaker_chunks.into_iter().map(|mut chunk| {
-                chunk.start_ms = chunk.start_ms.saturating_add(offset_ms as u64);
-                chunk.end_ms = chunk.end_ms.saturating_add(offset_ms as u64);
-                chunk
-            }));
-        updated
-            .session_speakers
-            .extend(session_speakers.into_iter().map(|mut speaker| {
-                speaker.start_ms = speaker.start_ms.saturating_add(offset_ms as u64);
-                speaker.end_ms = speaker.end_ms.saturating_add(offset_ms as u64);
-                speaker
-            }));
-        updated.model = model;
-        updated.speaker_capture = speaker_capture;
-        updated.dual_source = dual_source;
-        updated.session_dir = session_dir;
-        updated.audio_path = audio_path;
-        if markdown_path.is_some() {
-            updated.markdown_path = markdown_path;
-        }
-        updated.duration_ms = updated
-            .segments
-            .last()
-            .map(|s| s.end_ms.max(0))
-            .unwrap_or(0);
-        updated.word_count = crate::services::output::count_words(&updated.segments, rules, prefix);
-        let crypto = self.crypto();
-        Self::append_line(save_folder, &updated, crypto.as_deref())?;
+        updated.attach_transcript(attachment, rules, prefix);
+        let store = self.embedding_store();
+        Self::append_line(save_folder, &updated, &store)?;
         inner.records[idx] = updated;
         Ok(())
     }
@@ -395,8 +337,8 @@ impl HistoryService {
         let before = inner.records[idx].clone();
         let mut tombstone = before.clone();
         tombstone.deleted = true;
-        let crypto = self.crypto();
-        Self::append_line(save_folder, &tombstone, crypto.as_deref())?;
+        let store = self.embedding_store();
+        Self::append_line(save_folder, &tombstone, &store)?;
         inner.records[idx] = tombstone;
         note_sidecar::remove_note_dir(save_folder, id);
         Ok(Some(before))
@@ -460,12 +402,10 @@ impl HistoryService {
         let tmp = path.with_extension("jsonl.tmp");
         {
             let mut file = std::fs::File::create(&tmp).context("create history.jsonl.tmp")?;
+            let store = self.embedding_store();
             for record in &live {
                 let mut disk_record = (*record).clone();
-                let crypto = self.crypto();
-                if let Some(crypto) = crypto.as_deref() {
-                    encrypt_record_embeddings(&mut disk_record, crypto)?;
-                }
+                store.seal_record(&mut disk_record)?;
                 let line = serde_json::to_string(&disk_record)
                     .context("serialize history record")?;
                 file.write_all(line.as_bytes())?;
@@ -505,64 +445,6 @@ pub fn strip_voice_embeddings(record: &mut HistoryRecord) -> bool {
     changed
 }
 
-fn encrypt_record_embeddings(record: &mut HistoryRecord, crypto: &VoiceCryptoService) -> Result<()> {
-    for chunk in &mut record.speaker_chunks {
-        if let Some(embedding) = chunk.embedding.as_deref() {
-            chunk.encrypted_embedding = Some(crypto.encrypt_embedding(
-                embedding,
-                &chunk_embedding_context(&record.id, &chunk.id),
-            )?);
-            chunk.embedding = None;
-        }
-    }
-
-    for speaker in &mut record.session_speakers {
-        if !speaker.centroid_embedding.is_empty() {
-            speaker.encrypted_centroid_embedding = Some(crypto.encrypt_embedding(
-                &speaker.centroid_embedding,
-                &speaker_embedding_context(&record.id, &speaker.session_speaker_id),
-            )?);
-            speaker.centroid_embedding.clear();
-        }
-    }
-
-    Ok(())
-}
-
-fn decrypt_record_embeddings(record: &mut HistoryRecord, crypto: &VoiceCryptoService) -> Result<()> {
-    for chunk in &mut record.speaker_chunks {
-        if chunk.embedding.is_none() {
-            if let Some(encrypted) = chunk.encrypted_embedding.as_ref() {
-                chunk.embedding = Some(crypto.decrypt_embedding(
-                    encrypted,
-                    &chunk_embedding_context(&record.id, &chunk.id),
-                )?);
-            }
-        }
-    }
-
-    for speaker in &mut record.session_speakers {
-        if speaker.centroid_embedding.is_empty() {
-            if let Some(encrypted) = speaker.encrypted_centroid_embedding.as_ref() {
-                speaker.centroid_embedding = crypto.decrypt_embedding(
-                    encrypted,
-                    &speaker_embedding_context(&record.id, &speaker.session_speaker_id),
-                )?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn chunk_embedding_context(record_id: &str, chunk_id: &str) -> String {
-    format!("history:{record_id}:chunk:{chunk_id}:embedding")
-}
-
-fn speaker_embedding_context(record_id: &str, session_speaker_id: &str) -> String {
-    format!("history:{record_id}:session-speaker:{session_speaker_id}:centroid")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -587,8 +469,10 @@ mod tests {
         HistoryRecord::from_dictate(&segs, text, "tiny".to_string())
     }
 
-    fn test_crypto() -> Arc<VoiceCryptoService> {
-        VoiceCryptoService::new(Arc::new(StaticVoiceCryptoKeyProvider::new(11)))
+    fn test_store() -> Arc<VoiceEmbeddingStore> {
+        VoiceEmbeddingStore::encrypted(VoiceCryptoService::new(Arc::new(
+            StaticVoiceCryptoKeyProvider::new(11),
+        )))
     }
 
     #[test]
@@ -808,9 +692,9 @@ mod tests {
     #[test]
     fn configured_crypto_encrypts_history_embeddings_at_rest_and_decrypts_on_load() {
         let folder = temp_folder();
-        let crypto = test_crypto();
+        let store = test_store();
         let svc = HistoryService::new();
-        svc.set_crypto(Arc::clone(&crypto));
+        svc.set_embedding_store(Arc::clone(&store));
         let mut rec = record("encrypted");
         rec.speaker_chunks = vec![crate::types::SpeakerChunk {
             id: "chunk-0001".into(),
@@ -849,7 +733,7 @@ mod tests {
         assert!(!raw.contains(r#""centroid_embedding":[0.0,1.0]"#));
 
         let fresh = HistoryService::new();
-        fresh.set_crypto(crypto);
+        fresh.set_embedding_store(store);
         let got = fresh.get(&folder, &id).unwrap().expect("present");
         assert_eq!(got.speaker_chunks[0].embedding, Some(vec![1.0, 0.0]));
         assert_eq!(got.session_speakers[0].centroid_embedding, vec![0.0, 1.0]);
@@ -858,9 +742,8 @@ mod tests {
     #[test]
     fn remove_voice_embeddings_clears_encrypted_history_vectors_too() {
         let folder = temp_folder();
-        let crypto = test_crypto();
         let svc = HistoryService::new();
-        svc.set_crypto(crypto);
+        svc.set_embedding_store(test_store());
         let mut rec = record("encrypted");
         rec.speaker_chunks = vec![crate::types::SpeakerChunk {
             id: "chunk-0001".into(),
@@ -1001,7 +884,7 @@ mod tests {
     }
 
     #[test]
-    fn update_segments_roundtrips() {
+    fn attach_transcript_roundtrips() {
         let folder = temp_folder();
         let svc = HistoryService::new();
         let rec = crate::types::HistoryRecord::from_written("Draft".into());
@@ -1021,25 +904,18 @@ mod tests {
             },
         ];
 
-        svc.update_segments(
+        svc.attach_transcript(
             &folder,
             &id,
-            segments,
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            "base".into(),
-            false,
-            false,
-            None,
-            None,
-            None,
+            crate::types::TranscriptAttachment {
+                segments,
+                model: "base".into(),
+                ..Default::default()
+            },
             &[],
             "",
         )
-        .expect("update segments");
+        .expect("attach transcript");
 
         let fresh = HistoryService::new();
         let got = fresh.get(&folder, &id).unwrap().expect("present");
@@ -1049,82 +925,72 @@ mod tests {
     }
 
     #[test]
-    fn update_segments_appends_when_called_twice() {
+    fn attach_transcript_appends_when_called_twice() {
         let folder = temp_folder();
         let svc = HistoryService::new();
         let rec = crate::types::HistoryRecord::from_written("Draft".into());
         let id = svc.append(&folder, rec).expect("append");
 
-        svc.update_segments(
+        svc.attach_transcript(
             &folder,
             &id,
-            vec![Segment {
-                start_ms: 0,
-                end_ms: 1_000,
-                text: "first".into(),
-                source: None,
-            }],
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            vec![crate::types::Note {
-                id: "note-1".into(),
-                text: "marker".into(),
-                recorded_at_ms: 500,
-            }],
-            "base".into(),
-            false,
-            false,
-            None,
-            None,
-            None,
+            crate::types::TranscriptAttachment {
+                segments: vec![Segment {
+                    start_ms: 0,
+                    end_ms: 1_000,
+                    text: "first".into(),
+                    source: None,
+                }],
+                notes: vec![crate::types::Note {
+                    id: "note-1".into(),
+                    text: "marker".into(),
+                    recorded_at_ms: 500,
+                }],
+                model: "base".into(),
+                ..Default::default()
+            },
             &[],
             "",
         )
         .expect("first attach");
 
-        svc.update_segments(
+        svc.attach_transcript(
             &folder,
             &id,
-            vec![Segment {
-                start_ms: 0,
-                end_ms: 2_000,
-                text: "second".into(),
-                source: None,
-            }],
-            vec![],
-            vec![crate::types::SpeakerChangeCut {
-                time_s: 0.5,
-                end_s: 0.5,
-                score: 1.5,
-                reasons: [crate::types::CutReason::Pitch].into_iter().collect(),
-            }],
-            vec![],
-            vec![crate::types::SessionSpeaker {
-                session_speaker_id: "speaker-1".into(),
-                label: "Speaker A".into(),
-                centroid_embedding: vec![1.0, 0.0],
-                encrypted_centroid_embedding: None,
-                clean_chunk_ids: vec!["chunk-0001".into()],
-                start_ms: 0,
-                end_ms: 2_000,
-                duration_ms: 2_000,
-                radius: 0.0,
-                quality_score: 0.9,
-                user_confirmed: false,
-            }],
-            vec![crate::types::Note {
-                id: "note-2".into(),
-                text: "second marker".into(),
-                recorded_at_ms: 250,
-            }],
-            "base".into(),
-            false,
-            false,
-            None,
-            None,
-            None,
+            crate::types::TranscriptAttachment {
+                segments: vec![Segment {
+                    start_ms: 0,
+                    end_ms: 2_000,
+                    text: "second".into(),
+                    source: None,
+                }],
+                speaker_change_cuts: vec![crate::types::SpeakerChangeCut {
+                    time_s: 0.5,
+                    end_s: 0.5,
+                    score: 1.5,
+                    reasons: [crate::types::CutReason::Pitch].into_iter().collect(),
+                }],
+                session_speakers: vec![crate::types::SessionSpeaker {
+                    session_speaker_id: "speaker-1".into(),
+                    label: "Speaker A".into(),
+                    centroid_embedding: vec![1.0, 0.0],
+                    encrypted_centroid_embedding: None,
+                    clean_chunk_ids: vec!["chunk-0001".into()],
+                    start_ms: 0,
+                    end_ms: 2_000,
+                    duration_ms: 2_000,
+                    radius: 0.0,
+                    quality_score: 0.9,
+                    user_confirmed: false,
+                }],
+                notes: vec![crate::types::Note {
+                    id: "note-2".into(),
+                    text: "second marker".into(),
+                    recorded_at_ms: 250,
+                }],
+                model: "base".into(),
+                ..Default::default()
+            },
             &[],
             "",
         )

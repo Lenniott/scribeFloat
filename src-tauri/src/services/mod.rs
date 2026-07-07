@@ -12,4 +12,5 @@ pub mod speaker_chunks;
 pub mod transcribe_input;
 pub mod update;
 pub mod voice_crypto;
+pub mod voice_embeddings;
 pub mod voiceprint;

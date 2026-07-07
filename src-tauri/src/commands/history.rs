@@ -247,23 +247,7 @@ pub fn note_attach_transcript(
     let pending = scribe
         .take_pending_attach()
         .ok_or_else(|| AppError::InvalidInput("no transcript ready to attach".to_string()))?;
-    history
-        .attach_transcript(
-            &id,
-            pending.segments,
-            pending.speaker_blocks,
-            pending.speaker_change_cuts,
-            pending.speaker_chunks,
-            pending.session_speakers,
-            pending.notes,
-            pending.model,
-            pending.speaker_capture,
-            pending.dual_source,
-            pending.session_dir,
-            pending.audio_path,
-            pending.markdown_path,
-        )
-        .map_err(AppError::from)?;
+    history.attach_transcript(&id, pending).map_err(AppError::from)?;
     app.emit("note://item-added", ()).ok();
     Ok(())
 }

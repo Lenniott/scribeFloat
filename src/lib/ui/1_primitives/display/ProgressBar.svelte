@@ -1,160 +1,274 @@
 <script lang="ts">
-  export type StackProgressStep = {
-    label: string;
-    complete?: boolean;
-  };
-  type Variant = "small" | "large";
+	/** How fast the visual catches up when the target jumps ahead (% per second). */
+	const CATCH_UP_SPEED = 90;
+	/**
+	 * Capture pipelines emit sparse, bursty progress (sometimes just 5% → 100%),
+	 * and the bar may unmount shortly after the terminal value arrives — cap the
+	 * catch-up time so any jump completes before the UI tears down.
+	 */
+	const MAX_CATCH_UP_SECONDS = 0.35;
 
-  const variants: Record<
-    Variant,
-    {
-      rootGap: string;
-      barHeight: string;
-      barWidth: string;
-      blockCount: number;
-      showCurrentStep: boolean;
-      showSequence: boolean;
-      showPercent: boolean;
-      padding: string;
-      blockWidth: string;
-    }
-  > = {
-    small: {
-      rootGap: "gap-2",
-      barHeight: "h-8",
-      barWidth: "118px",
-      blockCount: 28,
-      showCurrentStep: true,
-      showSequence: false,
-      showPercent: false,
-      padding: "p-1",
-      blockWidth: "0.125rem",
-    },
-    large: {
-      rootGap: "gap-5",
-      barHeight: "h-14",
-      barWidth: "454px",
-      blockCount: 44,
-      showCurrentStep: false,
-      showSequence: true,
-      showPercent: true,
-      padding: "p-2",
-      blockWidth: "0.5rem",
-    },
-  };
+	function clampNumber(value: number, min: number, max: number): number {
+		return Math.min(Math.max(value, min), max);
+	}
 
-  let {
-    progress = 0,
-    sequence = [],
-    variant = "large",
-    indeterminate = false,
-    blockCount,
-    barWidth,
-    blockGap = "0.125rem",
-    class: className = "",
-  }: {
-    progress?: number;
-    sequence?: StackProgressStep[];
-    variant?: Variant;
-    indeterminate?: boolean;
-    blockCount?: number;
-    barWidth?: string;
-    blockWidth?: string;
-    blockGap?: string;
-    class?: string;
-  } = $props();
+	function cubeScrub(order: number, current: number): { opacity: number; yPercent: number } {
+		const fill = Math.min(Math.max(current - order, 0), 1);
+		return {
+			opacity: fill > 0 ? 1 : 0,
+			yPercent: (1 - fill) * -100,
+		};
+	}
 
-  const safeProgress = $derived(Math.max(0, Math.min(100, progress)));
-  const variantConfig = $derived(variants[variant] ?? variants.large);
-  const resolvedBlockCount = $derived(blockCount ?? variantConfig.blockCount);
-  const resolvedBarWidth = $derived(barWidth ?? variantConfig.barWidth);
-  const blocks = $derived(
-    Array.from(
-      { length: Math.max(1, resolvedBlockCount) },
-      (_, index) => index,
-    ),
-  );
-  const activeBlockCount = $derived(
-    Math.round((safeProgress / 100) * blocks.length),
-  );
-  const currentStep = $derived(
-    sequence.find((step) => !step.complete) ??
-      sequence[sequence.length - 1] ??
-      null,
-  );
+	function prefersReducedMotion(): boolean {
+		return (
+			typeof window !== 'undefined' &&
+			window.matchMedia('(prefers-reduced-motion: reduce)').matches
+		);
+	}
+
+	let {
+		progress = 0,
+		indeterminate = false,
+		rows = 3,
+		columns = 32,
+		color = "var(--color-focus)",
+		cube = 3,
+		gap = 1,
+		scale = 1,
+		speed = 70,
+		fluid = false,
+		statusLabel,
+		class: className = "",
+	}: {
+		progress?: number;
+		indeterminate?: boolean;
+		rows?: number;
+		columns?: number;
+		color?: string;
+		cube?: number;
+		gap?: number;
+		scale?: number;
+		speed?: number;
+		/** Fill the parent's width — column count derives from measured space. */
+		fluid?: boolean;
+		statusLabel?: string;
+		class?: string;
+	} = $props();
+
+	let hostWidth = $state(0);
+
+	const safeRows = $derived(clampNumber(rows, 1, 24));
+	const safeCube = $derived(clampNumber(cube, 2, 40));
+	const safeGap = $derived(clampNumber(gap, 0, 24));
+	const safeScale = $derived(clampNumber(scale, 1, 20));
+	const safeColumns = $derived(
+		fluid && hostWidth > 0
+			? clampNumber(
+					Math.floor((hostWidth + safeGap * safeScale) / ((safeCube + safeGap) * safeScale)),
+					1,
+					160,
+				)
+			: clampNumber(columns, 1, 48),
+	);
+	const targetProgress = $derived(Math.max(0, Math.min(100, progress)));
+	const safeProgress = $derived(Math.round(targetProgress));
+
+	const totalCubes = $derived(safeRows * safeColumns);
+	const fallDistance = $derived(
+		Math.max(24, safeRows * (safeCube + safeGap) * 2),
+	);
+	const layoutWidth = $derived(
+		safeColumns * safeCube + Math.max(0, safeColumns - 1) * safeGap,
+	);
+	const layoutHeight = $derived(
+		safeRows * safeCube + Math.max(0, safeRows - 1) * safeGap,
+	);
+
+	/** Eased visual progress — chases `targetProgress` via rAF. */
+	let smoothProgress = $state(0);
+	/** Leading edge of the indeterminate wave (cube-order units). */
+	let indeterminateHead = $state(0);
+
+	const INDETERMINATE_WAVE = 10;
+
+	$effect(() => {
+		if (!indeterminate) {
+			indeterminateHead = 0;
+			return;
+		}
+
+		if (prefersReducedMotion()) {
+			indeterminateHead = totalCubes * 0.35;
+			return;
+		}
+
+		let frame = 0;
+		let active = true;
+		let lastTime = performance.now();
+		const cubesPerSecond = 1000 / Math.max(speed, 16);
+
+		function tick(now: number) {
+			if (!active) return;
+
+			const dt = Math.min((now - lastTime) / 1000, 0.05);
+			lastTime = now;
+			indeterminateHead += cubesPerSecond * dt;
+			if (indeterminateHead > totalCubes + INDETERMINATE_WAVE) {
+				indeterminateHead = 0;
+			}
+			frame = requestAnimationFrame(tick);
+		}
+
+		frame = requestAnimationFrame(tick);
+		return () => {
+			active = false;
+			cancelAnimationFrame(frame);
+		};
+	});
+
+	$effect(() => {
+		if (indeterminate) return;
+
+		const target = targetProgress;
+
+		if (target === 0) {
+			smoothProgress = 0;
+			return;
+		}
+
+		if (prefersReducedMotion()) {
+			smoothProgress = target;
+			return;
+		}
+
+		let frame = 0;
+		let active = true;
+		let lastTime = performance.now();
+
+		function tick(now: number) {
+			if (!active) return;
+
+			const dt = Math.min((now - lastTime) / 1000, 0.05);
+			lastTime = now;
+
+			if (smoothProgress < target) {
+				const speed = Math.max(
+					CATCH_UP_SPEED,
+					(target - smoothProgress) / MAX_CATCH_UP_SECONDS,
+				);
+				smoothProgress = Math.min(target, smoothProgress + speed * dt);
+				frame = requestAnimationFrame(tick);
+			}
+		}
+
+		frame = requestAnimationFrame(tick);
+		return () => {
+			active = false;
+			cancelAnimationFrame(frame);
+		};
+	});
+
+	const fillPosition = $derived(
+		indeterminate ? indeterminateHead : (smoothProgress / 100) * totalCubes,
+	);
+
+	const cubes = $derived(
+		Array.from({ length: totalCubes }, (_, index) => {
+			const row = Math.floor(index / safeColumns);
+			const col = index % safeColumns;
+			const bottomToTopRow = safeRows - row - 1;
+			const order = col * safeRows + bottomToTopRow;
+			return { index, order, ...cubeScrub(order, fillPosition) };
+		}),
+	);
+
+	const ariaValueText = $derived(
+		indeterminate
+			? (statusLabel ?? "Loading")
+			: statusLabel
+				? `${statusLabel}, ${safeProgress} percent complete`
+				: `Processing, ${safeProgress} percent complete`,
+	);
 </script>
 
 <div
-  class={`flex items-center ${variantConfig.rootGap} ${className} w-full`.trim()}
-  role="status"
-  aria-label={indeterminate ? "Loading…" : `Processing ${Math.round(safeProgress)}% complete`}
+	class={`cube-loader-host ${fluid ? "is-fluid" : ""} ${className}`.trim()}
+	style:width={fluid ? "100%" : `${layoutWidth * safeScale}px`}
+	style:height="{layoutHeight * safeScale}px"
+	bind:clientWidth={hostWidth}
 >
-  <div
-    class={`flex relative overflow-hidden ${variantConfig.barHeight} rounded-xs bg-card ${variantConfig.padding}`}
-    style={`width: ${resolvedBarWidth}; gap: ${blockGap};`}
-  >
-    {#each blocks as block (block)}
-      <span
-        class={`h-full shrink-0 transition-colors duration-200 ${
-          indeterminate ? "bg-rim" : block < activeBlockCount ? "bg-focus" : "bg-rim"
-        }`}
-        style={`width: ${variantConfig.blockWidth};`}
-        aria-hidden="true"
-      ></span>
-    {/each}
-    {#if indeterminate}
-      <span class="bar-scan pointer-events-none absolute inset-0" aria-hidden="true"></span>
-    {/if}
-    {#if variantConfig.showPercent && !indeterminate}
-      <p class="sf-meta-sm text-fg-dim absolute -bottom-6 left-0">
-        {Math.round(safeProgress)}%
-      </p>
-    {/if}
-  </div>
-  {#if variantConfig.showSequence && sequence.length > 0}
-    <div class="flex flex-col items-start justify-between gap-3">
-      {#each sequence as step (step.label)}
-        <div class="flex min-w-0 flex-1 items-center gap-2">
-          <span
-            class={`grid size-5 shrink-0 place-items-center rounded border sf-label-sm ${
-              step.complete
-                ? "border-brand bg-brand text-on-brand"
-                : "border-rim text-transparent"
-            }`}
-            aria-hidden="true"
-          >
-            ✓
-          </span>
-          <span
-            class={`truncate sf-label-md ${step.complete ? "text-fg" : "text-fg-dim"}`}
-          >
-            {step.label}
-          </span>
-        </div>
-      {/each}
-    </div>
-  {/if}
-  {#if variantConfig.showCurrentStep && currentStep}
-  <p class="sf-label-md m-0 ml-auto truncate text-fg">
-	{currentStep.label}
-  </p>
-{/if}
+	<div
+		class="cube-loader is-scrubbing"
+		role="progressbar"
+		aria-valuemin={indeterminate ? undefined : 0}
+		aria-valuemax={indeterminate ? undefined : 100}
+		aria-valuenow={indeterminate ? undefined : safeProgress}
+		aria-valuetext={ariaValueText}
+		aria-busy={indeterminate ? true : undefined}
+		aria-label={ariaValueText}
+		style:--cols={safeColumns}
+		style:--cube-color={color}
+		style:--cube-size="{safeCube}px"
+		style:--cube-gap="{safeGap}px"
+		style:--loader-scale={safeScale}
+		style:--fall-distance="{fallDistance}px"
+		style:--stagger="{speed}ms"
+	>
+		{#each cubes as { index, order, opacity, yPercent } (index)}
+			<span
+				class="cube-loader__cube"
+				style:--cube-opacity={opacity}
+				style:--cube-y="calc(var(--fall-distance) * {yPercent / 100})"
+				data-order={order}
+				aria-hidden="true"
+			></span>
+		{/each}
+	</div>
 </div>
 
 <style>
-  .bar-scan {
-    background: linear-gradient(
-      to right,
-      transparent 0%,
-      color-mix(in srgb, var(--color-focus) 55%, transparent) 50%,
-      transparent 100%
-    );
-    width: 40%;
-    animation: bar-scan 1.4s ease-in-out infinite;
-  }
+	.cube-loader-host {
+		position: relative;
+		display: inline-block;
+		vertical-align: middle;
+		overflow: visible;
+	}
 
-  @keyframes bar-scan {
-    0%   { transform: translateX(-100%); }
-    100% { transform: translateX(350%); }
-  }
+	.cube-loader-host.is-fluid {
+		display: block;
+	}
+
+	.cube-loader {
+		position: absolute;
+		top: 0;
+		left: 0;
+		display: grid;
+		grid-template-columns: repeat(var(--cols), var(--cube-size));
+		grid-auto-rows: var(--cube-size);
+		gap: var(--cube-gap);
+		transform: scale(var(--loader-scale));
+		transform-origin: top left;
+	}
+
+	.cube-loader__cube {
+		width: var(--cube-size);
+		height: var(--cube-size);
+		background: var(--cube-color);
+	}
+
+	.cube-loader.is-scrubbing .cube-loader__cube {
+		animation: none;
+		opacity: var(--cube-opacity, 0);
+		transform: translateY(var(--cube-y, calc(var(--fall-distance) * -1)));
+		transition:
+			transform 100ms linear,
+			opacity 60ms linear;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.cube-loader.is-scrubbing .cube-loader__cube {
+			transition: none;
+		}
+	}
 </style>

@@ -97,39 +97,58 @@ impl HistoryController {
         crate::services::note_sidecar::write_tags(&save_folder, id, tags).map_err(|e| e.to_string())
     }
 
-    /// Attach transcript segments from a completed recording onto an existing note.
-    #[allow(clippy::too_many_arguments)]
+    pub fn rename_session_speaker(
+        &self,
+        id: &str,
+        session_speaker_id: &str,
+        label: &str,
+    ) -> Result<(), String> {
+        if is_legacy(id) {
+            return Err("legacy items are read-only".to_string());
+        }
+        let session_speaker_id = session_speaker_id.trim();
+        let label = label.trim();
+        if session_speaker_id.is_empty() {
+            return Err("session speaker id cannot be empty".to_string());
+        }
+        if label.is_empty() {
+            return Err("speaker label cannot be empty".to_string());
+        }
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .rename_session_speaker(&save_folder, id, session_speaker_id, label)
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn remove_voice_embeddings(&self, id: &str) -> Result<(), String> {
+        if is_legacy(id) {
+            return Err("legacy items are read-only".to_string());
+        }
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .remove_voice_embeddings(&save_folder, id)
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn remove_all_voice_embeddings(&self) -> Result<usize, String> {
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .remove_all_voice_embeddings(&save_folder)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Attach a completed transcription pass onto an existing note.
     pub fn attach_transcript(
         &self,
         id: &str,
-        segments: Vec<crate::types::Segment>,
-        speaker_blocks: Vec<crate::types::SpeakerBlock>,
-        speaker_change_cuts: Vec<crate::types::SpeakerChangeCut>,
-        speaker_chunks: Vec<crate::types::SpeakerChunk>,
-        notes: Vec<crate::types::Note>,
-        model: String,
-        speaker_capture: bool,
-        dual_source: bool,
-        session_dir: Option<String>,
-        audio_path: Option<String>,
-        markdown_path: Option<String>,
+        attachment: crate::types::TranscriptAttachment,
     ) -> Result<(), String> {
         let cfg = self.config.get();
         self.history
-            .update_segments(
+            .attach_transcript(
                 &cfg.save_folder,
                 id,
-                segments,
-                speaker_blocks,
-                speaker_change_cuts,
-                speaker_chunks,
-                notes,
-                model,
-                speaker_capture,
-                dual_source,
-                session_dir,
-                audio_path,
-                markdown_path,
+                attachment,
                 &cfg.replacement_rules,
                 &cfg.replacement_prefix,
             )

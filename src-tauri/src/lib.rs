@@ -565,6 +565,9 @@ pub fn run() {
             }
             let config = services::config::ConfigService::load(data_dir.join("config.json"))?;
             app.manage(Arc::clone(&config));
+            let voice_embedding_store =
+                services::voice_embeddings::VoiceEmbeddingStore::from_keychain();
+            history.set_embedding_store(Arc::clone(&voice_embedding_store));
             {
                 let save_folder = config.get().save_folder;
                 if platform::windows_save_folder_needs_migration(&save_folder) {
@@ -628,6 +631,7 @@ pub fn run() {
                 &data_dir.join("voiceprints"),
                 config.get().voice_similarity_threshold,
             )?);
+            voiceprint.set_embedding_store(Arc::clone(&voice_embedding_store));
             let model_ctrl =
                 controllers::model::ModelController::new(Arc::clone(&model), Arc::clone(&config));
             let voiceprint_ctrl = controllers::voiceprint::VoiceprintController::new(
@@ -807,6 +811,7 @@ pub fn run() {
             commands::voiceprint::voiceprint_list_profiles,
             commands::voiceprint::voiceprint_list_profile_names,
             commands::voiceprint::voiceprint_delete_profile,
+            commands::voiceprint::voiceprint_delete_all_profiles,
             commands::voiceprint::voiceprint_rename_profile,
             commands::voiceprint::voiceprint_model_status,
             commands::voiceprint::voiceprint_download_model,
@@ -867,6 +872,12 @@ pub fn run() {
             commands::settings::settings_set_user_display_name,
             commands::settings::settings_get_voice_similarity_threshold,
             commands::settings::settings_set_voice_similarity_threshold,
+            commands::settings::settings_get_voice_learning_enabled,
+            commands::settings::settings_set_voice_learning_enabled,
+            commands::settings::settings_get_voice_embeddings_retention,
+            commands::settings::settings_set_voice_embeddings_retention,
+            commands::settings::settings_get_voice_embeddings_encryption_required,
+            commands::settings::settings_set_voice_embeddings_encryption_required,
             commands::dictate::dictate_cancel,
             commands::dictate::dictate_dismiss,
             commands::dictate::dictate_get_history,
@@ -886,6 +897,9 @@ pub fn run() {
             commands::history::note_is_empty,
             commands::history::note_has_metadata,
             commands::history::note_set_tags,
+            commands::history::note_rename_session_speaker,
+            commands::history::note_remove_voice_embeddings,
+            commands::history::history_remove_all_voice_embeddings,
             commands::history::note_attach_transcript,
             commands::history::note_render_transcript_html,
             commands::transcribe::transcribe_inspect_inputs,

@@ -166,6 +166,76 @@ Whisper segments are often too short for a good voiceprint. Chunks are longer. T
 
 This also helps the app tell unknown speakers apart. Many people should not fall into one `Other` bucket. The session can have Speaker A, Speaker B, and Speaker C. Saved profiles can rename those speakers when there is a strong match.
 
+## Naming and learning
+
+When a user names a speaker in one transcript, the app should use the full speaker group, not only the clicked chunk.
+
+Example:
+
+```text
+chunk 2: Speaker B speaks for 2s
+chunk 7: Speaker B speaks for 15s
+
+User renames Speaker B to Gilgamesh.
+```
+
+The label should move across the whole transcript group. Both chunks become `Gilgamesh`. The app then picks the clean evidence from that group. It should prefer the 15s clean chunk over the 2s chunk, or average all clean chunks in the group.
+
+Each transcript should keep a speaker-level average:
+
+```text
+session speaker: Gilgamesh
+clean chunks: chunk 2 + chunk 7
+centroid: average voice embedding for this transcript
+radius: how spread out the clean chunks are
+duration: total clean speech time
+quality: purity, RMS, clipping, margin
+confirmed: true
+```
+
+The saved profile should keep accepted evidence from many transcripts:
+
+```text
+profile: Gilgamesh
+evidence 1: transcript A, speaker B centroid
+evidence 2: transcript D, speaker C centroid
+evidence 3: transcript F, speaker A centroid
+global centroid: weighted average of accepted evidence
+radius: expected variation for Gilgamesh
+exemplars: best clean examples
+```
+
+When new evidence is added, the app rebuilds the global profile from all accepted evidence. It should not only blend in the latest average and forget where it came from. This lets the app remove bad evidence later and recalculate the profile.
+
+Detection should use the global centroid, the profile radius, the best examples, and the margin against the next closest profile. A match is good only when it is close to Gilgamesh and clearly better than the next person.
+
+## Biometric data
+
+Voice embeddings should be treated as sensitive local biometric data.
+
+- Do not log raw vectors.
+- Encrypt saved profile embeddings at rest.
+- Encrypt stored chunk and session speaker embeddings at rest.
+- Keep transcript text usable after embeddings are deleted.
+- Add controls to forget one speaker, delete all voice data, and stop profile learning.
+- Keep global profile learning explicit or opt-in.
+
+Current storage safety slice:
+
+- `delete_after_transcript` strips chunk embeddings and session speaker centroid vectors before new Record and Upload notes are saved.
+- When voice data is kept and a macOS Keychain key is available, transcript chunk embeddings, transcript session speaker centroids, and saved voiceprint profile embeddings are encrypted in JSON storage with AES-256-GCM.
+- Settings can delete all saved voiceprint profiles.
+- Settings can remove stored voice vectors from all transcripts while keeping text, labels, timings, and quality scores.
+- Automatic profile learning remains off until rebuildable profile evidence and quality gates are implemented.
+
+## Implementation checkpoints
+
+- [x] Checkpoint 1: Settings controls for voice learning, embedding retention, and encryption requirement. These store preferences only.
+- [x] Checkpoint 2: Transcript speaker evidence model with session speaker centroids. Clean chunks are averaged with duration weighting; evidence is stored on each history record as `session_speakers`; backend speaker rename cascades across the transcript group.
+- [x] Checkpoint 3: Encrypted storage and voice data deletion controls. Chunk embeddings, session speaker centroids, and saved profile embeddings encrypt at rest when the macOS Keychain-backed voice key is available. Delete controls can remove saved profiles and transcript vectors while keeping transcript text readable.
+- [ ] Checkpoint 4: Rebuildable global profiles from accepted evidence.
+- [ ] Checkpoint 5: Quality-gated learning after user confirmation.
+
 ## Story impact
 
 Stories 0059-0063 should move from segment-first voiceprints to chunk-first voiceprints.
@@ -174,4 +244,4 @@ Stories 0059-0063 should move from segment-first voiceprints to chunk-first voic
 - 0060 builds session centroids from chunk groups.
 - 0061 scores chunks and child transcript segments against session centroids.
 - 0062 lets a correction update the session groups and labels.
-- 0063 uses only clean, clear session centroids to improve global profiles.
+- 0063 stores accepted session speaker evidence and rebuilds global profiles from clean, clear centroids.

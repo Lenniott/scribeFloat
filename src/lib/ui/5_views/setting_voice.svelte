@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import Button from '@components/controls/Button.svelte';
+	import ToggleSwitch from '@components/controls/Toggle.svelte';
 	import TextField from '@primitives/form/TextField.svelte';
 	import SettingsList from '@sections/SettingList.svelte';
 	import SettingsRow from '@components/cards/SettingRow.svelte';
@@ -21,13 +22,19 @@
 	let profiles = $state<ProfileSummary[]>([]);
 	let loadError = $state('');
 	let actionError = $state('');
+	let actionMessage = $state('');
 	let enrolling = $state<{ name?: string; locked: boolean } | null>(null);
 	let editingSlug = $state('');
 	let editingName = $state('');
 	let confirmingDelete = $state('');
+	let confirmingDeleteAllProfiles = $state(false);
+	let confirmingRemoveTranscriptEmbeddings = $state(false);
 	let userDisplayName = $state('You');
 	let savedUserDisplayName = $state('You');
 	let threshold = $state(0.75);
+	let voiceLearningEnabled = $state(false);
+	let embeddingsRetention = $state<'keep' | 'delete_after_transcript'>('keep');
+	let encryptionRequired = $state(true);
 	let thresholdSaveTimer: ReturnType<typeof setTimeout> | undefined;
 
 	onMount(async () => {
@@ -49,9 +56,17 @@
 				invoke<string>('settings_get_user_display_name'),
 				invoke<number>('settings_get_voice_similarity_threshold'),
 			]);
+			const [learningEnabled, retention, encryption] = await Promise.all([
+				invoke<boolean>('settings_get_voice_learning_enabled'),
+				invoke<'keep' | 'delete_after_transcript'>('settings_get_voice_embeddings_retention'),
+				invoke<boolean>('settings_get_voice_embeddings_encryption_required'),
+			]);
 			userDisplayName = name;
 			savedUserDisplayName = name;
 			threshold = nextThreshold;
+			voiceLearningEnabled = learningEnabled;
+			embeddingsRetention = retention;
+			encryptionRequired = encryption;
 		} catch (e) {
 			actionError = `Could not load voice settings: ${appErrorMessage(e)}`;
 		}
@@ -59,6 +74,7 @@
 
 	function startRename(profile: ProfileSummary) {
 		actionError = '';
+		actionMessage = '';
 		editingSlug = profile.slug;
 		editingName = profile.name;
 		confirmingDelete = '';
@@ -76,6 +92,7 @@
 		);
 		editingSlug = '';
 		actionError = '';
+		actionMessage = '';
 		try {
 			await invoke('voiceprint_rename_profile', { slug, name });
 			await refresh();
@@ -90,11 +107,40 @@
 		profiles = profiles.filter((item) => item.slug !== profile.slug);
 		confirmingDelete = '';
 		actionError = '';
+		actionMessage = '';
 		try {
 			await invoke('voiceprint_delete_profile', { slug: profile.slug });
 		} catch (e) {
 			profiles = previous;
 			actionError = `Could not delete profile: ${appErrorMessage(e)}`;
+		}
+	}
+
+	async function deleteAllProfiles() {
+		const previous = profiles;
+		profiles = [];
+		confirmingDeleteAllProfiles = false;
+		actionError = '';
+		actionMessage = '';
+		try {
+			const deleted = await invoke<number>('voiceprint_delete_all_profiles');
+			actionMessage = `Deleted ${deleted} saved voiceprint ${deleted === 1 ? 'profile' : 'profiles'}.`;
+			await refresh();
+		} catch (e) {
+			profiles = previous;
+			actionError = `Could not delete voiceprints: ${appErrorMessage(e)}`;
+		}
+	}
+
+	async function removeTranscriptEmbeddings() {
+		confirmingRemoveTranscriptEmbeddings = false;
+		actionError = '';
+		actionMessage = '';
+		try {
+			const changed = await invoke<number>('history_remove_all_voice_embeddings');
+			actionMessage = `Removed voice vectors from ${changed} ${changed === 1 ? 'transcript' : 'transcripts'}.`;
+		} catch (e) {
+			actionError = `Could not remove transcript voice data: ${appErrorMessage(e)}`;
 		}
 	}
 
@@ -127,6 +173,7 @@
 			return;
 		}
 		actionError = '';
+		actionMessage = '';
 		try {
 			await invoke('settings_set_user_display_name', { name });
 			userDisplayName = name;
@@ -147,10 +194,50 @@
 
 	async function saveThreshold() {
 		actionError = '';
+		actionMessage = '';
 		try {
 			await invoke('settings_set_voice_similarity_threshold', { threshold });
 		} catch (e) {
 			actionError = `Could not save matching sensitivity: ${appErrorMessage(e)}`;
+		}
+	}
+
+	async function setVoiceLearningEnabled(enabled: boolean) {
+		const previous = voiceLearningEnabled;
+		voiceLearningEnabled = enabled;
+		actionError = '';
+		actionMessage = '';
+		try {
+			await invoke('settings_set_voice_learning_enabled', { enabled });
+		} catch (e) {
+			voiceLearningEnabled = previous;
+			actionError = `Could not save voice learning setting: ${appErrorMessage(e)}`;
+		}
+	}
+
+	async function setEmbeddingsRetention(retention: 'keep' | 'delete_after_transcript') {
+		const previous = embeddingsRetention;
+		embeddingsRetention = retention;
+		actionError = '';
+		actionMessage = '';
+		try {
+			await invoke('settings_set_voice_embeddings_retention', { retention });
+		} catch (e) {
+			embeddingsRetention = previous;
+			actionError = `Could not save voice data setting: ${appErrorMessage(e)}`;
+		}
+	}
+
+	async function setEncryptionRequired(required: boolean) {
+		const previous = encryptionRequired;
+		encryptionRequired = required;
+		actionError = '';
+		actionMessage = '';
+		try {
+			await invoke('settings_set_voice_embeddings_encryption_required', { required });
+		} catch (e) {
+			encryptionRequired = previous;
+			actionError = `Could not save encryption setting: ${appErrorMessage(e)}`;
 		}
 	}
 </script>
@@ -177,6 +264,11 @@
 		{#if actionError}
 			<p class="rounded-md border border-destructive/40 bg-fill px-3 py-2 sf-label-sm text-destructive">
 				{actionError}
+			</p>
+		{/if}
+		{#if actionMessage}
+			<p class="rounded-md border border-fill bg-panel px-3 py-2 sf-label-sm text-fg-dim">
+				{actionMessage}
 			</p>
 		{/if}
 
@@ -249,6 +341,31 @@
 						</SettingsRow>
 					{/each}
 				</SettingsList>
+				<div class="mt-3 flex flex-col gap-2 rounded-md border border-fill bg-panel px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+					<div>
+						<p class="sf-label-md text-fg">Delete all saved voiceprints</p>
+						<p class="sf-label-sm text-fg-dim">
+							This removes saved profile vectors. Transcript text and labels stay in place.
+						</p>
+					</div>
+					{#if confirmingDeleteAllProfiles}
+						<div class="flex shrink-0 gap-2">
+							<Button variant="ghost" size="small" onclick={() => (confirmingDeleteAllProfiles = false)}>Cancel</Button>
+							<Button variant="destructive" size="small" onclick={() => void deleteAllProfiles()}>Delete all</Button>
+						</div>
+					{:else}
+						<Button
+							variant="destructive"
+							size="small"
+							onclick={() => {
+								confirmingDeleteAllProfiles = true;
+								confirmingRemoveTranscriptEmbeddings = false;
+							}}
+						>
+							Delete all
+						</Button>
+					{/if}
+				</div>
 			{/if}
 		</SettingsSection>
 
@@ -295,6 +412,83 @@
 					{/snippet}
 				</SettingsRow>
 			</SettingsList>
+		</SettingsSection>
+
+		<SettingsSection
+			title="Voice learning"
+			description="These controls prepare transcript-based speaker learning. Automatic profile updates stay off until encrypted voice evidence storage is implemented."
+		>
+			<SettingsList>
+				<SettingsRow
+					title="Learn speakers from corrected transcripts"
+					description="When this is on, confirmed speaker names may be used later to improve saved voiceprints after quality checks pass."
+				>
+					{#snippet control()}
+						<ToggleSwitch
+							checked={voiceLearningEnabled}
+							onchange={(next) => void setVoiceLearningEnabled(next)}
+							aria-label="Learn speakers from corrected transcripts"
+						/>
+					{/snippet}
+				</SettingsRow>
+
+				<SettingsRow
+					title="Keep voice data for future speaker matching"
+					description="When off, transcripts can keep text and labels while embedding vectors are removed after processing."
+				>
+					{#snippet control()}
+						<ToggleSwitch
+							checked={embeddingsRetention === 'keep'}
+							onchange={(next) =>
+								void setEmbeddingsRetention(next ? 'keep' : 'delete_after_transcript')}
+							aria-label="Keep voice data for future speaker matching"
+						/>
+					{/snippet}
+				</SettingsRow>
+
+				<SettingsRow
+					title="Require encryption before learning"
+					description="Automatic long-term learning should not run unless stored voice embeddings are encrypted at rest."
+				>
+					{#snippet control()}
+						<ToggleSwitch
+							checked={encryptionRequired}
+							onchange={(next) => void setEncryptionRequired(next)}
+							aria-label="Require encryption before learning"
+						/>
+					{/snippet}
+				</SettingsRow>
+			</SettingsList>
+
+			<p class="mt-3 rounded-md border border-fill bg-panel px-3 py-2 sf-label-sm text-fg-dim">
+				Voice embeddings stay local. Automatic profile learning still waits for encrypted storage.
+			</p>
+
+			<div class="mt-3 flex flex-col gap-2 rounded-md border border-fill bg-panel px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+				<div>
+					<p class="sf-label-md text-fg">Remove voice vectors from transcripts</p>
+					<p class="sf-label-sm text-fg-dim">
+						Transcript text, speaker names, times, and quality scores stay readable.
+					</p>
+				</div>
+				{#if confirmingRemoveTranscriptEmbeddings}
+					<div class="flex shrink-0 gap-2">
+						<Button variant="ghost" size="small" onclick={() => (confirmingRemoveTranscriptEmbeddings = false)}>Cancel</Button>
+						<Button variant="destructive" size="small" onclick={() => void removeTranscriptEmbeddings()}>Remove vectors</Button>
+					</div>
+				{:else}
+					<Button
+						variant="destructive"
+						size="small"
+						onclick={() => {
+							confirmingRemoveTranscriptEmbeddings = true;
+							confirmingDeleteAllProfiles = false;
+						}}
+					>
+						Remove vectors
+					</Button>
+				{/if}
+			</div>
 		</SettingsSection>
 	</section>
 {/if}

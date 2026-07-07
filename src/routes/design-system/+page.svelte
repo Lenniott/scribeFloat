@@ -20,7 +20,7 @@
   import LabeledTextField from "@primitives/form/TextField.svelte";
   import OptionGroup from "@components/controls/OptionGroup.svelte";
   import PathPicker from "@components/controls/PathPicker.svelte";
-  import StackProgressBar from "@primitives/display/ProgressBar.svelte";
+  import ProgressBar from "@primitives/display/ProgressBar.svelte";
   import ToggleSwitch from "@components/controls/Toggle.svelte";
   import InlineNoteCard from "@components/cards/InlineNote.svelte";
   import HistoryNoteCard from "@components/cards/NoteCard.svelte";
@@ -94,6 +94,7 @@
     { id: "sec-type", label: "Typography" },
     { id: "sec-geo", label: "Geometry" },
     { id: "sec-display", label: "Primitives · display" },
+    { id: "sec-progressbar", label: "ProgressBar" },
     { id: "sec-layout", label: "Primitives · layout" },
     { id: "sec-buttons", label: "Button" },
     { id: "sec-icon-buttons", label: "IconButton" },
@@ -240,12 +241,6 @@
   /** IconButton intentionally supports fewer variants than Button */
   const iconButtonVariants = ["primary", "destructive", "normal"] as const;
   const sizes = ["normal", "small"] as const;
-  const stackProgressSequence = [
-    { label: "Loading model", complete: true },
-    { label: "Transcribing audio", complete: true },
-    { label: "Writing transcript", complete: false },
-    { label: "Cleaning up audio", complete: false },
-  ];
 
   /** Static demo elapsed time for recording-bar prototype (14:07) */
   const prototypeElapsedSeconds = 847;
@@ -267,6 +262,28 @@
 
   $effect(() => {
     applyThemeMode(previewTheme);
+  });
+
+  /** Magnified props so the cube grid is visible on the design-system page. */
+  const progressBarDemo = {
+    rows: 3,
+    columns: 16,
+    cube: 5,
+    gap: 2,
+    scale: 5,
+  } as const;
+
+  /** Animated 0→100 demo for determinate ProgressBar */
+  let progress = $state(0);
+
+  $effect(() => {
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      const elapsed = Math.min(8, (Date.now() - startTime) / 1000);
+      progress = Math.round((elapsed / 8) * 100);
+      if (elapsed >= 8) clearInterval(interval);
+    }, 80);
+    return () => clearInterval(interval);
   });
 </script>
 
@@ -444,6 +461,59 @@
       <div>
         <p class="sf-section-label text-fg-dim mb-3">Timestamp</p>
         <TimestampLabel at={94_000} />
+      </div>
+    </div>
+  </section>
+
+  <section class="mb-16" aria-labelledby="sec-progressbar">
+    <h2
+      id="sec-progressbar"
+      class="mb-6 sf-headline-sm text-fg"
+    >
+      ProgressBar
+    </h2>
+    <p class="mb-6 max-w-2xl sf-body-md text-fg-dim">
+      Cube-grid progress used in TitleBar, Dictate, and Upload processing states.
+      Pass <code class="text-brand">indeterminate</code> while the model loads;
+      otherwise bind <code class="text-brand">progress</code> (0–100). Demos below
+      use magnified <code class="text-brand">scale</code> so the grid is visible —
+      production chrome uses the default 3×32 grid at scale&nbsp;1.
+    </p>
+    <div class="flex max-w-2xl flex-col gap-8">
+      <div class="rounded-md border border-rim bg-panel p-6">
+        <p class="sf-section-label text-fg-dim mb-4">Indeterminate (loading model)</p>
+        <div class="flex min-h-28 items-center overflow-visible py-2">
+          <ProgressBar indeterminate {...progressBarDemo} />
+        </div>
+      </div>
+      <div class="rounded-md border border-rim bg-panel p-6">
+        <p class="sf-section-label text-fg-dim mb-4">Determinate (0→100 demo)</p>
+        <div class="flex min-h-28 items-center overflow-visible py-2">
+          <ProgressBar {progress} {...progressBarDemo} />
+        </div>
+      </div>
+      <div class="rounded-md border border-rim bg-panel p-6">
+        <p class="sf-section-label text-fg-dim mb-4">Production size (TitleBar defaults)</p>
+        <div class="flex min-h-10 items-center overflow-visible py-2">
+          <ProgressBar progress={62} />
+        </div>
+        <p class="mt-3 sf-meta-sm text-fg-muted">
+          Default props — 3&nbsp;px cubes, 32 columns, scale&nbsp;1. Intentionally compact for chrome bars.
+        </p>
+      </div>
+      <div class="rounded-md border border-rim bg-panel p-6">
+        <p class="sf-section-label text-fg-dim mb-4">Tuned grid (design exploration)</p>
+        <div class="flex min-h-32 items-center overflow-x-auto overflow-y-visible py-2">
+          <ProgressBar
+            progress={62}
+            columns={12}
+            scale={4}
+            rows={3}
+            cube={6}
+            gap={2}
+            speed={90}
+          />
+        </div>
       </div>
     </div>
   </section>
@@ -1204,38 +1274,6 @@
               <RecordingTimer elapsedSeconds={3723} />
               <RecordingStatusDot status="recording" />
             </div>
-          </div>
-        </div>
-        <div>
-          <p class="sf-section-label text-fg-dim mb-2">
-            StackProgressBar indeterminate
-          </p>
-          <StackProgressBar
-            variant="large"
-            indeterminate
-            sequence={stackProgressSequence}
-          />
-        </div>
-        <div>
-          <p class="sf-section-label text-fg-dim mb-2">
-            StackProgressBar Large (variant defaults)
-          </p>
-          <StackProgressBar
-            variant="large"
-            progress={62}
-            sequence={stackProgressSequence}
-          />
-        </div>
-        <div>
-          <p class="sf-section-label text-fg-dim mb-2">
-            StackProgressBar Small (current state only)
-          </p>
-          <div class="w-60 pr-2">
-          <StackProgressBar
-            variant="small"
-            progress={62}
-            sequence={stackProgressSequence}
-          />
           </div>
         </div>
 

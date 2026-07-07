@@ -79,7 +79,7 @@ User records mic only. No system audio capture.
 13. Model Service: loads selected model (from cache or disk; tiny/base may already be preloaded)
 14. Model Service: transcribes the mic PCM once → returns timestamped segments
 15. ScribeController uses live voice-change cuts to build mic chunks
-16. Speaker chunk service: embeds each chunk, groups chunk voiceprints into local speakers, and maps Whisper segments to their parent chunk labels
+16. Speaker chunk service: embeds each chunk, groups chunk voiceprints into local speakers, derives transcript-level session speaker centroids from clean chunks, and maps Whisper segments to their parent chunk labels
 17. Output Service: renders transcript markdown and applies word replacement rules
 18. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting), including `speaker_change_cuts` and `speaker_chunks`
 19. Check: `save_transcripts_as_markdown` setting
@@ -312,6 +312,8 @@ Logic lives in `src/lib/services/noteLeaveGuard.ts` (Vitest-covered).
 ## WAV lifecycle summary
 
 Default save folder: `~/Documents/transcripts_scribefloat/` (configurable in Settings → General).
+
+Voice learning controls live in Settings → Voice. `voice_learning_enabled` defaults off, voice embeddings are kept by default for current speaker matching, and `voice_embeddings_encryption_required` defaults on so automatic long-term learning can be blocked when encrypted storage is unavailable. If voice embedding retention is set to delete after transcript, Record and Upload keep transcript text, speaker labels, timings, chunk quality, and session speaker groups, but strip chunk and session speaker vectors before writing `history.jsonl`. If retention keeps vectors and the macOS Keychain-backed voice key is available, those vectors are encrypted at rest.
 
 | Workflow | WAV written? | Who writes | Who deletes | When deleted |
 |---|---|---|---|---|

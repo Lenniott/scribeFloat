@@ -35,8 +35,11 @@ Story **0050** (ADR-0007) will replace `.notes/{uuid}/` with named per-note fold
 
 - `append` — new capture or empty written note
 - `update_segments` — transcript attached to a note
+- `remove_voice_embeddings` — biometric vectors removed while transcript text/labels remain
 - `set_markdown_path` — export path recorded
 - `delete` — tombstone line
+
+Voice embeddings in `speaker_chunks` and `session_speakers` are encrypted before `history.jsonl` writes when the voice crypto service is configured. The local AES key is stored in macOS Keychain by the platform adapter. Loaded records are decrypted back into memory for matching; delete/scrub operations remove both plaintext and ciphertext.
 
 ## What does **not** append to jsonl
 

@@ -1,5 +1,8 @@
 use crate::controllers::settings::SettingsController;
-use crate::types::{AppError, GeneralSettingsUpdate, PermissionStatus, ReplacementRule, ThemeMode};
+use crate::types::{
+    AppError, GeneralSettingsUpdate, PermissionStatus, ReplacementRule, ThemeMode,
+    VoiceEmbeddingsRetention,
+};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
@@ -373,5 +376,53 @@ pub fn settings_set_voice_similarity_threshold(
     threshold: f32,
 ) -> Result<(), AppError> {
     ctrl.set_voice_similarity_threshold(threshold)
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn settings_get_voice_learning_enabled(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<bool, AppError> {
+    Ok(ctrl.get_voice_learning_enabled())
+}
+
+#[tauri::command]
+pub fn settings_set_voice_learning_enabled(
+    ctrl: State<'_, Arc<SettingsController>>,
+    enabled: bool,
+) -> Result<(), AppError> {
+    ctrl.set_voice_learning_enabled(enabled)
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn settings_get_voice_embeddings_retention(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<VoiceEmbeddingsRetention, AppError> {
+    Ok(ctrl.get_voice_embeddings_retention())
+}
+
+#[tauri::command]
+pub fn settings_set_voice_embeddings_retention(
+    ctrl: State<'_, Arc<SettingsController>>,
+    retention: String,
+) -> Result<(), AppError> {
+    ctrl.set_voice_embeddings_retention(retention)
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn settings_get_voice_embeddings_encryption_required(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<bool, AppError> {
+    Ok(ctrl.get_voice_embeddings_encryption_required())
+}
+
+#[tauri::command]
+pub fn settings_set_voice_embeddings_encryption_required(
+    ctrl: State<'_, Arc<SettingsController>>,
+    required: bool,
+) -> Result<(), AppError> {
+    ctrl.set_voice_embeddings_encryption_required(required)
         .map_err(AppError::from)
 }

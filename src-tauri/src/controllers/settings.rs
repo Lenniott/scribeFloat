@@ -6,6 +6,7 @@ use crate::services::permissions::PermissionsService;
 use crate::services::voiceprint::VoiceprintService;
 use crate::types::{
     GeneralSettingsUpdate, PermissionStatus, ReplacementRule, ReplacementRuleType, ThemeMode,
+    VoiceEmbeddingsRetention,
 };
 use std::path::Path;
 use std::sync::Arc;
@@ -485,6 +486,37 @@ impl SettingsController {
         self.voiceprint.set_threshold(threshold);
         Ok(())
     }
+
+    pub fn get_voice_learning_enabled(&self) -> bool {
+        self.config.get().voice_learning_enabled
+    }
+
+    pub fn set_voice_learning_enabled(&self, enabled: bool) -> Result<(), String> {
+        self.config
+            .update(|cfg| cfg.voice_learning_enabled = enabled)
+            .map_err(|e| format!("failed to persist voice learning setting: {e}"))
+    }
+
+    pub fn get_voice_embeddings_retention(&self) -> VoiceEmbeddingsRetention {
+        self.config.get().voice_embeddings_retention
+    }
+
+    pub fn set_voice_embeddings_retention(&self, retention: String) -> Result<(), String> {
+        let retention = VoiceEmbeddingsRetention::parse(&retention)?;
+        self.config
+            .update(|cfg| cfg.voice_embeddings_retention = retention)
+            .map_err(|e| format!("failed to persist voice data retention setting: {e}"))
+    }
+
+    pub fn get_voice_embeddings_encryption_required(&self) -> bool {
+        self.config.get().voice_embeddings_encryption_required
+    }
+
+    pub fn set_voice_embeddings_encryption_required(&self, required: bool) -> Result<(), String> {
+        self.config
+            .update(|cfg| cfg.voice_embeddings_encryption_required = required)
+            .map_err(|e| format!("failed to persist voice encryption requirement: {e}"))
+    }
 }
 
 fn normalize_output_path(output: &OutputService, path: &str) -> Result<String, String> {
@@ -715,9 +747,10 @@ mod tests {
         let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
         let ctrl = make_controller(config, None);
 
-        assert!(ctrl
-            .set_input_labels("   ".to_string(), "Speaker".to_string())
-            .is_err());
+        assert!(
+            ctrl.set_input_labels("   ".to_string(), "Speaker".to_string())
+                .is_err()
+        );
     }
 
     #[test]
@@ -760,6 +793,52 @@ mod tests {
         let ctrl = make_controller(config, None);
 
         assert!(ctrl.set_theme_mode("sepia".to_string()).is_err());
+    }
+
+    #[test]
+    fn voice_learning_settings_default_off_and_persist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("config.json");
+        let config = ConfigService::load(config_path.clone()).unwrap();
+        let ctrl = make_controller(config, None);
+
+        assert!(!ctrl.get_voice_learning_enabled());
+        assert_eq!(
+            ctrl.get_voice_embeddings_retention(),
+            VoiceEmbeddingsRetention::Keep
+        );
+        assert!(ctrl.get_voice_embeddings_encryption_required());
+
+        ctrl.set_voice_learning_enabled(true).unwrap();
+        ctrl.set_voice_embeddings_retention("delete_after_transcript".to_string())
+            .unwrap();
+        ctrl.set_voice_embeddings_encryption_required(false)
+            .unwrap();
+
+        let reloaded = ConfigService::load(config_path).unwrap();
+        let ctrl2 = make_controller(reloaded, None);
+        assert!(ctrl2.get_voice_learning_enabled());
+        assert_eq!(
+            ctrl2.get_voice_embeddings_retention(),
+            VoiceEmbeddingsRetention::DeleteAfterTranscript
+        );
+        assert!(!ctrl2.get_voice_embeddings_encryption_required());
+    }
+
+    #[test]
+    fn voice_embeddings_retention_rejects_unknown_values() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
+        let ctrl = make_controller(config, None);
+
+        assert!(
+            ctrl.set_voice_embeddings_retention("forever_maybe".to_string())
+                .is_err()
+        );
+        assert_eq!(
+            ctrl.get_voice_embeddings_retention(),
+            VoiceEmbeddingsRetention::Keep
+        );
     }
 
     #[test]

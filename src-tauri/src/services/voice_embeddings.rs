@@ -115,19 +115,41 @@ impl VoiceEmbeddingStore {
         let Self::Encrypted(crypto) = self else {
             return Ok(());
         };
-        if profile.embedding.is_empty() {
-            return Ok(());
+        if !profile.embedding.is_empty() {
+            profile.encrypted_embedding = Some(crypto.encrypt_embedding(
+                &profile.embedding,
+                &profile_embedding_context(&profile.slug),
+            )?);
+            profile.embedding.clear();
         }
-        profile.encrypted_embedding = Some(crypto.encrypt_embedding(
-            &profile.embedding,
-            &profile_embedding_context(&profile.slug),
-        )?);
-        profile.embedding.clear();
+        if let Some(enrollment) = profile
+            .enrollment_embedding
+            .as_deref()
+            .filter(|embedding| !embedding.is_empty())
+        {
+            profile.encrypted_enrollment_embedding = Some(
+                crypto.encrypt_embedding(enrollment, &profile_enrollment_context(&profile.slug))?,
+            );
+            profile.enrollment_embedding = None;
+        }
+        for record in &mut profile.evidence {
+            if !record.centroid_embedding.is_empty() {
+                record.encrypted_centroid_embedding = Some(crypto.encrypt_embedding(
+                    &record.centroid_embedding,
+                    &profile_evidence_context(
+                        &profile.slug,
+                        &record.note_id,
+                        &record.session_speaker_id,
+                    ),
+                )?);
+                record.centroid_embedding.clear();
+            }
+        }
         Ok(())
     }
 
-    /// Restore a voiceprint profile's embedding after reading from disk. No-op for
-    /// the plaintext store.
+    /// Restore a voiceprint profile's embeddings after reading from disk. No-op
+    /// for the plaintext store.
     pub fn unseal_profile(&self, profile: &mut VoiceprintProfile) -> Result<()> {
         let Self::Encrypted(crypto) = self else {
             return Ok(());
@@ -138,7 +160,34 @@ impl VoiceEmbeddingStore {
                     .decrypt_embedding(encrypted, &profile_embedding_context(&profile.slug))?;
             }
         }
+        if profile.enrollment_embedding.is_none() {
+            if let Some(encrypted) = profile.encrypted_enrollment_embedding.as_ref() {
+                profile.enrollment_embedding = Some(
+                    crypto
+                        .decrypt_embedding(encrypted, &profile_enrollment_context(&profile.slug))?,
+                );
+            }
+        }
+        for record in &mut profile.evidence {
+            if record.centroid_embedding.is_empty() {
+                if let Some(encrypted) = record.encrypted_centroid_embedding.as_ref() {
+                    record.centroid_embedding = crypto.decrypt_embedding(
+                        encrypted,
+                        &profile_evidence_context(
+                            &profile.slug,
+                            &record.note_id,
+                            &record.session_speaker_id,
+                        ),
+                    )?;
+                }
+            }
+        }
         Ok(())
+    }
+
+    /// Whether embeddings written through this store rest encrypted.
+    pub fn is_encrypted(&self) -> bool {
+        matches!(self, Self::Encrypted(_))
     }
 }
 
@@ -152,6 +201,14 @@ fn speaker_embedding_context(record_id: &str, session_speaker_id: &str) -> Strin
 
 fn profile_embedding_context(slug: &str) -> String {
     format!("voiceprint-profile:{slug}:embedding")
+}
+
+fn profile_enrollment_context(slug: &str) -> String {
+    format!("voiceprint-profile:{slug}:enrollment")
+}
+
+fn profile_evidence_context(slug: &str, note_id: &str, session_speaker_id: &str) -> String {
+    format!("voiceprint-profile:{slug}:evidence:{note_id}:{session_speaker_id}")
 }
 
 #[cfg(test)]
@@ -184,6 +241,7 @@ mod tests {
             profile_score: None,
             session_score: None,
             margin: None,
+            corrections: Vec::new(),
         }];
         record.session_speakers = vec![SessionSpeaker {
             session_speaker_id: "s-1".into(),
@@ -210,6 +268,9 @@ mod tests {
             encrypted_embedding: None,
             sample_count: 1,
             updated_at: chrono::Utc::now(),
+            enrollment_embedding: None,
+            encrypted_enrollment_embedding: None,
+            evidence: Vec::new(),
         }
     }
 
@@ -280,5 +341,33 @@ mod tests {
         let mut resealed = profile_with_embedding();
         store.seal_profile(&mut resealed).expect("seal");
         assert!(encrypted_store(9).unseal_profile(&mut resealed).is_err());
+    }
+
+    #[test]
+    fn profile_enrollment_and_evidence_round_trip_sealed() {
+        let store = encrypted_store(7);
+        let mut profile = profile_with_embedding();
+        profile.enrollment_embedding = Some(vec![0.5, 0.5]);
+        profile.evidence = vec![crate::types::ProfileEvidence {
+            note_id: "note-1".into(),
+            session_speaker_id: "speaker-1".into(),
+            centroid_embedding: vec![0.0, 1.0],
+            encrypted_centroid_embedding: None,
+            duration_ms: 10_000,
+            mean_score: 0.9,
+            std_dev: 0.03,
+            mean_margin: 0.3,
+            accepted_at: chrono::Utc::now(),
+        }];
+
+        store.seal_profile(&mut profile).expect("seal");
+        assert!(profile.enrollment_embedding.is_none());
+        assert!(profile.encrypted_enrollment_embedding.is_some());
+        assert!(profile.evidence[0].centroid_embedding.is_empty());
+        assert!(profile.evidence[0].encrypted_centroid_embedding.is_some());
+
+        store.unseal_profile(&mut profile).expect("unseal");
+        assert_eq!(profile.enrollment_embedding, Some(vec![0.5, 0.5]));
+        assert_eq!(profile.evidence[0].centroid_embedding, vec![0.0, 1.0]);
     }
 }

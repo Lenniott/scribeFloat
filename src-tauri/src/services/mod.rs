@@ -14,4 +14,5 @@ pub mod transcription;
 pub mod update;
 pub mod voice_crypto;
 pub mod voice_embeddings;
+pub mod voice_learning;
 pub mod voiceprint;

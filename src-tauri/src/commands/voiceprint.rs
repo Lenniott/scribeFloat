@@ -1,10 +1,54 @@
+use crate::controllers::history::HistoryController;
 use crate::controllers::voiceprint::VoiceprintController;
+use crate::services::voice_learning::EvidenceGateReport;
 use crate::types::{
-    AppError, SessionCaptureStart, SessionCaptureStatus, VoiceprintClipResult,
-    VoiceprintModelStatus, VoiceprintProfileSummary,
+    AppError, HistoryRecord, SessionCaptureStart, SessionCaptureStatus, SessionSpeaker,
+    VoiceprintClipResult, VoiceprintModelStatus, VoiceprintProfileSummary,
 };
 use std::sync::Arc;
 use tauri::{AppHandle, State};
+
+fn find_session_speaker<'a>(
+    record: &'a HistoryRecord,
+    session_speaker_id: &str,
+) -> Result<&'a SessionSpeaker, AppError> {
+    record
+        .session_speakers
+        .iter()
+        .find(|speaker| speaker.session_speaker_id == session_speaker_id)
+        .ok_or_else(|| {
+            AppError::NotFound(format!(
+                "session speaker `{session_speaker_id}` not found on this note"
+            ))
+        })
+}
+
+#[tauri::command]
+pub fn voiceprint_evaluate_session_evidence(
+    history: State<'_, Arc<HistoryController>>,
+    ctrl: State<'_, Arc<VoiceprintController>>,
+    note_id: String,
+    session_speaker_id: String,
+) -> Result<EvidenceGateReport, AppError> {
+    let record = history.get_detail(&note_id).map_err(AppError::from)?;
+    let speaker = find_session_speaker(&record, &session_speaker_id)?;
+    ctrl.evaluate_session_evidence(speaker, &record.speaker_chunks)
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn voiceprint_apply_session_evidence(
+    history: State<'_, Arc<HistoryController>>,
+    ctrl: State<'_, Arc<VoiceprintController>>,
+    note_id: String,
+    session_speaker_id: String,
+    profile_name: String,
+) -> Result<(), AppError> {
+    let record = history.get_detail(&note_id).map_err(AppError::from)?;
+    let speaker = find_session_speaker(&record, &session_speaker_id)?;
+    ctrl.apply_session_evidence(&note_id, speaker, &record.speaker_chunks, &profile_name)
+        .map_err(AppError::from)
+}
 
 #[tauri::command]
 pub fn voiceprint_list_profiles(

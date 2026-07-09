@@ -530,6 +530,33 @@ pub struct VoiceprintProfile {
     pub encrypted_embedding: Option<EncryptedEmbedding>,
     pub sample_count: u32,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+    /// Average of enrollment prints only, captured before any transcript
+    /// evidence is mixed in. `embedding` is rebuilt from this plus `evidence`,
+    /// keeping the global print reconstructable when evidence changes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enrollment_embedding: Option<Vec<f32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypted_enrollment_embedding: Option<EncryptedEmbedding>,
+    /// Accepted transcript-speaker evidence. The global embedding is rebuilt
+    /// from enrollment prints plus these records, so evidence can be removed
+    /// later without leaving a poisoned rolling average behind.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<ProfileEvidence>,
+}
+
+/// One accepted transcript-speaker centroid used as global profile evidence.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileEvidence {
+    pub note_id: String,
+    pub session_speaker_id: String,
+    pub centroid_embedding: Vec<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypted_centroid_embedding: Option<EncryptedEmbedding>,
+    pub duration_ms: u64,
+    pub mean_score: f32,
+    pub std_dev: f32,
+    pub mean_margin: f32,
+    pub accepted_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

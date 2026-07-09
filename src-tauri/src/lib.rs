@@ -822,6 +822,8 @@ pub fn run() {
             commands::model::model_vad_status,
             commands::voiceprint::voiceprint_list_profiles,
             commands::voiceprint::voiceprint_list_profile_names,
+            commands::voiceprint::voiceprint_evaluate_session_evidence,
+            commands::voiceprint::voiceprint_apply_session_evidence,
             commands::voiceprint::voiceprint_delete_profile,
             commands::voiceprint::voiceprint_delete_all_profiles,
             commands::voiceprint::voiceprint_rename_profile,

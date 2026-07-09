@@ -1,9 +1,10 @@
 use crate::services::audio::{read_wav_mono_f32, AudioService, MicSession, WHISPER_SAMPLE_RATE};
 use crate::services::config::ConfigService;
+use crate::services::voice_learning::{self, EvidenceGateReport};
 use crate::services::voiceprint::{profile_summary, VoiceprintService};
 use crate::types::{
-    VoiceprintClipResult, VoiceprintClipState, VoiceprintClipStatus, VoiceprintModelStatus,
-    VoiceprintProfileSummary,
+    ProfileEvidence, SessionSpeaker, SpeakerChunk, VoiceprintClipResult, VoiceprintClipState,
+    VoiceprintClipStatus, VoiceprintModelStatus, VoiceprintProfileSummary,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -93,6 +94,75 @@ impl VoiceprintController {
             downloaded: self.service.model_downloaded(),
             path: self.service.model_path().to_string_lossy().to_string(),
         }
+    }
+
+    /// Voice learning preconditions: the setting must be on, and when the
+    /// config demands encrypted storage the store must actually be encrypted.
+    fn ensure_learning_allowed(&self) -> Result<(), String> {
+        let cfg = self.config.get();
+        if !cfg.voice_learning_enabled {
+            return Err("voice learning is disabled in settings".to_string());
+        }
+        if cfg.voice_embeddings_encryption_required && !self.service.embeddings_encrypted() {
+            return Err(
+                "voice learning requires encrypted embedding storage, which is unavailable on this device"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    /// Run the story-0063 quality gates for one session speaker's evidence.
+    pub fn evaluate_session_evidence(
+        &self,
+        speaker: &SessionSpeaker,
+        chunks: &[SpeakerChunk],
+    ) -> Result<EvidenceGateReport, String> {
+        self.ensure_learning_allowed()?;
+        let profiles = self.service.load_profiles().map_err(|e| e.to_string())?;
+        let target = profiles.iter().find(|p| p.name == speaker.label);
+        Ok(voice_learning::evaluate_speaker_evidence(
+            speaker, chunks, target, &profiles,
+        ))
+    }
+
+    /// Re-check the gates and, when they pass, add the session centroid as
+    /// evidence on the named profile and rebuild its global embedding.
+    pub fn apply_session_evidence(
+        &self,
+        note_id: &str,
+        speaker: &SessionSpeaker,
+        chunks: &[SpeakerChunk],
+        profile_name: &str,
+    ) -> Result<(), String> {
+        self.ensure_learning_allowed()?;
+        let profiles = self.service.load_profiles().map_err(|e| e.to_string())?;
+        let Some(mut profile) = profiles.iter().find(|p| p.name == profile_name).cloned() else {
+            return Err(format!("no voiceprint profile named `{profile_name}`"));
+        };
+        let report =
+            voice_learning::evaluate_speaker_evidence(speaker, chunks, Some(&profile), &profiles);
+        if !report.eligible {
+            return Err(format!(
+                "evidence did not pass quality gates: {}",
+                report.reasons.join("; ")
+            ));
+        }
+        let evidence = ProfileEvidence {
+            note_id: note_id.to_string(),
+            session_speaker_id: speaker.session_speaker_id.clone(),
+            centroid_embedding: speaker.centroid_embedding.clone(),
+            encrypted_centroid_embedding: None,
+            duration_ms: speaker.duration_ms,
+            mean_score: report.mean_score.unwrap_or(0.0),
+            std_dev: report.score_std_dev.unwrap_or(0.0),
+            mean_margin: report.mean_margin.unwrap_or(0.0),
+            accepted_at: chrono::Utc::now(),
+        };
+        voice_learning::apply_evidence(&mut profile, evidence).map_err(|e| e.to_string())?;
+        self.service
+            .save_profile(&profile)
+            .map_err(|e| e.to_string())
     }
 
     pub fn start_clip(&self, mic_device_id: String, app: AppHandle) -> Result<String, String> {

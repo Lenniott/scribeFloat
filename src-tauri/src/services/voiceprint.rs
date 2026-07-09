@@ -53,6 +53,11 @@ impl VoiceprintService {
             .clone()
     }
 
+    /// Whether profile embeddings rest encrypted on this device.
+    pub fn embeddings_encrypted(&self) -> bool {
+        self.embedding_store().is_encrypted()
+    }
+
     pub fn model_path(&self) -> &Path {
         &self.model_path
     }
@@ -294,6 +299,9 @@ impl VoiceprintService {
             encrypted_embedding: None,
             sample_count: 1,
             updated_at: chrono::Utc::now(),
+            enrollment_embedding: None,
+            encrypted_enrollment_embedding: None,
+            evidence: Vec::new(),
         };
         validate_profile(&profile)?;
         Ok(profile)

@@ -10,7 +10,45 @@
 	import { isWindows } from '@utils/platform';
 	import { appState } from '@stores/appState.svelte';
 	import type { PermissionStatus } from '@utils/types';
-	import type { SettingsTab } from './settingsTypes';
+	import { SETTINGS_TABS, type SettingsTab } from './settingsTypes';
+	import type { Component } from 'svelte';
+
+	type SettingsTabView = {
+		component: Component;
+		props: Record<string, unknown>;
+	};
+
+	const activeTab = $derived(
+		SETTINGS_TABS.find((tab) => tab.id === appState.settingsTab) ?? SETTINGS_TABS[0],
+	);
+
+	const tabViews = $derived.by(
+		(): Record<SettingsTab, SettingsTabView> => ({
+			general: {
+				component: SettingGeneral,
+				props: {
+					savedSpeakerDeviceName,
+					blackholeDetected,
+					speakerCaptureRequiresDeviceName,
+					onSpeakerConfigSaved,
+				},
+			},
+			advanced: { component: SettingAdvanced, props: {} },
+			voice: { component: SettingVoice, props: {} },
+			permissions: {
+				component: SettingPermissions,
+				props: {
+					micOnly: isWindows,
+					onReadyChange: (ready: boolean) => {
+						permissionsReady = ready;
+					},
+				},
+			},
+			help: { component: SettingHelp, props: {} },
+		}),
+	);
+
+	const activeView = $derived(tabViews[appState.settingsTab]);
 
 	let permissionsKnown = $state(false);
 	let permissionsReady = $state(false);
@@ -18,7 +56,6 @@
 	let speakerCaptureRequiresDeviceName = $state(false);
 	let blackholeDetected = $state(false);
 	let savedSpeakerDeviceName = $state('');
-
 	const showSpeakerNameWarning = $derived(
 		speakerCaptureRequiresDeviceName &&
 			blackholeDetected &&
@@ -65,7 +102,7 @@
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden bg-panel">
 	<header class="shrink-0 border-b border-card px-4 py-3">
-		<h2 class="sf-headline-sm text-fg">Settings</h2>
+		<h2 class="sf-headline-sm text-fg">{activeTab.label}</h2>
 	</header>
 
 	{#if showSettingsBanner}
@@ -90,22 +127,9 @@
 		</div>
 	{/if}
 
-	<ScrollablePanel class="bg-card p-4">
-		{#if appState.settingsTab === 'general'}
-			<SettingGeneral
-				{savedSpeakerDeviceName}
-				{blackholeDetected}
-				{speakerCaptureRequiresDeviceName}
-				onSpeakerConfigSaved={onSpeakerConfigSaved}
-			/>
-		{:else if appState.settingsTab === 'advanced'}
-			<SettingAdvanced />
-		{:else if appState.settingsTab === 'voice'}
-			<SettingVoice />
-		{:else if appState.settingsTab === 'permissions'}
-			<SettingPermissions bind:ready={permissionsReady} micOnly={isWindows} />
-		{:else if appState.settingsTab === 'help'}
-			<SettingHelp />
-		{/if}
+	<ScrollablePanel class="bg-card">
+		{#key appState.settingsTab}
+			<activeView.component {...activeView.props} />
+		{/key}
 	</ScrollablePanel>
 </div>

@@ -1,0 +1,351 @@
+{
+	"blocks": [
+		{
+			"type": "section",
+			"blocks": [
+				{
+					"type": "heading",
+					"level": 3,
+					"text": "Know who said what"
+				},
+				{
+					"type": "paragraph",
+					"inline": [
+						{
+							"type": "text",
+							"value": "When you review a meeting or call, you need to know which lines belong to which person — not just a wall of text. ScribeFloat labels speakers in transcripts from Record and Upload so you can scan, quote, and follow up accurately."
+						}
+					]
+				},
+				{
+					"type": "list",
+					"items": [
+						[
+							{
+								"type": "text",
+								"value": "Enroll voices in "
+							},
+							{ "type": "strong", "value": "Settings → Voice" },
+							{
+								"type": "text",
+								"value": " — record a short clip and give each person a name (including yourself)."
+							}
+						],
+						[
+							{
+								"type": "text",
+								"value": "After "
+							},
+							{ "type": "strong", "value": "Record" },
+							{
+								"type": "text",
+								"value": " or "
+							},
+							{ "type": "strong", "value": "Upload" },
+							{
+								"type": "text",
+								"value": ", open the Note and read the Transcript panel — each block shows a speaker label and timestamp."
+							}
+						],
+						[
+							{
+								"type": "text",
+								"value": "Tap a label to correct it when the app guessed wrong. Good corrections can improve future matching."
+							}
+						],
+						[
+							{
+								"type": "text",
+								"value": "Tune matching in "
+							},
+							{ "type": "strong", "value": "Settings → Advanced" },
+							{
+								"type": "text",
+								"value": " (sensitivity and whether voice data is kept for future sessions)."
+							}
+						]
+					]
+				}
+			]
+		},
+		{
+			"type": "section",
+			"blocks": [
+				{
+					"type": "heading",
+					"level": 3,
+					"text": "Dictate text into any app"
+				},
+				{
+					"type": "paragraph",
+					"inline": [
+						{
+							"type": "text",
+							"value": "Dictate turns speech into text wherever you are working — email, chat, notes — without opening a Note first."
+						}
+					]
+				},
+				{
+					"type": "list",
+					"items": [
+						[
+							{
+								"type": "text",
+								"value": "Tap left "
+							},
+							{ "type": "var", "value": "dictateModifierLabel", "strong": true },
+							{
+								"type": "text",
+								"value": ", release — tap left "
+							},
+							{ "type": "var", "value": "dictateModifierLabel", "strong": true },
+							{
+								"type": "text",
+								"value": " again: hold about half a second for push-to-talk (release when done), or tap and release quickly for hands-free toggle (tap again to stop)."
+							}
+						],
+						[
+							{
+								"type": "text",
+								"value": "With Accessibility permission ("
+							},
+							{ "type": "strong", "value": "Settings → Permissions" },
+							{
+								"type": "text",
+								"value": "), text is pasted at the cursor via "
+							},
+							{ "type": "code", "value": "Cmd/Ctrl+V" },
+							{
+								"type": "text",
+								"value": ". Otherwise it goes to the clipboard."
+							}
+						],
+						[
+							{
+								"type": "text",
+								"value": "Enable "
+							},
+							{ "type": "strong", "value": "Press Enter after dictate" },
+							{
+								"type": "text",
+								"value": " in "
+							},
+							{ "type": "strong", "value": "Settings → General" },
+							{
+								"type": "text",
+								"value": " to send Enter after paste — handy in messaging apps."
+							}
+						],
+						[
+							{
+								"type": "text",
+								"value": "Each successful dictation is saved as a quick Note in your history."
+							}
+						]
+					]
+				}
+			]
+		},
+		{
+			"type": "section",
+			"blocks": [
+				{
+					"type": "heading",
+					"level": 3,
+					"text": "Record a conversation and take notes"
+				},
+				{
+					"type": "paragraph",
+					"inline": [
+						{
+							"type": "text",
+							"value": "Capture a call or meeting while you write your own notes in the same place — one Note with both your thoughts and the transcript."
+						}
+					]
+				},
+				{
+					"type": "list",
+					"items": [
+						[
+							{
+								"type": "text",
+								"value": "Open or create a Note, then press "
+							},
+							{ "type": "strong", "value": "Record" },
+							{
+								"type": "text",
+								"value": " in the title bar (or use the menu bar shortcut "
+							},
+							{ "type": "var", "value": "openRecordHotkey" },
+							{
+								"type": "text",
+								"value": " to start a new Note and record)."
+							}
+						],
+						[
+							{
+								"type": "text",
+								"value": "Type in the Written panel while audio records. Recording can continue if you navigate away."
+							}
+						],
+						[
+							{
+								"type": "text",
+								"value": "Press "
+							},
+							{ "type": "strong", "value": "Stop & Save" },
+							{
+								"type": "text",
+								"value": " — the transcript attaches to the Note. Export to Markdown from Advanced settings if you want a "
+							},
+							{ "type": "code", "value": ".md" },
+							{
+								"type": "text",
+								"value": " file on disk."
+							}
+						],
+						[
+							{
+								"type": "text",
+								"value": "For calls and meetings, turn on "
+							},
+							{ "type": "strong", "value": "Speaker capture" },
+							{
+								"type": "text",
+								"value": " during recording (or set "
+							},
+							{ "type": "strong", "value": "Capture speaker by default" },
+							{
+								"type": "text",
+								"value": " in "
+							},
+							{ "type": "strong", "value": "Settings → General" },
+							{
+								"type": "text",
+								"value": "). Mic lines are labelled "
+							},
+							{ "type": "code", "value": "in:" },
+							{
+								"type": "text",
+								"value": " and remote audio "
+							},
+							{ "type": "code", "value": "out:" },
+							{ "type": "text", "value": "." }
+						],
+						[
+							{
+								"type": "text",
+								"value": "Already have a recording? Use "
+							},
+							{ "type": "strong", "value": "Upload" },
+							{
+								"type": "text",
+								"value": " in the sidebar for WAV, MP3, M4A, or FLAC files."
+							}
+						],
+						[
+							{
+								"type": "text",
+								"value": "Find past Notes in the Notes list — filter by capture method when you need to."
+							}
+						]
+					]
+				},
+				{
+					"type": "conditional",
+					"when": "isWindows",
+					"blocks": [
+						{
+							"type": "paragraph",
+							"inline": [
+								{
+									"type": "text",
+									"value": "On Windows, the speaker waveform only moves when system audio is playing — loopback captures what your speakers output."
+								}
+							]
+						}
+					]
+				}
+			]
+		},
+		{
+			"type": "section",
+			"blocks": [
+				{
+					"type": "heading",
+					"level": 3,
+					"text": "Privacy and offline transcription"
+				},
+				{
+					"type": "paragraph",
+					"inline": [
+						{
+							"type": "text",
+							"value": "ScribeFloat ships with "
+						},
+						{ "type": "strong", "value": "OpenAI Whisper" },
+						{
+							"type": "text",
+							"value": " built in. Transcription runs entirely on your device — no cloud upload, no subscription, and it works offline."
+						}
+					]
+				}
+			]
+		},
+		{
+			"type": "section",
+			"blocks": [
+				{
+					"type": "conditional",
+					"when": "isWindows",
+					"blocks": [
+						{
+							"type": "paragraph",
+							"inline": [
+								{ "type": "strong", "value": "Windows install:" },
+								{
+									"type": "text",
+									"value": " the installer places ScribeFloat in "
+								},
+								{
+									"type": "code",
+									"value": "C:\\Program Files\\ScribeFloat"
+								},
+								{
+									"type": "text",
+									"value": ". Notes default to "
+								},
+								{
+									"type": "code",
+									"value": "Documents\\transcripts_scribefloat"
+								},
+								{ "type": "text", "value": "." }
+							]
+						},
+						{
+							"type": "paragraph",
+							"inline": [
+								{ "type": "strong", "value": "Uninstall:" },
+								{
+									"type": "text",
+									"value": " Settings → Apps → Installed apps → ScribeFloat → Uninstall. Config, models, and Notes are kept unless you delete them manually."
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "paragraph",
+					"inline": [
+						{ "type": "text", "value": "Enjoying ScribeFloat? " }
+					]
+				},
+				{
+					"type": "link",
+					"text": "Send a tip",
+					"href": "https://buymeacoffee.com/benjamiz"
+				}
+			]
+		}
+	]
+}

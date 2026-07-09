@@ -10,11 +10,11 @@
   import type { PermissionStatus } from '@utils/types';
 
   let {
-    ready = $bindable(false),
     micOnly = false,
+    onReadyChange,
   }: {
-    ready?: boolean;
     micOnly?: boolean;
+    onReadyChange?: (ready: boolean) => void;
   } = $props();
 
   let statuses = $state<PermissionStatus[]>([]);
@@ -46,8 +46,9 @@
       "settings_permissions_status",
     ).catch(() => []);
     statuses = next;
-    ready =
-      next.find((status) => status.kind === "microphone")?.granted ?? false;
+    onReadyChange?.(
+      next.find((status) => status.kind === "microphone")?.granted ?? false,
+    );
   }
 
   async function grantPermission(kind: string) {

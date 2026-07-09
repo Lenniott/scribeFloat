@@ -10,6 +10,6 @@
 	} = $props();
 </script>
 
-<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 {className}">
+<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 {className}">
 	{@render children?.()}
 </div>

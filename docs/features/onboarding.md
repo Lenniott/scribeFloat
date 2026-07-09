@@ -2,7 +2,7 @@
 
 ## Purpose
 
-First-run setup wizard that gets new users functional in five designer-approved steps: install a model, grant permissions, and try Dictate before the main UI is shown. The flow intentionally does not collect setup-personalisation answers; detailed configuration lives in Settings. Can be restarted from Settings → Help → Restart Setup Wizard.
+First-run setup wizard that gets new users functional in five designer-approved steps: install a model, grant permissions, and try Dictate before the main UI is shown. The flow intentionally does not collect setup-personalisation answers; detailed configuration lives in Settings. Can be restarted from Settings → General → Restart Setup Wizard.
 
 ## Step Map
 
@@ -79,7 +79,7 @@ The tray-only app hides the Dock icon via `sync_activation_policy`. This must be
 
 **Skip to Settings (Welcome step):** `settings_complete_onboarding` → `settings_show_window` → close.
 
-**Restart:** Settings → Help → Restart Setup Wizard → `settings_reset_onboarding` → `settings_show_onboarding_window`.
+**Restart:** Settings → General → Restart Setup Wizard → `settings_reset_onboarding` → `settings_show_onboarding_window`.
 
 ## Design Tokens Used
 

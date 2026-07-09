@@ -7,7 +7,7 @@
 
 ## 0. Onboarding
 
-Triggered when `Config.onboarding_complete == false` at startup. Opens a dedicated 680×560 window (`?view=onboarding`). Runs once; can be restarted from Settings → Help.
+Triggered when `Config.onboarding_complete == false` at startup. Opens a dedicated 680×560 window (`?view=onboarding`). Runs once; can be restarted from Settings → General.
 
 This is the current designer-approved onboarding flow. It intentionally does not collect setup-personalisation answers; detailed configuration lives in Settings.
 
@@ -44,8 +44,8 @@ The Whisper Small, VAD, and voiceprint models ship inside the app bundle and are
 - **OB-Exit-Normal**: `settings_complete_onboarding` → `getCurrentWindow().close()`
 - **OB-Exit-Settings**: `settings_complete_onboarding` → `settings_show_window` → `getCurrentWindow().close()`
 
-**Restart from Help:**
-25. User clicks "Restart Setup Wizard" in Settings → Help
+**Restart from General:**
+25. User clicks "Restart Setup Wizard" in Settings → General
 26. `settings_reset_onboarding` (sets `onboarding_complete = false`)
 27. `settings_show_onboarding_window` → onboarding window opens at step 1
 

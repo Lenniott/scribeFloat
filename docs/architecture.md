@@ -642,11 +642,11 @@ graph TB
 All controls persist immediately on change (toggle → granular setter, slider → debounced setter, path picker → on confirm, text field → on blur). There is **no batch Save button** on any tab.
 
 **Tab contents:**
-- **General**: save folder, capture speaker by default, press Enter after dictate, speaker capture device name (macOS)
+- **General**: save folder, capture speaker by default, press Enter after dictate, speaker capture device name (macOS), restart onboarding, check for updates
 - **Advanced**: save transcripts as Markdown, open-transcripts-with app, WAV retention, speaker matching sensitivity, voice data retention, remove voice vectors from transcripts
 - **Voice**: voiceprint profile management — add / refine / rename / remove / bulk remove
 - **Permissions**: live permission status via `PermissionsService`; one-tap path to OS settings pane
-- **Help**: inline topics; no network required
+- **Help**: JSON-driven jobs-to-be-done topics (`helpContent.json` → `HelpContentRenderer`); no network required
 
 ---
 

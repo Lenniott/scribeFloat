@@ -152,3 +152,5 @@ Route-level view components. Imported by `src/routes/` pages. Live at `src/lib/u
 | `dictate.svelte` | `5_views/dictate.svelte` | Floating Dictate HUD (separate Tauri window). |
 | `onboarding.svelte` | `5_views/onboarding.svelte` | Onboarding flow (separate Tauri window). |
 | `setting_*.svelte` | `5_views/setting_*.svelte` | Individual settings tab content (general, advanced, voice, permissions, help). |
+| `HelpContentRenderer.svelte` | `2_components/content/HelpContentRenderer.svelte` | Renders JSON-driven Help blocks (headings, paragraphs, lists, tables, links, conditionals). |
+| `helpContent.json` | `lib/content/helpContent.json` | Jobs-to-be-done Help copy; loaded via `helpContent.ts`. |

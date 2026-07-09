@@ -1,9 +1,6 @@
 use crate::services::config::ConfigService;
 use crate::services::model::ModelService;
-use crate::types::ModelListItem;
-use std::path::Path;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter};
 
 pub struct ModelController {
     model: Arc<ModelService>,
@@ -13,57 +10,6 @@ pub struct ModelController {
 impl ModelController {
     pub fn new(model: Arc<ModelService>, config: Arc<ConfigService>) -> Arc<Self> {
         Arc::new(Self { model, config })
-    }
-
-    pub fn setup_status(&self) -> bool {
-        self.model
-            .model_catalog()
-            .iter()
-            .any(|item| self.model.model_downloaded(item.id))
-    }
-
-    pub fn list_models(&self) -> Vec<ModelListItem> {
-        let cfg = self.config.get();
-        self.model
-            .model_catalog()
-            .iter()
-            .map(|item| {
-                let path = self.model.model_path_for_id(item.id);
-                let selected = cfg.selected_model_id.as_deref() == Some(item.id)
-                    || cfg
-                        .scribe_model_path
-                        .as_ref()
-                        .is_some_and(|configured_path| {
-                            path.as_ref()
-                                .map(|p| p.to_string_lossy().as_ref() == configured_path)
-                                .unwrap_or(false)
-                        });
-
-                ModelListItem {
-                    id: item.id.to_string(),
-                    label: item.label.to_string(),
-                    file_name: item.file_name.to_string(),
-                    downloaded: self.model.model_downloaded(item.id),
-                    selected,
-                    size_mb: item.size_mb,
-                    wer: item.wer,
-                    rtfx: item.rtfx,
-                }
-            })
-            .collect()
-    }
-
-    pub fn download_model(self: Arc<Self>, model_id: String, app: AppHandle) -> Result<(), String> {
-        if self.model.model_path_for_id(&model_id).is_none() {
-            return Err(format!("unknown model id: {model_id}"));
-        }
-        tauri::async_runtime::spawn(async move {
-            if let Err(e) = self.model.download_model(&model_id, &app).await {
-                tracing::warn!(model_id, error = %e, "model download failed");
-                app.emit("model://download-error", e.to_string()).ok();
-            }
-        });
-        Ok(())
     }
 
     pub fn select_model(&self, model_id: String) -> Result<(), String> {
@@ -86,66 +32,13 @@ impl ModelController {
     pub fn vad_model_status(&self) -> bool {
         self.model.vad_model_available()
     }
-
-    pub fn remove_vad_model(&self) -> Result<(), String> {
-        self.model.delete_vad_model()
-    }
-
-    pub fn download_vad_model(self: Arc<Self>, app: AppHandle) -> Result<(), String> {
-        tauri::async_runtime::spawn(async move {
-            if let Err(e) = self.model.download_vad_model(&app).await {
-                tracing::warn!(error = %e, "VAD model download failed");
-                app.emit("model://download-error", e.to_string()).ok();
-            }
-        });
-        Ok(())
-    }
-
-    /// Deletes the downloaded file for `model_id` and clears config if it pointed at that file.
-    pub fn remove_model(&self, model_id: String) -> Result<(), String> {
-        let id = model_id.trim();
-        if id.is_empty() {
-            return Err("model id is required".into());
-        }
-        let resolved = self
-            .model
-            .model_path_for_id(id)
-            .ok_or_else(|| format!("unknown model id: {id}"))?;
-        let normalized = resolved.canonicalize().unwrap_or_else(|_| resolved.clone());
-
-        let cfg_snap = self.config.get();
-        let matches_config = cfg_snap.selected_model_id.as_deref() == Some(id)
-            || cfg_snap.scribe_model_path.as_ref().is_some_and(|stored| {
-                let p = Path::new(stored);
-                p == resolved.as_path() || p == normalized.as_path()
-            });
-
-        self.model.delete_downloaded_model(id)?;
-
-        if matches_config {
-            self.config
-                .update(|cfg| {
-                    cfg.selected_model_id = None;
-                    cfg.scribe_model_path = None;
-                })
-                .map_err(|e| e.to_string())?;
-        }
-
-        if cfg_snap.dictate_model_id.as_deref() == Some(id) {
-            self.config
-                .update(|cfg| {
-                    cfg.dictate_model_id = None;
-                })
-                .map_err(|e| e.to_string())?;
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::services::config::ConfigService;
+    use crate::services::model::{DEFAULT_MODEL_ID, SMALL_MODEL_FILENAME};
     use std::path::PathBuf;
 
     fn temp_dir(prefix: &str) -> PathBuf {
@@ -163,85 +56,44 @@ mod tests {
         let ctrl = ModelController::new(model, config);
 
         let err = ctrl
-            .select_model("tiny-en-q5".to_string())
+            .select_model(DEFAULT_MODEL_ID.to_string())
             .expect_err("should reject missing model");
         assert!(err.contains("not downloaded"));
+    }
+
+    #[test]
+    fn select_model_rejects_removed_catalog_ids() {
+        let models_dir = temp_dir("liscribe-model-controller-models");
+        let config_path = temp_dir("liscribe-model-controller-config").join("config.json");
+        let model = ModelService::new(models_dir);
+        let config = ConfigService::load(config_path).expect("load config");
+        let ctrl = ModelController::new(model, config);
+
+        let err = ctrl
+            .select_model("base-en-q5".to_string())
+            .expect_err("removed catalog entry should be unknown");
+        assert!(err.contains("unknown model id"));
     }
 
     #[test]
     fn select_model_persists_selected_id_and_path() {
         let models_dir = temp_dir("liscribe-model-controller-models");
         let config_path = temp_dir("liscribe-model-controller-config").join("config.json");
-        let tiny_path = models_dir.join("ggml-tiny.en-q5_1.bin");
-        std::fs::write(&tiny_path, [1, 2, 3]).expect("write model file");
+        let small_path = models_dir.join(SMALL_MODEL_FILENAME);
+        std::fs::write(&small_path, [1, 2, 3]).expect("write model file");
 
         let model = ModelService::new(models_dir.clone());
         let config = ConfigService::load(config_path).expect("load config");
         let ctrl = ModelController::new(Arc::clone(&model), Arc::clone(&config));
 
-        ctrl.select_model("tiny-en-q5".to_string())
+        ctrl.select_model(DEFAULT_MODEL_ID.to_string())
             .expect("select downloaded model");
 
         let cfg = config.get();
-        assert_eq!(cfg.selected_model_id.as_deref(), Some("tiny-en-q5"));
+        assert_eq!(cfg.selected_model_id.as_deref(), Some(DEFAULT_MODEL_ID));
         assert_eq!(
             cfg.scribe_model_path.as_deref(),
-            Some(tiny_path.to_string_lossy().as_ref())
+            Some(small_path.to_string_lossy().as_ref())
         );
-    }
-
-    #[test]
-    fn remove_requires_download() {
-        let models_dir = temp_dir("liscribe-model-remove-missing-models");
-        let config_path = temp_dir("liscribe-model-remove-missing-config").join("config.json");
-        let model = ModelService::new(models_dir);
-        let config = ConfigService::load(config_path).expect("load config");
-        let ctrl = ModelController::new(model, config);
-
-        let err = ctrl
-            .remove_model("tiny-en-q5".to_string())
-            .expect_err("should reject missing file");
-        assert!(err.contains("not downloaded"));
-    }
-
-    #[test]
-    fn remove_deletes_and_clears_when_selected() {
-        let models_dir = temp_dir("liscribe-model-remove-models");
-        let config_path = temp_dir("liscribe-model-remove-config").join("config.json");
-        let tiny_path = models_dir.join("ggml-tiny.en-q5_1.bin");
-        std::fs::write(&tiny_path, [7, 7, 7]).expect("write model file");
-
-        let model = ModelService::new(models_dir.clone());
-        let config = ConfigService::load(config_path).expect("load config");
-        let ctrl = ModelController::new(Arc::clone(&model), Arc::clone(&config));
-
-        ctrl.select_model("tiny-en-q5".to_string()).expect("select");
-        ctrl.remove_model("tiny-en-q5".to_string()).expect("remove");
-
-        assert!(!tiny_path.exists(), "binary should be deleted");
-        let cfg = config.get();
-        assert!(cfg.selected_model_id.is_none());
-        assert!(cfg.scribe_model_path.is_none());
-    }
-
-    #[test]
-    fn remove_clears_dictate_override_when_it_points_to_removed_model() {
-        let models_dir = temp_dir("liscribe-model-remove-dictate-models");
-        let config_path = temp_dir("liscribe-model-remove-dictate-config").join("config.json");
-        let tiny_path = models_dir.join("ggml-tiny.en-q5_1.bin");
-        std::fs::write(&tiny_path, [7, 7, 7]).expect("write model file");
-
-        let model = ModelService::new(models_dir);
-        let config = ConfigService::load(config_path).expect("load config");
-        config
-            .update(|cfg| {
-                cfg.dictate_model_id = Some("tiny-en-q5".to_string());
-            })
-            .expect("set dictate override");
-        let ctrl = ModelController::new(model, Arc::clone(&config));
-
-        ctrl.remove_model("tiny-en-q5".to_string()).expect("remove");
-
-        assert!(config.get().dictate_model_id.is_none());
     }
 }

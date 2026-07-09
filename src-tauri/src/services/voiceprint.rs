@@ -1,17 +1,13 @@
 use crate::services::voice_embeddings::VoiceEmbeddingStore;
-use crate::types::{ModelDownloadEvent, SpeakerBlock, VoiceprintProfile};
+use crate::types::{SpeakerBlock, VoiceprintProfile};
 use anyhow::{anyhow, Context, Result};
 use sherpa_onnx::{SpeakerEmbeddingExtractor, SpeakerEmbeddingExtractorConfig};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
-use tauri::{AppHandle, Emitter};
-use tokio::io::AsyncWriteExt;
 
+/// Bundled with the app (see scripts/fetch-bundled-models.sh) and seeded into the
+/// models dir at startup.
 pub const VOICEPRINT_MODEL_FILE: &str = "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx";
-/// `model_id` used on the shared `model://download-progress` channel (alongside
-/// Whisper catalog ids and `"vad"`).
-pub const VOICEPRINT_MODEL_ID: &str = "voiceprint";
-const VOICEPRINT_MODEL_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx";
 const EMBEDDING_DIM: usize = 192;
 
 pub struct VoiceprintService {
@@ -68,82 +64,6 @@ impl VoiceprintService {
     #[allow(dead_code)]
     pub fn set_threshold(&self, threshold: f32) {
         *self.threshold.write().unwrap_or_else(|p| p.into_inner()) = threshold;
-    }
-
-    pub async fn download_model(&self, app: &AppHandle) -> Result<()> {
-        if self.model_downloaded() {
-            app.emit(
-                "model://download-progress",
-                ModelDownloadEvent {
-                    model_id: VOICEPRINT_MODEL_ID.to_string(),
-                    progress: 1.0,
-                    bytes_downloaded: self.model_path.metadata().map(|m| m.len()).unwrap_or(0),
-                    total_bytes: self.model_path.metadata().map(|m| m.len()).ok(),
-                },
-            )
-            .ok();
-            return Ok(());
-        }
-
-        if let Some(parent) = self.model_path.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-
-        let tmp = self.model_path.with_extension("onnx.tmp");
-        let client = reqwest::Client::builder()
-            .https_only(true)
-            .build()
-            .context("failed to build voiceprint download client")?;
-        let mut response = client
-            .get(VOICEPRINT_MODEL_URL)
-            .send()
-            .await
-            .context("failed to request voiceprint model")?;
-
-        if !response.status().is_success() {
-            return Err(anyhow!(
-                "voiceprint model download failed with HTTP {}",
-                response.status()
-            ));
-        }
-
-        let total = response.content_length();
-        let mut file = tokio::fs::File::create(&tmp).await?;
-        let mut downloaded = 0u64;
-
-        while let Some(chunk) = response.chunk().await? {
-            file.write_all(&chunk).await?;
-            downloaded += chunk.len() as u64;
-            app.emit(
-                "model://download-progress",
-                ModelDownloadEvent {
-                    model_id: VOICEPRINT_MODEL_ID.to_string(),
-                    progress: total.map(|t| downloaded as f32 / t as f32).unwrap_or(0.0),
-                    bytes_downloaded: downloaded,
-                    total_bytes: total,
-                },
-            )
-            .ok();
-        }
-
-        file.flush().await?;
-        drop(file);
-        tokio::fs::rename(&tmp, &self.model_path)
-            .await
-            .context("failed to move voiceprint model into place")?;
-        self.clear_extractor();
-
-        app.emit(
-            "model://download-progress",
-            ModelDownloadEvent {
-                model_id: VOICEPRINT_MODEL_ID.to_string(),
-                progress: 1.0,
-                bytes_downloaded: downloaded,
-                total_bytes: total,
-            },
-        )
-        .ok();
-        Ok(())
     }
 
     /// Construct the ONNX extractor ahead of first use so `embed` doesn't pay the
@@ -397,13 +317,6 @@ impl VoiceprintService {
             .ok_or_else(|| anyhow!("failed to initialise voiceprint extractor"))
     }
 
-    fn clear_extractor(&self) {
-        self.extractor
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .take();
-    }
-
     fn profile_path(&self, slug: &str) -> PathBuf {
         self.profiles_dir.join(format!("{slug}.json"))
     }
@@ -549,7 +462,9 @@ mod tests {
     fn preload_extractor_returns_false_when_model_missing() {
         let root = temp_dir("scribefloat-voiceprint-preload");
         let svc = VoiceprintService::new(&root.join(VOICEPRINT_MODEL_FILE), &root, 0.75).unwrap();
-        assert!(!svc.preload_extractor().expect("missing model is not an error"));
+        assert!(!svc
+            .preload_extractor()
+            .expect("missing model is not an error"));
         // Idempotent: repeated calls stay quiet.
         assert!(!svc.preload_extractor().expect("still not an error"));
     }

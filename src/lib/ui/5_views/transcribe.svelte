@@ -10,7 +10,6 @@
   import PathPicker from "@components/controls/PathPicker.svelte";
   import ProgressBar from "@primitives/display/ProgressBar.svelte";
   import AnimatedEllipsis from "@primitives/display/AnimatedEllipsis.svelte";
-  import { createModelDownloadStore } from "$lib/stores/modelDownload.svelte";
   import TranscribeQueueList from "@patterns/UploadQueue.svelte";
   import ScrollablePanel from "@primitives/layout/ScrollBody.svelte";
   import PanelFooter from "@primitives/layout/PanelFooter.svelte";
@@ -42,25 +41,17 @@
   let queue = $state<TranscribeQueueItemView[]>([]);
   let outputFolder = $state("");
   let includeTimestamps = $state(true);
-  let selectedModelId = $state("");
   /** Queue-average progress 0..1; display derives via the capture store. */
   let rawProgress = 0;
   let stage: ProcessingStage = "LOADING_MODEL";
   let errorMessage = $state("");
   let isDraggingOverDropZone = $state(false);
 
-  const modelStore = createModelDownloadStore();
-  let modelUnlisteners: (() => void)[] = [];
   let unlisteners: UnlistenFn[] = [];
 
-  const downloadedModelOptions = $derived(
-    modelStore.models
-      .filter((m) => m.downloaded)
-      .map((m) => ({ value: m.id, label: m.label })),
-  );
   const hasQueue = $derived(queue.length > 0);
   const startDisabled = $derived(
-    !hasQueue || !outputFolder || phase === "processing" || !selectedModelId,
+    !hasQueue || !outputFolder || phase === "processing",
   );
   const canAcceptDrop = $derived(phase !== "processing");
   const showProcessingOverlay = $derived(phase === "processing");
@@ -202,7 +193,7 @@
       await invoke("transcribe_start", {
         inputPaths: queue.map((item) => item.source_path),
         outputFolder: outputFolder || null,
-        modelId: selectedModelId || null,
+        modelId: null,
         includeTimestamps,
       });
     } catch (error) {
@@ -276,13 +267,6 @@
       "scribe_get_include_timestamps",
     ).catch(() => true);
 
-    modelUnlisteners = await modelStore.subscribe();
-    await modelStore.refresh();
-    const selected = modelStore.models.find(
-      (model) => model.downloaded && model.selected,
-    );
-    selectedModelId = selected?.id ?? "";
-
     const ulState = await listen<TranscribeStatePayload>(
       "transcribe://state-changed",
       (event) => handleTranscribeState(event.payload),
@@ -315,7 +299,6 @@
 
   onDestroy(() => {
     unlisteners.forEach((unlisten) => unlisten());
-    modelUnlisteners.forEach((unlisten) => unlisten());
     capture.reset();
   });
 </script>
@@ -328,7 +311,7 @@
       <h1 class="sf-headline-sm text-fg">Transcribe</h1>
       {#if phase !== "processing" && queue.length === 0}
         <p class="sf-body-md text-fg-dim">
-          Queue files, choose output path and model, then start transcription.
+          Queue files, choose an output path, then start transcription.
         </p>
       {/if}
       {#if phase === "processing"}
@@ -367,22 +350,6 @@
             outputFolder = value;
           }}
         />
-
-        <div class="flex flex-col gap-1.5">
-          <label for="transcribe-model" class="sf-field-label">
-            Transcription model
-          </label>
-          <select
-            id="transcribe-model"
-            bind:value={selectedModelId}
-            class="sf-body-md h-10 rounded-md border border-rim bg-panel px-2 text-fg"
-          >
-            <option value="">Select model</option>
-            {#each downloadedModelOptions as option (option.value)}
-              <option value={option.value}>{option.label}</option>
-            {/each}
-          </select>
-        </div>
 
         <ToggleSwitch
           label="Timestamps"

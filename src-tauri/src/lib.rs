@@ -590,23 +590,26 @@ pub fn run() {
 
             let models_dir = data_dir.join("models");
             std::fs::create_dir_all(&models_dir)?;
-            // Seed the bundled base model into the user's models dir on first install.
-            // Silently skipped in dev builds where the resource file isn't present.
-            let base_dest = models_dir.join("ggml-base.en-q5_1.bin");
-            if !base_dest.exists() {
-                if let Ok(resource_dir) = app.path().resource_dir() {
-                    let bundled = resource_dir.join("ggml-base.en-q5_1.bin");
-                    if bundled.is_file() {
-                        let _ = std::fs::copy(&bundled, &base_dest);
-                    }
-                }
-            }
-            let vad_dest = models_dir.join(services::model::VAD_MODEL_FILENAME);
-            if !vad_dest.exists() {
-                if let Ok(resource_dir) = app.path().resource_dir() {
-                    let bundled = resource_dir.join(services::model::VAD_MODEL_FILENAME);
-                    if bundled.is_file() {
-                        let _ = std::fs::copy(&bundled, &vad_dest);
+            // Seed the bundled models (Small Whisper, VAD, voiceprint ONNX) into the user's
+            // models dir. Silently skipped in dev builds where the resource files aren't
+            // present (run scripts/fetch-bundled-models.sh before a release build).
+            for file_name in [
+                services::model::SMALL_MODEL_FILENAME,
+                services::model::VAD_MODEL_FILENAME,
+                services::voiceprint::VOICEPRINT_MODEL_FILE,
+            ] {
+                let dest = models_dir.join(file_name);
+                if !dest.exists() {
+                    if let Ok(resource_dir) = app.path().resource_dir() {
+                        let bundled = resource_dir.join(file_name);
+                        // Dev builds ship 0-byte placeholders (Tauri requires the resource
+                        // paths to exist) — only seed real files.
+                        let has_content = std::fs::metadata(&bundled)
+                            .map(|m| m.is_file() && m.len() > 0)
+                            .unwrap_or(false);
+                        if has_content {
+                            let _ = std::fs::copy(&bundled, &dest);
+                        }
                     }
                 }
             }
@@ -634,6 +637,22 @@ pub fn run() {
             voiceprint.set_embedding_store(Arc::clone(&voice_embedding_store));
             let model_ctrl =
                 controllers::model::ModelController::new(Arc::clone(&model), Arc::clone(&config));
+            // Auto-select the bundled Small model on first run, and migrate configs whose
+            // selection points at a catalog entry that no longer exists (tiny/base/medium/large).
+            {
+                let cfg_snapshot = config.get();
+                let selection_missing = match cfg_snapshot.selected_model_id.as_deref() {
+                    None => true,
+                    Some(id) => model.model_path_for_id(id).is_none(),
+                };
+                if selection_missing && model.model_downloaded(services::model::DEFAULT_MODEL_ID) {
+                    if let Err(err) =
+                        model_ctrl.select_model(services::model::DEFAULT_MODEL_ID.to_string())
+                    {
+                        tracing::warn!(error = %err, "failed to select bundled model at startup");
+                    }
+                }
+            }
             let voiceprint_ctrl = controllers::voiceprint::VoiceprintController::new(
                 Arc::clone(&voiceprint),
                 Arc::clone(&audio),
@@ -800,21 +819,13 @@ pub fn run() {
             commands::scribe::scribe_list_transcripts,
             commands::scribe::scribe_switch_mic,
             commands::scribe::scribe_toggle_speaker_capture,
-            commands::model::model_setup_status,
-            commands::model::model_list,
-            commands::model::model_download,
-            commands::model::model_select,
-            commands::model::model_remove,
             commands::model::model_vad_status,
-            commands::model::model_vad_download,
-            commands::model::model_vad_remove,
             commands::voiceprint::voiceprint_list_profiles,
             commands::voiceprint::voiceprint_list_profile_names,
             commands::voiceprint::voiceprint_delete_profile,
             commands::voiceprint::voiceprint_delete_all_profiles,
             commands::voiceprint::voiceprint_rename_profile,
             commands::voiceprint::voiceprint_model_status,
-            commands::voiceprint::voiceprint_download_model,
             commands::voiceprint::voiceprint_start_clip,
             commands::voiceprint::voiceprint_stop_clip,
             commands::voiceprint::voiceprint_commit_clip,
@@ -841,7 +852,6 @@ pub fn run() {
             commands::settings::settings_open_transcript,
             commands::settings::settings_get_theme_mode,
             commands::settings::settings_set_theme_mode,
-            commands::settings::settings_save_general,
             commands::settings::settings_permissions_status,
             commands::settings::settings_permissions_open,
             commands::settings::settings_permissions_request,
@@ -860,14 +870,6 @@ pub fn run() {
             commands::settings::settings_set_keep_wav,
             commands::settings::settings_get_save_transcripts_as_markdown,
             commands::settings::settings_set_save_transcripts_as_markdown,
-            commands::settings::settings_get_dictate_model_id,
-            commands::settings::settings_set_dictate_model_id,
-            commands::settings::settings_get_replacement_rules,
-            commands::settings::settings_add_replacement_rule,
-            commands::settings::settings_update_replacement_rule,
-            commands::settings::settings_delete_replacement_rule,
-            commands::settings::settings_get_replacement_prefix,
-            commands::settings::settings_set_replacement_prefix,
             commands::settings::settings_get_user_display_name,
             commands::settings::settings_set_user_display_name,
             commands::settings::settings_get_voice_similarity_threshold,

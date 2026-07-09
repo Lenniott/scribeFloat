@@ -19,7 +19,9 @@
     "active": true,
     "targets": "all",
     "resources": {
-      "bundled-models/ggml-base.en-q5_1.bin": "ggml-base.en-q5_1.bin"
+      "bundled-models/ggml-small.en-q5_1.bin": "ggml-small.en-q5_1.bin",
+      "bundled-models/ggml-silero-v6.2.0.bin": "ggml-silero-v6.2.0.bin",
+      "bundled-models/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx": "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx"
     },
     "windows": {
       "nsis": {

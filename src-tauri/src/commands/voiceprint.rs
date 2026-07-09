@@ -52,16 +52,6 @@ pub fn voiceprint_model_status(
 }
 
 #[tauri::command]
-pub fn voiceprint_download_model(
-    ctrl: State<'_, Arc<VoiceprintController>>,
-    app: AppHandle,
-) -> Result<(), AppError> {
-    Arc::clone(&ctrl)
-        .download_model(app)
-        .map_err(AppError::from)
-}
-
-#[tauri::command]
 pub fn voiceprint_start_clip(
     ctrl: State<'_, Arc<VoiceprintController>>,
     app: AppHandle,

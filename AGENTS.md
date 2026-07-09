@@ -69,6 +69,16 @@ cargo clippy -- -D warnings        # Must pass before committing
 cargo check                        # Fast compile check
 ```
 
+### Bundled models
+
+Release builds bundle the Whisper Small, Silero VAD, and voiceprint ONNX models
+(`tauri.conf.json` → `bundle.resources`). **Run `scripts/fetch-bundled-models.sh`
+before `cargo tauri build`** to download them into `src-tauri/bundled-models/`
+(gitignored). The Tauri build script requires those three paths to exist even for
+`cargo check` — on a fresh clone either run the fetch script or create 0-byte
+placeholders (`touch src-tauri/bundled-models/<name>`). Startup seeding skips
+empty files, so dev builds with placeholders simply run without the models.
+
 ### Hardware-gated tests
 
 Some tests are marked `#[ignore]` because they require a real mic or macOS

@@ -25,6 +25,9 @@ const VAD_MIN_PCM_SAMPLES: usize = 32_000;
 
 pub const SMALL_MODEL_FILENAME: &str = "ggml-small.en-q5_1.bin";
 
+/// The single Whisper model shipped with the app (see scripts/fetch-bundled-models.sh).
+pub const DEFAULT_MODEL_ID: &str = "small-en-q5";
+
 pub const VAD_MODEL_FILENAME: &str = "ggml-silero-v6.2.0.bin";
 const VAD_MODEL_URL: &str =
     "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin";
@@ -34,73 +37,19 @@ const VAD_MODEL_SHA256: Option<&str> =
 #[derive(Clone, Copy)]
 pub struct ModelCatalogItem {
     pub id: &'static str,
-    pub label: &'static str,
     pub file_name: &'static str,
-    pub url: &'static str,
-    pub size_mb: u32,
-    /// LibriSpeech clean WER % from Open ASR Leaderboard (lower is better).
-    pub wer: f32,
-    /// Real-time factor from Open ASR Leaderboard on GPU (higher is faster). None = not benchmarked.
-    pub rtfx: Option<u32>,
-    /// Verified lowercase-hex SHA-256 of the model file. When `Some`, the download is
-    /// rejected unless the bytes hash to this value (see `verify_sha256`). When `None`,
-    /// the download is accepted unverified.
+    /// Verified lowercase-hex SHA-256 of the model file. When `Some`, transcription
+    /// rejects the file unless its bytes hash to this value.
     pub sha256: Option<&'static str>,
 }
 
-const MODEL_CATALOG: [ModelCatalogItem; 5] = [
-    ModelCatalogItem {
-        id: "tiny-en-q5",
-        label: "Tiny",
-        file_name: "ggml-tiny.en-q5_1.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en-q5_1.bin",
-        size_mb: 31,
-        wer: 5.66,
-        rtfx: Some(348),
-        sha256: Some("c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b"),
-    },
-    ModelCatalogItem {
-        id: "base-en-q5",
-        label: "Base",
-        file_name: "ggml-base.en-q5_1.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin",
-        size_mb: 57,
-        wer: 4.25,
-        rtfx: Some(321),
-        sha256: Some("4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f"),
-    },
-    ModelCatalogItem {
-        id: "small-en-q5",
-        label: "Small",
-        file_name: SMALL_MODEL_FILENAME,
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin",
-        size_mb: 181,
-        wer: 3.05,
-        rtfx: Some(269),
-        sha256: Some("bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30"),
-    },
-    ModelCatalogItem {
-        id: "medium-en-q5",
-        label: "Medium",
-        file_name: "ggml-medium.en-q5_0.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en-q5_0.bin",
-        size_mb: 514,
-        wer: 3.02,
-        rtfx: None,
-        sha256: Some("76733e26ad8fe1c7a5bf7531a9d41917b2adc0f20f2e4f5531688a8c6cd88eb0"),
-    },
-    ModelCatalogItem {
-        id: "large-v3-turbo-q5",
-        label: "Large Turbo",
-        file_name: "ggml-large-v3-turbo-q5_0.bin",
-        url:
-            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
-        size_mb: 547,
-        wer: 2.10,
-        rtfx: Some(200),
-        sha256: Some("394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2"),
-    },
-];
+/// Whisper models the app knows about. The catalog is down to the bundled Small model —
+/// download URLs and checksums for the bundle live in scripts/fetch-bundled-models.sh.
+const MODEL_CATALOG: [ModelCatalogItem; 1] = [ModelCatalogItem {
+    id: DEFAULT_MODEL_ID,
+    file_name: SMALL_MODEL_FILENAME,
+    sha256: Some("bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30"),
+}];
 
 /// Compute the lowercase-hex SHA-256 of a file on disk, streaming it so a multi-hundred-MB
 /// model never lands in memory all at once.
@@ -200,10 +149,6 @@ impl ModelService {
     /// Path where the default small model lives on disk.
     pub fn default_model_path(&self) -> PathBuf {
         self.models_dir.join(SMALL_MODEL_FILENAME)
-    }
-
-    pub fn model_catalog(&self) -> &'static [ModelCatalogItem] {
-        &MODEL_CATALOG
     }
 
     pub fn model_path_for_id(&self, model_id: &str) -> Option<PathBuf> {
@@ -322,9 +267,7 @@ impl ModelService {
     }
 
     pub fn whisper_model_bytes(&self, model_path: &Path) -> u64 {
-        std::fs::metadata(model_path)
-            .map(|m| m.len())
-            .unwrap_or(0)
+        std::fs::metadata(model_path).map(|m| m.len()).unwrap_or(0)
     }
 
     fn catalog_sha256_for_path(&self, model_path: &Path) -> Option<&'static str> {
@@ -430,145 +373,6 @@ impl ModelService {
             "model://download-progress",
             ModelDownloadEvent {
                 model_id: "vad".to_string(),
-                progress: 1.0,
-                bytes_downloaded: downloaded,
-                total_bytes: total,
-            },
-        )
-        .ok();
-
-        Ok(())
-    }
-
-    /// Removes the downloaded file for `model_id`. Only paths under [`Self::models_dir`]
-    /// for known catalog entries are touched.
-    pub fn delete_vad_model(&self) -> Result<(), String> {
-        let path = self.vad_model_path();
-        if !self.vad_model_available() {
-            return Err("VAD model is not downloaded".into());
-        }
-        std::fs::remove_file(&path).map_err(|e| format!("failed to remove VAD model: {e}"))?;
-        let tmp = path.with_extension("tmp");
-        if tmp.is_file() {
-            let _ = std::fs::remove_file(tmp);
-        }
-        Ok(())
-    }
-
-    pub fn delete_downloaded_model(&self, model_id: &str) -> Result<(), String> {
-        let path = self
-            .model_path_for_id(model_id)
-            .ok_or_else(|| format!("unknown model id: {model_id}"))?;
-        if !self.model_downloaded(model_id) {
-            return Err(format!("model {model_id} is not downloaded"));
-        }
-        std::fs::remove_file(&path).map_err(|e| format!("failed to remove model file: {e}"))?;
-        let tmp = path.with_extension("tmp");
-        if tmp.is_file() {
-            let _ = std::fs::remove_file(tmp);
-        }
-        Ok(())
-    }
-
-    pub async fn download_model(&self, model_id: &str, app: &AppHandle) -> Result<()> {
-        let item = self
-            .catalog_item(model_id)
-            .ok_or_else(|| anyhow!("unknown model id: {model_id}"))?;
-        let dest = self.models_dir.join(item.file_name);
-        let tmp = dest.with_extension("tmp");
-
-        std::fs::create_dir_all(&self.models_dir).context("create models dir")?;
-
-        let client = reqwest::Client::builder()
-            .user_agent("scribefloat/0.1")
-            .connect_timeout(Duration::from_secs(15))
-            .build()
-            .context("failed to build download client")?;
-
-        let mut response = None;
-        let mut last_err = None;
-        for attempt in 1..=3 {
-            match client.get(item.url).send().await {
-                Ok(r) if r.status().is_success() => {
-                    response = Some(r);
-                    break;
-                }
-                Ok(r) if r.status().is_server_error() && attempt < 3 => {
-                    last_err = Some(anyhow!("server error {} on attempt {attempt}", r.status()));
-                    tokio::time::sleep(Duration::from_millis(600 * attempt as u64)).await;
-                }
-                Ok(r) => {
-                    last_err = Some(anyhow!("model download failed with HTTP {}", r.status()));
-                    break;
-                }
-                Err(e) if attempt < 3 => {
-                    last_err = Some(anyhow!("download request failed on attempt {attempt}: {e}"));
-                    tokio::time::sleep(Duration::from_millis(600 * attempt as u64)).await;
-                }
-                Err(e) => {
-                    last_err = Some(anyhow!("download request failed: {e}"));
-                    break;
-                }
-            }
-        }
-        let mut response = response.ok_or_else(|| {
-            anyhow!(
-                "failed to download default model after retries: {}",
-                last_err
-                    .map(|e| e.to_string())
-                    .unwrap_or_else(|| "unknown error".to_string())
-            )
-        })?;
-
-        let total = response.content_length();
-        let mut downloaded = 0u64;
-
-        let mut file = tokio::fs::File::create(&tmp)
-            .await
-            .context("failed to create temp file")?;
-
-        while let Some(chunk) = response.chunk().await.context("stream read error")? {
-            tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await?;
-            downloaded += chunk.len() as u64;
-            app.emit(
-                "model://download-progress",
-                ModelDownloadEvent {
-                    model_id: item.id.to_string(),
-                    progress: total.map(|t| downloaded as f32 / t as f32).unwrap_or(0.0),
-                    bytes_downloaded: downloaded,
-                    total_bytes: total,
-                },
-            )
-            .ok();
-        }
-
-        // Flush before rename
-        if let Err(e) = tokio::io::AsyncWriteExt::flush(&mut file).await {
-            drop(file);
-            let _ = tokio::fs::remove_file(&tmp).await;
-            return Err(anyhow::Error::from(e));
-        }
-        drop(file);
-
-        if let Some(expected) = item.sha256 {
-            if let Err(e) = verify_sha256(&tmp, expected).await {
-                let _ = tokio::fs::remove_file(&tmp).await;
-                return Err(e).context("model failed integrity check");
-            }
-        }
-
-        if let Err(e) = tokio::fs::rename(&tmp, &dest)
-            .await
-            .context("failed to move model into place")
-        {
-            let _ = tokio::fs::remove_file(&tmp).await;
-            return Err(e);
-        }
-
-        app.emit(
-            "model://download-progress",
-            ModelDownloadEvent {
-                model_id: item.id.to_string(),
                 progress: 1.0,
                 bytes_downloaded: downloaded,
                 total_bytes: total,
@@ -876,7 +680,8 @@ impl ModelService {
                     .unwrap_or_default(),
                 "whisper encode failed with VAD enabled, retrying without VAD"
             );
-            result = self.run_inference(model_path, pcm, None, abort, None, Arc::clone(&on_progress));
+            result =
+                self.run_inference(model_path, pcm, None, abort, None, Arc::clone(&on_progress));
             if result.is_ok() {
                 tracing::info!(
                     source,
@@ -1351,11 +1156,11 @@ mod tests {
     fn model_downloaded_reflects_disk_state_for_catalog_item() {
         let dir = temp_models_dir();
         let service = ModelService::new(dir.clone());
-        let tiny_path = dir.join("ggml-tiny.en-q5_1.bin");
+        let small_path = dir.join(SMALL_MODEL_FILENAME);
 
-        assert!(!service.model_downloaded("tiny-en-q5"));
-        std::fs::write(&tiny_path, [1]).expect("write tiny model");
-        assert!(service.model_downloaded("tiny-en-q5"));
+        assert!(!service.model_downloaded(DEFAULT_MODEL_ID));
+        std::fs::write(&small_path, [1]).expect("write small model");
+        assert!(service.model_downloaded(DEFAULT_MODEL_ID));
     }
 
     #[test]
@@ -1492,7 +1297,7 @@ mod tests {
     fn whisper_model_integrity_fails_when_catalog_hash_mismatch() {
         let dir = temp_models_dir();
         let svc = ModelService::new(dir.clone());
-        let path = dir.join("ggml-tiny.en-q5_1.bin");
+        let path = dir.join(SMALL_MODEL_FILENAME);
         std::fs::write(&path, b"truncated or corrupt download").unwrap();
         assert!(svc.model_available(&path));
         assert!(!svc.whisper_model_integrity_ok(&path));
@@ -1563,9 +1368,9 @@ mod tests {
                     "/Users/benjamin/Library/Application Support/com.benjamin.scribefloat-v8/models",
                 )
             });
-        let model_path = models_dir.join("ggml-tiny.en-q5_1.bin");
+        let model_path = models_dir.join(SMALL_MODEL_FILENAME);
         if !model_path.exists() {
-            eprintln!("skip: tiny model not present at {}", model_path.display());
+            eprintln!("skip: small model not present at {}", model_path.display());
             return;
         }
         let svc = ModelService::new(models_dir);

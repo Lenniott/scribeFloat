@@ -1,7 +1,7 @@
 ---
 id: "0061"
 title: Score each segment against session centroid and compute speaker margin
-status: active
+status: done
 ---
 
 # Score each segment against session centroid and compute speaker margin
@@ -30,3 +30,13 @@ These two signals together gate the inline correction UI (story 0062) and the gl
 - Computation is pure cosine math against the in-memory centroid map — no re-embedding needed
 - Segments with `embedding: None` (too short) get `session_score: None, margin: None`
 - The UI should render a visual confidence indicator (e.g. faint / normal / bold text or a small badge) based on these values — exact design is out of scope here
+
+## Completion note (2026-07-09)
+
+Implemented on the chunk-based design that superseded `SpeakerBlock` embeddings:
+`session_score` and `margin` live on `SpeakerChunk` (blocks reference chunks by
+`chunk_id`). Scoring runs in `score_chunks()` in
+`src-tauri/src/services/speaker_chunks.rs`, called from
+`analyze_capture_speakers()` after session speakers are built. Margin is `None`
+when fewer than two session speakers exist; chunks whose own cluster produced no
+clean centroid still get a `margin` so 0062 can gate on ambiguity.

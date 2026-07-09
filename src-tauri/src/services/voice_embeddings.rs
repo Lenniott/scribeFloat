@@ -118,9 +118,10 @@ impl VoiceEmbeddingStore {
         if profile.embedding.is_empty() {
             return Ok(());
         }
-        profile.encrypted_embedding = Some(
-            crypto.encrypt_embedding(&profile.embedding, &profile_embedding_context(&profile.slug))?,
-        );
+        profile.encrypted_embedding = Some(crypto.encrypt_embedding(
+            &profile.embedding,
+            &profile_embedding_context(&profile.slug),
+        )?);
         profile.embedding.clear();
         Ok(())
     }
@@ -181,6 +182,8 @@ mod tests {
             rms_energy: 0.1,
             clipping: false,
             profile_score: None,
+            session_score: None,
+            margin: None,
         }];
         record.session_speakers = vec![SessionSpeaker {
             session_speaker_id: "s-1".into(),
@@ -228,7 +231,10 @@ mod tests {
             record.speaker_chunks[0].embedding.as_deref(),
             Some([0.1, -0.2, 0.3].as_slice())
         );
-        assert_eq!(record.session_speakers[0].centroid_embedding, vec![1.0, 0.0]);
+        assert_eq!(
+            record.session_speakers[0].centroid_embedding,
+            vec![1.0, 0.0]
+        );
     }
 
     #[test]
@@ -244,7 +250,10 @@ mod tests {
         assert!(record.speaker_chunks[0].encrypted_embedding.is_none());
 
         store.unseal_record(&mut record).expect("unseal");
-        assert_eq!(record.session_speakers[0].centroid_embedding, vec![1.0, 0.0]);
+        assert_eq!(
+            record.session_speakers[0].centroid_embedding,
+            vec![1.0, 0.0]
+        );
     }
 
     #[test]

@@ -158,6 +158,8 @@ pub fn analyze_chunks(
                 rms_energy: quality.rms_energy,
                 clipping: quality.clipping,
                 profile_score: None,
+                session_score: None,
+                margin: None,
             }
         })
         .collect();
@@ -259,6 +261,31 @@ pub fn build_session_speakers(chunks: &[SpeakerChunk]) -> Vec<SessionSpeaker> {
             })
         })
         .collect()
+}
+
+/// Back-fill `session_score` and `margin` onto each embedded chunk from the
+/// session-speaker centroids. Pure cosine math — no re-embedding.
+pub fn score_chunks(chunks: &mut [SpeakerChunk], speakers: &[SessionSpeaker]) {
+    for chunk in chunks {
+        let Some(embedding) = chunk.embedding.as_deref() else {
+            continue;
+        };
+
+        chunk.session_score = speakers
+            .iter()
+            .find(|speaker| Some(&speaker.session_speaker_id) == chunk.cluster_id.as_ref())
+            .map(|speaker| cosine(embedding, &speaker.centroid_embedding));
+
+        let mut scores: Vec<f32> = speakers
+            .iter()
+            .map(|speaker| cosine(embedding, &speaker.centroid_embedding))
+            .collect();
+        scores.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+        chunk.margin = match scores.as_slice() {
+            [best, second, ..] => Some(best - second),
+            _ => None,
+        };
+    }
 }
 
 pub fn pcm_slice(pcm: &[f32], sample_rate: u32, span: ChunkSpan) -> &[f32] {
@@ -716,6 +743,100 @@ mod tests {
     }
 
     #[test]
+    fn score_chunks_backfills_session_score_and_margin() {
+        let mut a1 = test_chunk_with_embedding("chunk-0001", 0, 10_000, vec![1.0, 0.0]);
+        a1.cluster_id = Some("speaker-1".to_string());
+        let mut a2 = test_chunk_with_embedding("chunk-0002", 10_000, 12_000, vec![0.6, 0.8]);
+        a2.cluster_id = Some("speaker-1".to_string());
+        let mut b1 = test_chunk_with_embedding("chunk-0003", 12_000, 20_000, vec![0.0, 1.0]);
+        b1.cluster_id = Some("speaker-2".to_string());
+
+        let mut chunks = vec![a1, a2, b1];
+        let speakers = build_session_speakers(&chunks);
+        assert_eq!(speakers.len(), 2);
+        score_chunks(&mut chunks, &speakers);
+
+        for chunk in &chunks {
+            let own = speakers
+                .iter()
+                .find(|speaker| Some(&speaker.session_speaker_id) == chunk.cluster_id.as_ref())
+                .expect("own session speaker");
+            let embedding = chunk.embedding.as_deref().expect("embedding");
+            let expected_score = cosine(embedding, &own.centroid_embedding);
+            let score = chunk.session_score.expect("session_score set");
+            assert!(
+                (score - expected_score).abs() < 1e-6,
+                "chunk {} session_score {score} != cosine to own centroid {expected_score}",
+                chunk.id
+            );
+
+            let mut all: Vec<f32> = speakers
+                .iter()
+                .map(|speaker| cosine(embedding, &speaker.centroid_embedding))
+                .collect();
+            all.sort_by(|a, b| b.partial_cmp(a).unwrap());
+            let expected_margin = all[0] - all[1];
+            let margin = chunk.margin.expect("margin set");
+            assert!(
+                (margin - expected_margin).abs() < 1e-6,
+                "chunk {} margin {margin} != best-minus-second {expected_margin}",
+                chunk.id
+            );
+        }
+    }
+
+    #[test]
+    fn score_chunks_skips_chunks_without_embedding() {
+        let embedded = test_chunk_with_embedding("chunk-0001", 0, 5_000, vec![1.0, 0.0]);
+        let plain = test_chunk("chunk-0002", 5_000, 8_000, "Other");
+
+        let mut chunks = vec![embedded, plain];
+        let speakers = build_session_speakers(&chunks);
+        score_chunks(&mut chunks, &speakers);
+
+        assert!(chunks[1].session_score.is_none());
+        assert!(chunks[1].margin.is_none());
+    }
+
+    #[test]
+    fn score_chunks_needs_two_speakers_for_margin() {
+        let mut only = test_chunk_with_embedding("chunk-0001", 0, 5_000, vec![1.0, 0.0]);
+        only.cluster_id = Some("speaker-1".to_string());
+
+        let mut chunks = vec![only];
+        let speakers = build_session_speakers(&chunks);
+        assert_eq!(speakers.len(), 1);
+        score_chunks(&mut chunks, &speakers);
+
+        assert!(chunks[0].session_score.is_some());
+        assert!(
+            chunks[0].margin.is_none(),
+            "margin needs a second speaker to compare against"
+        );
+    }
+
+    #[test]
+    fn score_chunks_scores_margin_even_when_own_cluster_has_no_centroid() {
+        // A clipped chunk is excluded from session speakers, so its own cluster
+        // has no centroid — but it can still be measured against the others.
+        let mut clean_a = test_chunk_with_embedding("chunk-0001", 0, 5_000, vec![1.0, 0.0]);
+        clean_a.cluster_id = Some("speaker-1".to_string());
+        let mut clean_b = test_chunk_with_embedding("chunk-0002", 5_000, 10_000, vec![0.0, 1.0]);
+        clean_b.cluster_id = Some("speaker-2".to_string());
+        let mut clipped = test_chunk_with_embedding("chunk-0003", 10_000, 14_000, vec![0.6, 0.8]);
+        clipped.cluster_id = Some("speaker-3".to_string());
+        clipped.clipping = true;
+
+        let mut chunks = vec![clean_a, clean_b, clipped];
+        let speakers = build_session_speakers(&chunks);
+        assert_eq!(speakers.len(), 2);
+        score_chunks(&mut chunks, &speakers);
+
+        assert!(chunks[2].session_score.is_none());
+        assert!(chunks[2].margin.is_some());
+    }
+
+    #[test]
     fn local_labels_continue_after_z() {
         assert_eq!(local_speaker_label(0), "Speaker A");
         assert_eq!(local_speaker_label(25), "Speaker Z");
@@ -737,6 +858,8 @@ mod tests {
             rms_energy: 0.1,
             clipping: false,
             profile_score: None,
+            session_score: None,
+            margin: None,
         }
     }
 

@@ -307,8 +307,6 @@ impl HistoryService {
         save_folder: &str,
         id: &str,
         attachment: crate::types::TranscriptAttachment,
-        rules: &[crate::types::ReplacementRule],
-        prefix: &str,
     ) -> Result<()> {
         let mut inner = self.inner.lock().unwrap();
         self.ensure_loaded(&mut inner, save_folder)?;
@@ -316,7 +314,7 @@ impl HistoryService {
             return Ok(());
         };
         let mut updated = inner.records[idx].clone();
-        updated.attach_transcript(attachment, rules, prefix);
+        updated.attach_transcript(attachment);
         let store = self.embedding_store();
         Self::append_line(save_folder, &updated, &store)?;
         inner.records[idx] = updated;
@@ -406,8 +404,8 @@ impl HistoryService {
             for record in &live {
                 let mut disk_record = (*record).clone();
                 store.seal_record(&mut disk_record)?;
-                let line = serde_json::to_string(&disk_record)
-                    .context("serialize history record")?;
+                let line =
+                    serde_json::to_string(&disk_record).context("serialize history record")?;
                 file.write_all(line.as_bytes())?;
                 file.write_all(b"\n")?;
             }
@@ -573,6 +571,8 @@ mod tests {
             rms_energy: 0.1,
             clipping: false,
             profile_score: None,
+            session_score: None,
+            margin: None,
         }];
         rec.speaker_blocks = vec![crate::types::SpeakerBlock {
             label: "Speaker A".into(),
@@ -625,6 +625,8 @@ mod tests {
             rms_energy: 0.1,
             clipping: false,
             profile_score: Some(0.8),
+            session_score: None,
+            margin: None,
         }];
         let id = svc.append(&folder, rec).expect("append");
 
@@ -664,6 +666,8 @@ mod tests {
             rms_energy: 0.1,
             clipping: false,
             profile_score: None,
+            session_score: None,
+            margin: None,
         }];
         let changed_id = svc.append(&folder, with_embedding).expect("append changed");
         let unchanged_id = svc.append(&folder, record("plain")).expect("append plain");
@@ -710,6 +714,8 @@ mod tests {
             rms_energy: 0.1,
             clipping: false,
             profile_score: None,
+            session_score: None,
+            margin: None,
         }];
         rec.session_speakers = vec![crate::types::SessionSpeaker {
             session_speaker_id: "speaker-1".into(),
@@ -759,6 +765,8 @@ mod tests {
             rms_energy: 0.1,
             clipping: false,
             profile_score: None,
+            session_score: None,
+            margin: None,
         }];
         let id = svc.append(&folder, rec).expect("append encrypted");
 
@@ -912,8 +920,6 @@ mod tests {
                 model: "base".into(),
                 ..Default::default()
             },
-            &[],
-            "",
         )
         .expect("attach transcript");
 
@@ -949,8 +955,6 @@ mod tests {
                 model: "base".into(),
                 ..Default::default()
             },
-            &[],
-            "",
         )
         .expect("first attach");
 
@@ -991,8 +995,6 @@ mod tests {
                 model: "base".into(),
                 ..Default::default()
             },
-            &[],
-            "",
         )
         .expect("second attach");
 

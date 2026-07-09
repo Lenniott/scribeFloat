@@ -96,10 +96,6 @@ pub struct Config {
     #[serde(default)]
     pub onboarding_complete: bool,
 
-    /// Whisper model ID for Dictate. None = fall back to selected_model_id.
-    #[serde(default)]
-    pub dictate_model_id: Option<String>,
-
     /// Simulate Cmd/Ctrl+V into the focused input after dictation.
     /// Requires Accessibility permission on macOS.
     #[serde(default = "default_true")]
@@ -108,14 +104,6 @@ pub struct Config {
     /// Simulate Enter after paste (useful for chat/message apps). Default off.
     #[serde(default)]
     pub dictate_auto_enter: bool,
-
-    #[serde(default = "default_replacement_rules")]
-    pub replacement_rules: Vec<ReplacementRule>,
-
-    /// Word spoken before any trigger to gate replacements (e.g. "float").
-    /// Empty string disables the prefix requirement — triggers fire directly.
-    #[serde(default = "default_replacement_prefix")]
-    pub replacement_prefix: String,
 
     /// When true, Scribe and Transcribe also write a derived `.md` next to the canonical
     /// history record. Default OFF — markdown is opt-in; the JSONL store is the source of
@@ -148,25 +136,6 @@ pub struct Config {
     pub voice_embeddings_encryption_required: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GeneralSettingsUpdate {
-    pub output_path: String,
-    pub open_hotkey: String,
-    pub dictate_hotkey: String,
-    pub input_label: String,
-    pub output_label: String,
-    pub preferred_input_device: Option<String>,
-    pub preferred_speaker_device: Option<String>,
-    pub scribe_capture_speaker: bool,
-    pub speaker_capture_available: bool,
-    pub dictate_auto_enter: bool,
-    pub keep_wav: bool,
-    pub save_transcripts_as_markdown: bool,
-    pub theme_mode: String,
-    pub open_with_app_path: Option<String>,
-}
-
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -185,11 +154,8 @@ impl Default for Config {
             theme_mode: ThemeMode::System,
             open_with_app_path: None,
             onboarding_complete: false,
-            dictate_model_id: None,
             dictate_auto_paste: true,
             dictate_auto_enter: false,
-            replacement_rules: default_replacement_rules(),
-            replacement_prefix: default_replacement_prefix(),
             save_transcripts_as_markdown: false,
             user_display_name: default_user_display_name(),
             voice_similarity_threshold: default_voice_similarity_threshold(),
@@ -244,124 +210,6 @@ impl ThemeMode {
             other => Err(format!("unsupported theme mode `{other}`")),
         }
     }
-}
-
-// ── Text replacement types ────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum ReplacementRuleType {
-    Simple,
-    Newline,
-    Wrap,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum ReplacementScope {
-    Transcripts,
-    Dictate,
-    #[default]
-    Both,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum WordTransform {
-    #[default]
-    None,
-    Lower,
-    Upper,
-    Sentence,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReplacementRule {
-    pub trigger: String,
-    /// Additional spoken forms that fire the same rule (e.g. "closed bracket" alongside "close bracket").
-    #[serde(default)]
-    pub aliases: Vec<String>,
-    #[serde(rename = "type")]
-    pub rule_type: ReplacementRuleType,
-    #[serde(default)]
-    pub output: String,
-    #[serde(default)]
-    pub scope: ReplacementScope,
-    /// wrap type only: text prepended to the following word
-    #[serde(default)]
-    pub prefix: String,
-    /// wrap type only: text appended to the following word
-    #[serde(default)]
-    pub suffix: String,
-    /// wrap type only: case transform applied to the following word
-    #[serde(default)]
-    pub transform: WordTransform,
-}
-
-fn default_replacement_prefix() -> String {
-    "float".to_string()
-}
-
-fn default_replacement_rules() -> Vec<ReplacementRule> {
-    // Triggers are stored WITHOUT the global prefix. The replacement engine
-    // prepends `Config::replacement_prefix` at match time, so these fire on
-    // "float to do", "float dash", etc. by default.
-    vec![
-        ReplacementRule {
-            trigger: "to do".to_string(),
-            aliases: vec![
-                "to do.".to_string(),
-                "todo".to_string(),
-                "todo.".to_string(),
-            ],
-            rule_type: ReplacementRuleType::Simple,
-            output: "\n- [ ] ".to_string(),
-            scope: ReplacementScope::Both,
-            prefix: String::new(),
-            suffix: String::new(),
-            transform: WordTransform::None,
-        },
-        ReplacementRule {
-            trigger: "open bracket".to_string(),
-            aliases: vec![],
-            rule_type: ReplacementRuleType::Simple,
-            output: "[".to_string(),
-            scope: ReplacementScope::Both,
-            prefix: String::new(),
-            suffix: String::new(),
-            transform: WordTransform::None,
-        },
-        ReplacementRule {
-            trigger: "close bracket".to_string(),
-            aliases: vec!["closed bracket".to_string()],
-            rule_type: ReplacementRuleType::Simple,
-            output: "]".to_string(),
-            scope: ReplacementScope::Both,
-            prefix: String::new(),
-            suffix: String::new(),
-            transform: WordTransform::None,
-        },
-        ReplacementRule {
-            trigger: "dash".to_string(),
-            aliases: vec![],
-            rule_type: ReplacementRuleType::Simple,
-            output: "-".to_string(),
-            scope: ReplacementScope::Both,
-            prefix: String::new(),
-            suffix: String::new(),
-            transform: WordTransform::None,
-        },
-        ReplacementRule {
-            trigger: "new line".to_string(),
-            aliases: vec!["newline".to_string()],
-            rule_type: ReplacementRuleType::Newline,
-            output: String::new(),
-            scope: ReplacementScope::Both,
-            prefix: String::new(),
-            suffix: String::new(),
-            transform: WordTransform::None,
-        },
-    ]
 }
 
 fn default_true() -> bool {
@@ -460,6 +308,14 @@ pub struct SpeakerChunk {
     pub clipping: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_score: Option<f32>,
+    /// Cosine similarity to this chunk's own session-speaker centroid.
+    /// Low values mark outliers that are likely mislabeled or noisy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_score: Option<f32>,
+    /// Best centroid score minus second-best across all session speakers.
+    /// None when fewer than two session speakers exist to compare against.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub margin: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -650,18 +506,6 @@ pub struct ModelDownloadEvent {
     pub progress: f32,
     pub bytes_downloaded: u64,
     pub total_bytes: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModelListItem {
-    pub id: String,
-    pub label: String,
-    pub file_name: String,
-    pub downloaded: bool,
-    pub selected: bool,
-    pub size_mb: u32,
-    pub wer: f32,
-    pub rtfx: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1040,15 +884,13 @@ impl HistoryRecord {
         model: String,
         segments: Vec<Segment>,
         notes: Vec<Note>,
-        rules: &[ReplacementRule],
-        prefix: &str,
         speaker_capture: bool,
         dual_source: bool,
         session_dir: Option<String>,
         audio_path: Option<String>,
         markdown_path: Option<String>,
     ) -> Self {
-        let word_count = crate::services::output::count_words(&segments, rules, prefix);
+        let word_count = crate::services::output::count_words(&segments);
         let mut rec = Self::base(
             HistoryKind::Scribe,
             title,
@@ -1088,13 +930,11 @@ impl HistoryRecord {
         title: String,
         model: String,
         segments: Vec<Segment>,
-        rules: &[ReplacementRule],
-        prefix: &str,
         dual_source: bool,
         source_path: String,
         markdown_path: Option<String>,
     ) -> Self {
-        let word_count = crate::services::output::count_words(&segments, rules, prefix);
+        let word_count = crate::services::output::count_words(&segments);
         let mut rec = Self::base(
             HistoryKind::Transcribe,
             title,
@@ -1130,12 +970,7 @@ impl HistoryRecord {
     /// The destructure is exhaustive on purpose: adding a field to
     /// `TranscriptAttachment` will not compile until this method decides whether
     /// and how it shifts.
-    pub fn attach_transcript(
-        &mut self,
-        attachment: TranscriptAttachment,
-        rules: &[ReplacementRule],
-        prefix: &str,
-    ) {
+    pub fn attach_transcript(&mut self, attachment: TranscriptAttachment) {
         let TranscriptAttachment {
             segments,
             speaker_blocks,
@@ -1154,11 +989,12 @@ impl HistoryRecord {
         let offset_u64 = offset_ms as u64;
         let offset_s = offset_ms as f32 / 1000.0;
 
-        self.segments.extend(segments.into_iter().map(|mut segment| {
-            segment.start_ms = segment.start_ms.saturating_add(offset_ms);
-            segment.end_ms = segment.end_ms.saturating_add(offset_ms);
-            segment
-        }));
+        self.segments
+            .extend(segments.into_iter().map(|mut segment| {
+                segment.start_ms = segment.start_ms.saturating_add(offset_ms);
+                segment.end_ms = segment.end_ms.saturating_add(offset_ms);
+                segment
+            }));
         self.speaker_blocks
             .extend(speaker_blocks.into_iter().map(|mut block| {
                 block.start_ms = block.start_ms.map(|ms| ms.saturating_add(offset_u64));
@@ -1196,12 +1032,8 @@ impl HistoryRecord {
         if markdown_path.is_some() {
             self.markdown_path = markdown_path;
         }
-        self.duration_ms = self
-            .segments
-            .last()
-            .map(|s| s.end_ms.max(0))
-            .unwrap_or(0);
-        self.word_count = crate::services::output::count_words(&self.segments, rules, prefix);
+        self.duration_ms = self.segments.last().map(|s| s.end_ms.max(0)).unwrap_or(0);
+        self.word_count = crate::services::output::count_words(&self.segments);
     }
 
     /// Project to the lightweight list item shown in History.
@@ -1300,31 +1132,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_replacement_rules_have_no_embedded_prefix() {
-        // Triggers should be plain base words (e.g. "dash", "to do").
-        // The global replacement_prefix ("float") is applied at match time by
-        // apply_replacements — it must NOT be stored in the trigger itself.
-        let rules = default_replacement_rules();
-        for rule in &rules {
-            assert!(
-                !rule.trigger.starts_with("float "),
-                "trigger {:?} must not embed the prefix — use Config::replacement_prefix",
-                rule.trigger
-            );
-            for alias in &rule.aliases {
-                assert!(
-                    !alias.starts_with("float "),
-                    "alias {:?} in rule {:?} must not embed the prefix",
-                    alias,
-                    rule.trigger
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn default_replacement_prefix_is_float() {
-        assert_eq!(default_replacement_prefix(), "float");
+    fn config_with_removed_fields_still_deserializes() {
+        // Configs written before the replacement engine and per-mode model override
+        // were removed still carry these keys — serde must ignore them.
+        let legacy = r#"{
+            "save_folder": "/tmp/transcripts",
+            "dictate_model_id": "tiny-en-q5",
+            "replacement_prefix": "float",
+            "replacement_rules": [
+                {"trigger": "dash", "type": "simple", "output": "-"}
+            ]
+        }"#;
+        let cfg: Config = serde_json::from_str(legacy).expect("parse legacy config");
+        assert_eq!(cfg.save_folder, "/tmp/transcripts");
     }
 
     #[test]
@@ -1482,8 +1302,6 @@ mod tests {
             "tiny".to_string(),
             segments,
             vec![],
-            &[],
-            "",
             true,
             true,
             Some("/save/2026/sess".to_string()),
@@ -1512,8 +1330,6 @@ mod tests {
             "tiny".to_string(),
             segments,
             vec![],
-            &[],
-            "",
             true,
             false,
             None,
@@ -1552,8 +1368,6 @@ mod tests {
             "clip".to_string(),
             "tiny".to_string(),
             segments,
-            &[],
-            "",
             false,
             "/in/clip.mp3".to_string(),
             None,
@@ -1613,6 +1427,8 @@ mod tests {
                 rms_energy: 0.1,
                 clipping: false,
                 profile_score: None,
+                session_score: None,
+                margin: None,
             }],
             session_speakers: vec![SessionSpeaker {
                 session_speaker_id: "s-1".into(),
@@ -1648,15 +1464,13 @@ mod tests {
             "tiny".into(),
             vec![Segment::new(0, 1_000, "first")],
             vec![],
-            &[],
-            "",
             false,
             false,
             None,
             None,
             None,
         );
-        rec.attach_transcript(full_attachment(), &[], "");
+        rec.attach_transcript(full_attachment());
 
         assert_eq!(rec.segments.len(), 2);
         assert_eq!(rec.segments[1].start_ms, 1_000);
@@ -1682,7 +1496,7 @@ mod tests {
     #[test]
     fn attach_transcript_to_record_without_audio_applies_no_offset() {
         let mut rec = HistoryRecord::from_written("T".into());
-        rec.attach_transcript(full_attachment(), &[], "");
+        rec.attach_transcript(full_attachment());
         assert_eq!(rec.segments[0].start_ms, 0);
         assert_eq!(rec.segments[0].end_ms, 2_000);
         assert!((rec.speaker_change_cuts[0].time_s - 0.5).abs() < 1e-6);
@@ -1695,12 +1509,12 @@ mod tests {
         let mut rec = HistoryRecord::from_written("T".into());
         rec.markdown_path = Some("/old.md".into());
 
-        rec.attach_transcript(full_attachment(), &[], "");
+        rec.attach_transcript(full_attachment());
         assert_eq!(rec.markdown_path.as_deref(), Some("/old.md"));
 
         let mut with_md = full_attachment();
         with_md.markdown_path = Some("/new.md".into());
-        rec.attach_transcript(with_md, &[], "");
+        rec.attach_transcript(with_md);
         assert_eq!(rec.markdown_path.as_deref(), Some("/new.md"));
     }
 }

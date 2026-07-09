@@ -13,7 +13,7 @@
 use crate::services::model::ModelService;
 use crate::services::output::filter_hallucination_phrases;
 use crate::services::speaker_chunks::{
-    analyze_chunks, build_blocks_from_chunks, build_session_speakers,
+    analyze_chunks, build_blocks_from_chunks, build_session_speakers, score_chunks,
 };
 use crate::services::voiceprint::VoiceprintService;
 use crate::types::{Segment, SessionSpeaker, SpeakerBlock, SpeakerChangeCut, SpeakerChunk};
@@ -120,8 +120,10 @@ pub fn analyze_capture_speakers(
     profile_threshold: f32,
     segments: &[Segment],
 ) -> SpeakerEvidence {
-    let speaker_chunks = analyze_chunks(pcm_16k, sample_rate, cuts, voiceprint, profile_threshold);
+    let mut speaker_chunks =
+        analyze_chunks(pcm_16k, sample_rate, cuts, voiceprint, profile_threshold);
     let session_speakers = build_session_speakers(&speaker_chunks);
+    score_chunks(&mut speaker_chunks, &session_speakers);
     let speaker_blocks = build_blocks_from_chunks(segments, &speaker_chunks);
     SpeakerEvidence {
         speaker_blocks,

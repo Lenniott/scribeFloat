@@ -57,9 +57,7 @@ pub(super) fn read_dictate_history(save_folder: &str) -> Result<Vec<DictateHisto
 }
 
 /// Scan `save_folder` root for `*.md` files and return their metadata sorted newest-first.
-pub(super) fn list_transcript_metadata(
-    save_folder: &str,
-) -> Result<Vec<ScribeTranscriptEntry>> {
+pub(super) fn list_transcript_metadata(save_folder: &str) -> Result<Vec<ScribeTranscriptEntry>> {
     let dir = PathBuf::from(save_folder);
     if !dir.exists() {
         return Ok(Vec::new());
@@ -73,8 +71,7 @@ pub(super) fn list_transcript_metadata(
         })
         .filter_map(|e| {
             let path = e.path();
-            let prefix =
-                read_file_prefix(&path, TRANSCRIPT_METADATA_READ_CAP).unwrap_or_default();
+            let prefix = read_file_prefix(&path, TRANSCRIPT_METADATA_READ_CAP).unwrap_or_default();
             let fallback_title = path
                 .file_stem()
                 .and_then(|s| s.to_str())
@@ -202,8 +199,7 @@ mod tests {
     use super::*;
 
     fn temp_dir() -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("legacy-tests-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("legacy-tests-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -211,8 +207,7 @@ mod tests {
     #[test]
     fn list_transcript_metadata_empty_folder() {
         let dir = temp_dir();
-        let result =
-            list_transcript_metadata(dir.to_str().unwrap()).expect("list transcripts");
+        let result = list_transcript_metadata(dir.to_str().unwrap()).expect("list transcripts");
         assert!(result.is_empty());
     }
 
@@ -223,8 +218,7 @@ mod tests {
             String::from("---\ntitle: 'Huge Doc'\nmodel: small\n---\n\n## Transcript\n\n");
         content.push_str(&"x".repeat(50_000));
         std::fs::write(dir.join("huge.md"), content).unwrap();
-        let entries =
-            list_transcript_metadata(dir.to_str().unwrap()).expect("list metadata");
+        let entries = list_transcript_metadata(dir.to_str().unwrap()).expect("list metadata");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].title, "Huge Doc");
         assert_eq!(entries[0].model, "small");
@@ -235,8 +229,7 @@ mod tests {
         let dir = temp_dir();
         let content = "---\ntitle: 'My Meeting'\nduration_seconds: 30.0\nword_count: 50\ntoken_estimate: 65\nmodel: tiny\n---\n\n## Transcript\n\nHello world.\n";
         std::fs::write(dir.join("my_meeting_tiny.md"), content).unwrap();
-        let entries =
-            list_transcript_metadata(dir.to_str().unwrap()).expect("list transcripts");
+        let entries = list_transcript_metadata(dir.to_str().unwrap()).expect("list transcripts");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].title, "My Meeting");
         assert_eq!(entries[0].model, "tiny");
@@ -250,8 +243,7 @@ mod tests {
         };
         std::fs::write(dir.join("a.md"), content("Alpha")).unwrap();
         std::fs::write(dir.join("b.md"), content("Beta")).unwrap();
-        let entries =
-            list_transcript_metadata(dir.to_str().unwrap()).expect("list transcripts");
+        let entries = list_transcript_metadata(dir.to_str().unwrap()).expect("list transcripts");
         assert_eq!(entries.len(), 2);
         assert!(entries[0].modified_at >= entries[1].modified_at);
     }

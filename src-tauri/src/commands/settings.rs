@@ -1,8 +1,5 @@
 use crate::controllers::settings::SettingsController;
-use crate::types::{
-    AppError, GeneralSettingsUpdate, PermissionStatus, ReplacementRule, ThemeMode,
-    VoiceEmbeddingsRetention,
-};
+use crate::types::{AppError, PermissionStatus, ThemeMode, VoiceEmbeddingsRetention};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
@@ -144,14 +141,6 @@ pub fn settings_set_theme_mode(
 }
 
 #[tauri::command]
-pub fn settings_save_general(
-    ctrl: State<'_, Arc<SettingsController>>,
-    payload: GeneralSettingsUpdate,
-) -> Result<(), AppError> {
-    ctrl.save_general_settings(payload).map_err(AppError::from)
-}
-
-#[tauri::command]
 pub async fn settings_permissions_status(
     ctrl: State<'_, Arc<SettingsController>>,
 ) -> Result<Vec<PermissionStatus>, AppError> {
@@ -260,21 +249,6 @@ pub fn settings_set_save_transcripts_as_markdown(
 }
 
 #[tauri::command]
-pub fn settings_get_dictate_model_id(
-    ctrl: State<'_, Arc<SettingsController>>,
-) -> Result<Option<String>, AppError> {
-    Ok(ctrl.get_dictate_model_id())
-}
-
-#[tauri::command]
-pub fn settings_set_dictate_model_id(
-    ctrl: State<'_, Arc<SettingsController>>,
-    model_id: Option<String>,
-) -> Result<(), AppError> {
-    ctrl.set_dictate_model_id(model_id).map_err(AppError::from)
-}
-
-#[tauri::command]
 pub fn settings_show_window(app: AppHandle) -> Result<(), AppError> {
     crate::open_settings_window(&app)
         .map(|_| ())
@@ -298,54 +272,6 @@ pub fn settings_open_scribe_window(app: AppHandle) -> Result<(), AppError> {
     crate::open_scribe_window(&app)
         .map(|_| ())
         .map_err(|e| AppError::Internal(e.to_string()))
-}
-
-#[tauri::command]
-pub fn settings_get_replacement_rules(
-    ctrl: State<'_, Arc<SettingsController>>,
-) -> Result<Vec<ReplacementRule>, AppError> {
-    Ok(ctrl.get_replacement_rules())
-}
-
-#[tauri::command]
-pub fn settings_add_replacement_rule(
-    ctrl: State<'_, Arc<SettingsController>>,
-    rule: ReplacementRule,
-) -> Result<(), AppError> {
-    ctrl.add_replacement_rule(rule).map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn settings_update_replacement_rule(
-    ctrl: State<'_, Arc<SettingsController>>,
-    index: usize,
-    rule: ReplacementRule,
-) -> Result<(), AppError> {
-    ctrl.update_replacement_rule(index, rule)
-        .map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn settings_delete_replacement_rule(
-    ctrl: State<'_, Arc<SettingsController>>,
-    index: usize,
-) -> Result<(), AppError> {
-    ctrl.delete_replacement_rule(index).map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn settings_get_replacement_prefix(
-    ctrl: State<'_, Arc<SettingsController>>,
-) -> Result<String, String> {
-    Ok(ctrl.get_replacement_prefix())
-}
-
-#[tauri::command]
-pub fn settings_set_replacement_prefix(
-    ctrl: State<'_, Arc<SettingsController>>,
-    prefix: String,
-) -> Result<(), String> {
-    ctrl.set_replacement_prefix(prefix)
 }
 
 #[tauri::command]

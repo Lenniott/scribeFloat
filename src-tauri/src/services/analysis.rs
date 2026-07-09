@@ -291,8 +291,7 @@ fn loudness_cuts(frames: &[Frame], frame_dt: f32, cfg: &CutConfig) -> Vec<Speake
         let k = voiced.partition_point(|idx| *idx < i);
         let before_idx = &voiced[k.saturating_sub(win)..k];
         let after_idx = &voiced[k..(k + win).min(voiced.len())];
-        if before_idx.len() < cfg.min_frames_per_side || after_idx.len() < cfg.min_frames_per_side
-        {
+        if before_idx.len() < cfg.min_frames_per_side || after_idx.len() < cfg.min_frames_per_side {
             continue;
         }
 
@@ -489,9 +488,7 @@ mod tests {
 
     #[test]
     fn detects_loudness_jump_from_synthetic_frames() {
-        let rms = (0..80)
-            .map(|i| if i < 40 { 0.01 } else { 0.08 })
-            .collect();
+        let rms = (0..80).map(|i| if i < 40 { 0.01 } else { 0.08 }).collect();
         let cuts = detect_cuts(
             &analysis_from(vec![Some(120.0); 80], rms),
             &CutConfig::default(),
@@ -523,9 +520,7 @@ mod tests {
         assert!(detect_cuts(&analysis_from(f0.clone(), vec![0.05; 80]), &cfg).is_empty());
 
         // Pitch + loudness jump together do.
-        let rms = (0..80)
-            .map(|i| if i < 40 { 0.01 } else { 0.08 })
-            .collect();
+        let rms = (0..80).map(|i| if i < 40 { 0.01 } else { 0.08 }).collect();
         let cuts = detect_cuts(&analysis_from(f0, rms), &cfg);
         assert_eq!(cuts.len(), 1);
         assert!(cuts[0].reasons.contains(&CutReason::Pitch));
@@ -565,7 +560,9 @@ mod tests {
         let analysis = analysis_from(f0, rms);
         let default_cuts = detect_cuts(&analysis, &CutConfig::default());
         assert!(
-            default_cuts.iter().all(|c| !c.reasons.contains(&CutReason::Silence)),
+            default_cuts
+                .iter()
+                .all(|c| !c.reasons.contains(&CutReason::Silence)),
             "silence cuts must be off by default"
         );
         let cfg = CutConfig {

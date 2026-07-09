@@ -110,11 +110,7 @@ impl TranscribeInputService {
         let mic_pcm_16k = resample_linear(&mic_pcm, mic_rate, WHISPER_SAMPLE_RATE);
         let speaker_pcm_16k = if let Some(speaker_path) = &input.speaker_path {
             let (speaker_pcm, speaker_rate) = decode_audio_file(speaker_path)?;
-            let resampled = resample_linear(
-                &speaker_pcm,
-                speaker_rate,
-                WHISPER_SAMPLE_RATE,
-            );
+            let resampled = resample_linear(&speaker_pcm, speaker_rate, WHISPER_SAMPLE_RATE);
             if speaker_pcm_has_signal(&resampled) {
                 Some(resampled)
             } else {

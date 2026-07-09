@@ -4,10 +4,7 @@ use crate::services::hotkeys::HotkeyService;
 use crate::services::output::OutputService;
 use crate::services::permissions::PermissionsService;
 use crate::services::voiceprint::VoiceprintService;
-use crate::types::{
-    GeneralSettingsUpdate, PermissionStatus, ReplacementRule, ReplacementRuleType, ThemeMode,
-    VoiceEmbeddingsRetention,
-};
+use crate::types::{PermissionStatus, ThemeMode, VoiceEmbeddingsRetention};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -273,49 +270,6 @@ impl SettingsController {
             .map_err(|e| format!("failed to persist theme mode: {e}"))
     }
 
-    pub fn save_general_settings(&self, update: GeneralSettingsUpdate) -> Result<(), String> {
-        let output_path = normalize_output_path(&self.output, &update.output_path)?;
-        let (open_hotkey, dictate_hotkey) = self
-            .hotkeys
-            .validate_pair(&update.open_hotkey, &update.dictate_hotkey)?;
-        let (input_label, output_label) =
-            normalize_input_labels(&update.input_label, &update.output_label)?;
-        let preferred_input_device = normalize_optional_string(update.preferred_input_device);
-        let preferred_speaker_device = normalize_optional_string(update.preferred_speaker_device);
-        let theme_mode = ThemeMode::parse(&update.theme_mode)?;
-        let open_with_app_path = normalize_open_with_app_path(update.open_with_app_path)?;
-        let scribe_capture_speaker =
-            update.speaker_capture_available && update.scribe_capture_speaker;
-
-        let previous = self.get_hotkeys();
-        self.hotkeys.rebind(&open_hotkey, &dictate_hotkey)?;
-
-        let persist_result = self
-            .config
-            .update(|cfg| {
-                cfg.save_folder = output_path.clone();
-                cfg.open_scribe_hotkey = open_hotkey.clone();
-                cfg.dictate_hotkey = dictate_hotkey.clone();
-                cfg.input_label = input_label.clone();
-                cfg.output_label = output_label.clone();
-                cfg.preferred_input_device = preferred_input_device.clone();
-                cfg.preferred_speaker_device = preferred_speaker_device.clone();
-                cfg.scribe_capture_speaker = scribe_capture_speaker;
-                cfg.dictate_auto_enter = update.dictate_auto_enter;
-                cfg.keep_wav = update.keep_wav;
-                cfg.save_transcripts_as_markdown = update.save_transcripts_as_markdown;
-                cfg.theme_mode = theme_mode;
-                cfg.open_with_app_path = open_with_app_path.clone();
-            })
-            .map_err(|e| format!("failed to persist general settings: {e}"));
-
-        if persist_result.is_err() {
-            let _ = self.hotkeys.rebind(&previous.0, &previous.1);
-        }
-
-        persist_result
-    }
-
     pub fn permission_statuses(&self) -> Vec<PermissionStatus> {
         self.permissions.statuses()
     }
@@ -372,24 +326,6 @@ impl SettingsController {
             .map_err(|e| format!("failed to persist save_transcripts_as_markdown: {e}"))
     }
 
-    pub fn get_dictate_model_id(&self) -> Option<String> {
-        self.config.get().dictate_model_id
-    }
-
-    pub fn set_dictate_model_id(&self, model_id: Option<String>) -> Result<(), String> {
-        let model_id = model_id.and_then(|id| {
-            let trimmed = id.trim().to_string();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
-        });
-        self.config
-            .update(|cfg| cfg.dictate_model_id = model_id)
-            .map_err(|e| format!("failed to persist dictate_model_id: {e}"))
-    }
-
     pub fn is_onboarding_complete(&self) -> bool {
         self.config.get().onboarding_complete
     }
@@ -404,58 +340,6 @@ impl SettingsController {
         self.config
             .update(|cfg| cfg.onboarding_complete = false)
             .map_err(|e| format!("failed to reset onboarding status: {e}"))
-    }
-
-    pub fn get_replacement_rules(&self) -> Vec<ReplacementRule> {
-        self.config.get().replacement_rules
-    }
-
-    pub fn add_replacement_rule(&self, rule: ReplacementRule) -> Result<(), String> {
-        validate_rule(&rule)?;
-        self.config
-            .update(|cfg| cfg.replacement_rules.push(rule))
-            .map_err(|e| format!("failed to save replacement rule: {e}"))
-    }
-
-    pub fn update_replacement_rule(
-        &self,
-        index: usize,
-        rule: ReplacementRule,
-    ) -> Result<(), String> {
-        validate_rule(&rule)?;
-        let len = self.config.get().replacement_rules.len();
-        if index >= len {
-            return Err(format!(
-                "replacement rule index {index} out of range (len={len})"
-            ));
-        }
-        self.config
-            .update(|cfg| cfg.replacement_rules[index] = rule)
-            .map_err(|e| format!("failed to update replacement rule: {e}"))
-    }
-
-    pub fn delete_replacement_rule(&self, index: usize) -> Result<(), String> {
-        let len = self.config.get().replacement_rules.len();
-        if index >= len {
-            return Err(format!(
-                "replacement rule index {index} out of range (len={len})"
-            ));
-        }
-        self.config
-            .update(|cfg| {
-                cfg.replacement_rules.remove(index);
-            })
-            .map_err(|e| format!("failed to delete replacement rule: {e}"))
-    }
-
-    pub fn get_replacement_prefix(&self) -> String {
-        self.config.get().replacement_prefix.clone()
-    }
-
-    pub fn set_replacement_prefix(&self, prefix: String) -> Result<(), String> {
-        self.config
-            .update(|cfg| cfg.replacement_prefix = prefix)
-            .map_err(|e| format!("failed to persist replacement prefix: {e}"))
     }
 
     pub fn get_user_display_name(&self) -> String {
@@ -517,79 +401,6 @@ impl SettingsController {
             .update(|cfg| cfg.voice_embeddings_encryption_required = required)
             .map_err(|e| format!("failed to persist voice encryption requirement: {e}"))
     }
-}
-
-fn normalize_output_path(output: &OutputService, path: &str) -> Result<String, String> {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return Err("output path cannot be empty.".to_string());
-    }
-
-    let candidate = Path::new(trimmed);
-    if !candidate.is_absolute() {
-        return Err(format!("output path `{trimmed}` must be an absolute path."));
-    }
-
-    if candidate.exists() && !candidate.is_dir() {
-        return Err(format!(
-            "output path `{trimmed}` points to a file; expected a directory."
-        ));
-    }
-
-    output
-        .ensure_output_dir(candidate)
-        .map(|path| path.to_string_lossy().to_string())
-        .map_err(|e| format!("output path `{trimmed}`: {e}"))
-}
-
-fn normalize_input_labels(
-    input_label: &str,
-    output_label: &str,
-) -> Result<(String, String), String> {
-    let input_label = input_label.trim();
-    let output_label = output_label.trim();
-    if input_label.is_empty() || output_label.is_empty() {
-        return Err("labels cannot be empty".to_string());
-    }
-    Ok((input_label.to_string(), output_label.to_string()))
-}
-
-fn normalize_optional_string(value: Option<String>) -> Option<String> {
-    value.and_then(|v| {
-        let trimmed = v.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    })
-}
-
-fn normalize_open_with_app_path(path: Option<String>) -> Result<Option<String>, String> {
-    let Some(path) = normalize_optional_string(path) else {
-        return Ok(None);
-    };
-    let candidate = Path::new(&path);
-    if !candidate.is_absolute() {
-        return Err("app path must be an absolute path".to_string());
-    }
-    if !candidate.exists() {
-        return Err(format!("app path `{path}` does not exist on this system"));
-    }
-    Ok(Some(path))
-}
-
-fn validate_rule(rule: &ReplacementRule) -> Result<(), String> {
-    if rule.trigger.trim().is_empty() {
-        return Err("replacement rule trigger cannot be empty".to_string());
-    }
-    if matches!(rule.rule_type, ReplacementRuleType::Wrap)
-        && rule.prefix.is_empty()
-        && rule.suffix.is_empty()
-    {
-        return Err("wrap rule must have a non-empty prefix or suffix".to_string());
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -747,10 +558,9 @@ mod tests {
         let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
         let ctrl = make_controller(config, None);
 
-        assert!(
-            ctrl.set_input_labels("   ".to_string(), "Speaker".to_string())
-                .is_err()
-        );
+        assert!(ctrl
+            .set_input_labels("   ".to_string(), "Speaker".to_string())
+            .is_err());
     }
 
     #[test]
@@ -831,10 +641,9 @@ mod tests {
         let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
         let ctrl = make_controller(config, None);
 
-        assert!(
-            ctrl.set_voice_embeddings_retention("forever_maybe".to_string())
-                .is_err()
-        );
+        assert!(ctrl
+            .set_voice_embeddings_retention("forever_maybe".to_string())
+            .is_err());
         assert_eq!(
             ctrl.get_voice_embeddings_retention(),
             VoiceEmbeddingsRetention::Keep
@@ -896,133 +705,6 @@ mod tests {
             assert_eq!(open, "CmdOrCtrl+Shift+L");
             assert_eq!(dictate, "Ctrl+D");
         }
-    }
-
-    fn general_update(output_path: String) -> GeneralSettingsUpdate {
-        GeneralSettingsUpdate {
-            output_path,
-            open_hotkey: "CmdOrCtrl+Shift+L".to_string(),
-            dictate_hotkey: "Ctrl+D".to_string(),
-            input_label: "Mic".to_string(),
-            output_label: "Speaker".to_string(),
-            preferred_input_device: None,
-            preferred_speaker_device: None,
-            scribe_capture_speaker: false,
-            speaker_capture_available: true,
-            dictate_auto_enter: false,
-            keep_wav: false,
-            save_transcripts_as_markdown: false,
-            theme_mode: "system".to_string(),
-            open_with_app_path: None,
-        }
-    }
-
-    #[test]
-    fn save_general_settings_persists_all_fields() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config_path = tmp.path().join("config.json");
-        let output_dir = tmp.path().join("out");
-        let app_path = tmp.path().join("open-with");
-        std::fs::write(&app_path, "app").unwrap();
-        let config = ConfigService::load(config_path.clone()).unwrap();
-        let ctrl = make_controller(config, None);
-        let mut update = general_update(output_dir.to_string_lossy().to_string());
-        update.input_label = "  Interviewer  ".to_string();
-        update.output_label = "  Guest  ".to_string();
-        update.preferred_input_device = Some("  Built-in Mic  ".to_string());
-        update.preferred_speaker_device = Some("  BlackHole 2ch  ".to_string());
-        update.scribe_capture_speaker = true;
-        update.dictate_auto_enter = true;
-        update.keep_wav = true;
-        update.save_transcripts_as_markdown = true;
-        update.theme_mode = "dark".to_string();
-        update.open_with_app_path = Some(app_path.to_string_lossy().to_string());
-
-        ctrl.save_general_settings(update)
-            .expect("save general settings");
-
-        let reloaded = ConfigService::load(config_path).unwrap();
-        let cfg = reloaded.get();
-        assert_eq!(cfg.input_label, "Interviewer");
-        assert_eq!(cfg.output_label, "Guest");
-        assert_eq!(cfg.preferred_input_device.as_deref(), Some("Built-in Mic"));
-        assert_eq!(
-            cfg.preferred_speaker_device.as_deref(),
-            Some("BlackHole 2ch")
-        );
-        assert!(cfg.scribe_capture_speaker);
-        assert!(cfg.dictate_auto_enter);
-        assert!(cfg.keep_wav);
-        assert!(cfg.save_transcripts_as_markdown);
-        assert_eq!(cfg.theme_mode, ThemeMode::Dark);
-        assert_eq!(
-            cfg.open_with_app_path.as_deref(),
-            Some(app_path.to_string_lossy().as_ref())
-        );
-    }
-
-    #[test]
-    fn save_general_settings_rejects_invalid_output_path() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
-        let ctrl = make_controller(config, None);
-
-        let err = ctrl
-            .save_general_settings(general_update("relative/path".to_string()))
-            .unwrap_err();
-
-        assert!(err.contains("absolute path"));
-    }
-
-    #[test]
-    fn save_general_settings_rolls_back_hotkey_registration_failure() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config_path = tmp.path().join("config.json");
-        let output_dir = tmp.path().join("out");
-        let config = ConfigService::load(config_path.clone()).unwrap();
-        let ctrl = make_controller(config, Some("CmdOrCtrl+P".to_string()));
-        let mut update = general_update(output_dir.to_string_lossy().to_string());
-        update.open_hotkey = "CmdOrCtrl+P".to_string();
-
-        let err = ctrl.save_general_settings(update).unwrap_err();
-
-        assert!(err.contains("mock register failure"));
-        let reloaded = ConfigService::load(config_path).unwrap();
-        let cfg = reloaded.get();
-        assert_eq!(
-            cfg.open_scribe_hotkey,
-            crate::types::Config::default().open_scribe_hotkey
-        );
-    }
-
-    #[test]
-    fn save_general_settings_rejects_invalid_open_with_path() {
-        let tmp = tempfile::tempdir().unwrap();
-        let output_dir = tmp.path().join("out");
-        let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
-        let ctrl = make_controller(config, None);
-        let mut update = general_update(output_dir.to_string_lossy().to_string());
-        update.open_with_app_path =
-            Some(tmp.path().join("missing-app").to_string_lossy().to_string());
-
-        let err = ctrl.save_general_settings(update).unwrap_err();
-
-        assert!(err.contains("does not exist"));
-    }
-
-    #[test]
-    fn save_general_settings_forces_speaker_capture_off_when_unavailable() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
-        let ctrl = make_controller(config, None);
-        let mut update = general_update(tmp.path().join("out").to_string_lossy().to_string());
-        update.scribe_capture_speaker = true;
-        update.speaker_capture_available = false;
-
-        ctrl.save_general_settings(update)
-            .expect("save general settings");
-
-        assert!(!ctrl.get_scribe_capture_speaker());
     }
 
     #[test]

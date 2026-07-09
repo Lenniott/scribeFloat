@@ -1,6 +1,6 @@
 use crate::types::{
-    DictateHistoryEntry, Note, RecoverySessionInfo, ReplacementRule, ReplacementScope,
-    ScribeTranscriptEntry, Segment, SessionManifest, SpeakerBlock,
+    DictateHistoryEntry, Note, RecoverySessionInfo, ScribeTranscriptEntry, Segment,
+    SessionManifest, SpeakerBlock,
 };
 use anyhow::{anyhow, Context, Result};
 use std::path::{Path, PathBuf};
@@ -11,7 +11,6 @@ mod dedup;
 pub mod hallucination;
 mod legacy;
 mod render;
-mod replacements;
 mod session;
 pub mod wav;
 
@@ -75,28 +74,20 @@ impl OutputService {
         wav::write_wav(pcm, sample_rate, dest)
     }
 
-    /// Join segments, clean Whisper artifacts, apply replacement rules, and return the final
-    /// text ready for pasting. Scope applied: Dictate.
-    pub fn format_dictate_text(
-        &self,
-        segments: &[Segment],
-        rules: &[ReplacementRule],
-        prefix: &str,
-    ) -> String {
+    /// Join segments, clean Whisper artifacts, and return the final text ready for pasting.
+    pub fn format_dictate_text(&self, segments: &[Segment]) -> String {
         let joined = segments
             .iter()
             .map(|s| cleanup::cleanup_text(s.text.trim()))
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
             .join(" ");
-        let deduped = dedup::dedup_repeated_block(&dedup::dedup_consecutive_phrases(
+        dedup::dedup_repeated_block(&dedup::dedup_consecutive_phrases(
             &dedup::dedup_exact_halves(&joined),
-        ));
-        replacements::apply_replacements(&deduped, rules, &ReplacementScope::Dictate, prefix)
+        ))
     }
 
     /// Render segments as markdown and write. Verifies file is non-empty before returning Ok.
-    #[allow(clippy::too_many_arguments)]
     pub fn write_transcript(
         &self,
         segments: &[Segment],
@@ -104,8 +95,6 @@ impl OutputService {
         title: &str,
         model_name: &str,
         include_timestamps: bool,
-        rules: &[ReplacementRule],
-        prefix: &str,
         dest: &Path,
     ) -> Result<PathBuf> {
         let md = render::render_transcript_markdown(
@@ -114,8 +103,6 @@ impl OutputService {
             title,
             model_name,
             include_timestamps,
-            rules,
-            prefix,
         );
         std::fs::write(dest, &md).context("failed to write transcript")?;
         if std::fs::metadata(dest)?.len() == 0 {
@@ -124,19 +111,16 @@ impl OutputService {
         Ok(dest.to_path_buf())
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn write_speaker_blocks_transcript(
         &self,
         blocks: &[SpeakerBlock],
         title: &str,
         model_name: &str,
-        rules: &[ReplacementRule],
-        prefix: &str,
         input_label: &str,
         output_label: &str,
         dest: &Path,
     ) -> Result<PathBuf> {
-        let body = render::render_speaker_blocks_body(blocks, rules, prefix, input_label, output_label);
+        let body = render::render_speaker_blocks_body(blocks, input_label, output_label);
         let word_count = body.split_whitespace().count();
         let mut md = String::new();
         md.push_str("---\n");
@@ -277,23 +261,7 @@ impl OutputService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{
-        Note, ReplacementRule, ReplacementRuleType, ReplacementScope, Segment, SegmentSource,
-        SessionManifest, SessionManifestState, WordTransform,
-    };
-
-    fn simple_rule(trigger: &str, output: &str, scope: ReplacementScope) -> ReplacementRule {
-        ReplacementRule {
-            trigger: trigger.to_string(),
-            aliases: vec![],
-            rule_type: ReplacementRuleType::Simple,
-            output: output.to_string(),
-            scope,
-            prefix: String::new(),
-            suffix: String::new(),
-            transform: WordTransform::None,
-        }
-    }
+    use crate::types::{Note, Segment, SegmentSource, SessionManifest, SessionManifestState};
 
     fn temp_file(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("output-mod-tests-{}", uuid::Uuid::new_v4()));
@@ -383,7 +351,7 @@ mod tests {
             text: "hello world".to_string(),
             source: None,
         }];
-        svc.write_transcript(&segments, &[], "Test", "tiny", true, &[], "", &file)
+        svc.write_transcript(&segments, &[], "Test", "tiny", true, &file)
             .expect("write transcript");
         let content = std::fs::read_to_string(&file).expect("read transcript");
         assert!(content.contains("[00:00:12] hello world"));
@@ -399,7 +367,7 @@ mod tests {
             text: "hello world".to_string(),
             source: None,
         }];
-        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &file)
             .expect("write transcript");
         let content = std::fs::read_to_string(&file).expect("read transcript");
         assert!(content.contains("hello world"));
@@ -430,7 +398,7 @@ mod tests {
                 source: Some(SegmentSource::Speaker),
             },
         ];
-        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &file)
             .expect("write");
         let content = std::fs::read_to_string(&file).expect("read");
         assert!(
@@ -467,7 +435,7 @@ mod tests {
                 source: Some(SegmentSource::Mic),
             },
         ];
-        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &file)
             .expect("write");
         let content = std::fs::read_to_string(&file).expect("read");
         assert!(
@@ -489,16 +457,16 @@ mod tests {
                 start_ms: 0,
                 end_ms: 2_000,
                 text: "First thought.".to_string(),
-            source: None,
+                source: None,
             },
             Segment {
                 start_ms: 12_000,
                 end_ms: 14_000,
                 text: "Second thought.".to_string(),
-            source: None,
+                source: None,
             },
         ];
-        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &file)
             .expect("write");
         let content = std::fs::read_to_string(&file).expect("read");
         assert!(
@@ -516,16 +484,16 @@ mod tests {
                 start_ms: 0,
                 end_ms: 500,
                 text: "Hello".to_string(),
-            source: None,
+                source: None,
             },
             Segment {
                 start_ms: 700,
                 end_ms: 1_200,
                 text: "world.".to_string(),
-            source: None,
+                source: None,
             },
         ];
-        svc.write_transcript(&segments, &[], "Test", "tiny", false, &[], "", &file)
+        svc.write_transcript(&segments, &[], "Test", "tiny", false, &file)
             .expect("write");
         let content = std::fs::read_to_string(&file).expect("read");
         assert!(
@@ -544,10 +512,10 @@ mod tests {
             text: "hello world".to_string(),
             source: None,
         }];
-        svc.write_transcript(&segments, &[], "T", "tiny", false, &[], "", &file)
+        svc.write_transcript(&segments, &[], "T", "tiny", false, &file)
             .expect("write");
         let on_disk = std::fs::read_to_string(&file).expect("read");
-        let pure = render::render_transcript_markdown(&segments, &[], "T", "tiny", false, &[], "");
+        let pure = render::render_transcript_markdown(&segments, &[], "T", "tiny", false);
         assert_eq!(on_disk, pure);
     }
 
@@ -781,19 +749,24 @@ mod tests {
         assert_eq!(entries[0].model, "small");
     }
 
-    // ── simple_rule is used in a test here too ────────────────────────────────
-
     #[test]
-    fn format_dictate_text_applies_rules() {
+    fn format_dictate_text_cleans_and_joins_segments() {
         let svc = OutputService;
-        let segments = vec![Segment {
-            start_ms: 0,
-            end_ms: 1_000,
-            text: "hello dash world".to_string(),
-            source: None,
-        }];
-        let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
-        let result = svc.format_dictate_text(&segments, &rules, "");
-        assert_eq!(result, "hello - world");
+        let segments = vec![
+            Segment {
+                start_ms: 0,
+                end_ms: 1_000,
+                text: " hello world ".to_string(),
+                source: None,
+            },
+            Segment {
+                start_ms: 1_000,
+                end_ms: 2_000,
+                text: "again".to_string(),
+                source: None,
+            },
+        ];
+        let result = svc.format_dictate_text(&segments);
+        assert_eq!(result, "hello world again");
     }
 }

@@ -1,20 +1,16 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
-pub(crate) static CAPS_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[[A-Z][A-Za-z_ ]*\]").expect("static regex")
-});
+pub(crate) static CAPS_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[[A-Z][A-Za-z_ ]*\]").expect("static regex"));
 
 pub(crate) static NOISE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)\[(silence|blank_audio|no_speech|music|applause|laughter|noise|inaudible)\]",
-    )
-    .expect("static regex")
+    Regex::new(r"(?i)\[(silence|blank_audio|no_speech|music|applause|laughter|noise|inaudible)\]")
+        .expect("static regex")
 });
 
-pub(crate) static FUSION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(#\w+?)(newline)").expect("static regex")
-});
+pub(crate) static FUSION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)(#\w+?)(newline)").expect("static regex"));
 
 /// Strip Whisper artifact annotations and normalize whitespace from a single segment.
 /// Always-on — these are never valid speech output.

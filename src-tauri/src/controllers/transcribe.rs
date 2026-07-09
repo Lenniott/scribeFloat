@@ -4,11 +4,10 @@ use crate::services::config::ConfigService;
 use crate::services::history::{strip_voice_embeddings, HistoryService};
 use crate::services::model::ModelService;
 use crate::services::output::OutputService;
-use crate::services::transcription::{
-    analyze_capture_speakers, transcribe_capture, CaptureAudio, SpeakerEvidence,
-    TranscribeOptions,
-};
 use crate::services::transcribe_input::{TranscribeInputItem, TranscribeInputService};
+use crate::services::transcription::{
+    analyze_capture_speakers, transcribe_capture, CaptureAudio, SpeakerEvidence, TranscribeOptions,
+};
 use crate::services::voiceprint::VoiceprintService;
 use crate::types::{
     Config, HistoryRecord, ProcessingStage, TranscribeItemStatus, TranscribeQueueItem,
@@ -130,8 +129,6 @@ impl TranscribeController {
             });
         }
 
-        let replacement_rules = cfg.replacement_rules.clone();
-        let replacement_prefix = cfg.replacement_prefix.clone();
         tauri::async_runtime::spawn(async move {
             let ctrl = Arc::clone(&this);
             let result = tokio::task::spawn_blocking(move || {
@@ -141,8 +138,6 @@ impl TranscribeController {
                     &model_name,
                     &output_folder,
                     include_timestamps,
-                    &replacement_rules,
-                    &replacement_prefix,
                     &mut queue,
                 )
             })
@@ -206,7 +201,6 @@ impl TranscribeController {
             .open_file_for_user(canonical.to_string_lossy().as_ref(), open_with.as_deref())
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn run_batch(
         &self,
         inputs: Vec<TranscribeInputItem>,
@@ -214,8 +208,6 @@ impl TranscribeController {
         model_name: &str,
         output_folder: &Path,
         include_timestamps: bool,
-        replacement_rules: &[crate::types::ReplacementRule],
-        replacement_prefix: &str,
         queue: &mut [TranscribeQueueItem],
     ) -> Result<Vec<TranscribeQueueItem>, String> {
         // Snapshot once: history records always go to the save folder; `.md` is opt-in (and may
@@ -338,8 +330,6 @@ impl TranscribeController {
                         &input.display_name,
                         model_name,
                         include_timestamps,
-                        replacement_rules,
-                        replacement_prefix,
                         &transcript_dest,
                     )
                 } else {
@@ -348,8 +338,6 @@ impl TranscribeController {
                         &speaker_blocks,
                         &input.display_name,
                         model_name,
-                        replacement_rules,
-                        replacement_prefix,
                         &cfg.input_label,
                         &cfg.output_label,
                         &transcript_dest,
@@ -380,8 +368,6 @@ impl TranscribeController {
                 input.display_name.clone(),
                 model_name.to_string(),
                 segments.clone(),
-                replacement_rules,
-                replacement_prefix,
                 dual_source,
                 input.source_path.to_string_lossy().into_owned(),
                 markdown_path
@@ -606,12 +592,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let model_svc = ModelService::new(tmp.path().to_path_buf());
         let config = Config {
-            selected_model_id: Some("base-en-q5".to_string()),
+            selected_model_id: None,
             ..Config::default()
         };
-        // explicit id "tiny-en-q5" — path doesn't exist but model_path_for_id still returns it
-        let path = resolve_model_path(&config, &model_svc, Some("tiny-en-q5"));
-        assert!(path.to_string_lossy().contains("tiny"));
+        // explicit id — path doesn't exist but model_path_for_id still returns it
+        let path = resolve_model_path(&config, &model_svc, Some("small-en-q5"));
+        assert!(path.to_string_lossy().contains("small"));
     }
 
     #[test]
@@ -619,11 +605,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let model_svc = ModelService::new(tmp.path().to_path_buf());
         let config = Config {
-            selected_model_id: Some("base-en-q5".to_string()),
+            selected_model_id: Some("small-en-q5".to_string()),
             ..Config::default()
         };
         let path = resolve_model_path(&config, &model_svc, None);
-        assert!(path.to_string_lossy().contains("base"));
+        assert!(path.to_string_lossy().contains("small"));
     }
 
     #[test]

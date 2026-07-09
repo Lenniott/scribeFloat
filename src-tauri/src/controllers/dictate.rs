@@ -7,9 +7,7 @@ use crate::services::{
     model::ModelService,
     output::OutputService,
 };
-use crate::types::{
-    Config, DictateState, DictateStateEvent, HistoryRecord, ProcessingStage,
-};
+use crate::types::{Config, DictateState, DictateStateEvent, HistoryRecord, ProcessingStage};
 use anyhow::{anyhow, Result};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -291,18 +289,12 @@ impl DictateController {
     }
 
     fn arm_key_tracker_toggle(&self) {
-        let mut tracker = self
-            .key_tracker
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let mut tracker = self.key_tracker.lock().unwrap_or_else(|p| p.into_inner());
         tracker.arm_ui_toggle(Instant::now());
     }
 
     fn reset_key_tracker(&self) {
-        let mut tracker = self
-            .key_tracker
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let mut tracker = self.key_tracker.lock().unwrap_or_else(|p| p.into_inner());
         tracker.reset_to_idle();
     }
 
@@ -741,9 +733,10 @@ impl DictateController {
                     },
                 )
                 .ok();
-            let session = inner.session.take().ok_or_else(|| {
-                anyhow!("session missing in Recording state")
-            })?;
+            let session = inner
+                .session
+                .take()
+                .ok_or_else(|| anyhow!("session missing in Recording state"))?;
             inner.processing_wav_path = Some(session.mic.wav_path().to_path_buf());
             session
         };
@@ -868,11 +861,7 @@ impl DictateController {
             return Ok(false);
         }
 
-        let text = self.output.format_dictate_text(
-            &segments,
-            &config.replacement_rules,
-            &config.replacement_prefix,
-        );
+        let text = self.output.format_dictate_text(&segments);
 
         if abort_flag.load(Ordering::SeqCst) {
             self.delete_dictate_wav(&wav_path);
@@ -1167,14 +1156,6 @@ fn dictate_temp_wav_path(app: &AppHandle) -> Result<PathBuf> {
 }
 
 fn resolve_dictate_model_path(config: &Config, model: &ModelService) -> PathBuf {
-    if let Some(id) = &config.dictate_model_id {
-        if let Some(path) = model.model_path_for_id(id) {
-            if model.model_available(&path) {
-                return path;
-            }
-        }
-    }
-
     if let Some(id) = &config.selected_model_id {
         if let Some(path) = model.model_path_for_id(id) {
             if model.model_available(&path) {
@@ -1225,79 +1206,45 @@ mod tests {
     }
 
     #[test]
-    fn dictate_preload_path_prefers_dictate_model_id_over_global() {
+    fn dictate_preload_path_uses_selected_model_id() {
         let model = fake_model_service();
-        write_fake_model(model.as_ref(), "tiny-en-q5");
-        write_fake_model(model.as_ref(), "small-en-q5");
+        let small_path = write_fake_model(model.as_ref(), "small-en-q5");
         let config = Config {
-            dictate_model_id: Some("tiny-en-q5".to_string()),
             selected_model_id: Some("small-en-q5".to_string()),
             ..Config::default()
         };
         let path = preload_path_for_dictate(&config, model.as_ref());
-        assert!(path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap()
-            .contains("tiny"));
-    }
-
-    #[test]
-    fn dictate_preload_path_falls_back_to_selected_when_no_dictate_override() {
-        let model = fake_model_service();
-        let base_path = write_fake_model(model.as_ref(), "base-en-q5");
-        let config = Config {
-            selected_model_id: Some("base-en-q5".to_string()),
-            ..Config::default()
-        };
-        let path = preload_path_for_dictate(&config, model.as_ref());
-        assert_eq!(path, base_path);
-    }
-
-    #[test]
-    fn dictate_preload_path_returns_catalog_path_for_larger_models() {
-        let model = fake_model_service();
-        for id in ["small-en-q5", "medium-en-q5", "large-v3-turbo-q5"] {
-            let expected = write_fake_model(model.as_ref(), id);
-            let config = Config {
-                dictate_model_id: Some(id.to_string()),
-                ..Config::default()
-            };
-            assert_eq!(
-                preload_path_for_dictate(&config, model.as_ref()),
-                expected,
-                "{id} should preload"
-            );
-        }
+        assert_eq!(path, small_path);
     }
 
     #[test]
     fn dictate_preload_path_falls_back_to_scribe_model_path() {
         let model = fake_model_service();
-        let tiny_path = write_fake_model(model.as_ref(), "tiny-en-q5");
+        let custom_path = model.default_model_path().with_file_name("custom.bin");
+        std::fs::write(&custom_path, [1, 2, 3]).expect("write model");
         let config = Config {
-            scribe_model_path: Some(tiny_path.to_string_lossy().to_string()),
+            scribe_model_path: Some(custom_path.to_string_lossy().to_string()),
             ..Config::default()
         };
 
         let path = preload_path_for_dictate(&config, model.as_ref());
 
-        assert_eq!(path, tiny_path);
+        assert_eq!(path, custom_path);
     }
 
     #[test]
-    fn dictate_preload_path_ignores_missing_dictate_override() {
+    fn dictate_preload_path_ignores_selection_pointing_at_removed_catalog_entry() {
         let model = fake_model_service();
-        let base_path = write_fake_model(model.as_ref(), "base-en-q5");
+        let small_path = write_fake_model(model.as_ref(), "small-en-q5");
         let config = Config {
-            dictate_model_id: Some("tiny-en-q5".to_string()),
-            selected_model_id: Some("base-en-q5".to_string()),
+            selected_model_id: Some("tiny-en-q5".to_string()),
+            scribe_model_path: Some(small_path.to_string_lossy().to_string()),
             ..Config::default()
         };
 
         let path = preload_path_for_dictate(&config, model.as_ref());
 
-        assert_eq!(path, base_path);
+        assert_eq!(path, small_path);
     }
 
     // ── First press behaviour ────────────────────────────────────────────────

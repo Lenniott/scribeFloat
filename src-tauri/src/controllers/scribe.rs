@@ -86,7 +86,6 @@ enum ProgressMessage {
     Finished,
 }
 
-
 struct Inner {
     state: ScribeState,
     session: Option<ActiveSession>,
@@ -1050,8 +1049,6 @@ impl ScribeController {
                     title,
                     &model_name,
                     config.include_timestamps,
-                    &config.replacement_rules,
-                    &config.replacement_prefix,
                     dest,
                 )?;
             } else {
@@ -1059,8 +1056,6 @@ impl ScribeController {
                     speaker_blocks,
                     title,
                     &model_name,
-                    &config.replacement_rules,
-                    &config.replacement_prefix,
                     &config.input_label,
                     &config.output_label,
                     dest,
@@ -1090,8 +1085,6 @@ impl ScribeController {
             model_name.clone(),
             segments.to_vec(),
             notes.to_vec(),
-            &config.replacement_rules,
-            &config.replacement_prefix,
             speaker_capture,
             dual_source,
             session_dir.clone(),
@@ -1651,12 +1644,12 @@ mod tests {
             std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
         let model = ModelService::new(models_dir.clone());
         let config = Config {
-            selected_model_id: Some("tiny-en-q5".to_string()),
+            selected_model_id: Some("small-en-q5".to_string()),
             ..Config::default()
         };
 
         let chosen = resolve_model_path(&config, model.as_ref());
-        assert_eq!(chosen, models_dir.join("ggml-tiny.en-q5_1.bin"));
+        assert_eq!(chosen, models_dir.join(SMALL_MODEL_FILENAME));
     }
 
     #[test]
@@ -1697,28 +1690,22 @@ mod tests {
     }
 
     #[test]
-    fn preload_path_returns_catalog_path_for_all_models() {
+    fn preload_path_returns_catalog_path_for_bundled_model() {
         let models_dir =
             std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
         let model = ModelService::new(models_dir.clone());
-        for id in [
-            "tiny-en-q5",
-            "base-en-q5",
-            "small-en-q5",
-            "medium-en-q5",
-            "large-v3-turbo-q5",
-        ] {
-            let config = Config {
-                selected_model_id: Some(id.to_string()),
-                ..Config::default()
-            };
-            let p = preload_path_for_config(&config, model.as_ref());
-            assert_eq!(p, model.model_path_for_id(id).expect("catalog path"));
-            assert!(
-                p.starts_with(&models_dir),
-                "{id} preload path under models dir"
-            );
-        }
+        let config = Config {
+            selected_model_id: Some("small-en-q5".to_string()),
+            ..Config::default()
+        };
+        let p = preload_path_for_config(&config, model.as_ref());
+        assert_eq!(
+            p,
+            model
+                .model_path_for_id("small-en-q5")
+                .expect("catalog path")
+        );
+        assert!(p.starts_with(&models_dir), "preload path under models dir");
     }
 
     #[test]

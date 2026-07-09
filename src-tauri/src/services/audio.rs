@@ -274,7 +274,9 @@ fn resolve_input_device(
             .default_input_device()
             .ok_or_else(|| anyhow!("no default input device"))?,
     };
-    let device_name = device.name().unwrap_or_else(|_| "System Default".to_string());
+    let device_name = device
+        .name()
+        .unwrap_or_else(|_| "System Default".to_string());
     Ok((device, device_name))
 }
 
@@ -731,8 +733,7 @@ mod tests {
             tap_sink.lock().unwrap().extend_from_slice(pcm);
         });
 
-        let handle =
-            spawn_writer_thread(streaming, receiver, Arc::clone(&stop_signal), Some(tap));
+        let handle = spawn_writer_thread(streaming, receiver, Arc::clone(&stop_signal), Some(tap));
 
         // 100 ms of a 0.25 DC signal at a 48 kHz native rate → 1 600 samples at 16 kHz.
         sender
@@ -747,8 +748,16 @@ mod tests {
 
         let tapped = tapped.lock().unwrap();
         let wav = read_wav_mono_f32(&path).expect("read wav");
-        assert_eq!(tapped.len(), wav.len(), "tap and WAV must see the same samples");
-        assert!(tapped.len() >= 1_500, "expected ~1600 samples, got {}", tapped.len());
+        assert_eq!(
+            tapped.len(),
+            wav.len(),
+            "tap and WAV must see the same samples"
+        );
+        assert!(
+            tapped.len() >= 1_500,
+            "expected ~1600 samples, got {}",
+            tapped.len()
+        );
         for (tap_sample, wav_sample) in tapped.iter().zip(wav.iter()) {
             assert!(
                 (tap_sample - wav_sample).abs() < 1e-3,
@@ -802,7 +811,10 @@ mod tests {
         let wav = session.stop_and_finalize().expect("finalize");
         let pcm = read_wav_mono_f32(&wav).expect("read wav");
         let rms: f32 = (pcm.iter().map(|s| s * s).sum::<f32>() / pcm.len() as f32).sqrt();
-        assert!(rms > 1e-4, "captured audio is silent (rms={rms:.6}) — is the mic live?");
+        assert!(
+            rms > 1e-4,
+            "captured audio is silent (rms={rms:.6}) — is the mic live?"
+        );
         let _ = std::fs::remove_file(wav);
     }
 

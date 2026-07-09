@@ -145,13 +145,7 @@ impl HistoryController {
     ) -> Result<(), String> {
         let cfg = self.config.get();
         self.history
-            .attach_transcript(
-                &cfg.save_folder,
-                id,
-                attachment,
-                &cfg.replacement_rules,
-                &cfg.replacement_prefix,
-            )
+            .attach_transcript(&cfg.save_folder, id, attachment)
             .map_err(|e| e.to_string())
     }
 
@@ -284,14 +278,10 @@ impl HistoryController {
             Ok(output::render_transcript_body(
                 &record.segments,
                 cfg.include_timestamps,
-                &cfg.replacement_rules,
-                &cfg.replacement_prefix,
             ))
         } else {
             Ok(output::render_speaker_blocks_body(
                 &speaker_blocks,
-                &cfg.replacement_rules,
-                &cfg.replacement_prefix,
                 &input_label,
                 &output_label,
             ))
@@ -332,8 +322,6 @@ impl HistoryController {
                 &record.title,
                 &record.model,
                 cfg.include_timestamps,
-                &cfg.replacement_rules,
-                &cfg.replacement_prefix,
                 &dest,
             )
         } else {
@@ -341,8 +329,6 @@ impl HistoryController {
                 &speaker_blocks,
                 &record.title,
                 &record.model,
-                &cfg.replacement_rules,
-                &cfg.replacement_prefix,
                 &input_label,
                 &output_label,
                 &dest,
@@ -570,8 +556,6 @@ mod tests {
             "tiny".to_string(),
             seg("hello"),
             Vec::<Note>::new(),
-            &[],
-            "",
             true,
             true,
             Some(session_dir.to_string_lossy().into_owned()),
@@ -625,8 +609,6 @@ mod tests {
             "tiny".to_string(),
             seg("hello"),
             Vec::<Note>::new(),
-            &[],
-            "",
             false,
             false,
             None,
@@ -650,8 +632,6 @@ mod tests {
             "tiny".to_string(),
             seg("hello world"),
             vec![],
-            &[],
-            "",
             false,
             false,
             None,
@@ -690,8 +670,6 @@ mod tests {
             "tiny".to_string(),
             seg("Hello world"),
             Vec::<Note>::new(),
-            &[],
-            "",
             false,
             false,
             None,

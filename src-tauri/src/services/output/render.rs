@@ -1,9 +1,8 @@
 use crate::services::speaker_blocks::display_block_label;
-use crate::types::{Note, ReplacementRule, ReplacementScope, Segment, SegmentSource, SpeakerBlock};
+use crate::types::{Note, Segment, SegmentSource, SpeakerBlock};
 
 use super::cleanup::cleanup_text;
 use super::dedup::{dedup_consecutive_phrases, dedup_repeated_block};
-use super::replacements::apply_replacements;
 
 fn segment_channel_key(source: Option<SegmentSource>) -> &'static str {
     match source {
@@ -23,16 +22,11 @@ fn format_ms(ms: i64) -> String {
     )
 }
 
-/// Group segments into paragraphs and render the transcript body (after replacement rules).
+/// Group segments into paragraphs and render the transcript body.
 /// Consecutive same-source segments separated by less than 8 s merge into one paragraph;
 /// mic and speaker sources never merge. Shared by the markdown writer,
 /// on-demand export/preview, and word counting.
-pub fn render_transcript_body(
-    segments: &[Segment],
-    include_timestamps: bool,
-    rules: &[ReplacementRule],
-    prefix: &str,
-) -> String {
+pub fn render_transcript_body(segments: &[Segment], include_timestamps: bool) -> String {
     const MERGE_GAP_MS: i64 = 8_000;
     struct Group {
         start_ms: i64,
@@ -64,27 +58,24 @@ pub fn render_transcript_body(
             }),
         }
     }
-    let raw_body = {
-        let mut out = String::new();
-        for (i, g) in groups.iter().enumerate() {
-            if i > 0 {
-                out.push_str("\n\n");
-            }
-            let text = g.parts.join(" ");
-            if include_timestamps {
-                out.push_str(&format!("[{}] {}", format_ms(g.start_ms), text));
-            } else {
-                out.push_str(&text);
-            }
+    let mut out = String::new();
+    for (i, g) in groups.iter().enumerate() {
+        if i > 0 {
+            out.push_str("\n\n");
         }
-        out
-    };
-    apply_replacements(&raw_body, rules, &ReplacementScope::Transcripts, prefix)
+        let text = g.parts.join(" ");
+        if include_timestamps {
+            out.push_str(&format!("[{}] {}", format_ms(g.start_ms), text));
+        } else {
+            out.push_str(&text);
+        }
+    }
+    out
 }
 
 /// Count words in the rendered transcript body, excluding timestamp labels.
-pub fn count_words(segments: &[Segment], rules: &[ReplacementRule], prefix: &str) -> usize {
-    render_transcript_body(segments, false, rules, prefix)
+pub fn count_words(segments: &[Segment]) -> usize {
+    render_transcript_body(segments, false)
         .split_whitespace()
         .count()
 }
@@ -98,8 +89,6 @@ fn format_speaker_time(ms: Option<u64>) -> Option<String> {
 
 pub fn render_speaker_blocks_body(
     blocks: &[SpeakerBlock],
-    rules: &[ReplacementRule],
-    prefix: &str,
     input_label: &str,
     output_label: &str,
 ) -> String {
@@ -124,7 +113,7 @@ pub fn render_speaker_blocks_body(
         out.push_str("\n\n");
         out.push_str(&deduped);
     }
-    apply_replacements(&out, rules, &ReplacementScope::Transcripts, prefix)
+    out
 }
 
 /// Render a complete transcript markdown document (YAML front matter + `## Transcript` +
@@ -135,16 +124,14 @@ pub fn render_transcript_markdown(
     title: &str,
     model_name: &str,
     include_timestamps: bool,
-    rules: &[ReplacementRule],
-    prefix: &str,
 ) -> String {
-    let transcript_body = render_transcript_body(segments, include_timestamps, rules, prefix);
+    let transcript_body = render_transcript_body(segments, include_timestamps);
 
     let duration_seconds = segments
         .last()
         .map(|s| s.end_ms.max(0) as f64 / 1000.0)
         .unwrap_or(0.0);
-    let word_count = count_words(segments, rules, prefix);
+    let word_count = count_words(segments);
     let token_estimate = ((word_count as f64) * 1.3).round() as usize;
 
     let mut md = String::new();
@@ -177,22 +164,7 @@ pub fn render_transcript_markdown(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{
-        Note, ReplacementRule, ReplacementRuleType, ReplacementScope, WordTransform,
-    };
-
-    fn simple_rule(trigger: &str, output: &str, scope: ReplacementScope) -> ReplacementRule {
-        ReplacementRule {
-            trigger: trigger.to_string(),
-            aliases: vec![],
-            rule_type: ReplacementRuleType::Simple,
-            output: output.to_string(),
-            scope,
-            prefix: String::new(),
-            suffix: String::new(),
-            transform: WordTransform::None,
-        }
-    }
+    use crate::types::Note;
 
     #[test]
     fn format_ms_zero() {
@@ -227,7 +199,7 @@ mod tests {
             text: "hello world".to_string(),
             source: None,
         }];
-        assert_eq!(count_words(&segments, &[], ""), 2);
+        assert_eq!(count_words(&segments), 2);
     }
 
     #[test]
@@ -240,7 +212,7 @@ mod tests {
             text: "[MUSIC] hello hello world".to_string(),
             chunk_id: None,
         }];
-        let body = render_speaker_blocks_body(&blocks, &[], "", "Input", "Output");
+        let body = render_speaker_blocks_body(&blocks, "Input", "Output");
         assert!(
             body.contains("hello world"),
             "expected deduped text, got: {body}"
@@ -252,12 +224,12 @@ mod tests {
     }
 
     #[test]
-    fn render_transcript_markdown_golden_dual_source_notes_rules_timestamps() {
+    fn render_transcript_markdown_golden_dual_source_notes_timestamps() {
         let segments = vec![
             Segment {
                 start_ms: 0,
                 end_ms: 1_000,
-                text: "hello dash world".to_string(),
+                text: "hello brave world".to_string(),
                 source: Some(SegmentSource::Mic),
             },
             Segment {
@@ -278,9 +250,7 @@ mod tests {
             text: "follow up".to_string(),
             recorded_at_ms: 2_000,
         }];
-        let rules = vec![simple_rule("dash", "-", ReplacementScope::Both)];
-        let md =
-            render_transcript_markdown(&segments, &notes, "My Title", "tiny", true, &rules, "");
+        let md = render_transcript_markdown(&segments, &notes, "My Title", "tiny", true);
         let expected = "---\n\
 title: 'My Title'\n\
 duration_seconds: 4.0\n\
@@ -289,7 +259,7 @@ token_estimate: 12\n\
 model: tiny\n\
 ---\n\n\
 ## Transcript\n\n\
-[00:00:00] hello - world\n\n\
+[00:00:00] hello brave world\n\n\
 [00:00:01] How are you? I am well.\n\n\
 ## Notes\n\
 [1] (00:00:02) follow up\n\n";

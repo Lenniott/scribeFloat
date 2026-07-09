@@ -21,25 +21,6 @@ export type UpdateCheckResult = {
 	release_notes: string;
 };
 
-export type ModelListItem = {
-	id: string;
-	label: string;
-	file_name: string;
-	downloaded: boolean;
-	selected: boolean;
-	size_mb: number;
-	wer: number;
-	/** Real-time factor (higher = faster); null when not benchmarked. */
-	rtfx: number | null;
-};
-
-export type ModelProgressPayload = {
-	model_id: string;
-	progress: number;
-	bytes_downloaded: number;
-	total_bytes?: number;
-};
-
 export type PermissionStatus = {
 	kind: string;
 	granted: boolean;

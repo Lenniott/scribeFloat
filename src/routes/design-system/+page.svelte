@@ -41,7 +41,6 @@
   import WelcomeStep from "@sections/onboarding/WelcomeStep.svelte";
   import FeatureTourStep from "@sections/onboarding/FeatureTourStep.svelte";
   import PermissionsStep from "@sections/onboarding/PermissionsStep.svelte";
-  import ModelDownloadStep from "@sections/onboarding/ModelDownloadStep.svelte";
   import DictatePracticeStep from "@sections/onboarding/DictatePracticeStep.svelte";
   import AppSidebar, { type AppRoute } from "@regions/AppSidebar.svelte";
   import SettingsSidebar from "@regions/SettingsSidebar.svelte";
@@ -1013,12 +1012,6 @@
         <p class="sf-section-label text-fg-dim mb-3">PermissionsStep</p>
         <div class="h-[28rem] overflow-hidden rounded-md border border-rim bg-panel p-6">
           <PermissionsStep onBack={() => {}} onNext={() => {}} />
-        </div>
-      </div>
-      <div>
-        <p class="sf-section-label text-fg-dim mb-3">ModelDownloadStep</p>
-        <div class="h-[28rem] overflow-hidden rounded-md border border-rim bg-panel p-6">
-          <ModelDownloadStep onNext={() => {}} />
         </div>
       </div>
       <div>

@@ -2,26 +2,22 @@
 	import { onMount } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import SettingGeneral from '@views/setting_general.svelte';
+	import SettingAdvanced from '@views/setting_advanced.svelte';
 	import SettingPermissions from '@views/setting_permissions.svelte';
-	import SettingModels from '@views/setting_models.svelte';
 	import SettingVoice from '@views/setting_voice.svelte';
 	import SettingHelp from '@views/setting_help.svelte';
-	import SettingReplace from '@views/setting_replace.svelte';
 	import ScrollablePanel from '@primitives/layout/ScrollBody.svelte';
 	import { isWindows } from '@utils/platform';
 	import { appState } from '@stores/appState.svelte';
-	import { appErrorMessage, type PermissionStatus, type ModelListItem } from '@utils/types';
+	import type { PermissionStatus } from '@utils/types';
 	import type { SettingsTab } from './settingsTypes';
 
 	let permissionsKnown = $state(false);
-	let modelKnown = $state(false);
 	let permissionsReady = $state(false);
-	let modelReady = $state(false);
 	let speakerCaptureKnown = $state(false);
 	let speakerCaptureRequiresDeviceName = $state(false);
 	let blackholeDetected = $state(false);
 	let savedSpeakerDeviceName = $state('');
-	let setupError = $state('');
 
 	const showSpeakerNameWarning = $derived(
 		speakerCaptureRequiresDeviceName &&
@@ -31,7 +27,6 @@
 
 	const showSettingsBanner = $derived(
 		(permissionsKnown && !permissionsReady) ||
-			(modelKnown && !modelReady) ||
 			(speakerCaptureKnown && showSpeakerNameWarning),
 	);
 
@@ -58,29 +53,13 @@
 	}
 
 	onMount(async () => {
-		const [statuses, list] = await Promise.all([
+		const [statuses] = await Promise.all([
 			invoke<PermissionStatus[]>('settings_permissions_status').catch(() => []),
-			invoke<ModelListItem[]>('model_list').catch(() => []),
 			loadSpeakerCaptureBannerState(),
 		]);
 		permissionsReady =
 			statuses.find((s) => s.kind === 'microphone')?.granted ?? false;
 		permissionsKnown = true;
-
-		const downloaded = list.filter((m) => m.downloaded);
-		const hasSelected = list.some((m) => m.downloaded && m.selected);
-		if (downloaded.length > 0 && !hasSelected) {
-			try {
-				await invoke('model_select', { modelId: downloaded[0].id });
-				modelReady = true;
-			} catch (e) {
-				setupError = appErrorMessage(e);
-				modelReady = false;
-			}
-		} else {
-			modelReady = hasSelected;
-		}
-		modelKnown = true;
 	});
 </script>
 
@@ -91,24 +70,11 @@
 
 	{#if showSettingsBanner}
 		<div class="flex shrink-0 flex-col gap-1 border-b border-warning bg-warning/15 px-4 py-2">
-			{#if setupError}
-				<p class="sf-label-sm text-fg">
-					Could not select an installed model — {setupError}
-				</p>
-			{/if}
 			{#if permissionsKnown && !permissionsReady}
 				<p class="sf-label-sm text-fg">
 					Microphone access needed —
 					<button class="cursor-pointer underline" onclick={() => goToTab('permissions')}
 						>go to Permissions</button
-					>.
-				</p>
-			{/if}
-			{#if modelKnown && !modelReady}
-				<p class="sf-label-sm text-fg">
-					No transcription model installed —
-					<button class="cursor-pointer underline" onclick={() => goToTab('models')}
-						>go to Models</button
 					>.
 				</p>
 			{/if}
@@ -124,28 +90,22 @@
 		</div>
 	{/if}
 
-	{#if appState.settingsTab === 'models'}
-		<div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
-			<SettingModels bind:ready={modelReady} />
-		</div>
-	{:else}
-		<ScrollablePanel class="bg-card p-4">
-			{#if appState.settingsTab === 'general'}
-				<SettingGeneral
-					{savedSpeakerDeviceName}
-					{blackholeDetected}
-					{speakerCaptureRequiresDeviceName}
-					onSpeakerConfigSaved={onSpeakerConfigSaved}
-				/>
-			{:else if appState.settingsTab === 'permissions'}
-				<SettingPermissions bind:ready={permissionsReady} micOnly={isWindows} />
-			{:else if appState.settingsTab === 'voice'}
-				<SettingVoice />
-			{:else if appState.settingsTab === 'replacements'}
-				<SettingReplace />
-			{:else if appState.settingsTab === 'help'}
-				<SettingHelp />
-			{/if}
-		</ScrollablePanel>
-	{/if}
+	<ScrollablePanel class="bg-card p-4">
+		{#if appState.settingsTab === 'general'}
+			<SettingGeneral
+				{savedSpeakerDeviceName}
+				{blackholeDetected}
+				{speakerCaptureRequiresDeviceName}
+				onSpeakerConfigSaved={onSpeakerConfigSaved}
+			/>
+		{:else if appState.settingsTab === 'advanced'}
+			<SettingAdvanced />
+		{:else if appState.settingsTab === 'voice'}
+			<SettingVoice />
+		{:else if appState.settingsTab === 'permissions'}
+			<SettingPermissions bind:ready={permissionsReady} micOnly={isWindows} />
+		{:else if appState.settingsTab === 'help'}
+			<SettingHelp />
+		{/if}
+	</ScrollablePanel>
 </div>

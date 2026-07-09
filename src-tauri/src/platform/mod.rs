@@ -155,11 +155,7 @@ pub fn get_or_create_voice_crypto_key() -> Result<String, String> {
     }
 
     let key = generate_base64_key()?;
-    write_keychain_password(
-        VOICE_CRYPTO_KEY_SERVICE,
-        VOICE_CRYPTO_KEY_ACCOUNT,
-        &key,
-    )?;
+    write_keychain_password(VOICE_CRYPTO_KEY_SERVICE, VOICE_CRYPTO_KEY_ACCOUNT, &key)?;
     Ok(key)
 }
 

@@ -21,12 +21,12 @@
 </script>
 
 <div
-  class={`flex flex-col gap-2 px-3 py-3 transition sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${disabled ? "opacity-50" : ""} ${className}`.trim()}
+  class={`flex flex-col gap-2 transition sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${disabled ? "opacity-50" : ""} ${className}`.trim()}
 >
   <div
     class={`min-w-0 flex-1 ${direction === "vertical" ? "flex flex-col gap-2" : "flex items-center gap-2"}`}
   >
-    <p class="sf-label-md text-fg">{title}</p>
+    <p class="sf-label-md text-fg-dim">{title}</p>
     {#if description}
       <div class="flex flex-col">
         {#each description.split("\n") as line (line)}

@@ -56,8 +56,6 @@
 	let error = $state('');
 	let modelReady = $state(false);
 	let vadReady = $state(false);
-	let modelProgress = $state(0);
-	let vadProgress = $state(0);
 	let unlisten: (() => void) | undefined;
 	let unlistenFocus: (() => void) | undefined;
 
@@ -104,12 +102,6 @@
 		}));
 		modelReady = status.downloaded;
 		vadReady = await invoke<boolean>('model_vad_status').catch(() => false);
-		if (!vadReady) {
-			void downloadVad();
-		}
-		if (!modelReady) {
-			void downloadModel();
-		}
 
 		unlistenFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
 			if (focused) void refreshMics();
@@ -123,44 +115,6 @@
 			void invoke('voiceprint_discard_clip', { clipId }).catch(() => {});
 		}
 	});
-
-	async function downloadModel() {
-		error = '';
-		const stop = await listen<{ model_id: string; progress: number }>(
-			'model://download-progress',
-			(event) => {
-				if (event.payload.model_id !== 'voiceprint') return;
-				modelProgress = Math.round((event.payload.progress ?? 0) * 100);
-				if (event.payload.progress >= 1) modelReady = true;
-			},
-		);
-		try {
-			await invoke('voiceprint_download_model');
-		} catch (e) {
-			error = `Could not start voiceprint model download: ${appErrorMessage(e)}`;
-		} finally {
-			stop();
-		}
-	}
-
-	async function downloadVad() {
-		error = '';
-		const stop = await listen<{ model_id: string; progress: number }>(
-			'model://download-progress',
-			(event) => {
-				if (event.payload.model_id !== 'vad') return;
-				vadProgress = Math.round((event.payload.progress ?? 0) * 100);
-				if (event.payload.progress >= 1) vadReady = true;
-			},
-		);
-		try {
-			await invoke('model_vad_download');
-		} catch (e) {
-			error = `Could not prepare voice activity detection: ${appErrorMessage(e)}`;
-		} finally {
-			stop();
-		}
-	}
 
 	async function startRecording() {
 		if (!selectedMic) {
@@ -241,15 +195,11 @@
 
 			{#if !modelReady || !vadReady}
 				<div class="space-y-2 rounded-md border border-fill bg-panel p-3">
-					<p class="sf-label-md text-fg">Preparing voice tools</p>
-					<div class="h-1.5 overflow-hidden rounded-sm bg-fill">
-						<div class="h-full bg-brand transition-[width] duration-200" style={`width:${modelProgress}%`}></div>
-					</div>
-					<p class="sf-label-sm text-fg-dim">Voiceprint model {modelProgress}%</p>
-					<div class="h-1.5 overflow-hidden rounded-sm bg-fill">
-						<div class="h-full bg-focus transition-[width] duration-200" style={`width:${vadProgress}%`}></div>
-					</div>
-					<p class="sf-label-sm text-fg-dim">Voice activity detection {vadProgress}%</p>
+					<p class="sf-label-md text-fg">Voice tools unavailable</p>
+					<p class="sf-label-sm text-fg-dim">
+						The bundled voice models are missing. Reinstall ScribeFloat to restore them
+						(in development: run scripts/fetch-bundled-models.sh and relaunch).
+					</p>
 				</div>
 			{:else if step === 'pick-mic'}
 				<div class="space-y-2">

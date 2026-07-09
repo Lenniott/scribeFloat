@@ -1,14 +1,13 @@
 <script lang="ts">
-	import { CircleHelp, Cpu, MicVocal, Replace, Shield, SlidersHorizontal } from 'lucide-svelte';
+	import { CircleHelp, MicVocal, Shield, SlidersHorizontal, Wrench } from 'lucide-svelte';
 	import NavItem from '@components/nav/NavItem.svelte';
 	import { SETTINGS_TABS, type SettingsTab } from '@sections/settingsTypes';
 
 	const SETTINGS_TAB_ICONS = {
 		general: SlidersHorizontal,
-		permissions: Shield,
-		models: Cpu,
+		advanced: Wrench,
 		voice: MicVocal,
-		replacements: Replace,
+		permissions: Shield,
 		help: CircleHelp,
 	} as const satisfies Record<SettingsTab, typeof SlidersHorizontal>;
 

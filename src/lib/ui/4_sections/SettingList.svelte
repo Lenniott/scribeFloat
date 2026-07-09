@@ -10,7 +10,7 @@
 	} = $props();
 </script>
 
-<div class={`divide-y divide-fill overflow-hidden rounded-md border border-fill bg-panel ${className}`.trim()}>
+<div class={`overflow-hidden ${className}`.trim()}>
 	{#if children}
 		{@render children()}
 	{/if}

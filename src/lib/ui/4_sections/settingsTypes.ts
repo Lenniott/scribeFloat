@@ -1,10 +1,9 @@
-export type SettingsTab = 'general' | 'permissions' | 'models' | 'voice' | 'replacements' | 'help';
+export type SettingsTab = 'general' | 'advanced' | 'voice' | 'permissions' | 'help';
 
 export const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
 	{ id: 'general', label: 'General' },
-	{ id: 'permissions', label: 'Permissions' },
-	{ id: 'models', label: 'Models' },
+	{ id: 'advanced', label: 'Advanced' },
 	{ id: 'voice', label: 'Voice' },
-	{ id: 'replacements', label: 'Replacements' },
+	{ id: 'permissions', label: 'Permissions' },
 	{ id: 'help', label: 'Help' },
 ];

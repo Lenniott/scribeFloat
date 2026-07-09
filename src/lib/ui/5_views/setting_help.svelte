@@ -5,7 +5,7 @@
   import type { UpdateCheckResult } from '@utils/types';
   import Button from "@components/controls/Button.svelte";
   import Toast from "@components/indicators/Toast.svelte";
-  import type { ToastState } from "@components/indicators/Toast.svelte";
+  import { createToast } from '@stores/toast.svelte';
   import SettingsList from "@sections/SettingList.svelte";
   import SettingsRow from "@components/cards/SettingRow.svelte";
   import SettingsSection from "@primitives/form/SettingsSection.svelte";
@@ -14,7 +14,6 @@
     formatHotkeyForDisplay,
     isWindows,
   } from '@utils/platform';
-  import { goto } from "$app/navigation";
 
 
   type UpdateState =
@@ -29,23 +28,9 @@
   let openScribeHotkey = $state("CmdOrCtrl+Shift+L");
   let speakerCaptureRequiresDeviceName = $state(false);
   let restartingOnboarding = $state(false);
-  let toastMessage = $state("");
-  let toastState = $state<ToastState>("normal");
-  let toastTimeout: ReturnType<typeof setTimeout> | null = null;
+  const toast = createToast(3000);
 
-  function showToast(message: string, state: ToastState = "normal") {
-    if (toastTimeout) clearTimeout(toastTimeout);
-    toastMessage = message;
-    toastState = state;
-    toastTimeout = setTimeout(() => {
-      toastMessage = "";
-      toastTimeout = null;
-    }, 3000);
-  }
-
-  onDestroy(() => {
-    if (toastTimeout) clearTimeout(toastTimeout);
-  });
+  onDestroy(() => toast.dismiss());
 
   async function restartOnboarding() {
     restartingOnboarding = true;
@@ -62,16 +47,16 @@
       updateResult = result;
       if (result.update_available) {
         updateState = "update_available";
-        showToast(`Version ${result.latest_version} is available`);
+        toast.show(`Version ${result.latest_version} is available`);
       } else {
         updateState = "up_to_date";
-        showToast("You're on the latest version.", "success");
+        toast.show("You're on the latest version.", "success");
       }
     } catch (e) {
       const message =
         typeof e === "string" ? e : "Could not reach update server.";
       updateState = "error";
-      showToast(`Could not check for updates: ${message}`, "error");
+      toast.show(`Could not check for updates: ${message}`, "error");
     }
   }
 
@@ -102,7 +87,7 @@
     <SettingsList>
       <SettingsRow
         title="Restart setup wizard"
-        description="Re-run the first-time setup to reconfigure permissions, your model, and key settings."
+        description="Re-run the first-time setup to reconfigure permissions and key settings."
       >
         {#snippet control()}
           <Button
@@ -184,10 +169,6 @@
           On Windows, system audio must be playing for the speaker waveform to
           move — loopback captures what your speakers are outputting.{/if}
       </li>
-      <li>
-        If no model is installed, the WAV file is kept and a button appears to
-        open it in Transcribe later.
-      </li>
     </ul>
   </div>
 
@@ -248,53 +229,11 @@
   </div>
 
   <div class="space-y-2">
-    <h3 class="sf-section-label text-fg-dim">Models</h3>
+    <h3 class="sf-section-label text-fg-dim">Transcription model</h3>
     <p class="sf-body-md text-fg">
-      ScribeFloat uses <strong>OpenAI Whisper</strong> running entirely on your device.
-      Download a model once; it works offline forever. You can set a separate model
-      for Scribe and Dictate in Settings → Models.
+      ScribeFloat ships with <strong>OpenAI Whisper</strong> built in, running entirely
+      on your device — nothing to download, and it works offline.
     </p>
-    <div class="overflow-hidden rounded-md border border-card">
-      <table class="w-full">
-        <thead class="bg-fill">
-          <tr>
-            <th class="px-3 py-2 text-left sf-label-sm text-fg-dim">Model</th>
-            <th class="px-3 py-2 text-left sf-label-sm text-fg-dim">Size</th>
-            <th class="px-3 py-2 text-left sf-label-sm text-fg-dim">Speed</th>
-            <th class="px-3 py-2 text-left sf-label-sm text-fg-dim">Accuracy</th
-            >
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-card">
-          <tr>
-            <td class="px-3 py-2 sf-body-md text-fg">Tiny</td>
-            <td class="px-3 py-2 sf-body-md text-fg-dim">~75 MB</td>
-            <td class="px-3 py-2 sf-body-md text-fg-dim">Fastest</td>
-            <td class="px-3 py-2 sf-body-md text-fg-dim">Basic</td>
-          </tr>
-          <tr>
-            <td class="px-3 py-2 sf-body-md text-fg">Base</td>
-            <td class="px-3 py-2 sf-body-md text-fg-dim">~145 MB</td>
-            <td class="px-3 py-2 sf-body-md text-fg-dim">Fast</td>
-            <td class="px-3 py-2 sf-body-md text-fg-dim">Good</td>
-          </tr>
-          <tr>
-            <td class="px-3 py-2 sf-body-md text-fg">Small</td>
-            <td class="px-3 py-2 sf-body-md text-fg-dim">~460 MB</td>
-            <td class="px-3 py-2 sf-body-md text-fg-dim">Moderate</td>
-            <td class="px-3 py-2 sf-body-md text-fg-dim"
-              >Better — recommended</td
-            >
-          </tr>
-          <tr>
-            <td class="px-3 py-2 sf-body-md text-fg">Medium</td>
-            <td class="px-3 py-2 sf-body-md text-fg-dim">~1.5 GB</td>
-            <td class="px-3 py-2 sf-body-md text-fg-dim">Slow</td>
-            <td class="px-3 py-2 sf-body-md text-fg-dim">Best</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
   </div>
 
   <div class="space-y-2">
@@ -311,12 +250,6 @@
         </thead>
         <tbody class="divide-y divide-card">
           <tr>
-            <td class="px-3 py-2 sf-body-md-strong text-fg">Theme</td>
-            <td class="px-3 py-2 sf-body-md text-fg-dim"
-              >Light, dark, or follow the OS setting.</td
-            >
-          </tr>
-          <tr>
             <td class="px-3 py-2 sf-body-md-strong text-fg"
               >Default save folder</td
             >
@@ -331,7 +264,8 @@
             <td class="px-3 py-2 sf-body-md text-fg-dim"
               >App used to open <code class="sf-meta-sm bg-fill px-1 rounded"
                 >.md</code
-              > files after transcription. Leave blank to use the system default.</td
+              > files after transcription (Advanced settings). Leave blank to use
+              the system default.</td
             >
           </tr>
           <tr>
@@ -374,17 +308,6 @@
               >
             </tr>
           {/if}
-          <tr>
-            <td class="px-3 py-2 sf-body-md-strong text-fg"
-              >Input / Output label</td
-            >
-            <td class="px-3 py-2 sf-body-md text-fg-dim"
-              >Prefix labels for each audio source in dual-source transcripts.
-              Defaults: <code class="sf-meta-sm bg-fill px-1 rounded">in:</code>
-              for mic, <code class="sf-meta-sm bg-fill px-1 rounded">out:</code>
-              for speaker.</td
-            >
-          </tr>
         </tbody>
       </table>
       <div class="mt-4 text-fg-dim">
@@ -410,10 +333,9 @@
             >Send a tip</a
           >
         </p>
-        <Button variant="ghost" onclick={() => goto(`/design-system`)}>Go to Design System</Button>
       </div>
     </div>
   </div>
 </section>
 
-<Toast message={toastMessage} state={toastState} position="bottom-center" />
+<Toast message={toast.message} state={toast.state} position="bottom-center" />

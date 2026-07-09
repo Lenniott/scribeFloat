@@ -125,7 +125,6 @@ Views live at `5_views/` → `@views`. The parent `ui/` folder is `@ui`. Other a
 | `FeatureTourStep` | `4_sections/onboarding/FeatureTourStep.svelte` | Feature overview step with app menu mock. |
 | `DictatePracticeStep` | `4_sections/onboarding/DictatePracticeStep.svelte` | Interactive dictation practice step. |
 | `PermissionsStep` | `4_sections/onboarding/PermissionsStep.svelte` | Microphone + accessibility permission request step. |
-| `ModelDownloadStep` | `4_sections/onboarding/ModelDownloadStep.svelte` | Whisper model download step with progress. |
 
 ---
 
@@ -152,4 +151,4 @@ Route-level view components. Imported by `src/routes/` pages. Live at `src/lib/u
 | `transcribe.svelte` | `5_views/transcribe.svelte` | Upload/transcribe workflow. |
 | `dictate.svelte` | `5_views/dictate.svelte` | Floating Dictate HUD (separate Tauri window). |
 | `onboarding.svelte` | `5_views/onboarding.svelte` | Onboarding flow (separate Tauri window). |
-| `setting_*.svelte` | `5_views/setting_*.svelte` | Individual settings tab content (general, models, permissions, replace, help). |
+| `setting_*.svelte` | `5_views/setting_*.svelte` | Individual settings tab content (general, advanced, voice, permissions, help). |

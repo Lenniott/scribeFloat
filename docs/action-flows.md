@@ -11,35 +11,28 @@ Triggered when `Config.onboarding_complete == false` at startup. Opens a dedicat
 
 This is the current designer-approved onboarding flow. It intentionally does not collect setup-personalisation answers; detailed configuration lives in Settings.
 
-On mount, `onboarding.svelte` calls `model_list`. If any model is already downloaded, step 2 is skipped and the first downloaded model is auto-selected via `model_select` so Dictate has a model ready without the user re-visiting the download step.
+The Whisper Small, VAD, and voiceprint models ship inside the app bundle and are seeded into the models dir at startup — onboarding has no model-download step.
 
 **Step 1 — Welcome**
 1. Onboarding window opens centered
 2. Brand moment: app name, one-line description, feature pills
-3. User chooses: "Get started" → step 2 (or 3 if skipped), or "Skip to Settings" → [OB-Exit-Settings]
+3. User chooses: "Get started" → step 2, or "Skip to Settings" → [OB-Exit-Settings]
 
-**Step 2 — Model Download** _(skipped if a model is already installed)_
-4. `model_list` loaded on mount; models displayed as table rows with size and download button
-5. Progress tracked via `model://download-progress` events; polled every 2 s as fallback
-6. Continue button appears once any model shows `downloaded = true`
-7. Continue → `model_select` on first downloaded model (failure surfaces in UI, does not silently advance) → step 3
-8. Skip button available if no download is in progress → step 3
-
-**Step 3 — Permissions**
+**Step 2 — Permissions**
 9. `settings_permissions_status` polled (every 5 s + on focus)
 10. Microphone row: required; grant button calls `settings_permissions_request`
 11. Accessibility row: optional; needed for Dictate auto-paste
 12. Input Monitoring row (macOS only): optional; needed for key listener
-13. Continue disabled until microphone permission is granted; optional permission state does not block progress → step 4
+13. Continue disabled until microphone permission is granted; optional permission state does not block progress → step 3
 
-**Step 4 — Dictate Practice**
+**Step 3 — Dictate Practice**
 14. NoteComposer auto-focused on mount (correct target for `dictate_auto_paste` Cmd+V)
 15. User double-taps modifier key, speaks, releases; transcribed text populates NoteComposer via `dictate://state-changed` DONE event
 16. Live state indicator (pulsing dot) shown during RECORDING / TRANSCRIBING / PASTING
 17. NoteComposer stays mounted (hidden via CSS) while active — preserves manual draft
 18. ERROR state and empty-segment (TRANSCRIBING → IDLE) path both show inline hint
 19. Auto-enter toggle: reads/writes `settings_get/set_dictate_auto_enter`; when on, DONE auto-submits note
-20. Continue always available → step 5
+20. Continue always available → step 4 (Voice enrollment, skipped when profiles already exist) → step 5
 
 **Step 5 — Feature Tour**
 21. Stylised menu-bar graphic (live time, Wifi icon, app icon)
@@ -80,7 +73,7 @@ User records mic only. No system audio capture.
 14. Model Service: transcribes the mic PCM once → returns timestamped segments
 15. ScribeController uses live voice-change cuts to build mic chunks
 16. Speaker chunk service: embeds each chunk, groups chunk voiceprints into local speakers, derives transcript-level session speaker centroids from clean chunks, and maps Whisper segments to their parent chunk labels
-17. Output Service: renders transcript markdown and applies word replacement rules
+17. Output Service: renders transcript markdown
 18. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting), including `speaker_change_cuts` and `speaker_chunks`
 19. Check: `save_transcripts_as_markdown` setting
     - **On** → Output Service writes `{title}_{model}.md` to **save folder root** (appends `_1`, `_2`, … on collision); Done event carries `transcript_path`
@@ -127,7 +120,7 @@ User records mic + system audio (remote call, meeting, etc). Speaker capture can
 19. Model Service: transcribes speaker PCM → raw speaker segments (progress 50–100%) when dual-source
 20. `filter_hallucination_phrases` (`services/output/hallucination.rs`): strips known Whisper hallucination phrases from mic and speaker segments (also applied in Dictate before `format_dictate_text` and Transcribe upload)
 21. Model Service: merges mic and speaker segments chronologically; suppresses near-duplicate lines within 1.5 s; applies `in:`/`out:` labels
-22. Output Service: groups segments, builds dual-source markdown, applies word replacement rules
+22. Output Service: groups segments and builds dual-source markdown
 23. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting)
     - Record fields: `speaker_capture` = persistent `scribe_capture_speaker` setting at write time; `dual_source` = speaker PCM was assembled and used for merge/transcription (false if capture was off, silence-gated, or no loopback audio)
 24. Check: `save_transcripts_as_markdown` setting
@@ -172,7 +165,7 @@ Key listener (always on): **Left Control** only (`CGEventTap` on macOS, low-leve
 3. Floating panel enters **Transcribing** state
 4. Model Service: loads dictate model (tiny/base may already be preloaded)
 5. Model Service: transcribes PCM → returns text
-6. Output Service: applies word replacement rules (dictate scope)
+6. Output Service: cleans and dedups the transcribed text
 7. Check: is there a focused text input?
     - **Yes** → paste text at cursor via OS input injection
     - **No** → copy text to clipboard + show system notification
@@ -206,7 +199,7 @@ User brings an existing audio file. No recording step.
 8d. Continue to step 10
 9. Model Service: transcribes the decoded mic PCM once → returns timestamped segments
 10. TranscribeController runs pitch/loudness analysis offline, builds chunks, embeds each chunk, and maps Whisper segments to their parent chunk labels
-11. Output Service: renders markdown transcript and applies word replacement rules
+11. Output Service: renders markdown transcript
 12. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting), including `speaker_change_cuts` and `speaker_chunks` for single-audio uploads
 13. Check: `save_transcripts_as_markdown` setting
     - **On** → Output Service writes `<source_filename>_<model>.md` to selected output folder; Done event carries `transcript_path`

@@ -139,7 +139,7 @@ C4Container
 
     Rel(ctrl_dictate, svc_audio, "mic stream")
     Rel(ctrl_dictate, svc_model, "transcribe buffer")
-    Rel(ctrl_dictate, svc_output, "word replacement, salvage")
+    Rel(ctrl_dictate, svc_output, "text formatting, salvage")
     Rel(ctrl_dictate, svc_history, "append record")
     Rel(ctrl_dictate, svc_config, "read config")
     Rel(ctrl_dictate, plat_paste, "paste text")
@@ -200,7 +200,7 @@ graph TB
         note_editor_v["note-editor.svelte\nUnified note editor:\nheader + two-panel shell"]
         capture_v["capture.svelte\nScribe overlay"]
         transcribe_v["transcribe.svelte\nFile import queue"]
-        setting_tabs["setting_general.svelte\nsetting_models.svelte\nsetting_permissions.svelte\nsetting_replace.svelte\nsetting_help.svelte"]
+        setting_tabs["setting_general.svelte\nsetting_advanced.svelte\nsetting_voice.svelte\nsetting_permissions.svelte\nsetting_help.svelte"]
     end
 
     subgraph regions["Regions — src/lib/ui/6_regions/"]
@@ -430,7 +430,6 @@ Markdown rendering (pure) and durable file I/O: `.md` writes (opt-in, gated by `
 graph TB
     subgraph output["OutputService — services/output.rs"]
         formatter["Markdown Renderer\npure fns: render_transcript_markdown, render_transcript_body, render_from_record, count_words"]
-        replacements["Word Replacement\napplies find/replace rules"]
         file_writer["File Writer\nwrites .md to save folder root (opt-in)"]
         manifest["Session Manifest\nsession.json lifecycle tracking"]
         wav_cleanup["Session Cleanup\nremoves staging dir when keep_wav=off"]
@@ -458,8 +457,7 @@ graph TB
     ctrl_history -->|"legacy list + read"| legacy_reads
     ctrl_history -->|"delete artifacts"| delete_prims
     svc_model -->|"segments"| formatter
-    formatter --> replacements
-    replacements --> file_writer
+    formatter --> file_writer
     file_writer --> fs
     manifest --> fs
     merged_wav --> fs
@@ -467,7 +465,6 @@ graph TB
     salvage --> fs
     legacy_reads --> fs
     delete_prims --> fs
-    config -->|"replacement rules"| replacements
     config -->|"save folder"| file_writer
     config -->|"keep_wav setting"| wav_cleanup
 ```
@@ -475,7 +472,6 @@ graph TB
 **Component notes:**
 - **Markdown Renderer**: pure free functions (`render_transcript_markdown`, `render_transcript_body`, `render_from_record`, `count_words`). Builds Markdown from Whisper segments — no file I/O. `write_transcript` is a thin wrapper over `render_transcript_markdown`. Segments are grouped: consecutive same-source segments within an 8-second gap are merged into one paragraph. Dual-source speaker-change boundaries use `\n`; same-source paragraph breaks use `\n\n`
 - **Transcript path**: `{save_folder}/{title}_{model}.md`; appends `_1`, `_2`, … before `.md` when the base name already exists. WAV staging lives in `{save_folder}/{timestamp}/`. `.md` is written only when `save_transcripts_as_markdown` is on (default off); Dictate never writes `.md`
-- **Word Replacement**: applies user-defined find/replace rules. Scope per rule: transcripts, dictate, or both
 - **Session Manifest**: `session.json` tracks recording lifecycle (`recording`, `transcribing`, `complete`, `error`, `interrupted`) for crash recovery. Scribe UI polls `scribe_list_recovery_sessions` on open
 - **WAV Cleanup**: when `keep_wav = false`, deletes staging WAVs and removes the session directory after a successful transcript. Transcript `.md` (if written) stays at save folder root
 - **Dictate Salvage**: on transcription failure, moves the temp WAV from `dictate_temp/` to `{save_folder}/dictate_failures/`
@@ -601,7 +597,7 @@ graph TB
     hud --> waveform
     state -->|"on TRANSCRIBING: in-memory PCM"| svc_model
     svc_model -->|"text"| svc_output
-    svc_output -->|"formatted text (word replacement)"| paste_handler
+    svc_output -->|"formatted text (cleanup + dedup)"| paste_handler
     paste_handler --> clipboard
     state -->|"on completion: append history record"| svc_history
     state -->|"on error: salvage WAV"| svc_output
@@ -621,44 +617,36 @@ graph TB
 ```mermaid
 graph TB
     subgraph settings["Settings"]
-        panel["Settings Screen\nsettings.svelte"]
+        panel["Settings Screen\nSettingsPanel.svelte"]
         general["General Tab\nsetting_general.svelte"]
-        models["Models Tab\nsetting_models.svelte"]
+        advanced["Advanced Tab\nsetting_advanced.svelte"]
         voice["Voice Tab\nsetting_voice.svelte"]
-        hotkeys["Hotkeys Tab (planned)"]
-        replacements["Replacements Tab\nsetting_replace.svelte"]
         permissions["Permissions Tab\nsetting_permissions.svelte"]
         help["Help Tab\nsetting_help.svelte"]
-        webhook["Webhook Tab\nsetting_webhook.svelte (placeholder)"]
     end
 
     ctrl_settings["SettingsController\ncontrollers/settings.rs"]
-    ctrl_model["ModelController\ncontrollers/model.rs"]
     svc_permissions["PermissionsService"]
 
     panel --> general
-    panel --> models
-    panel --> hotkeys
-    panel --> replacements
+    panel --> advanced
+    panel --> voice
     panel --> permissions
     panel --> help
-    panel --> webhook
     general --> ctrl_settings
-    models --> ctrl_model
-    models --> ctrl_settings
+    advanced --> ctrl_settings
     voice --> ctrl_settings
-    replacements --> ctrl_settings
     permissions --> svc_permissions
 ```
 
+All controls persist immediately on change (toggle → granular setter, slider → debounced setter, path picker → on confirm, text field → on blur). There is **no batch Save button** on any tab.
+
 **Tab contents:**
-- **General**: save folder, default mic, WAV retention, auto-enter, open-transcripts-with app, start on login
-- **Models**: per-action default model (Dictate / Scribe / Transcribe), download and delete; download progress shown via `model://download-progress` event
-- **Hotkeys**: Scribe hotkey, Dictate trigger key and mode — currently shown in General; dedicated tab planned
-- **Replacements**: add/edit/delete rules, scope per rule (transcripts / dictate / both). Default rules use a `float` prefix (e.g. "float dash" → `-`) so normal speech does not accidentally trigger replacements
+- **General**: save folder, capture speaker by default, press Enter after dictate, speaker capture device name (macOS)
+- **Advanced**: save transcripts as Markdown, open-transcripts-with app, WAV retention, speaker matching sensitivity, voice data retention, remove voice vectors from transcripts
+- **Voice**: voiceprint profile management — add / refine / rename / remove / bulk remove
 - **Permissions**: live permission status via `PermissionsService`; one-tap path to OS settings pane
 - **Help**: inline topics; no network required
-- **Webhook**: placeholder screen — feature not yet implemented in backend
 
 ---
 
@@ -680,7 +668,7 @@ src-tauri/src/
 │   ├── transcribe.rs           transcribe_add, transcribe_start, transcribe_cancel
 │   ├── dictate.rs              dictate_start, dictate_stop
 │   ├── history.rs              history_list, history_get_detail, history_render_markdown, history_export_markdown, history_delete, history_read_legacy, note_create_empty, note_save_written_content, note_save_title
-│   ├── model.rs                model_list, model_download, model_delete, model_select
+│   ├── model.rs                model_vad_status
 │   └── settings.rs             config_get, config_update, permissions_status, open_settings, settings_get/set_save_transcripts_as_markdown
 │
 ├── controllers/
@@ -730,7 +718,7 @@ src/
 │   │   │   └── Accordion, NoteComposer, NoteList, UploadQueue
 │   │   ├── 4_sections/         Contained mental model areas (@sections)
 │   │   │   ├── FilterPanel, NoteDetailPane, SettingsPanel, SettingList
-│   │   │   └── onboarding/     WelcomeStep, FeatureTourStep, DictatePracticeStep, PermissionsStep, ModelDownloadStep
+│   │   │   └── onboarding/     WelcomeStep, FeatureTourStep, DictatePracticeStep, PermissionsStep, VoiceEnrollmentStep
 │   │   ├── 6_regions/          Fixed structural layout areas (@regions)
 │   │   │   └── AppSidebar, SettingsSidebar, TitleBar
 │   │   └── views/              Route-level view components and window-specific views (@views)
@@ -747,7 +735,6 @@ src/
 │   └── stores/
 │       ├── appState.svelte.ts  Singleton reactive state (notes, capture, toast, delete)
 │       ├── appActions.ts       State mutation actions (loadNotes, copyItem, delete, etc.)
-│       └── modelDownload.svelte.ts  Download progress store
 └── routes/                     SvelteKit routes (SPA, ssr=false)
     ├── +layout.svelte          App shell: ?view= branching, sidebar, CaptureView overlay,
     │                           global toast + delete modal, IPC listeners, theme

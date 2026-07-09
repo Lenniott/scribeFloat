@@ -9,8 +9,13 @@ status: active
 The codebase has Vitest + @testing-library/svelte configured. Covered today:
 
 - `DictatePracticeStep.test.ts` — onboarding dictate step
+- `WelcomeStep.test.ts`, `ModelDownloadStep.test.ts`, `PermissionsStep.test.ts`, `FeatureTourStep.test.ts`, `onboarding.test.ts` — onboarding wizard
+- `scribeController.test.ts`, `dictate.test.ts` — capture state machines (mocked IPC)
 - `noteLeaveGuard.test.ts` — note editor leave-guard decision tree (0049)
-- `modelDownload.test.ts`, `types.test.ts`
+- `Button.test.ts`, `Toggle.test.ts`, `NoteCard.test.ts`, `FilterRow.test.ts`, `Accordion.test.ts` — primitives (this story)
+- `modelDownload.test.ts`, `types.test.ts`, `captureProgress.test.ts`, `processingFeedback.test.ts`
+
+Shared fixtures: `src/test/ipcFixtures.ts` (history/model mocks, event bus helpers).
 
 `vitest.config.ts` aliases match `svelte.config.js` so component tests resolve `@patterns`, `@sections`, etc.
 

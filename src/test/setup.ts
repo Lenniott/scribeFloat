@@ -18,3 +18,46 @@ vi.mock('@tauri-apps/api/window', () => ({
         onFocusChanged: vi.fn().mockResolvedValue(() => {}),
     })),
 }));
+
+// jsdom has no Web Animations API; Svelte transitions (fly/fade) call element.animate.
+Element.prototype.animate = vi.fn(() => ({
+    cancel: vi.fn(),
+    finish: vi.fn(),
+    onfinish: null,
+    oncancel: null,
+})) as unknown as typeof Element.prototype.animate;
+
+// Waveform and other layout-aware components observe element size in jsdom.
+global.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+};
+
+Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+    })),
+});
+
+HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+    scale: vi.fn(),
+    clearRect: vi.fn(),
+    fillRect: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    stroke: vi.fn(),
+    fill: vi.fn(),
+    closePath: vi.fn(),
+    arc: vi.fn(),
+    setTransform: vi.fn(),
+})) as unknown as typeof HTMLCanvasElement.prototype.getContext;

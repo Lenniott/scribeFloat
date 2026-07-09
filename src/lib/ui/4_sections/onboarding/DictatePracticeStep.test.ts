@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
@@ -70,5 +70,31 @@ describe('DictatePracticeStep', () => {
 
 		expect(screen.getByPlaceholderText('Click here and test dictate')).toBeVisible();
 		expect(screen.queryByText('Transcribing…')).not.toBeInTheDocument();
+	});
+
+	it('surfaces ERROR hint from dictate state event', async () => {
+		renderStep();
+
+		await waitFor(() => {
+			expect(mockedListen).toHaveBeenCalledWith('dictate://state-changed', expect.any(Function));
+		});
+
+		stateChanged({ payload: { state: 'ERROR', error: 'No model installed' } });
+		await tick();
+
+		expect(screen.getByText('No model installed')).toBeInTheDocument();
+	});
+
+	it('persists auto-enter preference via settings_set_dictate_auto_enter', async () => {
+		renderStep();
+
+		await waitFor(() => {
+			expect(screen.getByRole('switch', { name: 'Auto enter after dictate' })).toBeInTheDocument();
+		});
+
+		await fireEvent.click(screen.getByRole('switch', { name: 'Auto enter after dictate' }));
+		await tick();
+
+		expect(mockedInvoke).toHaveBeenCalledWith('settings_set_dictate_auto_enter', { enabled: true });
 	});
 });

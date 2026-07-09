@@ -1,7 +1,7 @@
 ---
 id: "0062"
 title: Inline label correction with centroid recalculation and cascading relabel
-status: active
+status: done
 ---
 
 # Inline label correction with centroid recalculation and cascading relabel
@@ -28,3 +28,16 @@ UI entry point: a tap/click on a speaker label chip opens a picker listing enrol
 - Do not auto-relabel segments with `margin < 0.05` — those are genuinely ambiguous and should stay as-is or prompt the user
 - Correction history (original label, corrected label, timestamp) should be stored on the segment for auditability
 - Story 0063 (global profile update) is a natural follow-on after correction, but keep them separate
+
+## Completion note (2026-07-09)
+
+Implemented on the chunk model: `correct_chunk_label()` in
+`src-tauri/src/services/speaker_chunks.rs` moves the chunk, rebuilds the two
+affected session-speaker centroids, re-scores every chunk, then cascades —
+auto-relabeling chunks whose winning centroid changed, gated by
+`margin >= 0.05` and never overriding explicit user corrections. Correction
+history lives on `SpeakerChunk.corrections` (`LabelCorrection { from, to,
+at_ms, auto }`); blocks follow chunks via `chunk_id`. IPC:
+`note_correct_chunk_label` returns the updated record. UI: speaker chip in
+`TranscriptPanel.svelte` opens a picker (profiles + session speakers + Other +
+new name); auto-corrected blocks are marked distinctly from user-corrected.

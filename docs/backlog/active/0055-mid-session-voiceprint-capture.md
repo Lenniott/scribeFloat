@@ -1,7 +1,7 @@
 ---
 id: "0055"
 title: Mid-session voiceprint capture during Record mode
-status: active
+status: superseeded
 adr: ADR-0011
 ---
 

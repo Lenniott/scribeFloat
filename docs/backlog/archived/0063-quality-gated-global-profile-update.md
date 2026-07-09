@@ -1,7 +1,7 @@
 ---
 id: "0063"
 title: Quality-gated global voiceprint profile update from transcript evidence
-status: active
+status: done
 ---
 
 # Quality-gated global voiceprint profile update from transcript evidence
@@ -64,3 +64,19 @@ Voice embeddings are sensitive local biometric data. Store transcript chunk embe
 - The `Other` label should never update a global profile — only named enrolled speakers
 - Store a `last_session_update` timestamp on the profile so the user can see when it was last improved from transcript evidence
 - Manual enrollment can remain as an optional way to seed a profile, but transcript-confirmed evidence should be the main learning path
+
+## Completion note (2026-07-09)
+
+Implemented in `src-tauri/src/services/voice_learning.rs`. Gates per story:
+clean speech >= 6 s, duration-weighted purity >= 0.80, no clipped chunks in the
+group, mean session score >= 0.85, score std dev <= 0.06, mean margin >= 0.15,
+and target profile must beat the next closest profile by >= 0.05. Profiles are
+rebuildable: `VoiceprintProfile` stores `enrollment_embedding` plus
+`evidence: Vec<ProfileEvidence>` and the global embedding is recomputed from
+those parts (evidence keyed by note+speaker; re-accepting replaces, never
+duplicates). All new vectors seal/unseal through `VoiceEmbeddingStore`.
+Learning is gated by `voice_learning_enabled` and, when
+`voice_embeddings_encryption_required`, by the store actually being encrypted.
+IPC: `voiceprint_evaluate_session_evidence` / `voiceprint_apply_session_evidence`.
+UI: after a correction to an enrolled profile, TranscriptPanel offers
+"Improve <name>'s voiceprint from this recording?" only when the gates pass.

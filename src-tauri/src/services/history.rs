@@ -224,6 +224,62 @@ impl HistoryService {
         Ok(())
     }
 
+    /// Apply an inline speaker-label correction to one chunk and cascade the
+    /// relabel through the session (story 0062). Centroids are recomputed,
+    /// every chunk is re-scored, and blocks follow their chunks. Returns the
+    /// updated record so the caller can refresh without a second fetch.
+    pub fn correct_chunk_label(
+        &self,
+        save_folder: &str,
+        id: &str,
+        chunk_id: &str,
+        label: &str,
+    ) -> Result<HistoryRecord> {
+        let mut inner = self.inner.lock().unwrap();
+        self.ensure_loaded(&mut inner, save_folder)?;
+        let Some(&idx) = inner.index.get(id) else {
+            anyhow::bail!("note `{id}` not found");
+        };
+
+        let mut updated = inner.records[idx].clone();
+        let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+        crate::services::speaker_chunks::correct_chunk_label(
+            &mut updated.speaker_chunks,
+            &mut updated.session_speakers,
+            chunk_id,
+            label,
+            now_ms,
+        )
+        .map_err(anyhow::Error::msg)?;
+
+        let chunk_labels: HashMap<&str, &str> = updated
+            .speaker_chunks
+            .iter()
+            .map(|chunk| (chunk.id.as_str(), chunk.label.as_str()))
+            .collect();
+        let block_labels: Vec<Option<String>> = updated
+            .speaker_blocks
+            .iter()
+            .map(|block| {
+                block
+                    .chunk_id
+                    .as_deref()
+                    .and_then(|chunk_id| chunk_labels.get(chunk_id))
+                    .map(|label| label.to_string())
+            })
+            .collect();
+        for (block, label) in updated.speaker_blocks.iter_mut().zip(block_labels) {
+            if let Some(label) = label {
+                block.label = label;
+            }
+        }
+
+        let store = self.embedding_store();
+        Self::append_line(save_folder, &updated, &store)?;
+        inner.records[idx] = updated.clone();
+        Ok(updated)
+    }
+
     /// Remove biometric voice vectors from a note while keeping transcript text,
     /// labels, timing, quality scores, cuts, chunks, and session speaker groups.
     pub fn remove_voice_embeddings(&self, save_folder: &str, id: &str) -> Result<()> {
@@ -573,6 +629,7 @@ mod tests {
             profile_score: None,
             session_score: None,
             margin: None,
+            corrections: Vec::new(),
         }];
         rec.speaker_blocks = vec![crate::types::SpeakerBlock {
             label: "Speaker A".into(),
@@ -591,6 +648,98 @@ mod tests {
         assert!(got.session_speakers[0].user_confirmed);
         assert_eq!(got.speaker_chunks[0].label, "Gilgamesh");
         assert_eq!(got.speaker_blocks[0].label, "Gilgamesh");
+    }
+
+    #[test]
+    fn correct_chunk_label_cascades_and_persists() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let mut rec = record("hello");
+        let chunk = |id: &str, start: u64, end: u64, emb: Vec<f32>, cluster: &str, label: &str| {
+            crate::types::SpeakerChunk {
+                id: id.into(),
+                start_ms: start,
+                end_ms: end,
+                label: label.into(),
+                cluster_id: Some(cluster.into()),
+                matched_profile: None,
+                embedding: Some(emb),
+                encrypted_embedding: None,
+                audio_duration_s: (end - start) as f32 / 1000.0,
+                vad_purity: 1.0,
+                rms_energy: 0.1,
+                clipping: false,
+                profile_score: None,
+                session_score: None,
+                margin: None,
+                corrections: Vec::new(),
+            }
+        };
+        rec.speaker_chunks = vec![
+            chunk(
+                "chunk-0001",
+                0,
+                10_000,
+                vec![1.0, 0.0],
+                "speaker-1",
+                "Speaker A",
+            ),
+            chunk(
+                "chunk-0002",
+                10_000,
+                20_000,
+                vec![0.0, 1.0],
+                "speaker-2",
+                "Speaker B",
+            ),
+            chunk(
+                "chunk-0003",
+                20_000,
+                22_000,
+                vec![0.9, 0.436],
+                "speaker-2",
+                "Speaker B",
+            ),
+        ];
+        rec.session_speakers =
+            crate::services::speaker_chunks::build_session_speakers(&rec.speaker_chunks);
+        rec.speaker_blocks = rec
+            .speaker_chunks
+            .iter()
+            .map(|c| crate::types::SpeakerBlock {
+                label: c.label.clone(),
+                start_ms: Some(c.start_ms),
+                end_ms: Some(c.end_ms),
+                text: "text".into(),
+                chunk_id: Some(c.id.clone()),
+            })
+            .collect();
+        let id = svc.append(&folder, rec).expect("append");
+
+        let updated = svc
+            .correct_chunk_label(&folder, &id, "chunk-0003", "Speaker A")
+            .expect("correction applies");
+
+        assert_eq!(updated.speaker_chunks[2].label, "Speaker A");
+        assert_eq!(
+            updated.speaker_chunks[2].cluster_id.as_deref(),
+            Some("speaker-1")
+        );
+        assert!(!updated.speaker_chunks[2].corrections.is_empty());
+        assert_eq!(
+            updated.speaker_blocks[2].label, "Speaker A",
+            "blocks follow their chunk"
+        );
+
+        // Persisted: a fresh service sees the corrected state.
+        let fresh = HistoryService::new();
+        let got = fresh.get(&folder, &id).unwrap().expect("present");
+        assert_eq!(got.speaker_chunks[2].label, "Speaker A");
+        assert_eq!(got.speaker_blocks[2].label, "Speaker A");
+        assert!(got
+            .session_speakers
+            .iter()
+            .any(|s| s.session_speaker_id == "speaker-1" && s.user_confirmed));
     }
 
     #[test]
@@ -627,6 +776,7 @@ mod tests {
             profile_score: Some(0.8),
             session_score: None,
             margin: None,
+            corrections: Vec::new(),
         }];
         let id = svc.append(&folder, rec).expect("append");
 
@@ -668,6 +818,7 @@ mod tests {
             profile_score: None,
             session_score: None,
             margin: None,
+            corrections: Vec::new(),
         }];
         let changed_id = svc.append(&folder, with_embedding).expect("append changed");
         let unchanged_id = svc.append(&folder, record("plain")).expect("append plain");
@@ -716,6 +867,7 @@ mod tests {
             profile_score: None,
             session_score: None,
             margin: None,
+            corrections: Vec::new(),
         }];
         rec.session_speakers = vec![crate::types::SessionSpeaker {
             session_speaker_id: "speaker-1".into(),
@@ -767,6 +919,7 @@ mod tests {
             profile_score: None,
             session_score: None,
             margin: None,
+            corrections: Vec::new(),
         }];
         let id = svc.append(&folder, rec).expect("append encrypted");
 

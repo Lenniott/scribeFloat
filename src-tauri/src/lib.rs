@@ -900,6 +900,7 @@ pub fn run() {
             commands::history::note_has_metadata,
             commands::history::note_set_tags,
             commands::history::note_rename_session_speaker,
+            commands::history::note_correct_chunk_label,
             commands::history::note_remove_voice_embeddings,
             commands::history::history_remove_all_voice_embeddings,
             commands::history::note_attach_transcript,

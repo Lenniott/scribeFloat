@@ -1,7 +1,8 @@
 use crate::services::analysis::rms;
 use crate::services::voiceprint::VoiceprintService;
 use crate::types::{
-    Segment, SessionSpeaker, SpeakerBlock, SpeakerChangeCut, SpeakerChunk, VoiceprintProfile,
+    LabelCorrection, Segment, SessionSpeaker, SpeakerBlock, SpeakerChangeCut, SpeakerChunk,
+    VoiceprintProfile,
 };
 
 const MIN_EMBED_MS: u64 = 2_000;
@@ -13,6 +14,9 @@ const LOCAL_CLUSTER_THRESHOLD: f32 = 0.60;
 const CLEAN_CHUNK_MIN_PURITY: f32 = 0.60;
 const LOCAL_SPEAKER_PREFIX: &str = "Speaker ";
 const OTHER_LABEL: &str = "Other";
+/// Chunks with a smaller best-vs-second-best margin are genuinely ambiguous
+/// and are never auto-relabeled by the correction cascade.
+const CASCADE_MIN_MARGIN: f32 = 0.05;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChunkSpan {
@@ -160,6 +164,7 @@ pub fn analyze_chunks(
                 profile_score: None,
                 session_score: None,
                 margin: None,
+                corrections: Vec::new(),
             }
         })
         .collect();
@@ -225,42 +230,219 @@ pub fn build_session_speakers(chunks: &[SpeakerChunk]) -> Vec<SessionSpeaker> {
     groups
         .into_iter()
         .filter_map(|(session_speaker_id, members)| {
-            let centroid_embedding = weighted_centroid(&members)?;
-            let start_ms = members
-                .iter()
-                .map(|chunk| chunk.start_ms)
-                .min()
-                .unwrap_or(0);
-            let end_ms = members
-                .iter()
-                .map(|chunk| chunk.end_ms)
-                .max()
-                .unwrap_or(start_ms);
-            let duration_ms = members.iter().map(|chunk| chunk_duration_ms(chunk)).sum();
-            let radius = speaker_radius(&centroid_embedding, &members);
-            let quality_score = speaker_quality_score(&members, radius);
-            let label = members
-                .iter()
-                .find(|chunk| chunk.label != OTHER_LABEL)
-                .or_else(|| members.first())
-                .map(|chunk| chunk.label.clone())
-                .unwrap_or_else(|| OTHER_LABEL.to_string());
-
-            Some(SessionSpeaker {
-                session_speaker_id,
-                label,
-                centroid_embedding,
-                encrypted_centroid_embedding: None,
-                clean_chunk_ids: members.iter().map(|chunk| chunk.id.clone()).collect(),
-                start_ms,
-                end_ms,
-                duration_ms,
-                radius,
-                quality_score,
-                user_confirmed: false,
-            })
+            session_speaker_from_members(session_speaker_id, &members)
         })
         .collect()
+}
+
+fn session_speaker_from_members(
+    session_speaker_id: String,
+    members: &[&SpeakerChunk],
+) -> Option<SessionSpeaker> {
+    let centroid_embedding = weighted_centroid(members)?;
+    let start_ms = members
+        .iter()
+        .map(|chunk| chunk.start_ms)
+        .min()
+        .unwrap_or(0);
+    let end_ms = members
+        .iter()
+        .map(|chunk| chunk.end_ms)
+        .max()
+        .unwrap_or(start_ms);
+    let duration_ms = members.iter().map(|chunk| chunk_duration_ms(chunk)).sum();
+    let radius = speaker_radius(&centroid_embedding, members);
+    let quality_score = speaker_quality_score(members, radius);
+    let label = members
+        .iter()
+        .find(|chunk| chunk.label != OTHER_LABEL)
+        .or_else(|| members.first())
+        .map(|chunk| chunk.label.clone())
+        .unwrap_or_else(|| OTHER_LABEL.to_string());
+
+    Some(SessionSpeaker {
+        session_speaker_id,
+        label,
+        centroid_embedding,
+        encrypted_centroid_embedding: None,
+        clean_chunk_ids: members.iter().map(|chunk| chunk.id.clone()).collect(),
+        start_ms,
+        end_ms,
+        duration_ms,
+        radius,
+        quality_score,
+        user_confirmed: false,
+    })
+}
+
+/// Recompute one session speaker from the current chunk membership, keeping
+/// its existing label and confirmation. Removes the speaker when the group no
+/// longer has any clean embedded member.
+fn rebuild_session_speaker(
+    chunks: &[SpeakerChunk],
+    speakers: &mut Vec<SessionSpeaker>,
+    group_id: &str,
+) {
+    let members: Vec<&SpeakerChunk> = chunks
+        .iter()
+        .filter(|chunk| {
+            clean_for_session_speaker(chunk) && chunk.cluster_id.as_deref() == Some(group_id)
+        })
+        .collect();
+    let existing = speakers
+        .iter()
+        .position(|speaker| speaker.session_speaker_id == group_id);
+
+    match session_speaker_from_members(group_id.to_string(), &members) {
+        Some(mut rebuilt) => {
+            if let Some(idx) = existing {
+                rebuilt.label = speakers[idx].label.clone();
+                rebuilt.user_confirmed = speakers[idx].user_confirmed;
+                speakers[idx] = rebuilt;
+            } else {
+                speakers.push(rebuilt);
+            }
+        }
+        None => {
+            if let Some(idx) = existing {
+                speakers.remove(idx);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct CorrectionOutcome {
+    pub corrected_chunk_id: Option<String>,
+    pub auto_corrected_chunk_ids: Vec<String>,
+}
+
+/// Apply a user label correction to one chunk, then cascade: recompute the two
+/// affected centroids, re-score every chunk, and auto-relabel chunks whose
+/// winning centroid changed — unless their margin marks them genuinely
+/// ambiguous or they carry an explicit user correction.
+pub fn correct_chunk_label(
+    chunks: &mut [SpeakerChunk],
+    speakers: &mut Vec<SessionSpeaker>,
+    chunk_id: &str,
+    new_label: &str,
+    now_ms: u64,
+) -> Result<CorrectionOutcome, String> {
+    let idx = chunks
+        .iter()
+        .position(|chunk| chunk.id == chunk_id)
+        .ok_or_else(|| format!("unknown chunk `{chunk_id}`"))?;
+    let old_label = chunks[idx].label.clone();
+    if old_label == new_label {
+        return Ok(CorrectionOutcome::default());
+    }
+
+    let old_cluster = chunks[idx].cluster_id.clone();
+    let target_cluster = speakers
+        .iter()
+        .find(|speaker| speaker.label == new_label)
+        .map(|speaker| speaker.session_speaker_id.clone())
+        .unwrap_or_else(|| next_cluster_id(chunks, speakers));
+
+    chunks[idx].label = new_label.to_string();
+    chunks[idx].cluster_id = Some(target_cluster.clone());
+    chunks[idx].corrections.push(LabelCorrection {
+        from_label: old_label,
+        to_label: new_label.to_string(),
+        corrected_at_ms: now_ms,
+        auto: false,
+    });
+
+    if let Some(old_cluster) = old_cluster.as_deref().filter(|id| *id != target_cluster) {
+        rebuild_session_speaker(chunks, speakers, old_cluster);
+    }
+    rebuild_session_speaker(chunks, speakers, &target_cluster);
+    if let Some(target) = speakers
+        .iter_mut()
+        .find(|speaker| speaker.session_speaker_id == target_cluster)
+    {
+        target.label = new_label.to_string();
+        target.user_confirmed = true;
+    }
+    score_chunks(chunks, speakers);
+
+    let mut auto_corrected_chunk_ids = Vec::new();
+    let mut touched_groups = Vec::new();
+    for (move_idx, winner_idx) in cascade_moves(chunks, speakers) {
+        let winner_id = speakers[winner_idx].session_speaker_id.clone();
+        let winner_label = speakers[winner_idx].label.clone();
+        let chunk = &mut chunks[move_idx];
+        if let Some(previous) = chunk.cluster_id.clone() {
+            touched_groups.push(previous);
+        }
+        touched_groups.push(winner_id.clone());
+        chunk.corrections.push(LabelCorrection {
+            from_label: chunk.label.clone(),
+            to_label: winner_label.clone(),
+            corrected_at_ms: now_ms,
+            auto: true,
+        });
+        chunk.label = winner_label;
+        chunk.cluster_id = Some(winner_id);
+        auto_corrected_chunk_ids.push(chunk.id.clone());
+    }
+
+    if !auto_corrected_chunk_ids.is_empty() {
+        touched_groups.sort();
+        touched_groups.dedup();
+        for group in &touched_groups {
+            rebuild_session_speaker(chunks, speakers, group);
+        }
+        score_chunks(chunks, speakers);
+    }
+
+    Ok(CorrectionOutcome {
+        corrected_chunk_id: Some(chunk_id.to_string()),
+        auto_corrected_chunk_ids,
+    })
+}
+
+/// Chunks whose winning centroid differs from their current cluster and whose
+/// margin clears the ambiguity gate. Chunks the user explicitly corrected are
+/// never moved.
+fn cascade_moves(chunks: &[SpeakerChunk], speakers: &[SessionSpeaker]) -> Vec<(usize, usize)> {
+    chunks
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, chunk)| {
+            if chunk.corrections.iter().any(|correction| !correction.auto) {
+                return None;
+            }
+            let embedding = chunk.embedding.as_deref()?;
+            if chunk.margin? < CASCADE_MIN_MARGIN {
+                return None;
+            }
+            let (winner_idx, _) = speakers
+                .iter()
+                .enumerate()
+                .map(|(speaker_idx, speaker)| {
+                    (speaker_idx, cosine(embedding, &speaker.centroid_embedding))
+                })
+                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))?;
+            let winner_id = &speakers[winner_idx].session_speaker_id;
+            (chunk.cluster_id.as_ref() != Some(winner_id)).then_some((idx, winner_idx))
+        })
+        .collect()
+}
+
+fn next_cluster_id(chunks: &[SpeakerChunk], speakers: &[SessionSpeaker]) -> String {
+    let max_suffix = chunks
+        .iter()
+        .filter_map(|chunk| chunk.cluster_id.as_deref())
+        .chain(
+            speakers
+                .iter()
+                .map(|speaker| speaker.session_speaker_id.as_str()),
+        )
+        .filter_map(|id| id.strip_prefix("speaker-")?.parse::<u64>().ok())
+        .max()
+        .unwrap_or(0);
+    format!("speaker-{}", max_suffix + 1)
 }
 
 /// Back-fill `session_score` and `margin` onto each embedded chunk from the
@@ -554,7 +736,7 @@ fn ms_to_samples(ms: u64, sample_rate: u32) -> usize {
     ((ms as u128 * sample_rate as u128) / 1000) as usize
 }
 
-fn cosine(a: &[f32], b: &[f32]) -> f32 {
+pub(crate) fn cosine(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }
@@ -836,6 +1018,331 @@ mod tests {
         assert!(chunks[2].margin.is_some());
     }
 
+    fn clustered_chunk(
+        id: &str,
+        start_ms: u64,
+        end_ms: u64,
+        embedding: Vec<f32>,
+        cluster: &str,
+        label: &str,
+    ) -> SpeakerChunk {
+        let mut chunk = test_chunk_with_embedding(id, start_ms, end_ms, embedding);
+        chunk.cluster_id = Some(cluster.to_string());
+        chunk.label = label.to_string();
+        chunk
+    }
+
+    #[test]
+    fn correction_moves_chunk_and_recomputes_both_centroids() {
+        let mut chunks = vec![
+            clustered_chunk(
+                "chunk-0001",
+                0,
+                10_000,
+                vec![1.0, 0.0],
+                "speaker-1",
+                "Speaker A",
+            ),
+            clustered_chunk(
+                "chunk-0002",
+                10_000,
+                12_000,
+                vec![0.6, 0.8],
+                "speaker-1",
+                "Speaker A",
+            ),
+            clustered_chunk(
+                "chunk-0003",
+                12_000,
+                20_000,
+                vec![0.0, 1.0],
+                "speaker-2",
+                "Speaker B",
+            ),
+        ];
+        let mut speakers = build_session_speakers(&chunks);
+        score_chunks(&mut chunks, &speakers);
+
+        let outcome =
+            correct_chunk_label(&mut chunks, &mut speakers, "chunk-0002", "Speaker B", 42)
+                .expect("correction applies");
+
+        assert_eq!(outcome.corrected_chunk_id.as_deref(), Some("chunk-0002"));
+        let moved = &chunks[1];
+        assert_eq!(moved.label, "Speaker B");
+        assert_eq!(moved.cluster_id.as_deref(), Some("speaker-2"));
+        assert_eq!(
+            moved.corrections,
+            vec![crate::types::LabelCorrection {
+                from_label: "Speaker A".into(),
+                to_label: "Speaker B".into(),
+                corrected_at_ms: 42,
+                auto: false,
+            }]
+        );
+
+        // speaker-1 lost the member: centroid is chunk-0001 alone again.
+        let a = speakers
+            .iter()
+            .find(|s| s.session_speaker_id == "speaker-1")
+            .expect("speaker-1 remains");
+        assert!((a.centroid_embedding[0] - 1.0).abs() < 1e-6);
+        assert_eq!(a.clean_chunk_ids, vec!["chunk-0001"]);
+
+        // speaker-2 gained it: centroid pulled off the [0,1] axis, confirmed.
+        let b = speakers
+            .iter()
+            .find(|s| s.session_speaker_id == "speaker-2")
+            .expect("speaker-2 remains");
+        assert!(b.user_confirmed);
+        assert!(b.centroid_embedding[0] > 0.0);
+        assert_eq!(b.clean_chunk_ids.len(), 2);
+
+        // Scores were refreshed against the updated centroids.
+        let expected = cosine(
+            chunks[1].embedding.as_deref().unwrap(),
+            &b.centroid_embedding,
+        );
+        assert!((chunks[1].session_score.unwrap() - expected).abs() < 1e-6);
+    }
+
+    #[test]
+    fn correction_to_unknown_label_creates_confirmed_session_speaker() {
+        let mut chunks = vec![
+            clustered_chunk(
+                "chunk-0001",
+                0,
+                10_000,
+                vec![1.0, 0.0],
+                "speaker-1",
+                "Speaker A",
+            ),
+            clustered_chunk(
+                "chunk-0002",
+                10_000,
+                15_000,
+                vec![0.9, 0.436],
+                "speaker-1",
+                "Speaker A",
+            ),
+        ];
+        let mut speakers = build_session_speakers(&chunks);
+
+        correct_chunk_label(&mut chunks, &mut speakers, "chunk-0002", "Alice", 7)
+            .expect("correction applies");
+
+        let alice = speakers
+            .iter()
+            .find(|s| s.label == "Alice")
+            .expect("new session speaker created");
+        assert!(alice.user_confirmed);
+        assert_eq!(alice.clean_chunk_ids, vec!["chunk-0002"]);
+        assert_ne!(alice.session_speaker_id, "speaker-1");
+        assert_eq!(
+            chunks[1].cluster_id.as_deref(),
+            Some(alice.session_speaker_id.as_str())
+        );
+    }
+
+    #[test]
+    fn correction_cascades_to_clearly_misfiled_chunks() {
+        // chunk-0003 and chunk-0004 both sound like Speaker A but sit in
+        // cluster B. Correcting one should pull the other across too.
+        let mut chunks = vec![
+            clustered_chunk(
+                "chunk-0001",
+                0,
+                10_000,
+                vec![1.0, 0.0],
+                "speaker-1",
+                "Speaker A",
+            ),
+            clustered_chunk(
+                "chunk-0002",
+                10_000,
+                20_000,
+                vec![0.0, 1.0],
+                "speaker-2",
+                "Speaker B",
+            ),
+            clustered_chunk(
+                "chunk-0003",
+                20_000,
+                22_000,
+                vec![0.9, 0.436],
+                "speaker-2",
+                "Speaker B",
+            ),
+            clustered_chunk(
+                "chunk-0004",
+                22_000,
+                24_000,
+                vec![0.95, 0.312],
+                "speaker-2",
+                "Speaker B",
+            ),
+        ];
+        let mut speakers = build_session_speakers(&chunks);
+        score_chunks(&mut chunks, &speakers);
+
+        let outcome = correct_chunk_label(&mut chunks, &mut speakers, "chunk-0003", "Speaker A", 9)
+            .expect("correction applies");
+
+        assert_eq!(
+            outcome.auto_corrected_chunk_ids,
+            vec!["chunk-0004".to_string()],
+            "the other misfiled chunk should cascade"
+        );
+        assert_eq!(chunks[3].label, "Speaker A");
+        assert_eq!(chunks[3].cluster_id.as_deref(), Some("speaker-1"));
+        let auto = chunks[3]
+            .corrections
+            .last()
+            .expect("auto correction recorded");
+        assert!(auto.auto);
+        assert_eq!(auto.from_label, "Speaker B");
+        // The untouched anchors keep their homes.
+        assert_eq!(chunks[0].cluster_id.as_deref(), Some("speaker-1"));
+        assert_eq!(chunks[1].cluster_id.as_deref(), Some("speaker-2"));
+        assert!(chunks[1].corrections.is_empty());
+    }
+
+    #[test]
+    fn cascade_never_overrides_explicit_user_corrections() {
+        let mut chunks = vec![
+            clustered_chunk(
+                "chunk-0001",
+                0,
+                10_000,
+                vec![1.0, 0.0],
+                "speaker-1",
+                "Speaker A",
+            ),
+            clustered_chunk(
+                "chunk-0002",
+                10_000,
+                20_000,
+                vec![0.0, 1.0],
+                "speaker-2",
+                "Speaker B",
+            ),
+            // Sounds like A, but the user has already pinned it to B.
+            clustered_chunk(
+                "chunk-0003",
+                20_000,
+                22_000,
+                vec![0.95, 0.312],
+                "speaker-2",
+                "Speaker B",
+            ),
+            clustered_chunk(
+                "chunk-0004",
+                22_000,
+                24_000,
+                vec![0.9, 0.436],
+                "speaker-2",
+                "Speaker B",
+            ),
+        ];
+        chunks[2].corrections.push(crate::types::LabelCorrection {
+            from_label: "Speaker A".into(),
+            to_label: "Speaker B".into(),
+            corrected_at_ms: 1,
+            auto: false,
+        });
+        let mut speakers = build_session_speakers(&chunks);
+        score_chunks(&mut chunks, &speakers);
+
+        let outcome = correct_chunk_label(&mut chunks, &mut speakers, "chunk-0004", "Speaker A", 9)
+            .expect("correction applies");
+
+        assert!(outcome.auto_corrected_chunk_ids.is_empty());
+        assert_eq!(chunks[2].label, "Speaker B", "user-pinned chunk must stay");
+        assert_eq!(chunks[2].cluster_id.as_deref(), Some("speaker-2"));
+    }
+
+    #[test]
+    fn cascade_skips_ambiguous_chunks_below_margin_gate() {
+        // chunk-0003 sits between the two centroids (margin < 0.05): it must
+        // not be auto-relabeled even though a winner nominally exists.
+        let mut chunks = vec![
+            clustered_chunk(
+                "chunk-0001",
+                0,
+                10_000,
+                vec![1.0, 0.0],
+                "speaker-1",
+                "Speaker A",
+            ),
+            clustered_chunk(
+                "chunk-0002",
+                10_000,
+                20_000,
+                vec![0.0, 1.0],
+                "speaker-2",
+                "Speaker B",
+            ),
+            clustered_chunk(
+                "chunk-0003",
+                20_000,
+                22_000,
+                vec![0.72, 0.694],
+                "speaker-2",
+                "Speaker B",
+            ),
+            clustered_chunk(
+                "chunk-0004",
+                22_000,
+                24_000,
+                vec![0.9, 0.436],
+                "speaker-2",
+                "Speaker B",
+            ),
+        ];
+        let mut speakers = build_session_speakers(&chunks);
+        score_chunks(&mut chunks, &speakers);
+
+        correct_chunk_label(&mut chunks, &mut speakers, "chunk-0004", "Speaker A", 9)
+            .expect("correction applies");
+
+        let ambiguous = &chunks[2];
+        let margin = ambiguous.margin.expect("margin scored");
+        assert!(
+            margin < 0.05,
+            "test fixture must stay ambiguous, got margin {margin}"
+        );
+        assert_eq!(ambiguous.label, "Speaker B", "ambiguous chunk stays put");
+        assert!(ambiguous.corrections.is_empty());
+    }
+
+    #[test]
+    fn correction_to_same_label_is_a_noop() {
+        let mut chunks = vec![clustered_chunk(
+            "chunk-0001",
+            0,
+            10_000,
+            vec![1.0, 0.0],
+            "speaker-1",
+            "Speaker A",
+        )];
+        let mut speakers = build_session_speakers(&chunks);
+
+        let outcome = correct_chunk_label(&mut chunks, &mut speakers, "chunk-0001", "Speaker A", 5)
+            .expect("noop allowed");
+
+        assert_eq!(outcome, CorrectionOutcome::default());
+        assert!(chunks[0].corrections.is_empty());
+    }
+
+    #[test]
+    fn correction_unknown_chunk_errors() {
+        let mut chunks: Vec<SpeakerChunk> = Vec::new();
+        let mut speakers: Vec<SessionSpeaker> = Vec::new();
+        assert!(
+            correct_chunk_label(&mut chunks, &mut speakers, "chunk-9999", "Speaker A", 5).is_err()
+        );
+    }
+
     #[test]
     fn local_labels_continue_after_z() {
         assert_eq!(local_speaker_label(0), "Speaker A");
@@ -860,6 +1367,7 @@ mod tests {
             profile_score: None,
             session_score: None,
             margin: None,
+            corrections: Vec::new(),
         }
     }
 

@@ -316,6 +316,18 @@ pub struct SpeakerChunk {
     /// None when fewer than two session speakers exist to compare against.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub margin: Option<f32>,
+    /// Label correction history, oldest first. User corrections have
+    /// `auto: false`; cascade relabels triggered by them have `auto: true`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub corrections: Vec<LabelCorrection>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LabelCorrection {
+    pub from_label: String,
+    pub to_label: String,
+    pub corrected_at_ms: u64,
+    pub auto: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1429,6 +1441,7 @@ mod tests {
                 profile_score: None,
                 session_score: None,
                 margin: None,
+                corrections: Vec::new(),
             }],
             session_speakers: vec![SessionSpeaker {
                 session_speaker_id: "s-1".into(),

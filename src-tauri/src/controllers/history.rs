@@ -120,6 +120,29 @@ impl HistoryController {
             .map_err(|e| e.to_string())
     }
 
+    pub fn correct_chunk_label(
+        &self,
+        id: &str,
+        chunk_id: &str,
+        label: &str,
+    ) -> Result<HistoryRecord, String> {
+        if is_legacy(id) {
+            return Err("legacy items are read-only".to_string());
+        }
+        let chunk_id = chunk_id.trim();
+        let label = label.trim();
+        if chunk_id.is_empty() {
+            return Err("chunk id cannot be empty".to_string());
+        }
+        if label.is_empty() {
+            return Err("speaker label cannot be empty".to_string());
+        }
+        let save_folder = self.config.get().save_folder;
+        self.history
+            .correct_chunk_label(&save_folder, id, chunk_id, label)
+            .map_err(|e| e.to_string())
+    }
+
     pub fn remove_voice_embeddings(&self, id: &str) -> Result<(), String> {
         if is_legacy(id) {
             return Err("legacy items are read-only".to_string());

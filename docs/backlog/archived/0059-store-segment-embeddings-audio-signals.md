@@ -1,7 +1,7 @@
 ---
 id: "0059"
 title: Store per-segment embeddings and audio quality signals at label time
-status: active
+status: done
 ---
 
 # Store per-segment embeddings and audio quality signals at label time

@@ -1,7 +1,7 @@
 ---
 id: "0054"
 title: Voice profile onboarding and enrollment flow
-status: active
+status: done
 adr: ADR-0011
 ---
 

@@ -1,7 +1,7 @@
 ---
 id: "0058"
 title: Voiceprint config fields — user_display_name and voice_similarity_threshold
-status: active
+status: done
 adr: ADR-0011
 ---
 

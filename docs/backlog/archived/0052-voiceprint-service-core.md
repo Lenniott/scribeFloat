@@ -1,7 +1,7 @@
 ---
 id: "0052"
 title: VoiceprintService — core speaker embedding and identification
-status: active
+status: done
 adr: ADR-0011
 ---
 

@@ -1,7 +1,7 @@
 ---
 id: "0057"
 title: Voiceprint profile manager in settings
-status: active
+status: done
 adr: ADR-0011
 ---
 

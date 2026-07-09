@@ -1,7 +1,7 @@
 ---
 id: "0060"
 title: Compute and store per-session speaker centroids after labeling
-status: active
+status: done
 ---
 
 # Compute and store per-session speaker centroids after labeling

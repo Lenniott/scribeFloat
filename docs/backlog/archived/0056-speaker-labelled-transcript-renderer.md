@@ -1,7 +1,7 @@
 ---
 id: "0056"
 title: Speaker-labelled transcript format and renderer
-status: active
+status: done
 adr: ADR-0011
 ---
 

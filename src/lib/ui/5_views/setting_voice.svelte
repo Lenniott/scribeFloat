@@ -133,7 +133,6 @@
 	</div>
 {:else}
 	<section class="space-y-5">
-		<h2 class="sf-headline-sm text-fg">Voice</h2>
 
 		{#if loadError}
 			<p class="rounded-md border border-destructive/40 bg-fill px-3 py-2 sf-label-sm text-destructive">
@@ -174,7 +173,7 @@
 			{:else}
 				<SettingsList>
 					{#each profiles as profile (profile.slug)}
-						<SettingsRow title={profile.name} description={profileMeta(profile)}>
+						<SettingsRow class="bg-card p-2" title={profile.name} description={profileMeta(profile)}>
 							{#if editingSlug === profile.slug}
 								<div class="flex flex-col gap-2">
 									<TextField label="Profile name" bind:value={editingName} labelHidden />

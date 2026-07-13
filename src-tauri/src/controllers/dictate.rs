@@ -1,5 +1,7 @@
 use crate::services::audio::read_wav_mono_f32;
-use crate::services::transcription::{transcribe_capture, CaptureAudio, TranscribeOptions};
+use crate::services::transcription::{
+    run_post_capture_transcription, CaptureAudio, CaptureProfile, PostCaptureInput,
+};
 use crate::services::{
     audio::{AudioService, MicSession, WHISPER_SAMPLE_RATE},
     config::ConfigService,
@@ -822,21 +824,22 @@ impl DictateController {
                 )
                 .ok();
         };
-        let segments = match transcribe_capture(
+        let result = match run_post_capture_transcription(
             &self.model,
-            CaptureAudio {
-                mic_pcm_16k: &pcm_16k,
-                speaker_pcm_16k: None,
-            },
-            TranscribeOptions {
+            PostCaptureInput {
+                profile: CaptureProfile::Dictate,
+                audio: CaptureAudio {
+                    mic_pcm_16k: &pcm_16k,
+                    speaker_pcm_16k: None,
+                },
                 model_path: &model_path,
-                source: "dictate",
+                speaker_analysis: None,
                 abort: None,
                 on_model_loaded: None,
             },
             progress_reporter,
         ) {
-            Ok(segments) => segments,
+            Ok(result) => result,
             Err(e) => {
                 if abort_flag.load(Ordering::SeqCst) {
                     self.delete_dictate_wav(&wav_path);
@@ -848,6 +851,12 @@ impl DictateController {
                 return Ok(false);
             }
         };
+        let crate::services::transcription::TranscriptResult {
+            segments,
+            dictate_text,
+            model_label,
+            ..
+        } = result;
 
         if abort_flag.load(Ordering::SeqCst) {
             self.delete_dictate_wav(&wav_path);
@@ -861,7 +870,7 @@ impl DictateController {
             return Ok(false);
         }
 
-        let text = self.output.format_dictate_text(&segments);
+        let text = dictate_text.unwrap_or_else(|| self.output.format_dictate_text(&segments));
 
         if abort_flag.load(Ordering::SeqCst) {
             self.delete_dictate_wav(&wav_path);
@@ -892,11 +901,7 @@ impl DictateController {
             return Ok(false);
         }
 
-        let model_name = model_path
-            .file_stem()
-            .map(|s| s.to_string_lossy().replace("ggml-", ""))
-            .unwrap_or_else(|| "model".to_string());
-        let record = HistoryRecord::from_dictate(&segments, &text, model_name);
+        let record = HistoryRecord::from_dictate(&segments, &text, model_label);
         let history_write_failed = if let Err(e) = self.history.append(&config.save_folder, record)
         {
             tracing::warn!(error = %e, "dictate failed to write history");

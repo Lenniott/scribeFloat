@@ -10,6 +10,7 @@
 - Audio stream callbacks run on cpal's thread — never await or block inside them.
 - The macOS paste path (`run_on_main_sync`) must not be called from a Tauri async command handler — it will deadlock. Use the `finish_session_async` pattern from `dictate_stop` command as the reference.
 - Tauri `#[tauri::command]` functions that call blocking code (e.g. `stop_and_take` which drains an audio channel) **must be `async`** and wrapped in `tokio::task::spawn_blocking`. Sync commands run on the main thread — blocking there hangs the entire UI event loop.
+- Post-capture transcription progress mapping lives in `services/transcription.rs`. Controllers still emit workflow-specific Tauri events, but dual-source mic/speaker progress scaling and the first-pass model-loaded callback belong to the post-capture module.
 
 ---
 

@@ -1,12 +1,12 @@
 use crate::services::analysis::{detect_cuts, CutConfig, PitchAnalyzer};
-use crate::services::audio::WHISPER_SAMPLE_RATE;
 use crate::services::config::ConfigService;
 use crate::services::history::{strip_voice_embeddings, HistoryService};
 use crate::services::model::ModelService;
 use crate::services::output::OutputService;
 use crate::services::transcribe_input::{TranscribeInputItem, TranscribeInputService};
 use crate::services::transcription::{
-    analyze_capture_speakers, transcribe_capture, CaptureAudio, SpeakerEvidence, TranscribeOptions,
+    run_post_capture_transcription, CaptureAudio, CaptureProfile, PostCaptureInput,
+    SpeakerAnalysisInput,
 };
 use crate::services::voiceprint::VoiceprintService;
 use crate::types::{
@@ -262,21 +262,26 @@ impl TranscribeController {
                     );
                 }
             };
-            let segments = match transcribe_capture(
+            let result = match run_post_capture_transcription(
                 &self.model,
-                CaptureAudio {
-                    mic_pcm_16k: &decoded.mic_pcm_16k,
-                    speaker_pcm_16k: decoded.speaker_pcm_16k.as_deref(),
-                },
-                TranscribeOptions {
+                PostCaptureInput {
+                    profile: CaptureProfile::Upload,
+                    audio: CaptureAudio {
+                        mic_pcm_16k: &decoded.mic_pcm_16k,
+                        speaker_pcm_16k: decoded.speaker_pcm_16k.as_deref(),
+                    },
                     model_path,
-                    source: "transcribe",
+                    speaker_analysis: Some(SpeakerAnalysisInput {
+                        voiceprint: &self.voiceprint,
+                        profile_threshold: cfg.voice_similarity_threshold,
+                        speaker_change_cuts: &speaker_change_cuts,
+                    }),
                     abort: None,
                     on_model_loaded: None,
                 },
                 progress_reporter,
             ) {
-                Ok(segments) => segments,
+                Ok(result) => result,
                 Err(err) => {
                     queue[index].status = TranscribeItemStatus::Error;
                     queue[index].error = Some(err.to_string());
@@ -291,6 +296,16 @@ impl TranscribeController {
                     continue;
                 }
             };
+            let crate::services::transcription::TranscriptResult {
+                segments,
+                speaker_blocks,
+                speaker_change_cuts,
+                speaker_chunks,
+                session_speakers,
+                dual_source,
+                model_label,
+                ..
+            } = result;
 
             queue[index].progress = 0.98;
             self.emit_queue_state(
@@ -301,24 +316,6 @@ impl TranscribeController {
                 None,
             );
 
-            let dual_source = decoded.speaker_pcm_16k.is_some();
-            let evidence = if dual_source {
-                SpeakerEvidence::default()
-            } else {
-                analyze_capture_speakers(
-                    &decoded.mic_pcm_16k,
-                    WHISPER_SAMPLE_RATE,
-                    &speaker_change_cuts,
-                    &self.voiceprint,
-                    cfg.voice_similarity_threshold,
-                    &segments,
-                )
-            };
-            let SpeakerEvidence {
-                speaker_blocks,
-                speaker_chunks,
-                session_speakers,
-            } = evidence;
             // Markdown is opt-in; write `.md` only when the toggle is on.
             let markdown_path = if markdown_on {
                 let output_name = format!("{}_{}.md", slugify(&input.display_name), model_name);
@@ -366,7 +363,7 @@ impl TranscribeController {
             // Persist the canonical record — always, regardless of the markdown toggle.
             let mut record = HistoryRecord::from_transcribe(
                 input.display_name.clone(),
-                model_name.to_string(),
+                model_label,
                 segments.clone(),
                 dual_source,
                 input.source_path.to_string_lossy().into_owned(),

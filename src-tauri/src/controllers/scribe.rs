@@ -1,8 +1,8 @@
 use crate::services::analysis::{detect_cuts, CutConfig, PitchAnalyzer};
 use crate::services::audio::{read_wav_mono_f32, WHISPER_SAMPLE_RATE};
-use crate::services::speaker_blocks::build_speaker_blocks;
 use crate::services::transcription::{
-    analyze_capture_speakers, transcribe_capture, CaptureAudio, TranscribeOptions,
+    run_post_capture_transcription, CaptureAudio, CaptureProfile, PostCaptureInput,
+    SpeakerAnalysisInput, TranscriptResult,
 };
 use crate::services::{
     audio::{AudioService, MicSession},
@@ -73,7 +73,6 @@ struct ActiveSession {
 struct PreparedAudio {
     session_dir: PathBuf,
     wav_path: PathBuf,
-    pcm_16k: Vec<f32>,
     speaker_pcm_16k: Option<Vec<f32>>,
     speaker_change_cuts: Vec<SpeakerChangeCut>,
     speaker_chunks: Vec<SpeakerChunk>,
@@ -689,8 +688,8 @@ impl ScribeController {
             return Ok(());
         }
 
-        let segments = match self.run_transcription(&model_path, &prepared, &abort_flag) {
-            Ok(segments) => segments,
+        let result = match self.run_transcription(&model_path, &prepared, &config, &abort_flag) {
+            Ok(result) => result,
             Err(e) => {
                 // An abort interrupting `full()` can surface as an Err; treat that as a clean
                 // stop rather than a transcription error.
@@ -715,10 +714,12 @@ impl ScribeController {
             return Ok(());
         }
 
-        let speaker_blocks = self.build_chunk_speaker_blocks(&segments, &mut prepared, &config);
+        prepared.speaker_change_cuts = result.speaker_change_cuts.clone();
+        prepared.speaker_chunks = result.speaker_chunks.clone();
+        prepared.session_speakers = result.session_speakers.clone();
         let (history_record_id, transcript_path) = match self.write_outputs(
-            &segments,
-            &speaker_blocks,
+            &result.segments,
+            &result.speaker_blocks,
             &notes,
             title,
             &model_path,
@@ -788,7 +789,6 @@ impl ScribeController {
         // Writer thread is joined; the analyzer lock is uncontended from here on.
         let speaker_change_cuts = self.harvest_audio_analysis(&session_dir, &pitch_analyzer);
 
-        let pcm_16k = read_wav_mono_f32(&wav_path)?;
         self.lock().transcription_wav_path = Some(wav_path.clone());
 
         let speaker_wav_names: Vec<String> = speaker_accum
@@ -841,7 +841,6 @@ impl ScribeController {
         Ok(PreparedAudio {
             session_dir,
             wav_path,
-            pcm_16k,
             speaker_pcm_16k,
             speaker_change_cuts,
             speaker_chunks: Vec::new(),
@@ -884,8 +883,9 @@ impl ScribeController {
         &self,
         model_path: &Path,
         prepared: &PreparedAudio,
+        config: &Config,
         abort_flag: &Arc<AtomicBool>,
-    ) -> Result<Vec<Segment>> {
+    ) -> Result<TranscriptResult> {
         let (progress_tx, progress_rx) = mpsc::channel::<ProgressMessage>();
         let progress_app = self.app.clone();
         let progress_thread = std::thread::spawn(move || {
@@ -933,15 +933,20 @@ impl ScribeController {
                 tx.send(ProgressMessage::Progress(p)).ok();
             }
         };
-        let segments = transcribe_capture(
+        let result = run_post_capture_transcription(
             &self.model,
-            CaptureAudio {
-                mic_pcm_16k: &pcm_16k,
-                speaker_pcm_16k: prepared.speaker_pcm_16k.as_deref(),
-            },
-            TranscribeOptions {
+            PostCaptureInput {
+                profile: CaptureProfile::Record,
+                audio: CaptureAudio {
+                    mic_pcm_16k: &pcm_16k,
+                    speaker_pcm_16k: prepared.speaker_pcm_16k.as_deref(),
+                },
                 model_path,
-                source: "scribe",
+                speaker_analysis: Some(SpeakerAnalysisInput {
+                    voiceprint: &self.voiceprint,
+                    profile_threshold: config.voice_similarity_threshold,
+                    speaker_change_cuts: &prepared.speaker_change_cuts,
+                }),
                 abort: Some(Arc::clone(abort_flag)),
                 on_model_loaded: Some(Box::new(on_model_loaded)),
             },
@@ -950,57 +955,7 @@ impl ScribeController {
 
         progress_tx.send(ProgressMessage::Finished).ok();
         progress_thread.join().ok();
-        segments
-    }
-
-    fn label_speaker_blocks(
-        &self,
-        segments: &[Segment],
-        prepared: &PreparedAudio,
-        config: &Config,
-    ) -> Vec<SpeakerBlock> {
-        let dual_source = prepared.speaker_pcm_16k.is_some();
-        match build_speaker_blocks(
-            segments,
-            &prepared.pcm_16k,
-            WHISPER_SAMPLE_RATE,
-            &self.voiceprint,
-            config.voice_similarity_threshold,
-            dual_source,
-        ) {
-            Ok(blocks) => blocks,
-            Err(err) => {
-                tracing::warn!(error = %err, "speaker labelling skipped");
-                Vec::new()
-            }
-        }
-    }
-
-    fn build_chunk_speaker_blocks(
-        &self,
-        segments: &[Segment],
-        prepared: &mut PreparedAudio,
-        config: &Config,
-    ) -> Vec<SpeakerBlock> {
-        if prepared.speaker_pcm_16k.is_some() {
-            return self.label_speaker_blocks(segments, prepared, config);
-        }
-        let evidence = analyze_capture_speakers(
-            &prepared.pcm_16k,
-            WHISPER_SAMPLE_RATE,
-            &prepared.speaker_change_cuts,
-            &self.voiceprint,
-            config.voice_similarity_threshold,
-            segments,
-        );
-        prepared.speaker_chunks = evidence.speaker_chunks;
-        prepared.session_speakers = evidence.session_speakers;
-        let blocks = evidence.speaker_blocks;
-        if blocks.iter().any(|block| block.label != "Other") {
-            blocks
-        } else {
-            self.label_speaker_blocks(segments, prepared, config)
-        }
+        result
     }
 
     /// Write the transcript file, persist the history record, and optionally delete WAVs.

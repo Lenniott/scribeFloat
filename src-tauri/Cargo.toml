@@ -14,6 +14,10 @@ edition = "2021"
 name = "scribefloat_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "scribefloat"
+path = "src/bin/scribefloat.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -49,6 +53,7 @@ sherpa-onnx = "1"
 pitch-detection = "0.3"
 base64 = "0.22"
 ring = "0.17"
+fastembed = "5.17"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Used directly for sysctlbyname in lib::log_system_info; pinned loose to match the

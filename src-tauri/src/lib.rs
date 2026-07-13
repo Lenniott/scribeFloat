@@ -1,8 +1,8 @@
 mod commands;
 mod controllers;
 mod platform;
-mod services;
-mod types;
+pub mod services;
+pub mod types;
 
 use std::sync::Arc;
 use tauri::{

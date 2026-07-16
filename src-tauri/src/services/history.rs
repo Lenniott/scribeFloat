@@ -280,6 +280,32 @@ impl HistoryService {
         Ok(updated)
     }
 
+    /// Rename a speaker label across one note and persist the rewritten record.
+    /// Errors when the note is unknown or nothing carried `from_label`.
+    pub fn relabel_speaker(
+        &self,
+        save_folder: &str,
+        id: &str,
+        from_label: &str,
+        to_label: &str,
+    ) -> Result<HistoryRecord> {
+        let mut inner = self.inner.lock().unwrap();
+        self.ensure_loaded(&mut inner, save_folder)?;
+        let Some(&idx) = inner.index.get(id) else {
+            anyhow::bail!("note `{id}` not found");
+        };
+
+        let mut updated = inner.records[idx].clone();
+        if relabel_speaker_blocks(&mut updated, from_label, to_label) == 0 {
+            anyhow::bail!("note `{id}` has no speaker labeled `{from_label}`");
+        }
+
+        let store = self.embedding_store();
+        Self::append_line(save_folder, &updated, &store)?;
+        inner.records[idx] = updated.clone();
+        Ok(updated)
+    }
+
     /// Remove biometric voice vectors from a note while keeping transcript text,
     /// labels, timing, quality scores, cuts, chunks, and session speaker groups.
     pub fn remove_voice_embeddings(&self, save_folder: &str, id: &str) -> Result<()> {
@@ -473,6 +499,26 @@ impl HistoryService {
     }
 }
 
+/// Rename a speaker across one note: every `speaker_blocks` entry labeled
+/// `from` takes `to`, and legacy chunk/session-speaker labels follow so old
+/// chunk-tier notes stay self-consistent. Returns how many entries changed.
+pub fn relabel_speaker_blocks(record: &mut HistoryRecord, from: &str, to: &str) -> usize {
+    let mut changed = 0;
+    for label in record
+        .speaker_blocks
+        .iter_mut()
+        .map(|b| &mut b.label)
+        .chain(record.speaker_chunks.iter_mut().map(|c| &mut c.label))
+        .chain(record.session_speakers.iter_mut().map(|s| &mut s.label))
+    {
+        if label == from {
+            *label = to.to_string();
+            changed += 1;
+        }
+    }
+    changed
+}
+
 /// Remove only embedding vectors. Human-readable transcript data stays usable.
 pub fn strip_voice_embeddings(record: &mut HistoryRecord) -> bool {
     let mut changed = false;
@@ -648,6 +694,108 @@ mod tests {
         assert!(got.session_speakers[0].user_confirmed);
         assert_eq!(got.speaker_chunks[0].label, "Gilgamesh");
         assert_eq!(got.speaker_blocks[0].label, "Gilgamesh");
+    }
+
+    fn block(label: &str, start: u64, end: u64, text: &str) -> crate::types::SpeakerBlock {
+        crate::types::SpeakerBlock {
+            label: label.into(),
+            start_ms: Some(start),
+            end_ms: Some(end),
+            text: text.into(),
+            chunk_id: None,
+        }
+    }
+
+    #[test]
+    fn relabel_speaker_blocks_renames_all_matches_and_legacy_labels() {
+        let mut rec = record("hello");
+        rec.speaker_blocks = vec![
+            block("Speaker 1", 0, 1_000, "one"),
+            block("Speaker 2", 1_000, 2_000, "two"),
+            block("Speaker 1", 2_000, 3_000, "three"),
+        ];
+        rec.speaker_chunks = vec![crate::types::SpeakerChunk {
+            id: "chunk-0001".into(),
+            start_ms: 0,
+            end_ms: 1_000,
+            label: "Speaker 1".into(),
+            cluster_id: None,
+            matched_profile: None,
+            embedding: None,
+            encrypted_embedding: None,
+            audio_duration_s: 1.0,
+            vad_purity: 1.0,
+            rms_energy: 0.1,
+            clipping: false,
+            profile_score: None,
+            session_score: None,
+            margin: None,
+            corrections: Vec::new(),
+        }];
+        rec.session_speakers = vec![crate::types::SessionSpeaker {
+            session_speaker_id: "speaker-1".into(),
+            label: "Speaker 1".into(),
+            centroid_embedding: Vec::new(),
+            encrypted_centroid_embedding: None,
+            clean_chunk_ids: Vec::new(),
+            start_ms: 0,
+            end_ms: 1_000,
+            duration_ms: 1_000,
+            radius: 0.0,
+            quality_score: 0.9,
+            user_confirmed: false,
+        }];
+
+        let changed = relabel_speaker_blocks(&mut rec, "Speaker 1", "Ben");
+
+        assert_eq!(changed, 4);
+        assert_eq!(rec.speaker_blocks[0].label, "Ben");
+        assert_eq!(rec.speaker_blocks[1].label, "Speaker 2");
+        assert_eq!(rec.speaker_blocks[2].label, "Ben");
+        assert_eq!(rec.speaker_chunks[0].label, "Ben");
+        assert_eq!(rec.session_speakers[0].label, "Ben");
+    }
+
+    #[test]
+    fn relabel_speaker_blocks_returns_zero_when_nothing_matches() {
+        let mut rec = record("hello");
+        rec.speaker_blocks = vec![block("Speaker 1", 0, 1_000, "one")];
+        assert_eq!(relabel_speaker_blocks(&mut rec, "Speaker 9", "Ben"), 0);
+        assert_eq!(rec.speaker_blocks[0].label, "Speaker 1");
+    }
+
+    #[test]
+    fn relabel_speaker_persists_across_reload() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let mut rec = record("hello");
+        rec.speaker_blocks = vec![
+            block("Speaker 1", 0, 1_000, "one"),
+            block("Speaker 2", 1_000, 2_000, "two"),
+        ];
+        let id = svc.append(&folder, rec).expect("append");
+
+        let updated = svc
+            .relabel_speaker(&folder, &id, "Speaker 1", "Ben")
+            .expect("relabel");
+        assert_eq!(updated.speaker_blocks[0].label, "Ben");
+
+        let fresh = HistoryService::new();
+        let got = fresh.get(&folder, &id).unwrap().expect("present");
+        assert_eq!(got.speaker_blocks[0].label, "Ben");
+        assert_eq!(got.speaker_blocks[1].label, "Speaker 2");
+    }
+
+    #[test]
+    fn relabel_speaker_errors_on_unknown_note_or_label() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let mut rec = record("hello");
+        rec.speaker_blocks = vec![block("Speaker 1", 0, 1_000, "one")];
+        let id = svc.append(&folder, rec).expect("append");
+
+        assert!(svc.relabel_speaker(&folder, "missing", "Speaker 1", "Ben").is_err());
+        assert!(svc.relabel_speaker(&folder, &id, "Speaker 9", "Ben").is_err());
     }
 
     #[test]

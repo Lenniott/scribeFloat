@@ -1,5 +1,5 @@
 use crate::services::voice_embeddings::VoiceEmbeddingStore;
-use crate::types::{SpeakerBlock, VoiceprintProfile};
+use crate::types::VoiceprintProfile;
 use anyhow::{anyhow, Context, Result};
 use sherpa_onnx::{SpeakerEmbeddingExtractor, SpeakerEmbeddingExtractorConfig};
 use std::path::{Path, PathBuf};
@@ -341,38 +341,13 @@ pub fn profile_summary(profile: &VoiceprintProfile) -> crate::types::VoiceprintP
     }
 }
 
-pub fn merge_blocks(blocks: Vec<SpeakerBlock>) -> Vec<SpeakerBlock> {
-    let mut merged: Vec<SpeakerBlock> = Vec::new();
-    for block in blocks {
-        if let Some(last) = merged.last_mut().filter(|last| last.label == block.label) {
-            last.end_ms = block.end_ms.or(last.end_ms);
-            if !block.text.trim().is_empty() {
-                if !last.text.ends_with(' ') && !last.text.is_empty() {
-                    last.text.push(' ');
-                }
-                last.text.push_str(block.text.trim());
-            }
-        } else {
-            merged.push(block);
-        }
-    }
-    merged
-}
+// Moved to speaker_blocks.rs (identity-free block utility); shim kept so existing
+// callers survive until the voiceprint module is deleted.
+pub use crate::services::speaker_blocks::merge_blocks;
 
-pub fn slugify(value: &str) -> String {
-    let mut out = String::new();
-    let mut previous_dash = false;
-    for ch in value.trim().to_lowercase().chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch);
-            previous_dash = false;
-        } else if !previous_dash && !out.is_empty() {
-            out.push('-');
-            previous_dash = true;
-        }
-    }
-    out.trim_matches('-').to_string()
-}
+// Moved to speaker_names.rs (plain-name utility); shim kept so existing
+// callers survive until the voiceprint module is deleted.
+pub use crate::services::speaker_names::slugify;
 
 fn normalize_name(value: &str) -> Result<String> {
     let trimmed = value.trim();

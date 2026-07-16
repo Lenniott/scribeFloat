@@ -1,7 +1,27 @@
-use crate::services::voiceprint::{merge_blocks, VoiceprintService};
+use crate::services::voiceprint::VoiceprintService;
 use crate::types::{Segment, SegmentSource, SpeakerBlock, CHANNEL_LABEL_IN, CHANNEL_LABEL_OUT};
 
 const IDENTITY_LABEL_OTHER: &str = "Other";
+
+/// Merge adjacent blocks sharing a label: extend the end time, join text with a
+/// single space. Skips whitespace-only fragments.
+pub fn merge_blocks(blocks: Vec<SpeakerBlock>) -> Vec<SpeakerBlock> {
+    let mut merged: Vec<SpeakerBlock> = Vec::new();
+    for block in blocks {
+        if let Some(last) = merged.last_mut().filter(|last| last.label == block.label) {
+            last.end_ms = block.end_ms.or(last.end_ms);
+            if !block.text.trim().is_empty() {
+                if !last.text.ends_with(' ') && !last.text.is_empty() {
+                    last.text.push(' ');
+                }
+                last.text.push_str(block.text.trim());
+            }
+        } else {
+            merged.push(block);
+        }
+    }
+    merged
+}
 
 fn identify_mic_segment(
     segment: &Segment,
@@ -65,7 +85,7 @@ fn merge_blocks_same_label_and_source(
     merged.into_iter().map(|(_, block)| block).collect()
 }
 
-fn block_from_segment(segment: &Segment, label: &str) -> SpeakerBlock {
+pub(crate) fn block_from_segment(segment: &Segment, label: &str) -> SpeakerBlock {
     SpeakerBlock {
         label: label.to_string(),
         start_ms: Some(segment.start_ms.max(0) as u64),

@@ -1,6 +1,7 @@
 use crate::services::config::ConfigService;
 use crate::services::history::HistoryService;
 use crate::services::output::{self, OutputService};
+use crate::services::speaker_names::{is_reserved_speaker_label, SpeakerNameService};
 use crate::types::{
     DashboardStats, HistoryItemSource, HistoryKind, HistoryListItem, HistoryRecord,
     TagVocabularyEntry,
@@ -16,6 +17,7 @@ pub struct HistoryController {
     history: Arc<HistoryService>,
     output: Arc<OutputService>,
     config: Arc<ConfigService>,
+    speaker_names: Arc<SpeakerNameService>,
 }
 
 /// Prefix marking a legacy on-disk `.md` item id (read-only).
@@ -28,11 +30,13 @@ impl HistoryController {
         history: Arc<HistoryService>,
         output: Arc<OutputService>,
         config: Arc<ConfigService>,
+        speaker_names: Arc<SpeakerNameService>,
     ) -> Arc<Self> {
         Arc::new(Self {
             history,
             output,
             config,
+            speaker_names,
         })
     }
 
@@ -141,6 +145,42 @@ impl HistoryController {
         self.history
             .correct_chunk_label(&save_folder, id, chunk_id, label)
             .map_err(|e| e.to_string())
+    }
+
+    /// Rename a speaker across one note and remember the new name globally
+    /// (unless it's an auto-assigned label like "Speaker 2" or "Other").
+    pub fn relabel_speaker(
+        &self,
+        id: &str,
+        from_label: &str,
+        to_label: &str,
+    ) -> Result<HistoryRecord, String> {
+        if is_legacy(id) {
+            return Err("legacy items are read-only".to_string());
+        }
+        let from_label = from_label.trim();
+        let to_label = to_label.trim();
+        if from_label.is_empty() || to_label.is_empty() {
+            return Err("speaker label cannot be empty".to_string());
+        }
+        if to_label.len() > 80 {
+            return Err("speaker label is too long (max 80 characters)".to_string());
+        }
+        if from_label == to_label {
+            return Err("new speaker label matches the current one".to_string());
+        }
+        let save_folder = self.config.get().save_folder;
+        let updated = self
+            .history
+            .relabel_speaker(&save_folder, id, from_label, to_label)
+            .map_err(|e| e.to_string())?;
+        if !is_reserved_speaker_label(to_label) {
+            // Global name save is a convenience; never fail the relabel over it.
+            if let Err(e) = self.speaker_names.save(to_label, None) {
+                tracing::warn!(error = %e, "failed to save relabeled speaker name globally");
+            }
+        }
+        Ok(updated)
     }
 
     pub fn remove_voice_embeddings(&self, id: &str) -> Result<(), String> {
@@ -526,6 +566,7 @@ mod tests {
         save_folder: String,
         ctrl: Arc<HistoryController>,
         history: Arc<HistoryService>,
+        speaker_names: Arc<SpeakerNameService>,
     }
 
     fn fixture() -> Fixture {
@@ -543,11 +584,18 @@ mod tests {
 
         let history = HistoryService::new();
         let output = OutputService::new();
-        let ctrl = HistoryController::new(Arc::clone(&history), output, Arc::clone(&config));
+        let speaker_names = SpeakerNameService::load(root.join("speaker_names.json"));
+        let ctrl = HistoryController::new(
+            Arc::clone(&history),
+            output,
+            Arc::clone(&config),
+            Arc::clone(&speaker_names),
+        );
         Fixture {
             save_folder,
             ctrl,
             history,
+            speaker_names,
         }
     }
 
@@ -597,6 +645,67 @@ mod tests {
         );
         // Idempotent.
         f.ctrl.delete(&id).unwrap();
+    }
+
+    fn labeled_record(labels: &[&str]) -> HistoryRecord {
+        let mut rec = HistoryRecord::from_dictate(&seg("note"), "note text", "tiny".to_string());
+        rec.speaker_blocks = labels
+            .iter()
+            .enumerate()
+            .map(|(i, label)| crate::types::SpeakerBlock {
+                label: label.to_string(),
+                start_ms: Some(i as u64 * 1_000),
+                end_ms: Some((i as u64 + 1) * 1_000),
+                text: format!("text {i}"),
+                chunk_id: None,
+            })
+            .collect();
+        rec
+    }
+
+    #[test]
+    fn relabel_speaker_updates_note_and_saves_name_globally() {
+        let f = fixture();
+        let id = f
+            .history
+            .append(&f.save_folder, labeled_record(&["Speaker 1", "Speaker 2"]))
+            .unwrap();
+
+        let updated = f.ctrl.relabel_speaker(&id, "Speaker 1", "Ben").unwrap();
+
+        assert_eq!(updated.speaker_blocks[0].label, "Ben");
+        assert_eq!(updated.speaker_blocks[1].label, "Speaker 2");
+        let names: Vec<String> = f.speaker_names.list().into_iter().map(|n| n.name).collect();
+        assert_eq!(names, vec!["Ben".to_string()]);
+    }
+
+    #[test]
+    fn relabel_speaker_does_not_save_reserved_labels() {
+        let f = fixture();
+        let id = f
+            .history
+            .append(&f.save_folder, labeled_record(&["Ben"]))
+            .unwrap();
+
+        f.ctrl.relabel_speaker(&id, "Ben", "Speaker 2").unwrap();
+
+        assert!(f.speaker_names.list().is_empty());
+    }
+
+    #[test]
+    fn relabel_speaker_rejects_bad_input() {
+        let f = fixture();
+        let id = f
+            .history
+            .append(&f.save_folder, labeled_record(&["Speaker 1"]))
+            .unwrap();
+
+        assert!(f.ctrl.relabel_speaker(&id, "Speaker 1", "  ").is_err());
+        assert!(f.ctrl.relabel_speaker(&id, "Speaker 1", "Speaker 1").is_err());
+        assert!(f.ctrl.relabel_speaker(&id, "Speaker 1", &"x".repeat(81)).is_err());
+        assert!(f.ctrl.relabel_speaker("md::legacy", "Speaker 1", "Ben").is_err());
+        // Nothing was saved globally by the failed attempts.
+        assert!(f.speaker_names.list().is_empty());
     }
 
     #[test]

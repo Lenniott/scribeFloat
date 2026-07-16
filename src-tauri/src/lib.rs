@@ -707,11 +707,19 @@ pub fn run() {
                 Arc::clone(&voiceprint),
                 app.handle().clone(),
             );
+            let speaker_names = services::speaker_names::SpeakerNameService::load(
+                data_dir.join("speaker_names.json"),
+            );
             let history_ctrl = controllers::history::HistoryController::new(
                 Arc::clone(&history),
                 Arc::clone(&output),
                 Arc::clone(&config),
+                Arc::clone(&speaker_names),
             );
+            app.manage(Arc::clone(&speaker_names));
+            app.manage(controllers::speaker_names::SpeakerNamesController::new(
+                Arc::clone(&speaker_names),
+            ));
 
             let update = services::update::UpdateService::new();
 
@@ -909,6 +917,10 @@ pub fn run() {
             commands::history::note_set_tags,
             commands::history::note_rename_session_speaker,
             commands::history::note_correct_chunk_label,
+            commands::history::note_relabel_speaker,
+            commands::speaker_names::speaker_names_list,
+            commands::speaker_names::speaker_name_save,
+            commands::speaker_names::speaker_name_delete,
             commands::history::note_remove_voice_embeddings,
             commands::history::history_remove_all_voice_embeddings,
             commands::history::note_attach_transcript,

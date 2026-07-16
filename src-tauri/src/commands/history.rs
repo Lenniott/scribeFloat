@@ -215,6 +215,22 @@ pub fn note_rename_session_speaker(
 }
 
 #[tauri::command]
+pub fn note_relabel_speaker(
+    ctrl: State<'_, Arc<HistoryController>>,
+    app: AppHandle,
+    id: String,
+    from_label: String,
+    to_label: String,
+) -> Result<HistoryRecord, AppError> {
+    validate_id(&id)?;
+    let updated = ctrl
+        .relabel_speaker(&id, &from_label, &to_label)
+        .map_err(AppError::from)?;
+    emit_note_item_updated(&app, &id);
+    Ok(updated)
+}
+
+#[tauri::command]
 pub fn note_correct_chunk_label(
     ctrl: State<'_, Arc<HistoryController>>,
     app: AppHandle,

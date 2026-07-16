@@ -51,6 +51,8 @@ symphonia = { version = "0.5", features = ["aac", "flac", "isomp4", "mp3", "ogg"
 regex = "1"
 sha2 = "0.10"
 sherpa-onnx = "1"
+# Sortformer streaming diarization only (ASR stays whisper-rs); shares ort with fastembed.
+parakeet-rs = { version = "0.3.6", features = ["sortformer"] }
 pitch-detection = "0.3"
 base64 = "0.22"
 ring = "0.17"

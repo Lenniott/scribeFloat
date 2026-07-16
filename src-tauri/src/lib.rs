@@ -590,13 +590,15 @@ pub fn run() {
 
             let models_dir = data_dir.join("models");
             std::fs::create_dir_all(&models_dir)?;
-            // Seed the bundled models (Small Whisper, VAD, voiceprint ONNX) into the user's
-            // models dir. Silently skipped in dev builds where the resource files aren't
-            // present (run scripts/fetch-bundled-models.sh before a release build).
+            // Seed the bundled models (Small Whisper, VAD, voiceprint ONNX, Sortformer
+            // diarization) into the user's models dir. Silently skipped in dev builds
+            // where the resource files aren't present (run scripts/fetch-bundled-models.sh
+            // before a release build).
             for file_name in [
                 services::model::SMALL_MODEL_FILENAME,
                 services::model::VAD_MODEL_FILENAME,
                 services::voiceprint::VOICEPRINT_MODEL_FILE,
+                services::diarization::SORTFORMER_MODEL_FILENAME,
             ] {
                 let dest = models_dir.join(file_name);
                 if !dest.exists() {
@@ -613,6 +615,10 @@ pub fn run() {
                     }
                 }
             }
+            let diarization = services::diarization::DiarizationService::new(
+                models_dir.join(services::diarization::SORTFORMER_MODEL_FILENAME),
+            );
+            app.manage(Arc::clone(&diarization));
             let model = services::model::ModelService::new(models_dir);
             if model.vad_model_needs_redownload() {
                 if model.vad_model_available() && !model.vad_model_integrity_ok() {

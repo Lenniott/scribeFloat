@@ -392,6 +392,16 @@ pub struct SpeakerChangeCut {
     pub reasons: std::collections::BTreeSet<CutReason>,
 }
 
+/// Anonymous "who spoke when" span from Sortformer diarization, in ms since
+/// capture start. Carries no identity — `speaker_id` is a per-recording slot
+/// (0..=3; the model separates at most 4 voices).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiarizationRange {
+    pub speaker_id: u8,
+    pub start_ms: u64,
+    pub end_ms: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ScribeState {

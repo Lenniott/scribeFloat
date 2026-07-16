@@ -95,6 +95,18 @@ pub(crate) fn block_from_segment(segment: &Segment, label: &str) -> SpeakerBlock
     }
 }
 
+/// Channel-tier blocks for dual-source captures: label purely by which track a
+/// segment came from (`In` = mic, `Out` = loopback), merging adjacent
+/// same-channel runs. No identity, no models.
+pub fn build_channel_blocks(segments: &[Segment]) -> Vec<SpeakerBlock> {
+    let blocks = segments
+        .iter()
+        .filter(|segment| !segment.text.trim().is_empty())
+        .map(|segment| block_from_segment(segment, channel_label(segment.source)))
+        .collect();
+    merge_blocks_same_label(blocks)
+}
+
 /// Build speaker blocks for all three display tiers.
 pub fn build_speaker_blocks(
     segments: &[Segment],
@@ -175,6 +187,37 @@ pub fn display_block_label(stored: &str, input_label: &str, output_label: &str) 
 mod tests {
     use super::*;
     use crate::types::Segment;
+
+    fn sourced(start_ms: i64, end_ms: i64, text: &str, source: Option<SegmentSource>) -> Segment {
+        let mut segment = Segment::new(start_ms, end_ms, text);
+        segment.source = source;
+        segment
+    }
+
+    #[test]
+    fn build_channel_blocks_labels_by_track_and_merges_adjacent() {
+        let segments = [
+            sourced(0, 500, "me one", Some(SegmentSource::Mic)),
+            sourced(500, 900, "me two", Some(SegmentSource::Mic)),
+            sourced(900, 1_500, "them", Some(SegmentSource::Speaker)),
+            sourced(1_500, 2_000, "me again", None),
+        ];
+        let blocks = build_channel_blocks(&segments);
+        let labels: Vec<&str> = blocks.iter().map(|b| b.label.as_str()).collect();
+        assert_eq!(labels, vec![CHANNEL_LABEL_IN, CHANNEL_LABEL_OUT, CHANNEL_LABEL_IN]);
+        assert_eq!(blocks[0].text, "me one me two");
+    }
+
+    #[test]
+    fn build_channel_blocks_skips_whitespace_segments() {
+        let segments = [
+            sourced(0, 500, "  ", Some(SegmentSource::Mic)),
+            sourced(500, 900, "real", Some(SegmentSource::Speaker)),
+        ];
+        let blocks = build_channel_blocks(&segments);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].label, CHANNEL_LABEL_OUT);
+    }
 
     fn temp_voiceprint_svc() -> crate::services::voiceprint::VoiceprintService {
         let dir = std::env::temp_dir().join(format!("vp-{}", uuid::Uuid::new_v4()));

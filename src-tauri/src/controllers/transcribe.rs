@@ -1,17 +1,17 @@
 use crate::services::analysis::{detect_cuts, CutConfig, PitchAnalyzer};
 use crate::services::config::ConfigService;
-use crate::services::history::{strip_voice_embeddings, HistoryService};
+use crate::services::diarization::DiarizationService;
+use crate::services::history::HistoryService;
 use crate::services::model::ModelService;
 use crate::services::output::OutputService;
 use crate::services::transcribe_input::{TranscribeInputItem, TranscribeInputService};
 use crate::services::transcription::{
     run_post_capture_transcription, CaptureAudio, CaptureProfile, PostCaptureInput,
-    SpeakerAnalysisInput,
+    SpeakerEvidenceInput,
 };
-use crate::services::voiceprint::VoiceprintService;
 use crate::types::{
     Config, HistoryRecord, ProcessingStage, TranscribeItemStatus, TranscribeQueueItem,
-    TranscribeState, TranscribeStateEvent, VoiceEmbeddingsRetention,
+    TranscribeState, TranscribeStateEvent,
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -35,7 +35,7 @@ pub struct TranscribeController {
     output: Arc<OutputService>,
     history: Arc<HistoryService>,
     config: Arc<ConfigService>,
-    voiceprint: Arc<VoiceprintService>,
+    diarization: Arc<DiarizationService>,
     app: AppHandle,
 }
 
@@ -46,7 +46,7 @@ impl TranscribeController {
         output: Arc<OutputService>,
         history: Arc<HistoryService>,
         config: Arc<ConfigService>,
-        voiceprint: Arc<VoiceprintService>,
+        diarization: Arc<DiarizationService>,
         app: AppHandle,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -58,7 +58,7 @@ impl TranscribeController {
             output,
             history,
             config,
-            voiceprint,
+            diarization,
             app,
         })
     }
@@ -114,20 +114,6 @@ impl TranscribeController {
             Some(ProcessingStage::LoadingModel),
             None,
         );
-
-        // Warm the voiceprint extractor in parallel with the first Whisper pass so
-        // per-item speaker analysis never stalls on the ~500 ms ONNX graph build.
-        {
-            let voiceprint = Arc::clone(&this.voiceprint);
-            tauri::async_runtime::spawn(async move {
-                let _ = tokio::task::spawn_blocking(move || {
-                    if let Err(err) = voiceprint.preload_extractor() {
-                        tracing::warn!(error = %err, "voiceprint extractor preload failed");
-                    }
-                })
-                .await;
-            });
-        }
 
         tauri::async_runtime::spawn(async move {
             let ctrl = Arc::clone(&this);
@@ -271,11 +257,10 @@ impl TranscribeController {
                         speaker_pcm_16k: decoded.speaker_pcm_16k.as_deref(),
                     },
                     model_path,
-                    speaker_analysis: Some(SpeakerAnalysisInput {
-                        voiceprint: &self.voiceprint,
-                        profile_threshold: cfg.voice_similarity_threshold,
-                        speaker_change_cuts: &speaker_change_cuts,
-                    }),
+                    speaker_evidence: Some(SpeakerEvidenceInput::DiarizeOnDemand(
+                        self.diarization.as_ref(),
+                    )),
+                    speaker_change_cuts: &speaker_change_cuts,
                     abort: None,
                     on_model_loaded: None,
                 },
@@ -300,8 +285,6 @@ impl TranscribeController {
                 segments,
                 speaker_blocks,
                 speaker_change_cuts,
-                speaker_chunks,
-                session_speakers,
                 dual_source,
                 model_label,
                 ..
@@ -373,11 +356,6 @@ impl TranscribeController {
             );
             record.speaker_blocks = speaker_blocks;
             record.speaker_change_cuts = speaker_change_cuts;
-            record.speaker_chunks = speaker_chunks;
-            record.session_speakers = session_speakers;
-            if cfg.voice_embeddings_retention == VoiceEmbeddingsRetention::DeleteAfterTranscript {
-                strip_voice_embeddings(&mut record);
-            }
             if let Err(e) = self.history.append(&save_folder, record) {
                 tracing::warn!(error = %e, "failed to append transcribe history record");
             } else {

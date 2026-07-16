@@ -687,6 +687,7 @@ pub fn run() {
                 Arc::clone(&history),
                 Arc::clone(&config),
                 Arc::clone(&voiceprint),
+                Arc::clone(&diarization),
                 app.handle().clone(),
             );
 
@@ -704,7 +705,7 @@ pub fn run() {
                 Arc::clone(&output),
                 Arc::clone(&history),
                 Arc::clone(&config),
-                Arc::clone(&voiceprint),
+                Arc::clone(&diarization),
                 app.handle().clone(),
             );
             let speaker_names = services::speaker_names::SpeakerNameService::load(

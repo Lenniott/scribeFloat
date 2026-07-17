@@ -7,11 +7,10 @@ set -euo pipefail
 DEST_DIR="$(cd "$(dirname "$0")/.." && pwd)/src-tauri/bundled-models"
 mkdir -p "$DEST_DIR"
 
-# name | url | sha256 (empty = unverified; the voiceprint release asset publishes no checksum)
+# name | url | sha256
 MODELS=(
   "ggml-small.en-q5_1.bin|https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin|bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30"
   "ggml-silero-v6.2.0.bin|https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin|2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987"
-  "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx|https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx|"
   "diar_streaming_sortformer_4spk-v2.onnx|https://huggingface.co/altunenes/parakeet-rs/resolve/main/diar_streaming_sortformer_4spk-v2.onnx|cc520901a8cc25a8d7f7c2c8561a465709b67dd4f1df0572a97530087f3fbc73"
 )
 

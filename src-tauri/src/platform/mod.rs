@@ -4,7 +4,9 @@ pub mod paste_impl;
 pub mod permissions_impl;
 pub mod window_impl;
 
+#[cfg(target_os = "macos")]
 const VOICE_CRYPTO_KEY_SERVICE: &str = "com.benjamin.scribefloat-v8.voice-embeddings-key";
+#[cfg(target_os = "macos")]
 const VOICE_CRYPTO_KEY_ACCOUNT: &str = "default";
 
 /// Open a file, optionally with a specific application.
@@ -145,71 +147,36 @@ pub fn set_default_output_device(_device_name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Delete the legacy voice-embedding encryption key. The voiceprint feature is
+/// gone; its ciphertext is purged at startup, so the key has nothing to guard.
+/// Missing key (already deleted, or never created) is success.
 #[cfg(target_os = "macos")]
-pub fn get_or_create_voice_crypto_key() -> Result<String, String> {
-    match read_keychain_password(VOICE_CRYPTO_KEY_SERVICE, VOICE_CRYPTO_KEY_ACCOUNT) {
-        Ok(value) if !value.trim().is_empty() => return Ok(value),
-        Ok(_) => {}
-        Err(err) if !err.contains("could not be found") => return Err(err),
-        Err(_) => {}
+pub fn delete_voice_crypto_key() -> Result<(), String> {
+    let output = std::process::Command::new("/usr/bin/security")
+        .args([
+            "delete-generic-password",
+            "-s",
+            VOICE_CRYPTO_KEY_SERVICE,
+            "-a",
+            VOICE_CRYPTO_KEY_ACCOUNT,
+        ])
+        .output()
+        .map_err(|e| format!("failed to run macOS Keychain delete: {e}"))?;
+    if output.status.success() {
+        return Ok(());
     }
-
-    let key = generate_base64_key()?;
-    write_keychain_password(VOICE_CRYPTO_KEY_SERVICE, VOICE_CRYPTO_KEY_ACCOUNT, &key)?;
-    Ok(key)
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr.contains("could not be found") {
+        Ok(())
+    } else {
+        Err(stderr.trim().to_string())
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn get_or_create_voice_crypto_key() -> Result<String, String> {
-    Err("voice embedding encryption key storage is only implemented for macOS Keychain".to_string())
-}
-
-#[cfg(target_os = "macos")]
-fn read_keychain_password(service: &str, account: &str) -> Result<String, String> {
-    let output = std::process::Command::new("/usr/bin/security")
-        .args(["find-generic-password", "-s", service, "-a", account, "-w"])
-        .output()
-        .map_err(|e| format!("failed to read macOS Keychain: {e}"))?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn write_keychain_password(service: &str, account: &str, password: &str) -> Result<(), String> {
-    let status = std::process::Command::new("/usr/bin/security")
-        .args([
-            "add-generic-password",
-            "-U",
-            "-s",
-            service,
-            "-a",
-            account,
-            "-w",
-            password,
-        ])
-        .status()
-        .map_err(|e| format!("failed to write macOS Keychain: {e}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("macOS Keychain write failed with status {status}"))
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn generate_base64_key() -> Result<String, String> {
-    use base64::Engine;
-    use ring::rand::{SecureRandom, SystemRandom};
-
-    let random = SystemRandom::new();
-    let mut key = [0u8; 32];
-    random
-        .fill(&mut key)
-        .map_err(|_| "failed to generate voice encryption key".to_string())?;
-    Ok(base64::engine::general_purpose::STANDARD.encode(key))
+pub fn delete_voice_crypto_key() -> Result<(), String> {
+    // Key storage was only ever implemented on macOS.
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]

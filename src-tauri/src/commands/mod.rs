@@ -6,4 +6,3 @@ pub mod settings;
 pub mod speaker_names;
 pub mod transcribe;
 pub mod update;
-pub mod voiceprint;

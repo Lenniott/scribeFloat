@@ -199,20 +199,6 @@ pub fn note_set_tags(
     Ok(())
 }
 
-#[tauri::command]
-pub fn note_rename_session_speaker(
-    ctrl: State<'_, Arc<HistoryController>>,
-    app: AppHandle,
-    id: String,
-    session_speaker_id: String,
-    label: String,
-) -> Result<(), AppError> {
-    validate_id(&id)?;
-    ctrl.rename_session_speaker(&id, &session_speaker_id, &label)
-        .map_err(AppError::from)?;
-    emit_note_item_updated(&app, &id);
-    Ok(())
-}
 
 #[tauri::command]
 pub fn note_relabel_speaker(
@@ -230,43 +216,8 @@ pub fn note_relabel_speaker(
     Ok(updated)
 }
 
-#[tauri::command]
-pub fn note_correct_chunk_label(
-    ctrl: State<'_, Arc<HistoryController>>,
-    app: AppHandle,
-    id: String,
-    chunk_id: String,
-    label: String,
-) -> Result<HistoryRecord, AppError> {
-    validate_id(&id)?;
-    let updated = ctrl
-        .correct_chunk_label(&id, &chunk_id, &label)
-        .map_err(AppError::from)?;
-    emit_note_item_updated(&app, &id);
-    Ok(updated)
-}
 
-#[tauri::command]
-pub fn note_remove_voice_embeddings(
-    ctrl: State<'_, Arc<HistoryController>>,
-    app: AppHandle,
-    id: String,
-) -> Result<(), AppError> {
-    validate_id(&id)?;
-    ctrl.remove_voice_embeddings(&id).map_err(AppError::from)?;
-    emit_note_item_updated(&app, &id);
-    Ok(())
-}
 
-#[tauri::command]
-pub fn history_remove_all_voice_embeddings(
-    ctrl: State<'_, Arc<HistoryController>>,
-    app: AppHandle,
-) -> Result<usize, AppError> {
-    let changed = ctrl.remove_all_voice_embeddings().map_err(AppError::from)?;
-    app.emit("note://items-reset", ()).ok();
-    Ok(changed)
-}
 
 #[tauri::command]
 pub fn note_attach_transcript(

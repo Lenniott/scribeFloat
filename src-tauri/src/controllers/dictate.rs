@@ -572,7 +572,7 @@ impl DictateController {
     /// Bring the Dictate model fully to ready while the user is speaking, so
     /// stop-and-transcribe starts as a cache hit. Dictate resolves its own (usually
     /// smaller, faster) model via `preload_path_for_dictate` — never the Record
-    /// model — and skips the voiceprint extractor because Dictate does no speaker
+    /// model — and starts no diarization because Dictate does no speaker
     /// analysis. The model service's per-path load lock makes a Stop that lands
     /// mid-preload wait for this load rather than duplicate it.
     fn spawn_record_start_preload(&self) {

@@ -101,52 +101,6 @@ impl HistoryController {
         crate::services::note_sidecar::write_tags(&save_folder, id, tags).map_err(|e| e.to_string())
     }
 
-    pub fn rename_session_speaker(
-        &self,
-        id: &str,
-        session_speaker_id: &str,
-        label: &str,
-    ) -> Result<(), String> {
-        if is_legacy(id) {
-            return Err("legacy items are read-only".to_string());
-        }
-        let session_speaker_id = session_speaker_id.trim();
-        let label = label.trim();
-        if session_speaker_id.is_empty() {
-            return Err("session speaker id cannot be empty".to_string());
-        }
-        if label.is_empty() {
-            return Err("speaker label cannot be empty".to_string());
-        }
-        let save_folder = self.config.get().save_folder;
-        self.history
-            .rename_session_speaker(&save_folder, id, session_speaker_id, label)
-            .map_err(|e| e.to_string())
-    }
-
-    pub fn correct_chunk_label(
-        &self,
-        id: &str,
-        chunk_id: &str,
-        label: &str,
-    ) -> Result<HistoryRecord, String> {
-        if is_legacy(id) {
-            return Err("legacy items are read-only".to_string());
-        }
-        let chunk_id = chunk_id.trim();
-        let label = label.trim();
-        if chunk_id.is_empty() {
-            return Err("chunk id cannot be empty".to_string());
-        }
-        if label.is_empty() {
-            return Err("speaker label cannot be empty".to_string());
-        }
-        let save_folder = self.config.get().save_folder;
-        self.history
-            .correct_chunk_label(&save_folder, id, chunk_id, label)
-            .map_err(|e| e.to_string())
-    }
-
     /// Rename a speaker across one note and remember the new name globally
     /// (unless it's an auto-assigned label like "Speaker 2" or "Other").
     pub fn relabel_speaker(
@@ -181,23 +135,6 @@ impl HistoryController {
             }
         }
         Ok(updated)
-    }
-
-    pub fn remove_voice_embeddings(&self, id: &str) -> Result<(), String> {
-        if is_legacy(id) {
-            return Err("legacy items are read-only".to_string());
-        }
-        let save_folder = self.config.get().save_folder;
-        self.history
-            .remove_voice_embeddings(&save_folder, id)
-            .map_err(|e| e.to_string())
-    }
-
-    pub fn remove_all_voice_embeddings(&self) -> Result<usize, String> {
-        let save_folder = self.config.get().save_folder;
-        self.history
-            .remove_all_voice_embeddings(&save_folder)
-            .map_err(|e| e.to_string())
     }
 
     /// Attach a completed transcription pass onto an existing note.

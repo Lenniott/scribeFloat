@@ -11,7 +11,6 @@ use crate::services::{
     history::HistoryService,
     model::ModelService,
     output::{speaker_pcm_has_signal, OutputService, SPEAKER_SILENCE_THRESHOLD},
-    voiceprint::VoiceprintService,
 };
 use crate::types::{
     Config, DiarizationRange, HistoryRecord, Note, ProcessingStage, RecoverySessionInfo,
@@ -116,7 +115,6 @@ pub struct ScribeController {
     output: Arc<OutputService>,
     history: Arc<HistoryService>,
     config: Arc<ConfigService>,
-    voiceprint: Arc<VoiceprintService>,
     diarization: Arc<DiarizationService>,
     app: AppHandle,
 }
@@ -129,7 +127,6 @@ impl ScribeController {
         output: Arc<OutputService>,
         history: Arc<HistoryService>,
         config: Arc<ConfigService>,
-        voiceprint: Arc<VoiceprintService>,
         diarization: Arc<DiarizationService>,
         app: AppHandle,
     ) -> Arc<Self> {
@@ -150,7 +147,6 @@ impl ScribeController {
             output,
             history,
             config,
-            voiceprint,
             diarization,
             app,
         })
@@ -417,21 +413,17 @@ impl ScribeController {
         );
     }
 
-    /// Bring the Record model and the voiceprint extractor fully to ready while the
-    /// user is still speaking, so stop-and-transcribe starts as a cache hit instead
-    /// of a frozen "Loading model". Safe against stop-and-transcribe: the model
-    /// service's per-path load lock makes a Stop that lands mid-preload wait for
-    /// this load rather than duplicate it.
+    /// Bring the Record model fully to ready while the user is still speaking, so
+    /// stop-and-transcribe starts as a cache hit instead of a frozen "Loading
+    /// model". Safe against stop-and-transcribe: the model service's per-path
+    /// load lock makes a Stop that lands mid-preload wait for this load rather
+    /// than duplicate it.
     fn spawn_record_start_preload(&self, cfg: &Config) {
         let path = preload_path_for_config(cfg, &self.model);
         let model = Arc::clone(&self.model);
-        let voiceprint = Arc::clone(&self.voiceprint);
         tauri::async_runtime::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
                 model.preload_context(&path);
-                if let Err(err) = voiceprint.preload_extractor() {
-                    tracing::warn!(error = %err, "voiceprint extractor preload failed");
-                }
             })
             .await;
         });

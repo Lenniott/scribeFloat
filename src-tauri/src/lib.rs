@@ -565,9 +565,6 @@ pub fn run() {
             }
             let config = services::config::ConfigService::load(data_dir.join("config.json"))?;
             app.manage(Arc::clone(&config));
-            let voice_embedding_store =
-                services::voice_embeddings::VoiceEmbeddingStore::from_keychain();
-            history.set_embedding_store(Arc::clone(&voice_embedding_store));
             {
                 let save_folder = config.get().save_folder;
                 if platform::windows_save_folder_needs_migration(&save_folder) {
@@ -590,14 +587,13 @@ pub fn run() {
 
             let models_dir = data_dir.join("models");
             std::fs::create_dir_all(&models_dir)?;
-            // Seed the bundled models (Small Whisper, VAD, voiceprint ONNX, Sortformer
-            // diarization) into the user's models dir. Silently skipped in dev builds
-            // where the resource files aren't present (run scripts/fetch-bundled-models.sh
+            // Seed the bundled models (Small Whisper, VAD, Sortformer diarization)
+            // into the user's models dir. Silently skipped in dev builds where the
+            // resource files aren't present (run scripts/fetch-bundled-models.sh
             // before a release build).
             for file_name in [
                 services::model::SMALL_MODEL_FILENAME,
                 services::model::VAD_MODEL_FILENAME,
-                services::voiceprint::VOICEPRINT_MODEL_FILE,
                 services::diarization::SORTFORMER_MODEL_FILENAME,
             ] {
                 let dest = models_dir.join(file_name);
@@ -633,14 +629,6 @@ pub fn run() {
                     }
                 });
             }
-            let voiceprint = Arc::new(services::voiceprint::VoiceprintService::new(
-                &data_dir
-                    .join("models")
-                    .join(services::voiceprint::VOICEPRINT_MODEL_FILE),
-                &data_dir.join("voiceprints"),
-                config.get().voice_similarity_threshold,
-            )?);
-            voiceprint.set_embedding_store(Arc::clone(&voice_embedding_store));
             let model_ctrl =
                 controllers::model::ModelController::new(Arc::clone(&model), Arc::clone(&config));
             // Auto-select the bundled Small model on first run, and migrate configs whose
@@ -659,19 +647,12 @@ pub fn run() {
                     }
                 }
             }
-            let voiceprint_ctrl = controllers::voiceprint::VoiceprintController::new(
-                Arc::clone(&voiceprint),
-                Arc::clone(&audio),
-                Arc::clone(&config),
-                data_dir.join("voiceprint_clips"),
-            );
             let settings_ctrl = controllers::settings::SettingsController::new(
                 Arc::clone(&config),
                 Arc::clone(&hotkeys),
                 Arc::clone(&output),
                 Arc::clone(&permissions),
                 Arc::clone(&audio),
-                Arc::clone(&voiceprint),
             );
             if let Err(err) = settings_ctrl.rehydrate_hotkeys() {
                 tracing::debug!(error = %err, "hotkey rehydration skipped");
@@ -686,7 +667,6 @@ pub fn run() {
                 Arc::clone(&output),
                 Arc::clone(&history),
                 Arc::clone(&config),
-                Arc::clone(&voiceprint),
                 Arc::clone(&diarization),
                 app.handle().clone(),
             );
@@ -711,6 +691,29 @@ pub fn run() {
             let speaker_names = services::speaker_names::SpeakerNameService::load(
                 data_dir.join("speaker_names.json"),
             );
+            // One-time biometric purge: legacy voiceprint profiles become plain
+            // names, then the files (and their keychain key) are deleted.
+            // History embeddings vanish via the background compaction below.
+            {
+                let report =
+                    services::legacy_voice_purge::purge_legacy_voice_data(&data_dir, &speaker_names);
+                if report.profiles_dir_removed {
+                    if let Err(e) = platform::delete_voice_crypto_key() {
+                        tracing::warn!(error = %e, "could not delete legacy voice encryption key");
+                    }
+                }
+                if report.names_imported > 0
+                    || report.profiles_dir_removed
+                    || report.clips_dir_removed
+                {
+                    tracing::info!(
+                        names_imported = report.names_imported,
+                        profiles_dir_removed = report.profiles_dir_removed,
+                        clips_dir_removed = report.clips_dir_removed,
+                        "legacy voiceprint data purged"
+                    );
+                }
+            }
             let history_ctrl = controllers::history::HistoryController::new(
                 Arc::clone(&history),
                 Arc::clone(&output),
@@ -725,10 +728,8 @@ pub fn run() {
             let update = services::update::UpdateService::new();
 
             app.manage(model); // shared model service
-            app.manage(voiceprint); // shared voiceprint service
             app.manage(config); // shared config service
             app.manage(model_ctrl); // model command orchestration
-            app.manage(voiceprint_ctrl); // voiceprint command orchestration
             app.manage(settings_ctrl); // settings orchestration
             app.manage(ctrl); // for scribe commands
             app.manage(Arc::clone(&dictate_ctrl)); // for dictate commands
@@ -835,22 +836,6 @@ pub fn run() {
             commands::scribe::scribe_switch_mic,
             commands::scribe::scribe_toggle_speaker_capture,
             commands::model::model_vad_status,
-            commands::voiceprint::voiceprint_list_profiles,
-            commands::voiceprint::voiceprint_list_profile_names,
-            commands::voiceprint::voiceprint_evaluate_session_evidence,
-            commands::voiceprint::voiceprint_apply_session_evidence,
-            commands::voiceprint::voiceprint_delete_profile,
-            commands::voiceprint::voiceprint_delete_all_profiles,
-            commands::voiceprint::voiceprint_rename_profile,
-            commands::voiceprint::voiceprint_model_status,
-            commands::voiceprint::voiceprint_start_clip,
-            commands::voiceprint::voiceprint_stop_clip,
-            commands::voiceprint::voiceprint_commit_clip,
-            commands::voiceprint::voiceprint_discard_clip,
-            commands::voiceprint::session_capture_start,
-            commands::voiceprint::session_capture_status,
-            commands::voiceprint::session_capture_stop,
-            commands::voiceprint::session_capture_cancel,
             commands::settings::settings_get_output_path,
             commands::settings::settings_set_output_path,
             commands::settings::settings_get_hotkeys,
@@ -889,14 +874,6 @@ pub fn run() {
             commands::settings::settings_set_save_transcripts_as_markdown,
             commands::settings::settings_get_user_display_name,
             commands::settings::settings_set_user_display_name,
-            commands::settings::settings_get_voice_similarity_threshold,
-            commands::settings::settings_set_voice_similarity_threshold,
-            commands::settings::settings_get_voice_learning_enabled,
-            commands::settings::settings_set_voice_learning_enabled,
-            commands::settings::settings_get_voice_embeddings_retention,
-            commands::settings::settings_set_voice_embeddings_retention,
-            commands::settings::settings_get_voice_embeddings_encryption_required,
-            commands::settings::settings_set_voice_embeddings_encryption_required,
             commands::dictate::dictate_cancel,
             commands::dictate::dictate_dismiss,
             commands::dictate::dictate_get_history,
@@ -916,14 +893,10 @@ pub fn run() {
             commands::history::note_is_empty,
             commands::history::note_has_metadata,
             commands::history::note_set_tags,
-            commands::history::note_rename_session_speaker,
-            commands::history::note_correct_chunk_label,
             commands::history::note_relabel_speaker,
             commands::speaker_names::speaker_names_list,
             commands::speaker_names::speaker_name_save,
             commands::speaker_names::speaker_name_delete,
-            commands::history::note_remove_voice_embeddings,
-            commands::history::history_remove_all_voice_embeddings,
             commands::history::note_attach_transcript,
             commands::history::note_render_transcript_html,
             commands::transcribe::transcribe_inspect_inputs,

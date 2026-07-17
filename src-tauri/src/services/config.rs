@@ -133,13 +133,18 @@ mod tests {
         assert!(!cfg.dictate_auto_enter, "should default to false");
         assert_eq!(cfg.theme_mode, crate::types::ThemeMode::System);
         assert_eq!(cfg.user_display_name, "You");
-        assert_eq!(cfg.voice_similarity_threshold, 0.75);
-        assert!(!cfg.voice_learning_enabled);
-        assert_eq!(
-            cfg.voice_embeddings_retention,
-            crate::types::VoiceEmbeddingsRetention::Keep
-        );
-        assert!(cfg.voice_embeddings_encryption_required);
+    }
+
+    #[test]
+    fn legacy_config_with_retired_voice_keys_still_loads() {
+        let path = temp_config_path();
+        std::fs::write(
+            &path,
+            br#"{"save_folder":"/tmp/sf","voice_similarity_threshold":0.9,"voice_learning_enabled":true,"voice_embeddings_retention":"keep","voice_embeddings_encryption_required":false}"#,
+        )
+        .expect("write legacy config");
+        let svc = ConfigService::load(path).expect("load");
+        assert_eq!(svc.get().save_folder, "/tmp/sf");
     }
 
     #[test]

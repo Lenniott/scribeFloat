@@ -1,9 +1,11 @@
 ---
 id: "0055"
 title: Mid-session voiceprint capture during Record mode
-status: superseeded
-adr: ADR-0011
+status: superseded
+adr: ADR-0014
 ---
+
+> Superseded by ADR-0014: the voiceprint engine and stored voice embeddings were removed entirely; anonymous Sortformer diarization with plain speaker names replaced them. Nothing here remains buildable.
 
 # Mid-session voiceprint capture during Record mode
 

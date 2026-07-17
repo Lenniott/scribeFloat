@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR-0014](0014-anonymous-diarization-replaces-voiceprint-identity.md) — the voiceprint engine and all stored biometric data were removed; anonymous Sortformer diarization with plain renameable speaker names replaced it.
 
 ## Context
 

@@ -1,8 +1,10 @@
 ---
 id: "0070"
 title: Per-note button to remove voice embeddings from the current note
-status: active
+status: superseded
 ---
+
+> Superseded by ADR-0014: the voiceprint engine and stored voice embeddings were removed entirely; anonymous Sortformer diarization with plain speaker names replaced them. Nothing here remains buildable.
 
 # Per-note button to remove voice embeddings from the current note
 

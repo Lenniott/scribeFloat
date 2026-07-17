@@ -11,7 +11,7 @@ Triggered when `Config.onboarding_complete == false` at startup. Opens a dedicat
 
 This is the current designer-approved onboarding flow. It intentionally does not collect setup-personalisation answers; detailed configuration lives in Settings.
 
-The Whisper Small, VAD, and voiceprint models ship inside the app bundle and are seeded into the models dir at startup — onboarding has no model-download step.
+The Whisper Small, VAD, and Sortformer diarization models ship inside the app bundle and are seeded into the models dir at startup — onboarding has no model-download step.
 
 **Step 1 — Welcome**
 1. Onboarding window opens centered
@@ -32,9 +32,9 @@ The Whisper Small, VAD, and voiceprint models ship inside the app bundle and are
 17. NoteComposer stays mounted (hidden via CSS) while active — preserves manual draft
 18. ERROR state and empty-segment (TRANSCRIBING → IDLE) path both show inline hint
 19. Auto-enter toggle: reads/writes `settings_get/set_dictate_auto_enter`; when on, DONE auto-submits note
-20. Continue always available → step 4 (Voice enrollment, skipped when profiles already exist) → step 5
+20. Continue always available → step 4 (Feature tour)
 
-**Step 5 — Feature Tour**
+**Step 4 — Feature Tour**
 21. Stylised menu-bar graphic (live time, Wifi icon, app icon)
 22. Four feature rows: Scribe, Transcribe, History, Settings
 23. Platform-conditional login-item copy (macOS: System Settings → General → Login Items; Windows: Settings → Apps → Startup)
@@ -71,8 +71,8 @@ User records mic only. No system audio capture.
 12. Scribe panel enters **Transcribing** state — progress bar shown
 13. Model Service: loads selected model (from cache or disk; tiny/base may already be preloaded)
 14. Model Service: transcribes the mic PCM once → returns timestamped segments
-15. ScribeController uses live voice-change cuts to build mic chunks
-16. Speaker chunk service: embeds each chunk, groups chunk voiceprints into local speakers, derives transcript-level session speaker centroids from clean chunks, and maps Whisper segments to their parent chunk labels
+15. The live diarization worker (fed during recording by the same PCM tap) is flushed; its anonymous speaker ranges ride along as `LiveRanges`
+16. Speaker alignment: each Whisper segment takes the max-overlap diarization speaker (`Speaker 1`–`Speaker 4`; `Other` when nothing overlaps); adjacent same-label blocks merge
 17. Output Service: renders transcript markdown
 18. History Service: appends a JSONL record to `{save_folder}/history.jsonl` (always, regardless of markdown setting), including `speaker_change_cuts` and `speaker_chunks`
 19. Check: `save_transcripts_as_markdown` setting
@@ -306,7 +306,7 @@ Logic lives in `src/lib/services/noteLeaveGuard.ts` (Vitest-covered).
 
 Default save folder: `~/Documents/transcripts_scribefloat/` (configurable in Settings → General).
 
-Voice learning controls live in Settings → Voice. `voice_learning_enabled` defaults off, voice embeddings are kept by default for current speaker matching, and `voice_embeddings_encryption_required` defaults on so automatic long-term learning can be blocked when encrypted storage is unavailable. If voice embedding retention is set to delete after transcript, Record and Upload keep transcript text, speaker labels, timings, chunk quality, and session speaker groups, but strip chunk and session speaker vectors before writing `history.jsonl`. If retention keeps vectors and the macOS Keychain-backed voice key is available, those vectors are encrypted at rest.
+Settings → Voice manages plain speaker names only (`speaker_names.json`): renaming a speaker in any transcript saves the name globally for reuse. No voice data, embeddings, or learning controls exist (ADR-0014).
 
 | Workflow | WAV written? | Who writes | Who deletes | When deleted |
 |---|---|---|---|---|

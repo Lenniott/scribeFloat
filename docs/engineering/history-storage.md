@@ -35,11 +35,11 @@ Story **0050** (ADR-0007) will replace `.notes/{uuid}/` with named per-note fold
 
 - `append` — new capture or empty written note
 - `update_segments` — transcript attached to a note
-- `remove_voice_embeddings` — biometric vectors removed while transcript text/labels remain
+- `relabel_speaker` — a speaker label renamed across every block in the note (appends the rewritten record)
 - `set_markdown_path` — export path recorded
 - `delete` — tombstone line
 
-Voice embeddings in `speaker_chunks` and `session_speakers` are encrypted before `history.jsonl` writes when the voice crypto service is configured. The local AES key is stored in macOS Keychain by the platform adapter. Loaded records are decrypted back into memory for matching; delete/scrub operations remove both plaintext and ciphertext.
+Legacy records may contain `speaker_chunks`/`session_speakers` entries written by the retired voiceprint engine. The current types keep only their display fields (labels, timings, correction badges); any biometric fields on old lines (embeddings, centroids, scores) are ignored on read and dropped when startup compaction rewrites `history.jsonl` (ADR-0014). New records never write these collections.
 
 ## What does **not** append to jsonl
 

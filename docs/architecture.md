@@ -288,8 +288,7 @@ graph TB
 - **MicSession**: `stop_and_finalize()` pauses the stream, signals the writer, and joins the writer thread. Drain uses `recv_timeout` (200 ms) — never blocking `recv()` — because cpal tears down CoreAudio asynchronously on macOS
 - **WAV Writer Thread**: resamples to 16 kHz mono i16 and appends to the target path (`mic.wav`, `speaker_seg_N.wav`, or dictate temp). Checkpoints the RIFF header periodically so crash mid-recording leaves a playable file
 - **PCM Tap (`Pcm16kTap`)**: optional observer on the writer thread, invoked with the post-resample 16 kHz samples — exactly what lands in the WAV, so observed time == mic.wav time. Scribe passes a tap that feeds `services/analysis.rs::PitchAnalyzer` (live pitch/loudness timeline). The cpal callback is untouched; a slow tap delays disk writes, never capture. At stop, `ScribeController::prepare_audio` harvests the analyzer (after the writer joins), runs `detect_cuts`, writes the frame timeline to `{session_dir}/analysis.json`, and stores the voice-change cuts on the session manifest + `HistoryRecord` (ADR-0013)
-- **Speaker Chunks**: mic-only Record uses live cuts; Upload computes the same cuts offline after decode. `services/speaker_chunks.rs` turns cuts into voice-turn spans, embeds those spans as chunk voiceprints, stores chunk evidence on `HistoryRecord.speaker_chunks`, derives transcript-level speaker centroids on `HistoryRecord.session_speakers`, and maps Whisper segments to local speaker labels such as `Speaker A` or saved profile names. If retention is set to delete after transcript, controllers strip chunk/session vectors before persisting while keeping readable labels and quality data. If retention keeps vectors and the macOS Keychain-backed voice key is available, `HistoryService` encrypts those vectors before writing `history.jsonl` and decrypts them on load. Whisper still runs once over the full mic PCM; true Whisper-per-chunk needs a batched ModelService path that reuses one loaded context.
-- **Voice Crypto**: `services/voice_crypto.rs` encrypts voice embeddings with AES-256-GCM. The production key provider stores a local random key in macOS Keychain via the platform adapter. Voiceprint profile JSON and history JSONL store ciphertext fields; plaintext vectors stay in memory only.
+- **Live Diarization**: single-source Record also feeds the same tap into a `LiveDiarization` worker (`services/diarization.rs`). The worker loads Sortformer (~2 s) while early PCM buffers in its channel, runs an inference burst per ~10 s window, and is flushed after `stop_and_finalize()` joins the writer (which drops the tap's channel sender — the ordering that lets the worker's recv loop end). Output is anonymous `DiarizationRange { speaker_id 0..=3, start_ms, end_ms }` spans — who spoke *when*, never who someone *is*. Upload runs one full-audio `diarize` pass post-capture instead; Dictate and dual-source Record skip diarization. `services/speaker_align.rs` assigns each Whisper segment the max-overlap speaker (`Speaker 1`–`Speaker 4`, `Other` when nothing overlaps) and merges adjacent same-label blocks. Any diarization failure degrades to a plain transcript — it never fails a note (ADR-0014).
 - **SpeakerAccumulator** (in `ScribeController`): holds `CapturedSpeakerSegment { start_ms, wav_path }` for each ON/OFF loopback window. At stop, segments are read back and assembled via `assemble_speaker_pcm`; per-segment WAVs are deleted after merge
 - **Platform Adapter**: the only place `#[cfg(target_os)]` lives for audio. Everything above is platform-agnostic
 
@@ -643,8 +642,8 @@ All controls persist immediately on change (toggle → granular setter, slider �
 
 **Tab contents:**
 - **General**: save folder, capture speaker by default, press Enter after dictate, speaker capture device name (macOS), restart onboarding, check for updates
-- **Advanced**: save transcripts as Markdown, open-transcripts-with app, WAV retention, speaker matching sensitivity, voice data retention, remove voice vectors from transcripts
-- **Voice**: voiceprint profile management — add / refine / rename / remove / bulk remove
+- **Advanced**: save transcripts as Markdown, open-transcripts-with app, WAV retention
+- **Voice**: plain speaker-name management — add / rename / remove (names only; no voice data)
 - **Permissions**: live permission status via `PermissionsService`; one-tap path to OS settings pane
 - **Help**: JSON-driven jobs-to-be-done topics (`helpContent.json` → `HelpContentRenderer`); no network required
 
@@ -686,13 +685,14 @@ src-tauri/src/
 │   ├── audio.rs                AudioService, MicSession, streaming WAV writer, Pcm16kTap, read_wav_mono_f32
 │   ├── model.rs                ModelService, WhisperContext cache, Downloader, Merger
 │   ├── output.rs               OutputService, markdown rendering (pure), .md writes, manifest, cleanup, legacy reads, delete primitives
-│   ├── history.rs              HistoryService, append-only JSONL record store, compact, tombstone delete, voice-vector encryption/scrub
+│   ├── history.rs              HistoryService, append-only JSONL record store, compact, tombstone delete, speaker relabel
 │   ├── config.rs               ConfigService, atomic save, get/update
 │   ├── hotkeys.rs              HotkeyService, HotkeyRegistrar trait, TauriHotkeyRegistrar
 │   ├── permissions.rs          PermissionsService (delegates to platform/permissions_impl)
-│   ├── speaker_chunks.rs       Chunk spans, chunk quality, chunk voiceprint grouping, segment-to-chunk speaker blocks
-│   ├── voice_crypto.rs         AES-256-GCM embedding encryption with platform key provider
-│   ├── voiceprint.rs           Voiceprint model download, embedding, profile storage, profile matching
+│   ├── diarization.rs          DiarizationService (Sortformer), LiveDiarization worker, Diarizer/StreamingDiarizer traits
+│   ├── speaker_align.rs        Pure max-overlap alignment: ASR segments × diarization ranges → speaker blocks
+│   ├── speaker_names.rs        Plain speaker-name store (speaker_names.json), slugify, reserved-label rules
+│   ├── legacy_voice_purge.rs   One-time startup purge of legacy voiceprint biometric data
 │   └── transcribe_input.rs     TranscribeInputService, expand_inputs, decode_input
 │
 └── platform/
@@ -718,7 +718,7 @@ src/
 │   │   │   └── Accordion, NoteComposer, NoteList, UploadQueue
 │   │   ├── 4_sections/         Contained mental model areas (@sections)
 │   │   │   ├── FilterPanel, NoteDetailPane, SettingsPanel, SettingList
-│   │   │   └── onboarding/     WelcomeStep, FeatureTourStep, DictatePracticeStep, PermissionsStep, VoiceEnrollmentStep
+│   │   │   └── onboarding/     WelcomeStep, FeatureTourStep, DictatePracticeStep, PermissionsStep
 │   │   ├── 6_regions/          Fixed structural layout areas (@regions)
 │   │   │   └── AppSidebar, SettingsSidebar, TitleBar
 │   │   └── views/              Route-level view components and window-specific views (@views)

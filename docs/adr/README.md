@@ -15,3 +15,4 @@
 | ADR-0011 | [0011-voiceprint-engine-binary-speaker-verification.md](0011-voiceprint-engine-binary-speaker-verification.md) | Binary-extensible speaker verification via sherpa-onnx campplus; threshold 0.75; [You]/[Other] transcript labels |
 | ADR-0012 | [0012-navigation-intent-via-shared-state-flag.md](0012-navigation-intent-via-shared-state-flag.md) | Short-lived boolean flag on appState passes intent across a navigation boundary |
 | ADR-0013 | [0013-live-pitch-analysis-and-change-cut-storage.md](0013-live-pitch-analysis-and-change-cut-storage.md) | Live pitch/loudness analysis via writer-thread tap (pitch-detection/McLeod); cuts in HistoryRecord, timeline in analysis.json |
+| ADR-0014 | [0014-anonymous-diarization-replaces-voiceprint-identity.md](0014-anonymous-diarization-replaces-voiceprint-identity.md) | Live Sortformer diarization + plain speaker names replace voiceprint identity; biometric data purged; supersedes ADR-0011 |

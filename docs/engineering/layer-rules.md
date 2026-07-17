@@ -39,8 +39,9 @@ IPC: JS calls `invoke('command_name', { args })` → Rust `#[tauri::command]` in
 | `AudioService` | Opens audio streams and streams capture to checkpointed temp/session WAV files (16 kHz writer thread). Exposes an optional `Pcm16kTap` observer on the writer thread for live analysis — `audio.rs` never depends on the analysis module. Do not accumulate PCM in controllers. |
 | `services/analysis.rs` | Pure pitch/loudness analysis (no I/O, no locks): streaming `PitchAnalyzer` fed by the PCM tap, `detect_cuts` for voice-change cuts, canonical `rms`. Constructed per session and orchestrated by `ScribeController`; results persist via `OutputService` (`analysis.json`) and `HistoryService` (`speaker_change_cuts`). See ADR-0013. |
 | `services/transcription.rs` | Post-capture transcript result assembly for Record, Upload, and Dictate. Controllers pass finalized 16 kHz PCM plus capture profile; this module owns ASR orchestration, dual-source progress mapping, hallucination filtering, Dictate ASR-only output, and speaker evidence assembly. |
-| `services/speaker_chunks.rs` | Pure chunk orchestration helpers behind `services/transcription.rs`: convert cuts to voice-turn spans, compute chunk quality, assign chunk voiceprints to session speakers, derive transcript speaker centroids from clean chunks, map ASR segments back to chunk labels. It does not own I/O or app state. |
-| `services/voice_crypto.rs` | Pure voice embedding encryption/decryption using AES-256-GCM. Production key material comes from the platform adapter; callers keep plaintext vectors in memory and store ciphertext at persistence boundaries. |
+| `services/diarization.rs` | Owns the Sortformer model lifetime and the live diarization worker thread. Controllers start/finish/cancel sessions and receive `DiarizationRange`s; they never touch ONNX or inference. Diarization errors degrade to a plain transcript, never fail a note. |
+| `services/speaker_align.rs` | Pure alignment of ASR segments to diarization ranges (max summed overlap, `Other` fallback, adjacent-merge). No I/O. |
+| `services/speaker_names.rs` | Owns `speaker_names.json` (plain names + slugs, case-insensitive uniqueness) and the reserved-label rules. Controllers call `list`/`save`/`delete`; nothing else writes that file. |
 | `PermissionsService` | The only code that checks OS permissions. |
 
 ---

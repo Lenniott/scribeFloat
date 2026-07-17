@@ -44,7 +44,6 @@ Silero VAD is disabled for clips under ~2 s (`VAD_MIN_PCM_SAMPLES`); shorter aud
 
 Record-start preload only warms the model file in the OS page cache (`warm_model_file_on_disk`) — it does not load a `WhisperContext` during capture, which would race with stop-and-transcribe on Metal.
 
-Voiceprint enrollment uses live mic-level frame counts for clip purity — it does not call `transcribe_pcm_with_progress` (which previously shared Metal state with Scribe).
 
 On GPU encode failure (Metal `GenericError(-6)` on M1), `transcribe_pcm_with_progress` retries on CPU, then without VAD if needed. The cached `WhisperContext` is reused across retries (fresh `WhisperState` per attempt); only `mark_cpu_fallback` evicts after a GPU encode failure. GPU is retried again on the next transcription.
 
@@ -62,7 +61,6 @@ Do not wire `set_abort_callback_safe` on whisper-rs 0.16 / Metal — even when t
 
 **Silence skipping (VAD) on short clips** — Disabled under ~2 s. Very short recordings transcribe without VAD so the encoder is not fed an empty buffer.
 
-**Voiceprint enrollment** — Clip quality uses the live mic level meter, not a Whisper pass. Avoids fighting Scribe for the same GPU.
 
 **Dual-source (mic + speaker)** — Mic and speaker each get their own VAD yes/no decision based on that track's length (`vad_path_for_pcm` per channel in `scribe.rs` and `transcribe.rs`).
 

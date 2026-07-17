@@ -166,10 +166,14 @@ impl DiarizationService {
             "diarization model missing: {}",
             self.model_path.display()
         );
+        // DIHARD3 tuning (min_duration_on ~7ms) over CallHome's (~0.5s): our
+        // recordings are short, casual conversations, not clean phone calls,
+        // so a brief third/fourth speaker needs to register as a distinct
+        // slot instead of being absorbed into a longer-talking speaker.
         parakeet_rs::sortformer::Sortformer::with_config(
             &self.model_path,
             None,
-            parakeet_rs::sortformer::DiarizationConfig::callhome(),
+            parakeet_rs::sortformer::DiarizationConfig::dihard3(),
         )
         .map_err(|e| anyhow::anyhow!("failed to load diarization model: {e}"))
     }

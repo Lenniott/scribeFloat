@@ -912,7 +912,34 @@ impl ModelService {
             }
         }
 
+        Self::log_segment_granularity(&segments);
+
         Ok(segments)
+    }
+
+    /// Baseline diagnostic for the segment-coarseness question: how many
+    /// segments Whisper produced and how long they are. Compare against the
+    /// same numbers after enabling token-level timestamps to see whether
+    /// finer segmentation is worth the alignment/rendering churn it costs.
+    fn log_segment_granularity(segments: &[Segment]) {
+        if segments.is_empty() {
+            return;
+        }
+        let durations_ms: Vec<i64> = segments
+            .iter()
+            .map(|s| (s.end_ms - s.start_ms).max(0))
+            .collect();
+        let total_ms: i64 = durations_ms.iter().sum();
+        let avg_ms = total_ms / durations_ms.len() as i64;
+        let min_ms = durations_ms.iter().min().copied().unwrap_or(0);
+        let max_ms = durations_ms.iter().max().copied().unwrap_or(0);
+        tracing::info!(
+            segment_count = segments.len(),
+            avg_segment_ms = avg_ms,
+            min_segment_ms = min_ms,
+            max_segment_ms = max_ms,
+            "ASR segment granularity (baseline: whisper segment-level timestamps)"
+        );
     }
 
     /// Merge dual-source segments chronologically with channel metadata.

@@ -290,7 +290,35 @@ fn build_speaker_result(
             }
         }
     };
-    align_ranges_to_segments(segments, &ranges)
+    let blocks = align_ranges_to_segments(segments, &ranges);
+    log_diarization_yield(&ranges, &blocks);
+    blocks
+}
+
+/// Diagnostic for "the model only found N speakers" reports: distinguishes the
+/// diarizer itself merging voices from alignment losing a speaker that WAS
+/// detected but never won a Whisper segment (short interjections swallowed by
+/// a coarser overlapping segment).
+fn log_diarization_yield(ranges: &[crate::types::DiarizationRange], blocks: &[SpeakerBlock]) {
+    let mut raw_speakers: Vec<u8> = ranges.iter().map(|r| r.speaker_id).collect();
+    raw_speakers.sort_unstable();
+    raw_speakers.dedup();
+
+    let mut block_speakers: Vec<&str> = blocks
+        .iter()
+        .map(|b| b.label.as_str())
+        .filter(|label| *label != crate::services::speaker_align::UNKNOWN_SPEAKER_LABEL)
+        .collect();
+    block_speakers.sort_unstable();
+    block_speakers.dedup();
+
+    tracing::info!(
+        raw_speaker_count = raw_speakers.len(),
+        raw_speaker_ids = ?raw_speakers,
+        block_speaker_count = block_speakers.len(),
+        block_speaker_labels = ?block_speakers,
+        "diarization yield: raw speakers detected vs. speakers surviving into blocks"
+    );
 }
 
 fn model_label(model_path: &Path) -> String {

@@ -19,9 +19,7 @@ describe('onboarding orchestration', () => {
 			onFocusChanged: vi.fn().mockResolvedValue(() => {}),
 		} as unknown as ReturnType<typeof getCurrentWindow>);
 
-		mockedInvoke.mockImplementation(async (cmd: string) => {
-			if (cmd === 'voiceprint_list_profile_names') return [];
-		});
+		mockedInvoke.mockImplementation(async () => undefined);
 	});
 
 	it('starts on Welcome step', async () => {
@@ -33,7 +31,6 @@ describe('onboarding orchestration', () => {
 
 	it('goes straight to Permissions after Welcome (no model step)', async () => {
 		mockedInvoke.mockImplementation(async (cmd: string) => {
-			if (cmd === 'voiceprint_list_profile_names') return [];
 			if (cmd === 'settings_permissions_status') {
 				return [{ kind: 'microphone', granted: true, can_request: false }];
 			}
@@ -48,6 +45,13 @@ describe('onboarding orchestration', () => {
 			expect(screen.getByText('Grant permissions')).toBeInTheDocument();
 		});
 		expect(screen.queryByText('Install AI model')).not.toBeInTheDocument();
+	});
+
+	it('has no voice enrollment step', async () => {
+		render(Onboarding);
+
+		const commands = mockedInvoke.mock.calls.map(([cmd]) => cmd);
+		expect(commands.some((cmd) => String(cmd).startsWith('voiceprint_'))).toBe(false);
 	});
 
 	it('skip to settings completes onboarding and shows main window', async () => {

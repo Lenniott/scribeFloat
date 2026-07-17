@@ -29,18 +29,14 @@
 		label: string;
 		corrections?: LabelCorrection[];
 	};
-	type SessionSpeakerInfo = {
-		session_speaker_id: string;
-		label: string;
-	};
 	type NoteDetail = {
 		notes?: SessionNote[];
 		speaker_blocks?: SpeakerBlock[];
+		/** Legacy chunk-tier notes only; read for correction badges. */
 		speaker_chunks?: SpeakerChunkInfo[];
-		session_speakers?: SessionSpeakerInfo[];
 	};
 
-	type ProfileSummary = {
+	type SpeakerNameEntry = {
 		slug: string;
 		name: string;
 	};
@@ -54,8 +50,7 @@
 	let sessionNotes = $state<SessionNote[]>([]);
 	let speakerBlocks = $state<SpeakerBlock[]>([]);
 	let speakerChunks = $state<SpeakerChunkInfo[]>([]);
-	let sessionSpeakers = $state<SessionSpeakerInfo[]>([]);
-	let profiles = $state<ProfileSummary[]>([]);
+	let savedNames = $state<SpeakerNameEntry[]>([]);
 	let userDisplayName = $state('You');
 	let inputLabel = $state('Mic');
 	let outputLabel = $state('Speaker');
@@ -63,9 +58,6 @@
 	let correctingIndex = $state<number | null>(null);
 	let newSpeakerName = $state('');
 	let correctionError = $state('');
-	let learnOffer = $state<{ profileName: string; sessionSpeakerId: string } | null>(null);
-	let learnBusy = $state(false);
-	let learnNotice = $state('');
 	let loadError = $state('');
 
 	const isChannelTier = $derived(
@@ -80,7 +72,6 @@
 		sessionNotes = detail.notes ?? [];
 		speakerBlocks = detail.speaker_blocks ?? [];
 		speakerChunks = detail.speaker_chunks ?? [];
-		sessionSpeakers = detail.session_speakers ?? [];
 	}
 
 	onMount(async () => {
@@ -93,7 +84,7 @@
 			html = rendered;
 			adoptDetail(detail);
 			[inputLabel, outputLabel] = labels;
-			profiles = await invoke<ProfileSummary[]>('voiceprint_list_profiles').catch(() => []);
+			savedNames = await invoke<SpeakerNameEntry[]>('speaker_names_list').catch(() => []);
 			userDisplayName = await invoke<string>('settings_get_user_display_name').catch(() => 'You');
 		} catch (e) {
 			loadError = String(e);
@@ -144,8 +135,8 @@
 		return block.label === 'You' || block.label === userDisplayName;
 	}
 
-	function canCorrectBlock(block: SpeakerBlock): boolean {
-		return isIdentityTier && block.chunk_id != null;
+	function canRelabelBlock(block: SpeakerBlock): boolean {
+		return block.label !== CHANNEL_LABEL_IN && block.label !== CHANNEL_LABEL_OUT;
 	}
 
 	function lastCorrection(chunkId: string | null | undefined): LabelCorrection | null {
@@ -154,10 +145,10 @@
 		return corrections?.length ? corrections[corrections.length - 1] : null;
 	}
 
-	function correctionOptions(block: SpeakerBlock): string[] {
+	function relabelOptions(block: SpeakerBlock): string[] {
 		const labels = [
-			...profiles.map((profile) => profile.name),
-			...sessionSpeakers.map((speaker) => speaker.label),
+			...savedNames.map((entry) => entry.name),
+			...speakerBlocks.map((other) => other.label),
 			'Other',
 		];
 		return [...new Set(labels)].filter((label) => label !== block.label);
@@ -167,61 +158,24 @@
 		correctingIndex = correctingIndex === index ? null : index;
 		newSpeakerName = '';
 		correctionError = '';
-		learnNotice = '';
 	}
 
-	async function applyCorrection(block: SpeakerBlock, label: string) {
+	async function applyRelabel(block: SpeakerBlock, label: string) {
 		const trimmed = label.trim();
-		if (!trimmed || !block.chunk_id) return;
+		if (!trimmed) return;
 		correctionError = '';
 		try {
-			const updated = await invoke<NoteDetail>('note_correct_chunk_label', {
+			const updated = await invoke<NoteDetail>('note_relabel_speaker', {
 				id: noteId,
-				chunkId: block.chunk_id,
-				label: trimmed,
+				fromLabel: block.label,
+				toLabel: trimmed,
 			});
 			adoptDetail(updated);
 			correctingIndex = null;
 			newSpeakerName = '';
-			await maybeOfferLearning(trimmed);
+			savedNames = await invoke<SpeakerNameEntry[]>('speaker_names_list').catch(() => savedNames);
 		} catch (e) {
 			correctionError = String(e);
-		}
-	}
-
-	async function maybeOfferLearning(label: string) {
-		learnOffer = null;
-		if (!profiles.some((profile) => profile.name === label)) return;
-		const speaker = sessionSpeakers.find((item) => item.label === label);
-		if (!speaker) return;
-		try {
-			const report = await invoke<{ eligible: boolean }>('voiceprint_evaluate_session_evidence', {
-				noteId,
-				sessionSpeakerId: speaker.session_speaker_id,
-			});
-			if (report.eligible) {
-				learnOffer = { profileName: label, sessionSpeakerId: speaker.session_speaker_id };
-			}
-		} catch {
-			// Learning disabled or unavailable — no offer, nothing to report.
-		}
-	}
-
-	async function acceptLearnOffer() {
-		if (!learnOffer || learnBusy) return;
-		learnBusy = true;
-		try {
-			await invoke('voiceprint_apply_session_evidence', {
-				noteId,
-				sessionSpeakerId: learnOffer.sessionSpeakerId,
-				profileName: learnOffer.profileName,
-			});
-			learnNotice = `Updated ${displayLabel(learnOffer.profileName)}'s voiceprint from this recording.`;
-			learnOffer = null;
-		} catch (e) {
-			learnNotice = String(e);
-		} finally {
-			learnBusy = false;
 		}
 	}
 </script>
@@ -248,19 +202,6 @@
 					</Button>
 				</div>
 			{/if}
-			{#if learnOffer}
-				<div class="mx-4 mb-2 flex flex-wrap items-center gap-2 rounded border border-fill bg-fill/50 px-3 py-2">
-					<span class="sf-body-sm text-fg">
-						Improve {displayLabel(learnOffer.profileName)}'s voiceprint from this recording?
-					</span>
-					<Button variant="primary" size="small" disabled={learnBusy} onclick={() => void acceptLearnOffer()}>
-						Add
-					</Button>
-					<Button variant="ghost" size="small" onclick={() => (learnOffer = null)}>Not now</Button>
-				</div>
-			{:else if learnNotice}
-				<p class="mx-4 mb-2 sf-body-sm text-fg-dim">{learnNotice}</p>
-			{/if}
 			<div class="flex flex-col px-4 pb-3">
 				{#each speakerBlocks as block, index (`${block.label}-${block.start_ms}-${index}`)}
 					{#if visibleBlock(block)}
@@ -269,7 +210,7 @@
 						{/if}
 						<div class="flex flex-col gap-1">
 							<div class="flex flex-wrap items-center gap-2">
-								{#if canCorrectBlock(block)}
+								{#if canRelabelBlock(block)}
 									<button
 										type="button"
 										class="rounded-sm border border-fill bg-fill px-1.5 py-0.5 sf-label-sm text-fg"
@@ -295,8 +236,8 @@
 								<div class="flex flex-col gap-2 rounded border border-fill bg-fill/50 p-2">
 									<span class="sf-label-sm text-fg-dim">Who is speaking?</span>
 									<div class="flex flex-wrap gap-1.5">
-										{#each correctionOptions(block) as option (option)}
-											<Button variant="normal" size="small" onclick={() => void applyCorrection(block, option)}>
+										{#each relabelOptions(block) as option (option)}
+											<Button variant="normal" size="small" onclick={() => void applyRelabel(block, option)}>
 												{displayLabel(option)}
 											</Button>
 										{/each}
@@ -308,7 +249,7 @@
 											variant="primary"
 											size="small"
 											disabled={!newSpeakerName.trim()}
-											onclick={() => void applyCorrection(block, newSpeakerName)}
+											onclick={() => void applyRelabel(block, newSpeakerName)}
 										>
 											Save
 										</Button>

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
-	import Button from '@components/controls/Button.svelte';
 	import Toast from '@components/indicators/Toast.svelte';
 	import PathPicker from '@components/controls/PathPicker.svelte';
 	import ToggleSwitch from '@components/controls/Toggle.svelte';
@@ -14,31 +13,21 @@
 	let saveTranscriptsAsMarkdown = $state(false);
 	let keepWav = $state(false);
 	let openWithApp = $state('');
-	let threshold = $state(0.75);
-	let embeddingsRetention = $state<'keep' | 'delete_after_transcript'>('keep');
-	let confirmingRemoveTranscriptEmbeddings = $state(false);
 	let loadError = $state('');
 	let actionError = $state('');
-	let actionMessage = $state('');
-	let thresholdSaveTimer: ReturnType<typeof setTimeout> | undefined;
 	const toast = createToast();
 
 	async function refresh() {
 		loadError = '';
 		try {
-			const [nextMarkdown, nextKeepWav, nextOpenWithApp, nextThreshold, retention] =
-				await Promise.all([
-					invoke<boolean>('settings_get_save_transcripts_as_markdown'),
-					invoke<boolean>('settings_get_keep_wav'),
-					invoke<string | null>('settings_get_open_with_app_path'),
-					invoke<number>('settings_get_voice_similarity_threshold'),
-					invoke<'keep' | 'delete_after_transcript'>('settings_get_voice_embeddings_retention'),
-				]);
+			const [nextMarkdown, nextKeepWav, nextOpenWithApp] = await Promise.all([
+				invoke<boolean>('settings_get_save_transcripts_as_markdown'),
+				invoke<boolean>('settings_get_keep_wav'),
+				invoke<string | null>('settings_get_open_with_app_path'),
+			]);
 			saveTranscriptsAsMarkdown = nextMarkdown;
 			keepWav = nextKeepWav;
 			openWithApp = nextOpenWithApp ?? '';
-			threshold = nextThreshold;
-			embeddingsRetention = retention;
 		} catch (e) {
 			loadError = `Could not load settings: ${appErrorMessage(e)}`;
 		}
@@ -81,52 +70,8 @@
 		}
 	}
 
-	function onThresholdInput(event: Event) {
-		threshold = Number((event.currentTarget as HTMLInputElement).value);
-		if (thresholdSaveTimer) clearTimeout(thresholdSaveTimer);
-		thresholdSaveTimer = setTimeout(() => {
-			void saveThreshold();
-		}, 300);
-	}
-
-	async function saveThreshold() {
-		actionError = '';
-		try {
-			await invoke('settings_set_voice_similarity_threshold', { threshold });
-			toast.show('Saved', 'success');
-		} catch (e) {
-			actionError = `Could not save matching sensitivity: ${appErrorMessage(e)}`;
-		}
-	}
-
-	async function setEmbeddingsRetention(retention: 'keep' | 'delete_after_transcript') {
-		const previous = embeddingsRetention;
-		embeddingsRetention = retention;
-		actionError = '';
-		try {
-			await invoke('settings_set_voice_embeddings_retention', { retention });
-			toast.show('Saved', 'success');
-		} catch (e) {
-			embeddingsRetention = previous;
-			actionError = `Could not save voice data setting: ${appErrorMessage(e)}`;
-		}
-	}
-
-	async function removeTranscriptEmbeddings() {
-		confirmingRemoveTranscriptEmbeddings = false;
-		actionError = '';
-		actionMessage = '';
-		try {
-			const changed = await invoke<number>('history_remove_all_voice_embeddings');
-			actionMessage = `Removed voice vectors from ${changed} ${changed === 1 ? 'transcript' : 'transcripts'}.`;
-		} catch (e) {
-			actionError = `Could not remove transcript voice data: ${appErrorMessage(e)}`;
-		}
-	}
-
 	onMount(refresh);
 	onDestroy(() => {
-		if (thresholdSaveTimer) clearTimeout(thresholdSaveTimer);
 		toast.dismiss();
 	});
 </script>
@@ -142,11 +87,6 @@
 	{#if actionError}
 		<p class="rounded-md border border-destructive/40 bg-fill px-3 py-2 sf-label-sm text-destructive">
 			{actionError}
-		</p>
-	{/if}
-	{#if actionMessage}
-		<p class="rounded-md border border-fill bg-panel px-3 py-2 sf-label-sm text-fg-dim">
-			{actionMessage}
 		</p>
 	{/if}
 
@@ -184,72 +124,6 @@
 				{/snippet}
 			</SettingsRow>
 		</SettingsList>
-	</SettingsSection>
-
-	<SettingsSection title="Voice matching">
-		<SettingsList>
-			<SettingsRow
-				title="Speaker matching sensitivity"
-				description="Lower is more inclusive. Higher only labels very confident matches."
-			>
-				{#snippet control()}
-					<div class="flex w-full min-w-56 flex-col gap-1">
-						<div class="flex items-center justify-between sf-meta-sm text-fg-dim">
-							<span>Inclusive</span>
-							<span>{threshold.toFixed(2)}</span>
-							<span>Strict</span>
-						</div>
-						<input
-							type="range"
-							min="0"
-							max="1"
-							step="0.05"
-							value={threshold}
-							class="w-full accent-brand"
-							oninput={onThresholdInput}
-							aria-label="Speaker matching sensitivity"
-						/>
-					</div>
-				{/snippet}
-			</SettingsRow>
-
-			<SettingsRow
-				title="Keep voice data for future speaker matching"
-				description="When off, transcripts can keep text and labels while embedding vectors are removed after processing."
-			>
-				{#snippet control()}
-					<ToggleSwitch
-						checked={embeddingsRetention === 'keep'}
-						onchange={(next) =>
-							void setEmbeddingsRetention(next ? 'keep' : 'delete_after_transcript')}
-						aria-label="Keep voice data for future speaker matching"
-					/>
-				{/snippet}
-			</SettingsRow>
-		</SettingsList>
-
-		<div class="mt-3 flex flex-col gap-2 rounded-md border border-fill bg-panel px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-			<div>
-				<p class="sf-label-md text-fg">Remove voice vectors from transcripts</p>
-				<p class="sf-label-sm text-fg-dim">
-					Transcript text, speaker names, times, and quality scores stay readable.
-				</p>
-			</div>
-			{#if confirmingRemoveTranscriptEmbeddings}
-				<div class="flex shrink-0 gap-2">
-					<Button variant="ghost" size="small" onclick={() => (confirmingRemoveTranscriptEmbeddings = false)}>Cancel</Button>
-					<Button variant="destructive" size="small" onclick={() => void removeTranscriptEmbeddings()}>Remove vectors</Button>
-				</div>
-			{:else}
-				<Button
-					variant="destructive"
-					size="small"
-					onclick={() => (confirmingRemoveTranscriptEmbeddings = true)}
-				>
-					Remove vectors
-				</Button>
-			{/if}
-		</div>
 	</SettingsSection>
 </section>
 

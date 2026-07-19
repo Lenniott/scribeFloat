@@ -2,7 +2,7 @@
 
 **When:** 2026-07-19 (tickets 16 + 18 committed; ready for Silicon ship-bar smoke)  
 **Branch:** `feature/0.3/embeds` → merge into `main` **untagged**  
-**HEAD:** confirm with `git log -1` / `git status -sb` after pull  
+**HEAD:** confirm with `git log -1` / `git status -sb` (tip should include IPC + ADR docs commits)  
 **Open a new chat and say:**  
 > Continue from `.scratch/main-is-god-again/HANDOFF.md` — run [Silicon ship-bar smoke](./issues/09-silicon-ship-bar-smoke.md) on Apple Silicon
 

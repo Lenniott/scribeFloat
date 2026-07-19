@@ -30,19 +30,24 @@ assignee:
 - **Security review with rubric** — Findings in [`research/security-review.md`](./research/security-review.md); human sorted in ticket 06.
 - [Finish the thin-docs cut](./issues/01-finish-thin-docs-cut.md) — Keep-set applied and committed on the spine; ghost trees stay deleted; work lives in `.scratch/`.
 - [Remove Float coming-soon from shipped UI](./issues/07-remove-float-coming-soon-ui.md) — Sidebar tease + `/float` route gone; Home fake Float/Drafts tiles removed; glossary term kept (no funeral).
-- [Sort findings into merge-blockers vs Known issues](./issues/06-sort-findings-merge-vs-known.md) — Buckets agreed; Known issues in [`KNOWN-ISSUES.md`](./KNOWN-ISSUES.md); follow-on merge-blocker tickets **08**, **12–18** before Silicon smoke.
+- [Sort findings into merge-blockers vs Known issues](./issues/06-sort-findings-merge-vs-known.md) — Buckets agreed; Known issues in [`KNOWN-ISSUES.md`](./KNOWN-ISSUES.md); merge-blockers through **16** + **18** closed (**17** demoted); next is Silicon smoke.
 - [Delete dead multi-model paths](./issues/08-delete-dead-multi-model-paths.md) — Full collapse: no config selection fields, no catalog-id APIs, no Upload `model_id`; all capture paths use bundled Small; errors say reinstall not Settings → Models.
 - [Bundle-only models — no runtime downloads](./issues/12-bundle-only-models-no-runtime-fetch.md) — Startup VAD HF fetch gone; hard offline/reinstall on missing VAD; PRIVACY/README/site/CONTEXT match bundle-only.
 - [Sanitize transcript HTML](./issues/13-sanitize-transcript-html.md) — markdown → HTML uses narrow options + ammonia scrub before `{@html}`; XSS payloads stripped.
 - **Voiceprint never shipped** — Built only inside this exploration / branch fog on the human’s machine; **never in a public release**. Leftover Keychain key / on-disk purge work is **local hygiene** so `main` looks as if voiceprint never happened — not a multi-user upgrade problem. After ticket **14** (and related purge) closes for this map, **stop re-litigating voiceprint** in chat and new tickets; do not invent “users who had voiceprints” scenarios.
 - [Always delete legacy voice Keychain key](./issues/14-always-delete-legacy-voice-keychain-key.md) — Startup always calls Keychain delete (no `profiles_dir_removed` gate); missing key = success. Local hygiene; voiceprint topic closed for this map.
+- [Unify Record and Dictate naming and seams](./issues/17-unify-record-dictate-naming-and-seams.md) — **demoted** from merge-blocker to Known issues (2026-07-19); later wayfinder
 - [Verify all bundled models before load](./issues/15-verify-all-bundled-models-before-load.md) — Sortformer SHA + offline re-seed from installed app resources; Whisper/VAD heal on integrity fail; no runtime download.
+
+- Ticket **16** aggression **B+** agreed; ticket **18** **School 1** + wayfinder provenance stamps agreed (School 2 too harsh for wayfinder-before-code).
+- [Least-privilege IPC per window](./issues/16-least-privilege-ipc-per-window.md) — B+ capability split (`dictate` / `onboarding` / `shell`); AppManifest ACL; static deny-list tests.
+- [Mark and amend ADRs for reality](./issues/18-mark-and-amend-adrs-for-reality.md) — School 1 status marks on all 14 ADRs; ADR-0010/0003 amended for one bundled Whisper Small; README index updated; grep clean for multi-model stale prose.
 
 ## Not yet specified
 
-- Scope of ticket 17 (full Record/Dictate unify vs smaller naming cut)
 - Whether CI on merge (untagged) needs any Silicon-only nuance
 - Post-merge: what “slightly better than commodity dictate” must be before a public tag (later map)
+- Post-merge wayfinder: Record/Dictate naming honesty (ex-ticket 17; see Known issues)
 
 ## Out of scope
 

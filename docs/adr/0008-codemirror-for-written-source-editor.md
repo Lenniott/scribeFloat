@@ -1,8 +1,7 @@
 # ADR-0008: CodeMirror for the written source editor
 
-## Status
-
-Accepted
+**Status:** Binding
+**Wayfinder:** Implemented — Main is God again / current product (`MarkdownEditor.svelte` in note editor).
 
 ## Context
 

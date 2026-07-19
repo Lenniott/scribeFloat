@@ -13,6 +13,12 @@ Format per item:
 
 <!-- items go below -->
 
+## Record vs Dictate naming / dual-controller honesty
+
+- **Seen:** Sort A3 elevated to merge-blocker; ticket 17; human 2026-07-19 demoted
+- **Notes:** Product says Record; much code/UI still says Scribe. Dual `ScribeController` / `DictateController` is evolution debt (ADR-0003 deferred unify). Deeper than a quick S/M/F cut — needs its own wayfinder later. Spec draft retained on [Unify Record and Dictate naming and seams](./issues/17-unify-record-dictate-naming-and-seams.md).
+- **Later:** Post-merge wayfinder; do not block Silicon smoke or untagged main merge.
+
 ## Speaker rename edge cases
 
 - **Seen:** Sorting session 2026-07-19; feature exists in Notes

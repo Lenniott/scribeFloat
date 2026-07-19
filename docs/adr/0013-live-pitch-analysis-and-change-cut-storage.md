@@ -1,15 +1,13 @@
 # ADR-0013: Live pitch analysis with cuts in HistoryRecord, timeline in analysis.json
 
-## Status
-
-Accepted
+**Status:** Binding
+**Wayfinder:** Implemented — Main is God again / current product (`pitch-detection`, `analysis.json`).
 
 ## Context
 
 We want lightweight voice-change detection (pitch jumps, loudness jumps) computed live
-while a Scribe recording streams to `mic.wav`, to enable smarter Whisper chunking and
-change-cut hints. This is NOT speaker identity — that stays with the voiceprint engine
-(ADR-0011). Three decisions were forced:
+while a Record session streams to `mic.wav`, to enable smarter Whisper chunking and
+change-cut hints. This is NOT speaker identity — see [ADR-0014](0014-anonymous-diarization-replaces-voiceprint-identity.md) for current speaker labelling; ADR-0011 is superseded history only. Three decisions were forced:
 
 1. **Which pitch crate.** The `pitch` crate (bitstream autocorrelation) hardcodes a
    48 kHz sample rate (`const SPS: u32 = 48_000`), takes `f64` slices, and returns peak
@@ -53,5 +51,5 @@ change-cut hints. This is NOT speaker identity — that stays with the voiceprin
   constructed per voiced window (~15.6/s) instead of being owned by the analyzer that
   crosses threads. Measured cost is negligible; do not "optimize" it back into a field.
 - A cut says "the voice changed here" — spans between cuts must not be presented as
-  speaker identities. Identity remains the voiceprint engine's job (ADR-0011).
+  speaker identities. Speaker labels come from anonymous diarization ([ADR-0014](0014-anonymous-diarization-replaces-voiceprint-identity.md)), not from pitch cuts or voiceprint identity (superseded [ADR-0011](0011-voiceprint-engine-binary-speaker-verification.md)).
 - MFCC fingerprinting / speaker clustering is explicitly out of scope.

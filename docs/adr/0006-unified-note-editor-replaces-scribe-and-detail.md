@@ -1,8 +1,7 @@
 # ADR-0006: Unified note editor replaces Scribe panel and NoteDetailPane
 
-## Status
-
-Accepted
+**Status:** Binding
+**Wayfinder:** Implemented — Main is God again / current product (`/notes/[id]` editor). Residual: `NoteDetailPane` still used for legacy list items.
 
 ## Context
 
@@ -16,7 +15,7 @@ We will replace both surfaces with a single unified note editor routed at `/note
 - **Left panel:** Written source editor (CodeMirror) or transcript viewer — switchable via tab control at the top of the left column
 - **Right panel:** Metadata sidebar — tags, keywords, Float Layer Item assignments — same visual pattern as `FilterPanel`
 - **Default pair:** editor + metadata when no transcript exists; transcript + metadata when no written content exists (nudges the user toward metadata entry in both cases)
-- **Recording chrome:** persistent strip above the panels — waveform, status dot, elapsed timer, and a gear icon that opens a settings popover (mic selection, model, speaker capture toggle, timestamps toggle)
+- **Recording chrome:** persistent strip above the panels — waveform, status dot, elapsed timer, and a gear icon that opens a settings popover (mic selection, speaker capture toggle, timestamps toggle)
 
 **Routing:**
 - "+ New Note" in the TitleBar navigates to `/notes/new`, immediately creates a Note record on the backend, then redirects to `/notes/[id]`

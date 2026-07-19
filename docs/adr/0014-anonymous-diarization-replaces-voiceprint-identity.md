@@ -1,8 +1,7 @@
 # ADR-0014: Anonymous Live Diarization Replaces Voiceprint Identity
 
-## Status
-
-Accepted — supersedes ADR-0011.
+**Status:** Binding
+**Wayfinder:** Implemented — Main is God again / current product (Sortformer diarization, plain speaker names, biometric purge).
 
 ## Context
 

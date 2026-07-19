@@ -1,8 +1,7 @@
 # ADR-0012: Navigation intent via shared app state flag
 
-## Status
-
-Accepted
+**Status:** Binding
+**Wayfinder:** Implemented — Main is God again / current product (`appState.scribeAutoStart`).
 
 ## Context
 

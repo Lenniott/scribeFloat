@@ -1,8 +1,7 @@
 # ADR-0007: Note folder structure and ID generation
 
-## Status
-
-Accepted
+**Status:** Aspirational
+**Wayfinder:** pre-wayfinder / orphan — interim `.notes/` layout still in code; revisit when per-note folder migration ships (story 0050 target).
 
 ## Context
 

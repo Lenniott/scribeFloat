@@ -150,13 +150,12 @@ impl HistoryController {
     }
 
     /// Render transcript markdown as HTML for the note editor Transcript panel.
+    ///
+    /// Markdown is converted with a narrow option set, then scrubbed with ammonia
+    /// so user-influenced text cannot inject scripts/handlers into `{@html}`.
     pub fn render_transcript_html(&self, id: &str) -> Result<String, String> {
-        use pulldown_cmark::{html, Options, Parser};
         let markdown = self.render_markdown(id)?;
-        let parser = Parser::new_ext(&markdown, Options::all());
-        let mut html_output = String::new();
-        html::push_html(&mut html_output, parser);
-        Ok(html_output)
+        Ok(markdown_to_safe_html(&markdown))
     }
 
     /// Unified, deduped, newest-first list: store records ∪ legacy `.md` not already in the store
@@ -494,6 +493,34 @@ fn within_save_folder(path: &str, save_folder: &str) -> Option<PathBuf> {
     canonical.starts_with(&base).then_some(canonical)
 }
 
+/// Convert transcript markdown to HTML safe for webview `{@html}` injection.
+///
+/// Uses CommonMark defaults only (no `Options::all()` kitchen-sink). Raw HTML in the
+/// source still parses (CommonMark), so the result is always run through ammonia with
+/// a tight tag allowlist for note-body display.
+fn markdown_to_safe_html(markdown: &str) -> String {
+    use pulldown_cmark::{html, Options, Parser};
+
+    let parser = Parser::new_ext(markdown, Options::empty());
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, parser);
+
+    // Transcript panel needs paragraphs + light emphasis/structure from legacy .md.
+    // No scripts, forms, iframes, event-handler attrs, or javascript: URLs.
+    ammonia::Builder::default()
+        .tags(
+            [
+                "p", "br", "strong", "em", "b", "i", "ul", "ol", "li", "h1", "h2", "h3", "a",
+                "blockquote", "code", "pre", "hr",
+            ]
+            .into_iter()
+            .collect(),
+        )
+        .link_rel(Some("noopener noreferrer"))
+        .clean(&html_output)
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -749,6 +776,61 @@ mod tests {
         let html = f.ctrl.render_transcript_html(&id).unwrap();
         assert!(html.contains("<p>"));
         assert!(html.contains("Hello world"));
+    }
+
+    #[test]
+    fn markdown_to_safe_html_keeps_emphasis_and_paragraphs() {
+        let html = markdown_to_safe_html("Hello **world**\n\nSecond line");
+        assert!(html.contains("<p>"), "expected paragraph: {html}");
+        assert!(
+            html.contains("<strong>world</strong>") || html.contains("<b>world</b>"),
+            "expected bold: {html}"
+        );
+        assert!(html.contains("Second line"), "expected body text: {html}");
+    }
+
+    #[test]
+    fn markdown_to_safe_html_strips_script_and_event_handlers() {
+        let html = markdown_to_safe_html(
+            "Hi <script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n\n[x](javascript:alert(1))",
+        );
+        let lower = html.to_ascii_lowercase();
+        assert!(
+            !lower.contains("<script"),
+            "script tag must not survive: {html}"
+        );
+        assert!(
+            !lower.contains("onerror"),
+            "event handler must not survive: {html}"
+        );
+        assert!(
+            !lower.contains("javascript:"),
+            "javascript: URL must not survive: {html}"
+        );
+        assert!(html.contains("Hi"), "safe text must remain: {html}");
+    }
+
+    #[test]
+    fn render_transcript_html_sanitizes_segment_payload() {
+        let f = fixture();
+        let rec = HistoryRecord::from_scribe(
+            "XSS".to_string(),
+            "tiny".to_string(),
+            seg(r#"Hello <img src=x onerror="alert(1)"> world"#),
+            Vec::<Note>::new(),
+            false,
+            false,
+            None,
+            None,
+            None,
+        );
+        let id = f.history.append(&f.save_folder, rec).unwrap();
+        let html = f.ctrl.render_transcript_html(&id).unwrap();
+        let lower = html.to_ascii_lowercase();
+        assert!(!lower.contains("onerror"), "handler leaked: {html}");
+        assert!(!lower.contains("<script"), "script leaked: {html}");
+        assert!(html.contains("Hello"), "text missing: {html}");
+        assert!(html.contains("world"), "text missing: {html}");
     }
 
     #[test]

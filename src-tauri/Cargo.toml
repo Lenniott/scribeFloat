@@ -41,6 +41,7 @@ num_cpus = "1.16"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 pulldown-cmark = "0.12"
+ammonia = "4"
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

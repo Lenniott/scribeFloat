@@ -1,5 +1,6 @@
 pub mod analysis;
 pub mod audio;
+pub mod bundled_models;
 pub mod config;
 pub mod context_search;
 pub mod diarization;

@@ -587,35 +587,58 @@ pub fn run() {
 
             let models_dir = data_dir.join("models");
             std::fs::create_dir_all(&models_dir)?;
-            // Seed the bundled models (Small Whisper, VAD, Sortformer diarization)
-            // into the user's models dir. Silently skipped in dev builds where the
-            // resource files aren't present (run scripts/fetch-bundled-models.sh
-            // before a release build).
-            for file_name in [
-                services::model::SMALL_MODEL_FILENAME,
-                services::model::VAD_MODEL_FILENAME,
-                services::diarization::SORTFORMER_MODEL_FILENAME,
-            ] {
+            let resource_dir = app.path().resource_dir().ok();
+            // Seed / offline-heal bundled models into the writable models dir.
+            // Missing, empty, or hash-mismatch copies are replaced from the
+            // installed app resources when those files have real content (dev
+            // 0-byte placeholders are skipped). Whisper Small is only filled
+            // when missing/empty here — its SHA is checked (and healed) on first
+            // use so every launch does not re-hash ~181 MB.
+            let seed_targets: &[(&str, &str, bool)] = &[
+                (
+                    services::model::SMALL_MODEL_FILENAME,
+                    services::model::SMALL_MODEL_SHA256,
+                    false, // hash at use-time
+                ),
+                (
+                    services::model::VAD_MODEL_FILENAME,
+                    services::model::VAD_MODEL_SHA256,
+                    true,
+                ),
+                (
+                    services::diarization::SORTFORMER_MODEL_FILENAME,
+                    services::diarization::SORTFORMER_MODEL_SHA256,
+                    true,
+                ),
+            ];
+            for &(file_name, expected_sha, hash_at_startup) in seed_targets {
                 let dest = models_dir.join(file_name);
-                if !dest.exists() {
-                    if let Ok(resource_dir) = app.path().resource_dir() {
-                        let bundled = resource_dir.join(file_name);
-                        // Dev builds ship 0-byte placeholders (Tauri requires the resource
-                        // paths to exist) — only seed real files.
-                        let has_content = std::fs::metadata(&bundled)
-                            .map(|m| m.is_file() && m.len() > 0)
-                            .unwrap_or(false);
-                        if has_content {
-                            let _ = std::fs::copy(&bundled, &dest);
-                        }
+                let needs = if hash_at_startup {
+                    services::bundled_models::dest_needs_bundle_restore(&dest, expected_sha)
+                } else {
+                    !dest.exists()
+                        || std::fs::metadata(&dest)
+                            .map(|m| !m.is_file() || m.len() == 0)
+                            .unwrap_or(true)
+                };
+                if needs {
+                    if let Some(ref resource_dir) = resource_dir {
+                        let _ = services::bundled_models::ensure_bundled_file(
+                            Some(resource_dir.as_path()),
+                            &dest,
+                            file_name,
+                            expected_sha,
+                        );
                     }
                 }
             }
-            let diarization = services::diarization::DiarizationService::new(
+            let diarization = services::diarization::DiarizationService::with_resource_dir(
                 models_dir.join(services::diarization::SORTFORMER_MODEL_FILENAME),
+                resource_dir.clone(),
             );
             app.manage(Arc::clone(&diarization));
-            let model = services::model::ModelService::new(models_dir);
+            let model =
+                services::model::ModelService::with_resource_dir(models_dir, resource_dir);
             let model_ctrl = controllers::model::ModelController::new(Arc::clone(&model));
             if !model.bundled_model_available() {
                 tracing::warn!(

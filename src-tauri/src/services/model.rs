@@ -1,3 +1,4 @@
+use crate::services::bundled_models::{self, file_sha256_hex};
 use crate::types::Segment;
 use anyhow::{anyhow, Result};
 use std::collections::{HashMap, HashSet};
@@ -38,30 +39,6 @@ pub const VAD_MODEL_FILENAME: &str = "ggml-silero-v6.2.0.bin";
 pub const VAD_MODEL_SHA256: &str =
     "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987";
 
-/// Compute the lowercase-hex SHA-256 of a file on disk, streaming it so a multi-hundred-MB
-/// model never lands in memory all at once.
-fn file_sha256_hex(path: &Path) -> std::io::Result<String> {
-    use sha2::{Digest, Sha256};
-    use std::fmt::Write as _;
-    use std::io::Read;
-    let mut file = std::fs::File::open(path)?;
-    let mut hasher = Sha256::new();
-    let mut buf = [0u8; 64 * 1024];
-    loop {
-        let n = file.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    let digest = hasher.finalize();
-    let mut hex = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        let _ = write!(hex, "{byte:02x}");
-    }
-    Ok(hex)
-}
-
 /// Distinguishes GPU encode failures (retryable on CPU) from other inference errors.
 enum InferError {
     Encode(anyhow::Error),
@@ -78,6 +55,9 @@ impl From<InferError> for anyhow::Error {
 
 pub struct ModelService {
     models_dir: PathBuf,
+    /// Installed app resource dir (signed bundle models). Used to offline-restore
+    /// a bad writable copy. `None` in unit tests.
+    resource_dir: Option<PathBuf>,
     /// Append-only log of encode failures for post-mortem diagnosis (`{app_data}/transcription-failures.jsonl`).
     failure_log_path: PathBuf,
     /// Loaded Whisper contexts keyed by canonical model path. A `WhisperContext` owns the
@@ -104,9 +84,14 @@ pub struct ModelService {
 
 impl ModelService {
     pub fn new(models_dir: PathBuf) -> Arc<Self> {
+        Self::with_resource_dir(models_dir, None)
+    }
+
+    pub fn with_resource_dir(models_dir: PathBuf, resource_dir: Option<PathBuf>) -> Arc<Self> {
         let failure_log_path = transcription_failure_log_path(&models_dir);
         Arc::new(Self {
             models_dir,
+            resource_dir,
             failure_log_path,
             loaded_contexts: Mutex::new(HashMap::new()),
             loading_locks: Mutex::new(HashMap::new()),
@@ -154,7 +139,40 @@ impl ModelService {
 
     /// Whether the bundled VAD file is present and passes SHA-256.
     pub fn bundled_vad_available(&self) -> bool {
-        self.vad_model_available() && self.vad_model_integrity_ok()
+        self.ensure_vad_integrity()
+    }
+
+    /// Offline-restore VAD from the signed app bundle when the writable copy is bad.
+    fn ensure_vad_integrity(&self) -> bool {
+        let path = self.vad_model_path();
+        bundled_models::ensure_bundled_file(
+            self.resource_dir.as_deref(),
+            &path,
+            VAD_MODEL_FILENAME,
+            VAD_MODEL_SHA256,
+        )
+    }
+
+    /// Offline-restore Whisper Small from the signed app bundle when the writable copy is bad.
+    fn ensure_whisper_integrity(&self, model_path: &Path) -> bool {
+        let Some(expected) = self.bundled_sha256_for_path(model_path) else {
+            return self.model_available(model_path);
+        };
+        let Some(name) = model_path.file_name().and_then(|n| n.to_str()) else {
+            return false;
+        };
+        // Drop any stale "verified" stamp before/after restore so a healed file re-hashes.
+        self.lock_verified_models().remove(model_path);
+        let ok = bundled_models::ensure_bundled_file(
+            self.resource_dir.as_deref(),
+            model_path,
+            name,
+            expected,
+        );
+        if ok {
+            let _ = self.model_integrity_ok_cached(model_path, expected);
+        }
+        ok
     }
 
     /// Resolve VAD for a PCM length. Short clips skip VAD (encoder constraint).
@@ -163,12 +181,12 @@ impl ModelService {
         if pcm_samples < VAD_MIN_PCM_SAMPLES {
             return Ok(None);
         }
-        if !self.vad_model_available() {
-            return Err(anyhow!(
-                "Bundled voice-activity model missing. Reinstall the app to restore bundled models."
-            ));
-        }
-        if !self.vad_model_integrity_ok() {
+        if !self.ensure_vad_integrity() {
+            if !self.vad_model_available() {
+                return Err(anyhow!(
+                    "Bundled voice-activity model missing. Reinstall the app to restore bundled models."
+                ));
+            }
             return Err(anyhow!(
                 "Bundled voice-activity model failed integrity check. Reinstall the app to restore bundled models."
             ));
@@ -416,7 +434,9 @@ impl ModelService {
         self.reset_gpu_preference(model_path);
 
         if let Some(expected) = self.bundled_sha256_for_path(model_path) {
-            if !self.model_integrity_ok_cached(model_path, expected) {
+            if !self.model_integrity_ok_cached(model_path, expected)
+                && !self.ensure_whisper_integrity(model_path)
+            {
                 let actual = file_sha256_hex(model_path).unwrap_or_default();
                 return Err(anyhow!(
                     "Whisper model failed SHA-256 integrity check (expected {expected}, got {actual}). Reinstall the app to restore the bundled model."

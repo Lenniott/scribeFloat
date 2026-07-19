@@ -9,12 +9,18 @@
 //!
 //! No identity, no embeddings: output is [`DiarizationRange`] slots 0..=3.
 
+use crate::services::bundled_models;
 use crate::types::DiarizationRange;
 use anyhow::{anyhow, Context, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub const SORTFORMER_MODEL_FILENAME: &str = "diar_streaming_sortformer_4spk-v2.onnx";
+
+/// Verified lowercase-hex SHA-256 of the bundled Sortformer ONNX
+/// (see scripts/fetch-bundled-models.sh).
+pub const SORTFORMER_MODEL_SHA256: &str =
+    "cc520901a8cc25a8d7f7c2c8561a465709b67dd4f1df0572a97530087f3fbc73";
 
 /// Sortformer emits sample offsets at 16 kHz; the app timeline is ms.
 fn samples_to_ms(samples: u64) -> u64 {
@@ -124,11 +130,20 @@ impl LiveDiarization {
 
 pub struct DiarizationService {
     model_path: PathBuf,
+    /// Installed app resource dir for offline restore. `None` in unit tests.
+    resource_dir: Option<PathBuf>,
 }
 
 impl DiarizationService {
     pub fn new(model_path: PathBuf) -> Arc<Self> {
-        Arc::new(Self { model_path })
+        Self::with_resource_dir(model_path, None)
+    }
+
+    pub fn with_resource_dir(model_path: PathBuf, resource_dir: Option<PathBuf>) -> Arc<Self> {
+        Arc::new(Self {
+            model_path,
+            resource_dir,
+        })
     }
 
     pub fn model_path(&self) -> &Path {
@@ -136,20 +151,47 @@ impl DiarizationService {
     }
 
     /// Present and non-empty. Dev builds ship 0-byte placeholder resources, so
-    /// zero-length files count as missing.
+    /// zero-length files count as missing. Does not imply SHA-256 trust — use
+    /// [`Self::model_integrity_ok`] / [`Self::ensure_model`] before load.
     pub fn model_available(&self) -> bool {
         std::fs::metadata(&self.model_path)
             .map(|m| m.is_file() && m.len() > 0)
             .unwrap_or(false)
     }
 
-    /// Spawn the live worker for one recording, or `None` when the model is
-    /// missing (recording proceeds without speaker labels). The ~2 s model
-    /// load happens inside the worker thread while early PCM buffers in the
-    /// channel, so capture start is never delayed.
-    pub fn start_live_session(self: &Arc<Self>) -> Option<LiveDiarization> {
+    /// Whether the on-disk Sortformer file matches the bundled SHA-256.
+    pub fn model_integrity_ok(&self) -> bool {
         if !self.model_available() {
-            tracing::info!("diarization model missing — recording without speaker labels");
+            return false;
+        }
+        bundled_models::file_sha256_hex(&self.model_path)
+            .map(|actual| actual == SORTFORMER_MODEL_SHA256.to_ascii_lowercase())
+            .unwrap_or(false)
+    }
+
+    /// Offline-restore from the signed app bundle when the writable copy is bad.
+    pub fn ensure_model(&self) -> bool {
+        bundled_models::ensure_bundled_file(
+            self.resource_dir.as_deref(),
+            &self.model_path,
+            SORTFORMER_MODEL_FILENAME,
+            SORTFORMER_MODEL_SHA256,
+        )
+    }
+
+    /// Spawn the live worker for one recording, or `None` when the model is
+    /// missing/untrusted (recording proceeds without speaker labels). The ~2 s
+    /// model load happens inside the worker thread while early PCM buffers in
+    /// the channel, so capture start is never delayed.
+    pub fn start_live_session(self: &Arc<Self>) -> Option<LiveDiarization> {
+        if !self.ensure_model() {
+            if self.model_available() {
+                tracing::warn!(
+                    "diarization model failed integrity check — recording without speaker labels. Reinstall the app to restore bundled models."
+                );
+            } else {
+                tracing::info!("diarization model missing — recording without speaker labels");
+            }
             return None;
         }
         let service = Arc::clone(self);
@@ -161,11 +203,17 @@ impl DiarizationService {
     }
 
     fn load_sortformer(&self) -> Result<parakeet_rs::sortformer::Sortformer> {
-        anyhow::ensure!(
-            self.model_available(),
-            "diarization model missing: {}",
-            self.model_path.display()
-        );
+        if !self.ensure_model() {
+            if !self.model_available() {
+                anyhow::bail!(
+                    "diarization model missing: {}. Reinstall the app to restore bundled models.",
+                    self.model_path.display()
+                );
+            }
+            anyhow::bail!(
+                "diarization model failed integrity check. Reinstall the app to restore bundled models."
+            );
+        }
         // CallHome tuning (min_duration_on ~0.5s), not DIHARD3 (~7ms): DIHARD3
         // was tried and reverted (2026-07-17) — its sensitivity split single
         // speakers into phantom extra slots on real recordings. CallHome
@@ -277,11 +325,50 @@ mod tests {
     }
 
     #[test]
+    fn model_integrity_rejects_non_empty_wrong_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(SORTFORMER_MODEL_FILENAME), b"onnx").unwrap();
+        let svc = service_in(dir.path());
+        assert!(svc.model_available());
+        assert!(!svc.model_integrity_ok());
+        assert!(!svc.ensure_model()); // no resource_dir to heal from
+    }
+
+    #[test]
+    fn ensure_model_false_when_resource_cannot_heal() {
+        let dir = tempfile::tempdir().unwrap();
+        let resource = dir.path().join("resources");
+        let models = dir.path().join("models");
+        std::fs::create_dir_all(&resource).unwrap();
+        std::fs::create_dir_all(&models).unwrap();
+        std::fs::write(models.join(SORTFORMER_MODEL_FILENAME), b"corrupt").unwrap();
+        let svc = DiarizationService::with_resource_dir(
+            models.join(SORTFORMER_MODEL_FILENAME),
+            Some(resource),
+        );
+        // Empty/missing resource cannot heal; restore covered in bundled_models tests.
+        assert!(!svc.ensure_model());
+        assert!(!svc.model_integrity_ok());
+    }
+
+    #[test]
     fn diarize_errors_when_model_missing() {
         let dir = tempfile::tempdir().unwrap();
         let svc = service_in(dir.path());
         let err = svc.diarize(&[0.0; 16_000]).unwrap_err();
         assert!(err.to_string().contains("diarization model"), "{err}");
+    }
+
+    #[test]
+    fn diarize_errors_when_model_fails_integrity() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(SORTFORMER_MODEL_FILENAME), b"not-onnx").unwrap();
+        let svc = service_in(dir.path());
+        let err = svc.diarize(&[0.0; 16_000]).unwrap_err();
+        assert!(
+            err.to_string().contains("integrity check"),
+            "{err}"
+        );
     }
 
     /// Scripted streaming diarizer: one canned response per feed, then a

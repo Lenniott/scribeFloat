@@ -46,8 +46,8 @@ Format per item:
 ## Old biometric fields in history.jsonl until compact finishes
 
 - **Seen:** Security review S3
-- **Notes:** Very old voiceprint-era notes could still have embedding fields on disk until startup compact rewrites the file. New notes do not write those fields.
-- **Later:** Smoke-check after launch, or wipe test data.
+- **Notes:** Exploration-only voiceprint (never released — human’s machine / branch fog only). Old test notes could still have embedding fields on disk until startup compact rewrites the file. New notes do not write those fields. Not a multi-user upgrade issue.
+- **Later:** Smoke-check after launch, or wipe test data; then stop talking about voiceprint.
 
 ## Upload can read any audio path you pass it
 
@@ -84,3 +84,9 @@ Format per item:
 - **Seen:** Security review S12
 - **Notes:** Whisper, ONNX, input simulation, etc. Normal for this app; no stack rewrite this map.
 - **Later:** Advisory CI if we want it as a habit.
+
+## Bring back spoken triggers as Dictate prompt / insert text
+
+- **Seen:** Human 2026-07-19 — product intent after merge; not a merge-blocker
+- **Notes:** We removed the old “text replacement” / word-replacement engine (`0f35959` — dropped `services/output/replacements.rs`, Replacements settings tab, and call sites in Dictate/Record/history/export). Human wants something like that engine back, but **reshaped**: Dictate-only, used to insert prompts or extra text into dictation — not a Record/Scribe feature and not the old general replacements product surface. Engine bones still exist in git history and backup branches (e.g. parent of `0f35959`, `backup/feature-0.3-embeds-pre-cleanup-20260717`); need to find the best recover point and decide what to keep vs redesign.
+- **Later:** After main is clean — recover from a known branch/commit, cut scope to Dictate insert/prompt behaviour, leave Record alone.

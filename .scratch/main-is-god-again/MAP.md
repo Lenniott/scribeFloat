@@ -28,11 +28,15 @@ assignee:
 - **Architecture and single-model review** — In-app chooser UI already removed; merge still blocked by dead selection paths + docs/marketing that sell multi-model download / fast–refined tiers. Inventory for deletion: [research/architecture-single-model-review.md](./research/architecture-single-model-review.md) ([ticket](./issues/05-architecture-single-model-review.md)).
 - [ADR reality audit](./issues/03-adr-reality-audit.md) — 8 binding / 5 aspirational / 1 superseded; mark Sources, folders, HistoryKind before agents trust them
 - **Security review with rubric** — Findings in [`research/security-review.md`](./research/security-review.md); human sorted in ticket 06.
-- [Finish the thin-docs cut](./issues/01-finish-thin-docs-cut.md) — Keep-set: `CONTEXT.md`, `PRIVACY.md`, thin `AGENTS.md`, `docs/adr/`, `docs/agents/`, `docs/assets/`, thin `docs/README.md`. Ghost trees stay deleted; work lives in `.scratch/`. Commit plan recorded; not committed yet.
+- [Finish the thin-docs cut](./issues/01-finish-thin-docs-cut.md) — Keep-set applied and committed on the spine; ghost trees stay deleted; work lives in `.scratch/`.
 - [Remove Float coming-soon from shipped UI](./issues/07-remove-float-coming-soon-ui.md) — Sidebar tease + `/float` route gone; Home fake Float/Drafts tiles removed; glossary term kept (no funeral).
 - [Sort findings into merge-blockers vs Known issues](./issues/06-sort-findings-merge-vs-known.md) — Buckets agreed; Known issues in [`KNOWN-ISSUES.md`](./KNOWN-ISSUES.md); follow-on merge-blocker tickets **08**, **12–18** before Silicon smoke.
 - [Delete dead multi-model paths](./issues/08-delete-dead-multi-model-paths.md) — Full collapse: no config selection fields, no catalog-id APIs, no Upload `model_id`; all capture paths use bundled Small; errors say reinstall not Settings → Models.
 - [Bundle-only models — no runtime downloads](./issues/12-bundle-only-models-no-runtime-fetch.md) — Startup VAD HF fetch gone; hard offline/reinstall on missing VAD; PRIVACY/README/site/CONTEXT match bundle-only.
+- [Sanitize transcript HTML](./issues/13-sanitize-transcript-html.md) — markdown → HTML uses narrow options + ammonia scrub before `{@html}`; XSS payloads stripped.
+- **Voiceprint never shipped** — Built only inside this exploration / branch fog on the human’s machine; **never in a public release**. Leftover Keychain key / on-disk purge work is **local hygiene** so `main` looks as if voiceprint never happened — not a multi-user upgrade problem. After ticket **14** (and related purge) closes for this map, **stop re-litigating voiceprint** in chat and new tickets; do not invent “users who had voiceprints” scenarios.
+- [Always delete legacy voice Keychain key](./issues/14-always-delete-legacy-voice-keychain-key.md) — Startup always calls Keychain delete (no `profiles_dir_removed` gate); missing key = success. Local hygiene; voiceprint topic closed for this map.
+- [Verify all bundled models before load](./issues/15-verify-all-bundled-models-before-load.md) — Sortformer SHA + offline re-seed from installed app resources; Whisper/VAD heal on integrity fail; no runtime download.
 
 ## Not yet specified
 

@@ -60,6 +60,8 @@ Bucket: **merge-blocker** (unease + real finding before merge) vs **Known issues
 
 ### 6. Flat IPC ACL: every capability window can invoke every command
 
+> **Update 2026-07-19:** Ticket 16 closed (B+). Capabilities split per window; AppManifest lists commands; see `src-tauri/permissions/README.md`.
+
 - **Evidence:** Single capability `src-tauri/capabilities/default.json` lists `dictate`, `history`, `onboarding` and grants plugin defaults; `invoke_handler` registers ~70+ commands with no per-window allowlist (`src-tauri/src/lib.rs` ~820–907). Dictate/onboarding webviews can call `history_delete`, `settings_set_open_with_app_path`, `transcribe_start`, etc. if JS is compromised.
 - **Severity guess:** Medium (amplified by finding 2).
 - **Suggested bucket:** **Known issues** (hardening); rises with XSS.

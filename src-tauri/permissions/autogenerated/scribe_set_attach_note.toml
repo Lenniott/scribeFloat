@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scribe-set-attach-note"
+description = "Enables the scribe_set_attach_note command without any pre-configured scope."
+commands.allow = ["scribe_set_attach_note"]
+
+[[permission]]
+identifier = "deny-scribe-set-attach-note"
+description = "Denies the scribe_set_attach_note command without any pre-configured scope."
+commands.deny = ["scribe_set_attach_note"]

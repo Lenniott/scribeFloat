@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-relabel-speaker"
+description = "Enables the note_relabel_speaker command without any pre-configured scope."
+commands.allow = ["note_relabel_speaker"]
+
+[[permission]]
+identifier = "deny-note-relabel-speaker"
+description = "Denies the note_relabel_speaker command without any pre-configured scope."
+commands.deny = ["note_relabel_speaker"]

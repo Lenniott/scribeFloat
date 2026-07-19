@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scribe-stop-and-save"
+description = "Enables the scribe_stop_and_save command without any pre-configured scope."
+commands.allow = ["scribe_stop_and_save"]
+
+[[permission]]
+identifier = "deny-scribe-stop-and-save"
+description = "Denies the scribe_stop_and_save command without any pre-configured scope."
+commands.deny = ["scribe_stop_and_save"]

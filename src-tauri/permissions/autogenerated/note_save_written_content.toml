@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-save-written-content"
+description = "Enables the note_save_written_content command without any pre-configured scope."
+commands.allow = ["note_save_written_content"]
+
+[[permission]]
+identifier = "deny-note-save-written-content"
+description = "Denies the note_save_written_content command without any pre-configured scope."
+commands.deny = ["note_save_written_content"]

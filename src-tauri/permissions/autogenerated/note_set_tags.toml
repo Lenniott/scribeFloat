@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-set-tags"
+description = "Enables the note_set_tags command without any pre-configured scope."
+commands.allow = ["note_set_tags"]
+
+[[permission]]
+identifier = "deny-note-set-tags"
+description = "Denies the note_set_tags command without any pre-configured scope."
+commands.deny = ["note_set_tags"]

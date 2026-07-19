@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-save-title"
+description = "Enables the note_save_title command without any pre-configured scope."
+commands.allow = ["note_save_title"]
+
+[[permission]]
+identifier = "deny-note-save-title"
+description = "Denies the note_save_title command without any pre-configured scope."
+commands.deny = ["note_save_title"]

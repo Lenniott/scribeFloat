@@ -28,6 +28,7 @@ There is no separate architecture / action-flows / engineering / backlog / explo
 | `docs/adr/` | Binding and aspirational decisions |
 | `docs/agents/` | Tracker, triage labels, domain-doc consumption |
 | `AGENTS.md` | This file — session index, build, skills |
+| `src-tauri/permissions/` | Per-window IPC allowlists — see `permissions/README.md` when adding `#[tauri::command]` |
 
 Working memory for an effort lives under `.scratch/<effort-slug>/` (maps, tickets, Known issues). See `docs/agents/issue-tracker.md`.
 

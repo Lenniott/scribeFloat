@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-settings-get-scribe-capture-speaker"
+description = "Enables the settings_get_scribe_capture_speaker command without any pre-configured scope."
+commands.allow = ["settings_get_scribe_capture_speaker"]
+
+[[permission]]
+identifier = "deny-settings-get-scribe-capture-speaker"
+description = "Denies the settings_get_scribe_capture_speaker command without any pre-configured scope."
+commands.deny = ["settings_get_scribe_capture_speaker"]

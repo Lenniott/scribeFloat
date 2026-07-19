@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scribe-set-include-timestamps"
+description = "Enables the scribe_set_include_timestamps command without any pre-configured scope."
+commands.allow = ["scribe_set_include_timestamps"]
+
+[[permission]]
+identifier = "deny-scribe-set-include-timestamps"
+description = "Denies the scribe_set_include_timestamps command without any pre-configured scope."
+commands.deny = ["scribe_set_include_timestamps"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scribe-list-input-devices"
+description = "Enables the scribe_list_input_devices command without any pre-configured scope."
+commands.allow = ["scribe_list_input_devices"]
+
+[[permission]]
+identifier = "deny-scribe-list-input-devices"
+description = "Denies the scribe_list_input_devices command without any pre-configured scope."
+commands.deny = ["scribe_list_input_devices"]

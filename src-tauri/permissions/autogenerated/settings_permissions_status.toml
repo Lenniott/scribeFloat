@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-settings-permissions-status"
+description = "Enables the settings_permissions_status command without any pre-configured scope."
+commands.allow = ["settings_permissions_status"]
+
+[[permission]]
+identifier = "deny-settings-permissions-status"
+description = "Denies the settings_permissions_status command without any pre-configured scope."
+commands.deny = ["settings_permissions_status"]

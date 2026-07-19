@@ -4,6 +4,9 @@ mod platform;
 pub mod services;
 pub mod types;
 
+#[cfg(test)]
+mod acl_capabilities_test;
+
 use std::sync::Arc;
 use tauri::{
     image::Image,

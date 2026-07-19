@@ -2,7 +2,6 @@
 	import {
 		Home,
 		FileText,
-		Star,
 		Upload,
 		Settings,
 	} from 'lucide-svelte';
@@ -12,7 +11,6 @@
 		| 'home'
 		| 'notes'
 		| 'upload'
-		| 'float'
 		| 'settings';
 
 	let {
@@ -44,7 +42,6 @@
 			active={activeRoute === 'upload'}
 			onclick={() => onnavigate('upload')}
 		/>
-		<SidebarNavItem label="Float" icon={Star} disabled badge="Coming soon" />
 	</div>
 
 	<div class="mt-3 border-t border-card pt-3">

@@ -3,10 +3,11 @@
 //! The voiceprint feature stored per-person voice embeddings under
 //! `{data_dir}/voiceprints/*.json` plus transient enrollment clips. The feature
 //! is gone; this migration preserves the only non-biometric part — profile
-//! *names* — into the plain speaker-name store, then deletes the files and the
-//! keychain encryption key. History embeddings need no code here: the fields no
-//! longer exist on the record types, so the startup compaction rewrites
-//! `history.jsonl` without them.
+//! *names* — into the plain speaker-name store, then deletes the files.
+//! The caller always deletes the Keychain encryption key (independent of
+//! whether a dir was removed this run). History embeddings need no code here:
+//! the fields no longer exist on the record types, so the startup compaction
+//! rewrites `history.jsonl` without them.
 //!
 //! Idempotent by construction: every step is a no-op once its input is gone.
 //! Name import must fully succeed before the profiles dir is removed, so a
@@ -22,9 +23,8 @@ pub struct PurgeReport {
     pub clips_dir_removed: bool,
 }
 
-/// Filesystem side only; the caller deletes the keychain key when
-/// `profiles_dir_removed` (keeps this unit-testable without touching the
-/// real macOS Keychain).
+/// Filesystem side only. The caller always deletes the Keychain key afterward
+/// (keeps this unit-testable without touching the real macOS Keychain).
 pub fn purge_legacy_voice_data(data_dir: &Path, names: &SpeakerNameService) -> PurgeReport {
     let mut report = PurgeReport::default();
 

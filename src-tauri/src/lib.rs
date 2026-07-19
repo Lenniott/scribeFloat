@@ -674,15 +674,14 @@ pub fn run() {
                 data_dir.join("speaker_names.json"),
             );
             // One-time biometric purge: legacy voiceprint profiles become plain
-            // names, then the files (and their keychain key) are deleted.
-            // History embeddings vanish via the background compaction below.
+            // names, then the files are deleted. Always attempt Keychain key
+            // delete (missing key = success) so a prior partial purge cannot
+            // leave an orphan key. History embeddings vanish via compaction below.
             {
                 let report =
                     services::legacy_voice_purge::purge_legacy_voice_data(&data_dir, &speaker_names);
-                if report.profiles_dir_removed {
-                    if let Err(e) = platform::delete_voice_crypto_key() {
-                        tracing::warn!(error = %e, "could not delete legacy voice encryption key");
-                    }
+                if let Err(e) = platform::delete_voice_crypto_key() {
+                    tracing::warn!(error = %e, "could not delete legacy voice encryption key");
                 }
                 if report.names_imported > 0
                     || report.profiles_dir_removed

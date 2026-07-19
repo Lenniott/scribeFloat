@@ -49,8 +49,8 @@ Bucket: **merge-blocker** (unease + real finding before merge) vs **Known issues
 ### 4. Keychain voice key deleted only when profiles dir is removed
 
 - **Evidence:** Purge deletes key only when `report.profiles_dir_removed` (`src-tauri/src/lib.rs` ~700–703). `delete_voice_crypto_key` (`src-tauri/src/platform/mod.rs` ~150–174). If `voiceprints/` was already gone (manual delete, prior partial run) but the key remains, startup never calls delete. Clips-only leftover does not trigger key delete either.
-- **Severity guess:** Medium (orphaned AES key in Keychain; ciphertext should already be unusable / purged, but key lingering is biometric hygiene debt).
-- **Suggested bucket:** **Known issues** (or merge-blocker if human treats any leftover biometric key as blocking).
+- **Severity guess:** Medium as code hygiene; **blast radius is local only** — voiceprint never shipped (exploration / branch fog on the human’s machine; no released-user fleet). See map Decisions + ticket 14.
+- **Suggested bucket:** **merge-blocker** (human: leave `main` as if voiceprint never happened) — not a multi-user upgrade scare.
 
 ### 5. Sortformer ONNX has no runtime integrity check
 

@@ -4,7 +4,7 @@ Shared policy for Claude Code and Cursor: prompt once per session when capture m
 
 ## Triggers (any one)
 
-- **15 user turns** since the last write to `docs/backlog/active/` or `docs/adr/`
+- **15 user turns** since the last write to `docs/adr/`, `docs/agents/`, or `.scratch/`
 - **Context ≥ 60%** (`preCompact` / `PreCompact`) or auto-compaction imminent
 
 ## Wiring

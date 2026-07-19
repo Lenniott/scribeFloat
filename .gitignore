@@ -19,3 +19,6 @@ vite.config.ts.timestamp-*
 .cursor/*.log
 .codex
 .agents
+
+# Local capture fixtures (not for git — large binaries)
+/tests/*.wav

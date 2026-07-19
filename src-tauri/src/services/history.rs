@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 /// Owns the canonical structured record store: `{save_folder}/history.jsonl`.
 ///
 /// Capture lifecycle events append to the log; editor title/body use [`note_sidecar`].
-/// See `docs/engineering/history-storage.md`.
 ///
 /// Mirrors `OutputService`'s stateless-with-folder style: the save folder is passed per
 /// call. When it changes the in-memory cache is reloaded for the new folder (no migration).

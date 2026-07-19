@@ -49,7 +49,11 @@ export function saveState(sessionId, state) {
 export function isDocPath(filePath) {
   if (!filePath) return false;
   const norm = filePath.replace(/\\/g, "/");
-  return norm.includes("docs/backlog/active/") || norm.includes("docs/adr/");
+  return (
+    norm.includes("docs/adr/") ||
+    norm.includes(".scratch/") ||
+    norm.includes("docs/agents/")
+  );
 }
 
 export function findStaleExplorations() {
@@ -165,7 +169,12 @@ export function extractSuggestions(input) {
         .trim()
         .split("\n")
         .filter(Boolean)
-        .filter((p) => !p.startsWith("docs/backlog/active/") && !p.startsWith("docs/adr/"))
+        .filter(
+          (p) =>
+            !p.startsWith("docs/adr/") &&
+            !p.startsWith(".scratch/") &&
+            !p.startsWith("docs/agents/")
+        )
         .slice(0, 5);
       for (const p of changed) {
         found.add(`Code/docs changed without a matching story or ADR: ${p}`);
@@ -210,7 +219,7 @@ export function buildMessage(suggestions, stale) {
   }
 
   lines.push(
-    "Use `/new-story` or `/new-adr` if something should be recorded.",
+    "Record binding decisions under `docs/adr/`; effort work under `.scratch/<effort>/`.",
     "Reply **nothing to capture** to dismiss this check for the rest of the session.",
   );
 

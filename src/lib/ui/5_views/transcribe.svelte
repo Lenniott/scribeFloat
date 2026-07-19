@@ -193,7 +193,6 @@
       await invoke("transcribe_start", {
         inputPaths: queue.map((item) => item.source_path),
         outputFolder: outputFolder || null,
-        modelId: null,
         includeTimestamps,
       });
     } catch (error) {

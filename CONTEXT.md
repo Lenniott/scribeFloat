@@ -1,7 +1,7 @@
 # ScribeFloat — Domain Glossary
 
 > Canonical terms for this codebase. When code and this glossary disagree, fix one of them.
-> Implementation details belong in `AGENTS.md` or `docs/architecture.md` — not here.
+> Implementation details belong in `AGENTS.md`, `docs/adr/`, or the code — not here.
 
 ---
 
@@ -47,13 +47,13 @@ Capture methods are ways of creating a Note. They are not distinct object types 
 
 | Term | Definition |
 |---|---|
-| **Record** | Long-form in-app recording. Durable audio (saved to Note folder). Refined transcription model by default. Stop confirmation safeguard. Previously called "Scribe." |
-| **Dictate** | Quick-capture. Hotkey-triggered from anywhere. Temp audio (deleted on success). Fast transcription model by default. No stop confirmation. Output pastes to active app or clipboard. Produces a `quick` Note. |
+| **Record** | Long-form in-app recording. Durable audio (saved to Note folder). Same bundled Whisper Small as Dictate. Stop confirmation safeguard. Previously called "Scribe." |
+| **Dictate** | Quick-capture. Hotkey-triggered from anywhere. Temp audio (deleted on success). Same bundled Whisper Small as Record. No stop confirmation. Output pastes to active app or clipboard. Produces a `quick` Note. |
 | **Upload** | Bulk Note creation from external sources: audio files, markdown files, URLs, video URLs. Previously called "Transcribe." |
 | **Recording** | The act of capturing audio. A UI state and verb-noun, not a domain object. Bounded by Start / Stop. |
 | **Session** | One complete capture event — from initiation to completion, including audio processing. A Session produces one Note. |
 
-**Architectural note:** Record and Dictate are the same recording capability under the hood — same audio technology, same Whisper transcription. The differences are capture configuration (audio durability, model quality tier, stop safeguards, activation method, output destination). The current two-controller architecture (`ScribeController`, `DictateController`) is an artefact of how the app evolved, not a domain distinction. Future refactoring may unify them.
+**Architectural note:** Record and Dictate are the same recording capability under the hood — same audio technology, same bundled Whisper Small. The differences are capture configuration (audio durability, stop safeguards, activation method, output destination). The current two-controller architecture (`ScribeController`, `DictateController`) is an artefact of how the app evolved, not a domain distinction. Future refactoring may unify them.
 
 ---
 
@@ -79,7 +79,7 @@ The full UI taxonomy lives in `ui-taxonomy.md`. Summary of levels relevant to ap
 | **Notes** | Browse all Notes. Filterable by tags, Layer Items, Triage status, capture method. |
 | **Upload** | Bulk Note creation from external sources: audio files, markdown files, URLs, video URLs. |
 | **Float** | Build and manage Layers, Steps, Flows, Vocabulary. |
-| **Settings** | Config, models, permissions, hotkeys. |
+| **Settings** | Config, permissions, hotkeys, help. |
 
 Record is not a sidebar Area — accessed via a persistent "New Note" action in the title bar. Dictate is a persistent hotkey-triggered action in the title bar, available from any Area.
 

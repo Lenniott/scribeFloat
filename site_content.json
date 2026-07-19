@@ -111,13 +111,13 @@
 			},
 			{
 				"n": "02",
-				"title": "Download a Whisper model",
-				"body": "Open Settings → Models and click Download next to a model. Models range from 75 MB to 1.5 GB."
+				"title": "Grant mic access",
+				"body": "Allow microphone (and Accessibility on Mac if you use Dictate paste). The Whisper model is already in the app — nothing to download."
 			},
 			{
 				"n": "03",
 				"title": "Pick a mode",
-				"body": "Click the menu bar icon. Choose Scribe, Transcribe, or Dictate. Configure once and forget it."
+				"body": "Record a note, Upload a file, or Dictate with the hotkey. Configure once and forget it."
 			},
 			{
 				"n": "04",
@@ -145,8 +145,8 @@
 				"body": "Free permanently. Open source."
 			},
 			{
-				"title": "One network call",
-				"body": "Model download from Hugging Face. One time, user-initiated. No data sent. Verifiable with a packet capture."
+				"title": "Offline by default",
+				"body": "Models ship in the app. No Hugging Face at runtime. Optional update check only if you click it. Verifiable with a packet capture."
 			}
 		]
 	},

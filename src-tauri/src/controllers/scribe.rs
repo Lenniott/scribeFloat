@@ -286,7 +286,7 @@ impl ScribeController {
             None,
             Vec::new(),
         )?;
-        this.spawn_record_start_preload(&cfg);
+        this.spawn_record_start_preload();
         Ok(())
     }
 
@@ -418,8 +418,8 @@ impl ScribeController {
     /// model". Safe against stop-and-transcribe: the model service's per-path
     /// load lock makes a Stop that lands mid-preload wait for this load rather
     /// than duplicate it.
-    fn spawn_record_start_preload(&self, cfg: &Config) {
-        let path = preload_path_for_config(cfg, &self.model);
+    fn spawn_record_start_preload(&self) {
+        let path = self.model.default_model_path();
         let model = Arc::clone(&self.model);
         tauri::async_runtime::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
@@ -683,7 +683,7 @@ impl ScribeController {
     ) -> Result<()> {
         let config = self.config.get();
 
-        let model_path = resolve_model_path(&config, &self.model);
+        let model_path = self.model.default_model_path();
         if !self.model.model_available(&model_path) {
             self.clear_transcription_tracking();
             self.transition(ScribeState::NoModel);
@@ -1526,27 +1526,9 @@ fn speaker_manifest_wav_names(session_dir: &Path, accum: &SpeakerAccumulator) ->
     names
 }
 
-fn resolve_model_path(config: &Config, model: &ModelService) -> PathBuf {
-    if let Some(p) = &config.scribe_model_path {
-        PathBuf::from(p)
-    } else if let Some(model_id) = &config.selected_model_id {
-        model
-            .model_path_for_id(model_id)
-            .unwrap_or_else(|| model.default_model_path())
-    } else {
-        model.default_model_path()
-    }
-}
-
-/// Path of the model that Scribe will use on stop — same resolution as transcription.
-fn preload_path_for_config(config: &Config, model: &ModelService) -> PathBuf {
-    resolve_model_path(config, model)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::model::SMALL_MODEL_FILENAME;
     use hound::{SampleFormat, WavSpec, WavWriter};
     use std::path::PathBuf;
 
@@ -1583,21 +1565,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_model_path_prefers_explicit_path() {
-        let models_dir =
-            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
-        let model = ModelService::new(models_dir.clone());
-        let config = Config {
-            scribe_model_path: Some("/tmp/custom-model.bin".to_string()),
-            selected_model_id: Some("tiny-en-q5".to_string()),
-            ..Config::default()
-        };
-
-        let chosen = resolve_model_path(&config, model.as_ref());
-        assert_eq!(chosen, PathBuf::from("/tmp/custom-model.bin"));
-    }
-
-    #[test]
     fn speaker_manifest_wav_names_lists_segments_and_active() {
         let dir = std::env::temp_dir().join(format!("speaker-manifest-{}", uuid::Uuid::new_v4()));
         let mut accum = SpeakerAccumulator::new();
@@ -1608,20 +1575,6 @@ mod tests {
         accum.active = None;
         let names = speaker_manifest_wav_names(&dir, &accum);
         assert_eq!(names, vec!["speaker_seg_0.wav".to_string()]);
-    }
-
-    #[test]
-    fn resolve_model_path_uses_selected_model_id_when_present() {
-        let models_dir =
-            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
-        let model = ModelService::new(models_dir.clone());
-        let config = Config {
-            selected_model_id: Some("small-en-q5".to_string()),
-            ..Config::default()
-        };
-
-        let chosen = resolve_model_path(&config, model.as_ref());
-        assert_eq!(chosen, models_dir.join(SMALL_MODEL_FILENAME));
     }
 
     #[test]
@@ -1643,55 +1596,6 @@ mod tests {
                 "start should be allowed from {state:?}"
             );
         }
-    }
-
-    #[test]
-    fn preload_path_uses_custom_scribe_model_path() {
-        let models_dir =
-            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
-        let model = ModelService::new(models_dir);
-        let config = Config {
-            scribe_model_path: Some("/tmp/custom.bin".to_string()),
-            selected_model_id: Some("tiny-en-q5".to_string()),
-            ..Config::default()
-        };
-        assert_eq!(
-            preload_path_for_config(&config, model.as_ref()),
-            PathBuf::from("/tmp/custom.bin")
-        );
-    }
-
-    #[test]
-    fn preload_path_returns_catalog_path_for_bundled_model() {
-        let models_dir =
-            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
-        let model = ModelService::new(models_dir.clone());
-        let config = Config {
-            selected_model_id: Some("small-en-q5".to_string()),
-            ..Config::default()
-        };
-        let p = preload_path_for_config(&config, model.as_ref());
-        assert_eq!(
-            p,
-            model
-                .model_path_for_id("small-en-q5")
-                .expect("catalog path")
-        );
-        assert!(p.starts_with(&models_dir), "preload path under models dir");
-    }
-
-    #[test]
-    fn resolve_model_path_falls_back_to_default_when_unknown_selected_id() {
-        let models_dir =
-            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
-        let model = ModelService::new(models_dir.clone());
-        let config = Config {
-            selected_model_id: Some("not-a-real-model".to_string()),
-            ..Config::default()
-        };
-
-        let chosen = resolve_model_path(&config, model.as_ref());
-        assert_eq!(chosen, models_dir.join(SMALL_MODEL_FILENAME));
     }
 
     // ── SpeakerAccumulator state ───────────────────────────────────────────────

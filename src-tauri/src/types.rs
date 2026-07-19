@@ -43,20 +43,11 @@ pub struct Config {
     #[serde(default = "default_save_folder")]
     pub save_folder: String,
 
-    /// Absolute path to the ggml .bin model file used for Scribe.
-    /// None = no model configured → NO_MODEL state after recording.
-    #[serde(default)]
-    pub scribe_model_path: Option<String>,
-
     #[serde(default)]
     pub keep_wav: bool,
 
     #[serde(default = "default_true")]
     pub include_timestamps: bool,
-
-    /// Active model id selected by user in model setup.
-    #[serde(default)]
-    pub selected_model_id: Option<String>,
 
     #[serde(default = "default_open_scribe_hotkey")]
     pub open_scribe_hotkey: String,
@@ -114,19 +105,18 @@ pub struct Config {
     /// Display name for the user in speaker-labelled transcripts. Default: "You".
     #[serde(default = "default_user_display_name")]
     pub user_display_name: String,
-    // Retired voiceprint keys (voice_similarity_threshold, voice_learning_enabled,
-    // voice_embeddings_retention, voice_embeddings_encryption_required) are ignored
-    // on read and dropped on the next config write.
+    // Retired keys ignored on read and dropped on the next config write:
+    // - voiceprint: voice_similarity_threshold, voice_learning_enabled,
+    //   voice_embeddings_retention, voice_embeddings_encryption_required
+    // - multi-model chooser: selected_model_id, scribe_model_path, dictate_model_id
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             save_folder: default_save_folder(),
-            scribe_model_path: None,
             keep_wav: false,
             include_timestamps: true,
-            selected_model_id: None,
             open_scribe_hotkey: default_open_scribe_hotkey(),
             dictate_hotkey: default_dictate_hotkey(),
             input_label: default_input_label(),
@@ -453,17 +443,6 @@ impl TranscribeStateEvent {
             error: None,
         }
     }
-}
-
-/// Emitted on `model://download-progress` for every model the app downloads —
-/// Whisper catalog models and the Silero VAD model (`model_id = "vad"`). One
-/// channel, one payload; consumers filter by `model_id`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModelDownloadEvent {
-    pub model_id: String,
-    pub progress: f32,
-    pub bytes_downloaded: u64,
-    pub total_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1015,11 +994,13 @@ mod tests {
 
     #[test]
     fn config_with_removed_fields_still_deserializes() {
-        // Configs written before the replacement engine and per-mode model override
+        // Configs written before the replacement engine and multi-model chooser
         // were removed still carry these keys — serde must ignore them.
         let legacy = r#"{
             "save_folder": "/tmp/transcripts",
             "dictate_model_id": "tiny-en-q5",
+            "selected_model_id": "base-en-q5",
+            "scribe_model_path": "/old/models/ggml-base.bin",
             "replacement_prefix": "float",
             "replacement_rules": [
                 {"trigger": "dash", "type": "simple", "output": "-"}

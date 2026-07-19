@@ -616,36 +616,18 @@ pub fn run() {
             );
             app.manage(Arc::clone(&diarization));
             let model = services::model::ModelService::new(models_dir);
-            if model.vad_model_needs_redownload() {
-                if model.vad_model_available() && !model.vad_model_integrity_ok() {
-                    tracing::warn!("VAD model failed integrity check — re-downloading");
-                    let _ = std::fs::remove_file(model.vad_model_path());
-                }
-                let model_bg = Arc::clone(&model);
-                let app_bg = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Err(err) = model_bg.download_vad_model(&app_bg).await {
-                        tracing::warn!(error = %err, "startup VAD preparation failed");
-                    }
-                });
+            let model_ctrl = controllers::model::ModelController::new(Arc::clone(&model));
+            if !model.bundled_model_available() {
+                tracing::warn!(
+                    "bundled Whisper model missing at {}",
+                    model.default_model_path().display()
+                );
             }
-            let model_ctrl =
-                controllers::model::ModelController::new(Arc::clone(&model), Arc::clone(&config));
-            // Auto-select the bundled Small model on first run, and migrate configs whose
-            // selection points at a catalog entry that no longer exists (tiny/base/medium/large).
-            {
-                let cfg_snapshot = config.get();
-                let selection_missing = match cfg_snapshot.selected_model_id.as_deref() {
-                    None => true,
-                    Some(id) => model.model_path_for_id(id).is_none(),
-                };
-                if selection_missing && model.model_downloaded(services::model::DEFAULT_MODEL_ID) {
-                    if let Err(err) =
-                        model_ctrl.select_model(services::model::DEFAULT_MODEL_ID.to_string())
-                    {
-                        tracing::warn!(error = %err, "failed to select bundled model at startup");
-                    }
-                }
+            if !model.bundled_vad_available() {
+                tracing::warn!(
+                    "bundled VAD model missing or corrupt at {}",
+                    model.vad_model_path().display()
+                );
             }
             let settings_ctrl = controllers::settings::SettingsController::new(
                 Arc::clone(&config),

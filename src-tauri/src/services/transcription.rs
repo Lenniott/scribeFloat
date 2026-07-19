@@ -110,7 +110,7 @@ impl SpeechInference for ModelService {
         pass: TranscriptionPass<'_>,
         on_progress: Box<dyn FnMut(f32) + Send>,
     ) -> Result<Vec<Segment>> {
-        let vad = self.vad_path_for_pcm(pass.pcm_16k.len());
+        let vad = self.vad_path_for_pcm(pass.pcm_16k.len())?;
         self.transcribe_pcm_with_progress(
             pass.model_path,
             pass.pcm_16k,

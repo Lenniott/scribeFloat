@@ -24,7 +24,6 @@ struct Inner {
 pub struct TranscribeStartRequest {
     pub input_paths: Vec<String>,
     pub output_folder: Option<String>,
-    pub model_id: Option<String>,
     pub include_timestamps: Option<bool>,
 }
 
@@ -90,9 +89,12 @@ impl TranscribeController {
         let output_folder =
             resolve_output_folder(&this.output, &cfg, request.output_folder.as_deref())?;
         let include_timestamps = request.include_timestamps.unwrap_or(cfg.include_timestamps);
-        let model_path = resolve_model_path(&cfg, this.model.as_ref(), request.model_id.as_deref());
+        let model_path = this.model.default_model_path();
         if !this.model.model_available(&model_path) {
-            return Err("selected model is not downloaded".to_string());
+            return Err(
+                "No Whisper model available. Reinstall the app to restore the bundled model."
+                    .to_string(),
+            );
         }
         {
             let mut inner = this.lock();
@@ -432,24 +434,6 @@ fn resolve_output_folder(
     output.ensure_output_dir(path).map_err(|e| e.to_string())
 }
 
-fn resolve_model_path(
-    config: &Config,
-    model: &ModelService,
-    explicit_model_id: Option<&str>,
-) -> PathBuf {
-    if let Some(model_id) = explicit_model_id {
-        if let Some(path) = model.model_path_for_id(model_id.trim()) {
-            return path;
-        }
-    }
-    if let Some(model_id) = &config.selected_model_id {
-        if let Some(path) = model.model_path_for_id(model_id) {
-            return path;
-        }
-    }
-    model.default_model_path()
-}
-
 fn slugify(name: &str) -> String {
     let stem = Path::new(name)
         .file_stem()
@@ -560,31 +544,6 @@ mod tests {
     fn slugify_replaces_forbidden_chars() {
         let slug = slugify("a/b\\c:d");
         assert!(!slug.contains('/') && !slug.contains('\\') && !slug.contains(':'));
-    }
-
-    #[test]
-    fn resolve_model_path_prefers_explicit_id() {
-        let tmp = tempfile::tempdir().unwrap();
-        let model_svc = ModelService::new(tmp.path().to_path_buf());
-        let config = Config {
-            selected_model_id: None,
-            ..Config::default()
-        };
-        // explicit id — path doesn't exist but model_path_for_id still returns it
-        let path = resolve_model_path(&config, &model_svc, Some("small-en-q5"));
-        assert!(path.to_string_lossy().contains("small"));
-    }
-
-    #[test]
-    fn resolve_model_path_falls_back_to_selected() {
-        let tmp = tempfile::tempdir().unwrap();
-        let model_svc = ModelService::new(tmp.path().to_path_buf());
-        let config = Config {
-            selected_model_id: Some("small-en-q5".to_string()),
-            ..Config::default()
-        };
-        let path = resolve_model_path(&config, &model_svc, None);
-        assert!(path.to_string_lossy().contains("small"));
     }
 
     #[test]

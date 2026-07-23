@@ -12,7 +12,8 @@
   "app": {
     "windows": [],
     "security": {
-      "csp": "default-src 'self' asset: https://asset.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost data:; connect-src 'self' ipc: http://ipc.localhost"
+      "csp": "default-src 'self' asset: https://asset.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' asset: https://asset.localhost data:; img-src 'self' asset: https://asset.localhost data:; connect-src 'self' ipc: http://ipc.localhost",
+      "dangerousDisableAssetCspModification": ["style-src"]
     }
   },
   "bundle": {

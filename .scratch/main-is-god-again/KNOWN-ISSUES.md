@@ -156,3 +156,9 @@ Format per item:
 - **Seen:** Human 2026-07-19 — product intent after merge; not a merge-blocker
 - **Notes:** We removed the old “text replacement” / word-replacement engine (`0f35959` — dropped `services/output/replacements.rs`, Replacements settings tab, and call sites in Dictate/Record/history/export). Human wants something like that engine back, but **reshaped**: Dictate-only, used to insert prompts or extra text into dictation — not a Record/Scribe feature and not the old general replacements product surface. Engine bones still exist in git history and backup branches (e.g. parent of `0f35959`, `backup/feature-0.3-embeds-pre-cleanup-20260717`); need to find the best recover point and decide what to keep vs redesign.
 - **Later:** After main is clean — recover from a known branch/commit, cut scope to Dictate insert/prompt behaviour, leave Record alone.
+
+## CSP: style-src left unmodified by Tauri (`dangerousDisableAssetCspModification`)
+
+- **Seen:** 2026-07-23 — release-build styling broke (CodeMirror theme, skeleton) while dev looked fine
+- **Notes:** Tauri's build-time CSP rewrite adds nonces/hashes to `style-src`, and per the CSP spec any nonce/hash makes `'unsafe-inline'` ignored — so every runtime-injected `<style>` (CodeMirror style-mod, CSS-in-JS) was blocked in the packaged app only. Fix: `"dangerousDisableAssetCspModification": ["style-src"]` in `tauri.conf.json`. `script-src` keeps its nonces, so ticket 13's sanitization posture is unchanged. Residual risk is injected *styles* only (low: `connect-src`/`img-src` stay locked). Do not "clean up" this flag — removing it re-breaks release styling.
+- **Later:** If CSP is ever tightened, move CodeMirror styling to `adoptedStyleSheets` or hashed static CSS first.

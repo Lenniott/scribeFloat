@@ -269,6 +269,29 @@ pub fn windows_save_folder_needs_migration(_path: &str) -> bool {
     false
 }
 
+/// Mark the calling thread as background/utility work so macOS's scheduler
+/// yields CPU to interactive threads (window paint, JS init) instead of
+/// racing them. Without this, startup model-seeding/preload (Whisper context
+/// load, Sortformer hash) is CPU-bound enough to visibly stall a window
+/// opened in the first ~20-30s after launch — exactly the case a first-run
+/// user hits immediately after install.
+#[cfg(target_os = "macos")]
+pub fn lower_thread_priority_for_background_work() {
+    const QOS_CLASS_UTILITY: libc::c_uint = 0x11;
+    extern "C" {
+        fn pthread_set_qos_class_self_np(
+            qos_class: libc::c_uint,
+            relative_priority: libc::c_int,
+        ) -> libc::c_int;
+    }
+    unsafe {
+        pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn lower_thread_priority_for_background_work() {}
+
 #[cfg(test)]
 mod save_folder_tests {
     use super::windows_save_folder_needs_migration;

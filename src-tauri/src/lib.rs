@@ -639,6 +639,10 @@ pub fn run() {
                 // caused (window IPC calls queued behind this task instead of running
                 // concurrently with it).
                 let _ = tokio::task::spawn_blocking(move || {
+                    // Utility QoS so this thread yields CPU to window
+                    // paint/JS init instead of racing them — see doc comment
+                    // on `lower_thread_priority_for_background_work`.
+                    platform::lower_thread_priority_for_background_work();
                     let seed_targets: &[(&str, &str, bool)] = &[
                         (
                             services::model::SMALL_MODEL_FILENAME,

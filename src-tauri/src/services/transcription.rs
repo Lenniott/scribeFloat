@@ -166,8 +166,42 @@ where
     let asr_progress = move |p: f32| scaled(p * asr_scale);
 
     let mut on_model_loaded = input.on_model_loaded.take();
-    let segments =
-        transcribe_capture_with_inference(inference, &input, &mut on_model_loaded, asr_progress)?;
+
+    // An on-demand diarization pass only needs the (already-decoded) mic PCM, and
+    // Sortformer is a separate ONNX-backed engine loaded fresh per call — it shares
+    // no lock or state with Whisper's inference_gate (see ticket 34's dual-source
+    // finding, which is specific to whisper_full reentrancy, not diarization). So run
+    // it on a scoped thread concurrently with the ASR pass instead of strictly after.
+    let (segments, diarize_result) = if will_diarize_after_asr {
+        let Some(SpeakerEvidenceInput::DiarizeOnDemand(diarizer)) = input.speaker_evidence else {
+            unreachable!("will_diarize_after_asr implies DiarizeOnDemand")
+        };
+        let mic_pcm = input.audio.mic_pcm_16k;
+        std::thread::scope(|scope| {
+            let handle = scope.spawn(move || diarizer.diarize(mic_pcm));
+            let segments = transcribe_capture_with_inference(
+                inference,
+                &input,
+                &mut on_model_loaded,
+                asr_progress,
+            );
+            let diarize_result = handle
+                .join()
+                .unwrap_or_else(|_| Err(anyhow::anyhow!("diarization thread panicked")));
+            (segments, Some(diarize_result))
+        })
+    } else {
+        (
+            transcribe_capture_with_inference(
+                inference,
+                &input,
+                &mut on_model_loaded,
+                asr_progress,
+            ),
+            None,
+        )
+    };
+    let segments = segments?;
     let model_label = model_label(input.model_path);
     if segments.is_empty() {
         return Ok(TranscriptResult {
@@ -189,7 +223,7 @@ where
         });
     }
 
-    let speaker_blocks = build_speaker_result(&input, &segments, dual_source);
+    let speaker_blocks = build_speaker_result(&input, &segments, dual_source, diarize_result);
     if will_diarize_after_asr {
         tail_progress(1.0);
     }
@@ -266,10 +300,14 @@ where
     }
 }
 
+/// `precomputed_diarize` carries the result of an on-demand diarization pass already
+/// run concurrently with ASR (see the scoped-thread dispatch above); `None` when no
+/// such pass was dispatched (`LiveRanges`/no-evidence cases still resolve inline here).
 fn build_speaker_result(
     input: &PostCaptureInput<'_>,
     segments: &[Segment],
     dual_source: bool,
+    precomputed_diarize: Option<Result<Vec<DiarizationRange>>>,
 ) -> Vec<SpeakerBlock> {
     if !input.profile.uses_speaker_evidence() {
         return Vec::new();
@@ -277,17 +315,18 @@ fn build_speaker_result(
     if dual_source {
         return build_channel_blocks(segments);
     }
-    let ranges = match &input.speaker_evidence {
-        None => return Vec::new(),
-        Some(SpeakerEvidenceInput::LiveRanges(ranges)) => ranges.to_vec(),
-        Some(SpeakerEvidenceInput::DiarizeOnDemand(diarizer)) => {
-            match diarizer.diarize(input.audio.mic_pcm_16k) {
-                Ok(ranges) => ranges,
-                Err(err) => {
-                    tracing::warn!(error = %err, "diarization failed — saving plain transcript");
-                    return Vec::new();
-                }
+    let ranges = match (&input.speaker_evidence, precomputed_diarize) {
+        (None, _) => return Vec::new(),
+        (Some(SpeakerEvidenceInput::LiveRanges(ranges)), _) => ranges.to_vec(),
+        (Some(SpeakerEvidenceInput::DiarizeOnDemand(_)), Some(result)) => match result {
+            Ok(ranges) => ranges,
+            Err(err) => {
+                tracing::warn!(error = %err, "diarization failed — saving plain transcript");
+                return Vec::new();
             }
+        },
+        (Some(SpeakerEvidenceInput::DiarizeOnDemand(_)), None) => {
+            unreachable!("DiarizeOnDemand always dispatches a precomputed pass")
         }
     };
     let blocks = align_ranges_to_segments(segments, &ranges);

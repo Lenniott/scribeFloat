@@ -1,10 +1,10 @@
 # Handoff — Main is God again
 
-**When:** 2026-07-23 — smoke closed; Known issues confirmed complete for this walk; next = `/to-spec` blockers  
+**When:** 2026-07-23 — merge-blockers **19** / **20** / **21** closed; next = forward method **02**  
 **Branch:** `feature/0.3/embeds` → merge into `main` **untagged**  
-**HEAD tip (last commit):** `7a1473e` — confirm with `git log -1` / `git status -sb`  
+**HEAD tip (last commit):** confirm with `git log -1` / `git status -sb`  
 **Open a new chat and say:**  
-> Continue from `.scratch/main-is-god-again/HANDOFF.md` — `/to-spec` [Persist onboarding step across quit](./issues/19-persist-onboarding-step-across-quit.md), [Onboarding Try Dictate Continue reachable](./issues/20-onboarding-try-dictate-continue-reachable.md), and [Deleting note text inserts Selection deleted](./issues/21-deleting-note-text-inserts-selection-deleted.md); then [Write the forward working method](./issues/02-write-forward-working-method.md)
+> Continue from `.scratch/main-is-god-again/HANDOFF.md` — claim + write [Write the forward working method](./issues/02-write-forward-working-method.md); then [Merge spine into main untagged](./issues/10-merge-spine-into-main-untagged.md)
 
 This file is the session bridge. Prefer this path over `/var` or `$TMPDIR`.
 
@@ -16,13 +16,9 @@ Research (closed): [research/](./research/)
 
 ## Frontier next
 
-1. **`/to-spec` then implement** (claim first; do not code cold):
-   - [Persist onboarding step across quit](./issues/19-persist-onboarding-step-across-quit.md)
-   - [Onboarding Try Dictate Continue reachable](./issues/20-onboarding-try-dictate-continue-reachable.md)
-   - [Deleting note text inserts Selection deleted](./issues/21-deleting-note-text-inserts-selection-deleted.md)
-2. [Write the forward working method](./issues/02-write-forward-working-method.md)
-3. [Merge spine into main untagged](./issues/10-merge-spine-into-main-untagged.md) (`blocked_by`: 02, 09✓, 19–21)
-4. [Delete stale branches](./issues/11-delete-stale-branches.md)
+1. [Write the forward working method](./issues/02-write-forward-working-method.md)
+2. [Merge spine into main untagged](./issues/10-merge-spine-into-main-untagged.md) (`blocked_by`: 02, 09✓, 19–21✓)
+3. [Delete stale branches](./issues/11-delete-stale-branches.md)
 
 ---
 
@@ -33,10 +29,10 @@ Ticket **09** closed with Resolution. Installed Silicon `.app` walk; relaunch al
 | Step | Status |
 |------|--------|
 | Preflight / real models | Pass |
-| First-run / permissions | Fail → **19**; early TCC → Known issues |
-| Dictate once | Capture pass; Continue → **20**; Spaces/overlay → Known issues |
+| First-run / permissions | Fail → **19** ✓ |
+| Dictate once | Capture pass; Continue → **20** ✓; Spaces/overlay → Known issues |
 | Record once | Pass |
-| Notes | Read pass; “Selection deleted” → **21** |
+| Notes | Read pass; “Selection deleted” → **21** ✓ |
 | Speaker rename | Pass (cascade); this-vs-all → Known issues |
 | Relaunch | Pass |
 
@@ -48,7 +44,8 @@ Ticket **09** closed with Resolution. Installed Silicon `.app` walk; relaunch al
 |--------|-----|
 | `Cargo.toml` + `scribefloat.rs` | CLI bin → `scribefloat-cli` (case-insensitive macOS was killing the GUI binary in DMGs) |
 | `lib.rs` | Sortformer SHA at use-time (startup tray hang ~30–40s) |
-| `.scratch/main-is-god-again/*` | HANDOFF / MAP / Known issues / **09** Resolution / **10** blocked_by / tickets **19–21** |
+| Config / settings / onboarding / MarkdownEditor / clamp helper | **19** / **20** / **21** implementations |
+| `.scratch/main-is-god-again/*` | HANDOFF / MAP / tickets **19–21** closed |
 | `dist-silicon/` | Build output — **do not commit** |
 
 Re-verify after commit: build → open `.app` → tray appears quickly; `Contents/MacOS/ScribeFloat` stays alive (not CLI help).  
@@ -58,7 +55,6 @@ Branch was **ahead 3** of origin when this handoff was written — do not push u
 
 ## Session ritual
 
-- Claim → `/to-spec` → human OK → implement for **19** / **20** / **21**
 - Known issues: park only unless human elevates
 - Do not commit / push unless asked
 
@@ -69,9 +65,9 @@ Branch was **ahead 3** of origin when this handoff was written — do not push u
 | Area | State |
 |------|--------|
 | **09** Silicon ship-bar smoke | **Closed** |
-| **19** / **20** / **21** | Open merge-blockers — need `/to-spec` |
-| **02** Forward working method | Open |
-| **10** Merge untagged | Blocked by 02 + 19–21 (09 done) |
+| **19** / **20** / **21** | **Closed** (implemented 2026-07-23) |
+| **02** Forward working method | Open — next |
+| **10** Merge untagged | Blocked by 02 only (09 + 19–21 done) |
 | **11** Delete stale branches | After merge |
 | **16** / **18** | Closed (IPC B+ / ADR School 1) |
 | **17** naming | Known issues — not a merge blocker |
@@ -88,6 +84,9 @@ Branch was **ahead 3** of origin when this handoff was written — do not push u
 - [Mark and amend ADRs for reality](./issues/18-mark-and-amend-adrs-for-reality.md) — School 1
 - Sort / reviews (06 + research)
 - [Silicon ship-bar smoke](./issues/09-silicon-ship-bar-smoke.md)
+- [Persist onboarding step across quit](./issues/19-persist-onboarding-step-across-quit.md)
+- [Onboarding Try Dictate Continue reachable](./issues/20-onboarding-try-dictate-continue-reachable.md)
+- [Deleting note text inserts Selection deleted](./issues/21-deleting-note-text-inserts-selection-deleted.md)
 
 ---
 
@@ -98,7 +97,10 @@ Branch was **ahead 3** of origin when this handoff was written — do not push u
 - **CLI name** = `scribefloat-cli` (macOS case collision with `ScribeFloat`).
 - **SHA-256:** Whisper + Sortformer at use-time; VAD OK at startup.
 - **IPC:** new commands → `generate_handler` + `APP_COMMANDS` in `build.rs` + `permissions/sets/` (see `permissions/README.md`).
-- **Selection deleted** is ticket **21**, not Known issues.
+- **Selection deleted** fixed via CodeMirror `.cm-announced` theme (not TipTap); doc was always clean.
+- **Try Dictate Continue:** practice cards use CSS `line-clamp-2` (`maxLines={2}`); history region clipped so Continue stays reachable; no multi-send gate.
+- **Onboarding step:** Config `onboarding_step` 1=Welcome 2=Permissions 3=Try Dictate 4=Feature tour.
+- **Early Keystroke TCC:** Dictate `CGEventTap` deferred until Input Monitoring preflight is true (fixed 2026-07-23); dialog should no longer appear under Welcome.
 - **Push incident:** GitHub once rejected `tests/mic.wav` (~171 MB) in history — rewrite **unpushed** commits only; explain first.
 
 ---
@@ -119,9 +121,8 @@ Plain language. One question at a time when something fails. Prefer common words
 
 | Skill | When |
 |-------|------|
-| `/to-spec` | **19** / **20** / **21** before implement |
 | Wayfinder / issue-tracker | Forward method **02**; map gist |
-| Commit curator | When human asks — CLI rename + Sortformer fix + scratch tickets |
+| Commit curator | When human asks — CLI rename + Sortformer fix + **19–21** + scratch |
 
 ---
 
@@ -132,7 +133,6 @@ Unease + real finding = merge-blocker. “Just get it done” is not a resolutio
 - No release tag / website publish this map
 - No knowledge / embeddings / retrieval rebuild
 - No Upload redesign beyond honesty
-- Do not implement merge-blockers without `/to-spec` first
 - Do not commit unless asked
 - Do not re-litigate voiceprint
 - Do not block on Known issues (ex-17, Spaces, this-vs-all rename, early TCC, etc.)

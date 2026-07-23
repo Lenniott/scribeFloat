@@ -1,4 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400&family=Geist:wght@300;400;500&display=swap');
+/* Self-hosted via @fontsource — no Google Fonts network request. */
+@import '@fontsource/geist-sans/latin-300.css';
+@import '@fontsource/geist-sans/latin-400.css';
+@import '@fontsource/geist-sans/latin-500.css';
+@import '@fontsource/geist-mono/latin-300.css';
+@import '@fontsource/geist-mono/latin-400.css';
 @import "tailwindcss";
 
 /* Scan design specs so utilities referenced in markdown are generated */
@@ -16,7 +21,7 @@
 @theme inline {
 
   /* ── Fonts ─────────────────────────────────────────────────────────────── */
-  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Geist Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
 
   /* ── Colors — forwarded via var() so :root / [data-theme] overrides work ── */

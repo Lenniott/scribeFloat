@@ -10,6 +10,11 @@ import path from "node:path";
 const config = {
   preprocess: vitePreprocess(),
   kit: {
+    paths: {
+      // Probe with vite base:'./'. SPA fallback normally forces absolute /_app;
+      // relative helps some custom-protocol hosts but can break nested routes.
+      relative: true,
+    },
     adapter: adapter({
       fallback: "index.html",
     }),

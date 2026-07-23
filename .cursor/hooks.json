@@ -21,32 +21,6 @@
       {
         "command": "node .cursor/hooks/ui-enforcement-check.mjs",
         "matcher": "Write|StrReplace"
-      },
-      {
-        "command": ".cursor/hooks/skills-sync.sh",
-        "matcher": "Write|StrReplace"
-      },
-      {
-        "command": "node hooks/session-capture/on-doc-write.mjs",
-        "matcher": "Write|StrReplace"
-      }
-    ],
-    "beforeSubmitPrompt": [
-      {
-        "command": "node hooks/session-capture/on-prompt.mjs",
-        "matcher": "UserPromptSubmit"
-      }
-    ],
-    "preCompact": [
-      {
-        "command": "node hooks/session-capture/on-compact.mjs"
-      }
-    ],
-    "stop": [
-      {
-        "command": "node hooks/session-capture/stop.mjs",
-        "matcher": "Stop",
-        "loop_limit": 1
       }
     ]
   }

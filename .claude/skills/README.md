@@ -17,8 +17,6 @@ After any change under `skills/`:
 bash skills/build.sh
 ```
 
-The PostToolUse hook (`.cursor/hooks/skills-sync.sh`) runs this automatically when you edit files in `skills/`.
-
 Agent instructions live in **`AGENTS.md`** (canonical). **`CLAUDE.md`** is a Claude Code entry point that points there — edit `AGENTS.md` only.
 
 ## Skills in this repo

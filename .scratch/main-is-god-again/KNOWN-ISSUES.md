@@ -16,7 +16,7 @@ Format per item:
 ## TCC prompts fire too early (Input Monitoring + Documents)
 
 - **Seen:** Silicon ship-bar smoke on installed `.app` (2026-07-19); reconfirmed 2026-07-21 cold onboarding; human OK park; **Keystroke-under-Welcome reconfirmed 2026-07-23**
-- **Notes:** ~~On launch, `start_key_listener` opens a `CGEventTap` → macOS “Keystroke Receiving” / Input Monitoring dialog before onboarding asks. Dialog often **stacks under** the Setup window.~~ **Fixed 2026-07-23:** Dictate key listener deferred until Input Monitoring is already granted (`CGPreflightListenEventAccess`); starts after Permissions Grant / status poll / returning-user launch. Documents access can still prompt early because default save folder is under `~/Documents/…`. Separate closed merge-blocker: [Persist onboarding step across quit](./issues/19-persist-onboarding-step-across-quit.md).
+- **Notes:** ~~On launch, `start_key_listener` opens a `CGEventTap` → macOS “Keystroke Receiving” / Input Monitoring dialog before onboarding asks. Dialog often **stacks under** the Setup window.~~ **Fixed 2026-07-23:** Dictate key listener deferred until Input Monitoring is already granted (`CGPreflightListenEventAccess`); starts after Permissions Grant / status poll / returning-user launch. Documents access can still prompt early because default save folder is under `~/Documents/…`. Separate closed merge-blocker: [Persist onboarding step across quit](./issues/z_19-persist-onboarding-step-across-quit.md).
 - **Later:** Defer Documents touch until after permissions / explicit folder setup. Keystroke-on-load path closed.
 
 ## Onboarding Dictate practice pays cold Whisper load
@@ -35,7 +35,7 @@ Format per item:
 
 - **Seen:** Human product intent during 2026-07-21 smoke; Try Dictate step today is mostly “double-tap Control”
 - **Notes:** Want the practice step to **gamify** both activation styles (double-tap and tap-and-hold) so first-run users learn the real Dictate muscle memory. Polish / pedagogy — not a ship-bar fail if one path works.
-- **Later:** Practice UI that prompts both gestures and celebrates each; keep Continue honest (see merge-blocker [Onboarding Try Dictate Continue reachable](./issues/20-onboarding-try-dictate-continue-reachable.md)).
+- **Later:** Practice UI that prompts both gestures and celebrates each; keep Continue honest (see merge-blocker [Onboarding Try Dictate Continue reachable](./issues/z_20-onboarding-try-dictate-continue-reachable.md)).
 
 ## Onboarding “You’re All Set” tray mockup is stale
 
@@ -46,7 +46,7 @@ Format per item:
 ## Record vs Dictate naming / dual-controller honesty
 
 - **Seen:** Sort A3 elevated to merge-blocker; ticket 17; human 2026-07-19 demoted
-- **Notes:** Product says Record; much code/UI still says Scribe. Dual `ScribeController` / `DictateController` is evolution debt (ADR-0003 deferred unify). Deeper than a quick S/M/F cut — needs its own wayfinder later. Spec draft retained on [Unify Record and Dictate naming and seams](./issues/17-unify-record-dictate-naming-and-seams.md).
+- **Notes:** Product says Record; much code/UI still says Scribe. Dual `ScribeController` / `DictateController` is evolution debt (ADR-0003 deferred unify). Deeper than a quick S/M/F cut — needs its own wayfinder later. Spec draft retained on [Unify Record and Dictate naming and seams](./issues/z_17-unify-record-dictate-naming-and-seams.md).
 - **Later:** Post-merge wayfinder; do not block Silicon smoke or untagged main merge.
 
 ## Speaker rename edge cases

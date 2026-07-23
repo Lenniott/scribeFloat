@@ -20,10 +20,10 @@ Trace `controllers/dictate.rs` end to end: key listener → `start_recording`/ca
 Traced — see [research/dictate-flow-sequential-loading.md](../research/dictate-flow-sequential-loading.md). The whole round trip lives in `dictate.rs` (no frontend involvement). Confirmed the known "wait until the last possible moment" pattern recurs here too: Whisper preload only starts after `Recording` is set inside `start()`, not at key-down or HUD-open. Also found three other sequencing issues unrelated to model load time: blind `sleep(50ms)` polling waits instead of real completion signals on main-thread hops; history-append and clipboard-write run sequentially with no dependency between them; temp-WAV deletion waits until after paste despite no dependency on it.
 
 Spun off:
-- [Start Dictate Whisper preload earlier](./issues/30-dictate-preload-earlier.md)
-- [Replace blind sleeps with real completion signals](./issues/31-dictate-replace-blind-sleeps.md)
-- [Reorder clipboard write vs history append](./issues/32-dictate-reorder-clipboard-history.md)
-- [Delete temp WAV right after PCM read](./issues/33-dictate-delete-temp-wav-early.md)
+- [Start Dictate Whisper preload earlier](./issues/z_30-dictate-preload-earlier.md)
+- [Replace blind sleeps with real completion signals](./issues/z_31-dictate-replace-blind-sleeps.md)
+- [Reorder clipboard write vs history append](./issues/z_32-dictate-reorder-clipboard-history.md)
+- [Delete temp WAV right after PCM read](./issues/z_33-dictate-delete-temp-wav-early.md)
 
 ## Comments
 

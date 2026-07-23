@@ -129,7 +129,7 @@ Rationale: wayfinder → ADR/tickets/specs → code means ADRs often exist befor
 - `docs/adr/0013-live-pitch-analysis-and-change-cut-storage.md`
 - `docs/adr/0014-anonymous-diarization-replaces-voiceprint-identity.md`
 - `docs/adr/README.md`
-- `.scratch/main-is-god-again/issues/18-mark-and-amend-adrs-for-reality.md`
+- `.scratch/main-is-god-again/issues/z_18-mark-and-amend-adrs-for-reality.md`
 - `.scratch/main-is-god-again/MAP.md`
 
 **Verification checklist:**

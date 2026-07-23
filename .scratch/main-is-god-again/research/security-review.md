@@ -1,6 +1,6 @@
 # Security review — `feature/0.3/embeds` spine
 
-**Ticket:** [Security review with rubric](../issues/04-security-review-with-rubric.md)  
+**Ticket:** [Security review with rubric](../issues/z_04-security-review-with-rubric.md)  
 **Reviewed:** working tree on `feature/0.3/embeds` (HEAD `8843a2a` at review time)  
 **Method:** written rubric → code evidence → severity guess → suggested bucket. Human sorts finally in a later ticket. No LGTM.
 

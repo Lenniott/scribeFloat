@@ -18,7 +18,7 @@ Same question as [[27-dictate-flow-sequential-loading]], for the Scribe/Record f
 Traced — see [research/scribe-flow-sequential-loading.md](../research/scribe-flow-sequential-loading.md). Good news first: live diarization and Whisper preload during capture are **already** backgrounded correctly (diarization starts concurrently with mic capture; preload fires during recording) — this flow does not repeat the startup-style habit at that layer. It does recur in exactly one place: `transcribe_capture_with_inference` (`services/transcription.rs:219-252`) runs two independent Whisper passes (mic track, speaker track) strictly one after another on one thread, though neither depends on the other's output.
 
 Spun off:
-- [Parallelize dual-source Whisper passes](./issues/34-scribe-parallelize-dual-source-transcription.md)
+- [Parallelize dual-source Whisper passes](./issues/z_34-scribe-parallelize-dual-source-transcription.md)
 
 No other follow-ons — `write_outputs`' chain and the mic-finalize→diarization-finish ordering were confirmed as genuine dependencies, not false-sequential habits.
 

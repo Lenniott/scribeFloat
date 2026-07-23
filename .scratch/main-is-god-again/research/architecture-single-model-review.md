@@ -1,6 +1,6 @@
 # Architecture and single-model review
 
-**Ticket:** [Architecture and single-model review](../issues/05-architecture-single-model-review.md)  
+**Ticket:** [Architecture and single-model review](../issues/z_05-architecture-single-model-review.md)  
 **Spine:** `feature/0.3/embeds` → merge into `main` (untagged)  
 **Hard requirement:** Product is **one model**. Merge needs UI/product truth **and** deletion of dead multi-model download/chooser paths (deletion itself is ticket *Delete dead multi-model paths*; this doc inventories them).
 

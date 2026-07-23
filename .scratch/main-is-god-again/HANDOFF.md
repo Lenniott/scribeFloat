@@ -77,16 +77,16 @@ Branch was **ahead 3** of origin when this handoff was written — do not push u
 ## Closed merge-blockers (do not re-litigate)
 
 - Thin-docs, Float UI cut, multi-model delete, bundle-only models
-- [Sanitize transcript HTML](./issues/13-sanitize-transcript-html.md)
-- [Always delete legacy voice Keychain key](./issues/14-always-delete-legacy-voice-keychain-key.md) — voiceprint **closed**
-- [Verify all bundled models before load](./issues/15-verify-all-bundled-models-before-load.md)
-- [Least-privilege IPC per window](./issues/16-least-privilege-ipc-per-window.md) — B+
-- [Mark and amend ADRs for reality](./issues/18-mark-and-amend-adrs-for-reality.md) — School 1
+- [Sanitize transcript HTML](./issues/z_13-sanitize-transcript-html.md)
+- [Always delete legacy voice Keychain key](./issues/z_14-always-delete-legacy-voice-keychain-key.md) — voiceprint **closed**
+- [Verify all bundled models before load](./issues/z_15-verify-all-bundled-models-before-load.md)
+- [Least-privilege IPC per window](./issues/z_16-least-privilege-ipc-per-window.md) — B+
+- [Mark and amend ADRs for reality](./issues/z_18-mark-and-amend-adrs-for-reality.md) — School 1
 - Sort / reviews (06 + research)
-- [Silicon ship-bar smoke](./issues/09-silicon-ship-bar-smoke.md)
-- [Persist onboarding step across quit](./issues/19-persist-onboarding-step-across-quit.md)
-- [Onboarding Try Dictate Continue reachable](./issues/20-onboarding-try-dictate-continue-reachable.md)
-- [Deleting note text inserts Selection deleted](./issues/21-deleting-note-text-inserts-selection-deleted.md)
+- [Silicon ship-bar smoke](./issues/z_09-silicon-ship-bar-smoke.md)
+- [Persist onboarding step across quit](./issues/z_19-persist-onboarding-step-across-quit.md)
+- [Onboarding Try Dictate Continue reachable](./issues/z_20-onboarding-try-dictate-continue-reachable.md)
+- [Deleting note text inserts Selection deleted](./issues/z_21-deleting-note-text-inserts-selection-deleted.md)
 
 ---
 

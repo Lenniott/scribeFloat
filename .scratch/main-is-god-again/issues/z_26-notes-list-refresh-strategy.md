@@ -21,7 +21,7 @@ Which one do we build — or debounce now as a quick win and leave patch-in-plac
 **Debounce.** Human confirmed 2026-07-23: coalesce `note://item-added`/`note://item-updated` bursts into a single `history_list` refetch instead of refetching per event. Patch-in-place stays out of scope for now — revisit only if debounce turns out insufficient (e.g. batch-upload-sized bursts of note events become common enough that even one coalesced full-list refetch per burst is noticeable).
 
 Spun off:
-- [Implement note-refresh debounce](./issues/38-implement-notes-refresh-debounce.md)
+- [Implement note-refresh debounce](./issues/z_38-implement-notes-refresh-debounce.md)
 
 ## Comments
 

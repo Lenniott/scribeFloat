@@ -257,6 +257,8 @@ pub struct DictateController {
     dismiss_generation: Arc<AtomicU64>,
     /// Shared with the global key listener — kept in sync when dictate starts/stops from the UI.
     key_tracker: Arc<Mutex<DictateKeyTracker>>,
+    /// True once the CGEventTap / rdev listener thread has been spawned (idempotent gate).
+    key_listener_started: AtomicBool,
 }
 
 impl DictateController {
@@ -287,6 +289,7 @@ impl DictateController {
             paste_once: AtomicBool::new(false),
             dismiss_generation: Arc::new(AtomicU64::new(0)),
             key_tracker: Arc::new(Mutex::new(DictateKeyTracker::new())),
+            key_listener_started: AtomicBool::new(false),
         })
     }
 
@@ -342,15 +345,39 @@ impl DictateController {
         open_result
     }
 
-    /// Spawn the global key listener on a background thread.
-    /// Must be called once after the controller is created.
-    pub fn start_key_listener(self: Arc<Self>) {
+    /// Start the Dictate modifier listener if Input Monitoring is already granted.
+    ///
+    /// On macOS, creating a listen-only `CGEventTap` before the user has granted
+    /// Input Monitoring triggers the system “Keystroke Receiving” dialog — often
+    /// under the onboarding window. Defer until `CGPreflightListenEventAccess` is
+    /// true (startup for returning users, or after Permissions grant).
+    /// Idempotent: safe to call from status polls and after permission requests.
+    pub fn ensure_key_listener(self: &Arc<Self>) {
+        #[cfg(target_os = "macos")]
+        {
+            if !crate::platform::permissions_impl::permission_granted("input_monitoring") {
+                tracing::debug!(
+                    "dictate key listener deferred — Input Monitoring not granted yet"
+                );
+                return;
+            }
+        }
+
+        if self
+            .key_listener_started
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return;
+        }
+
         let tracker = Arc::clone(&self.key_tracker);
+        let this = Arc::clone(self);
 
         // Timeout thread: advances timed states so the state machine resets
         // to Idle when tap windows expire without a second keypress.
         {
-            let ctrl = Arc::clone(&self);
+            let ctrl = Arc::clone(&this);
             let tracker_clone = Arc::clone(&tracker);
             std::thread::spawn(move || loop {
                 std::thread::sleep(std::time::Duration::from_millis(50));
@@ -373,7 +400,7 @@ impl DictateController {
                     KeyEventKind::Up => t.on_key_up(Instant::now()),
                 }
             };
-            Self::dispatch_action(Arc::clone(&self), action);
+            Self::dispatch_action(Arc::clone(&this), action);
         });
     }
 

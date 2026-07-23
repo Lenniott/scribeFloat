@@ -326,15 +326,32 @@ impl SettingsController {
         self.config.get().onboarding_complete
     }
 
+    pub fn get_onboarding_step(&self) -> u8 {
+        crate::types::clamp_onboarding_step(self.config.get().onboarding_step)
+    }
+
+    pub fn set_onboarding_step(&self, step: u8) -> Result<(), String> {
+        let step = crate::types::clamp_onboarding_step(step);
+        self.config
+            .update(|cfg| cfg.onboarding_step = step)
+            .map_err(|e| format!("failed to save onboarding step: {e}"))
+    }
+
     pub fn complete_onboarding(&self) -> Result<(), String> {
         self.config
-            .update(|cfg| cfg.onboarding_complete = true)
+            .update(|cfg| {
+                cfg.onboarding_complete = true;
+                cfg.onboarding_step = 1;
+            })
             .map_err(|e| format!("failed to save onboarding status: {e}"))
     }
 
     pub fn reset_onboarding(&self) -> Result<(), String> {
         self.config
-            .update(|cfg| cfg.onboarding_complete = false)
+            .update(|cfg| {
+                cfg.onboarding_complete = false;
+                cfg.onboarding_step = 1;
+            })
             .map_err(|e| format!("failed to reset onboarding status: {e}"))
     }
 
@@ -553,8 +570,10 @@ mod tests {
         let ctrl = make_controller(config, None);
 
         assert!(!ctrl.is_onboarding_complete());
+        assert_eq!(ctrl.get_onboarding_step(), 1);
         ctrl.complete_onboarding().expect("complete onboarding");
         assert!(ctrl.is_onboarding_complete());
+        assert_eq!(ctrl.get_onboarding_step(), 1);
 
         let reloaded = ConfigService::load(config_path).unwrap();
         let ctrl2 = make_controller(reloaded, None);
@@ -567,10 +586,32 @@ mod tests {
         let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
         let ctrl = make_controller(config, None);
 
+        ctrl.set_onboarding_step(3).unwrap();
         ctrl.complete_onboarding().unwrap();
         assert!(ctrl.is_onboarding_complete());
         ctrl.reset_onboarding().unwrap();
         assert!(!ctrl.is_onboarding_complete());
+        assert_eq!(ctrl.get_onboarding_step(), 1);
+    }
+
+    #[test]
+    fn onboarding_step_persists_and_clamps() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("config.json");
+        let config = ConfigService::load(config_path.clone()).unwrap();
+        let ctrl = make_controller(config, None);
+
+        ctrl.set_onboarding_step(3).unwrap();
+        assert_eq!(ctrl.get_onboarding_step(), 3);
+
+        let reloaded = ConfigService::load(config_path).unwrap();
+        let ctrl2 = make_controller(reloaded, None);
+        assert_eq!(ctrl2.get_onboarding_step(), 3);
+
+        ctrl2.set_onboarding_step(0).unwrap();
+        assert_eq!(ctrl2.get_onboarding_step(), 1);
+        ctrl2.set_onboarding_step(9).unwrap();
+        assert_eq!(ctrl2.get_onboarding_step(), 4);
     }
 
     #[test]

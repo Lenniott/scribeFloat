@@ -8,6 +8,8 @@ permissions = [
   "allow-settings-permissions-status",
   "allow-settings-permissions-request",
   "allow-settings-complete-onboarding",
+  "allow-settings-get-onboarding-step",
+  "allow-settings-set-onboarding-step",
   "allow-settings-show-window",
   "allow-settings-get-dictate-auto-enter",
   "allow-settings-set-dictate-auto-enter"

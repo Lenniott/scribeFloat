@@ -748,7 +748,7 @@ pub fn run() {
             app.manage(history_ctrl); // for history commands
             app.manage(update);
 
-            dictate_ctrl.start_key_listener();
+            dictate_ctrl.ensure_key_listener();
 
             if is_first_run {
                 open_onboarding_window(app.handle())?;
@@ -869,6 +869,8 @@ pub fn run() {
             commands::settings::settings_permissions_open,
             commands::settings::settings_permissions_request,
             commands::settings::settings_onboarding_status,
+            commands::settings::settings_get_onboarding_step,
+            commands::settings::settings_set_onboarding_step,
             commands::settings::settings_complete_onboarding,
             commands::settings::settings_reset_onboarding,
             commands::settings::settings_show_window,

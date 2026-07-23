@@ -127,6 +127,7 @@ mod tests {
         assert_eq!(cfg.save_folder, "/tmp/old-liscribe");
         assert!(cfg.include_timestamps, "should default to true");
         assert!(!cfg.onboarding_complete, "should default to false");
+        assert_eq!(cfg.onboarding_step, 1, "should default to Welcome");
         assert_eq!(cfg.open_scribe_hotkey, "CmdOrCtrl+Shift+L");
         assert_eq!(cfg.input_label, "Mic");
         assert_eq!(cfg.output_label, "Speaker");
@@ -169,5 +170,19 @@ mod tests {
 
         let reloaded = ConfigService::load(path).expect("reload");
         assert!(reloaded.get().onboarding_complete);
+    }
+
+    #[test]
+    fn onboarding_step_persists_across_reload() {
+        let path = temp_config_path();
+        let service = ConfigService::load(path.clone()).expect("load config");
+        assert_eq!(service.get().onboarding_step, 1);
+
+        service
+            .update(|cfg| cfg.onboarding_step = 2)
+            .expect("save onboarding step");
+
+        let reloaded = ConfigService::load(path).expect("reload");
+        assert_eq!(reloaded.get().onboarding_step, 2);
     }
 }

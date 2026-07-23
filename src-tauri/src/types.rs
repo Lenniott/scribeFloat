@@ -87,6 +87,12 @@ pub struct Config {
     #[serde(default)]
     pub onboarding_complete: bool,
 
+    /// Setup wizard step while onboarding is incomplete.
+    /// 1 = Welcome, 2 = Permissions, 3 = Try Dictate, 4 = Feature tour.
+    /// Ignored once `onboarding_complete` is true. Defaults to Welcome for old configs.
+    #[serde(default = "default_onboarding_step")]
+    pub onboarding_step: u8,
+
     /// Simulate Cmd/Ctrl+V into the focused input after dictation.
     /// Requires Accessibility permission on macOS.
     #[serde(default = "default_true")]
@@ -127,6 +133,7 @@ impl Default for Config {
             theme_mode: ThemeMode::System,
             open_with_app_path: None,
             onboarding_complete: false,
+            onboarding_step: default_onboarding_step(),
             dictate_auto_paste: true,
             dictate_auto_enter: false,
             save_transcripts_as_markdown: false,
@@ -137,6 +144,15 @@ impl Default for Config {
 
 fn default_user_display_name() -> String {
     "You".to_string()
+}
+
+fn default_onboarding_step() -> u8 {
+    1
+}
+
+/// Clamp a Setup step index to the valid Welcome‥Feature-tour range.
+pub fn clamp_onboarding_step(step: u8) -> u8 {
+    step.clamp(1, 4)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

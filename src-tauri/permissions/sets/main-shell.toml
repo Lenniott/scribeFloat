@@ -44,6 +44,8 @@ permissions = [
   "allow-settings-permissions-open",
   "allow-settings-permissions-request",
   "allow-settings-onboarding-status",
+  "allow-settings-get-onboarding-step",
+  "allow-settings-set-onboarding-step",
   "allow-settings-complete-onboarding",
   "allow-settings-reset-onboarding",
   "allow-settings-show-window",

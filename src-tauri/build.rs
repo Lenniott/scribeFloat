@@ -47,6 +47,8 @@ fn main() {
     "settings_permissions_open",
     "settings_permissions_request",
     "settings_onboarding_status",
+    "settings_get_onboarding_step",
+    "settings_set_onboarding_step",
     "settings_complete_onboarding",
     "settings_reset_onboarding",
     "settings_show_window",

@@ -15,9 +15,9 @@ Format per item:
 
 ## TCC prompts fire too early (Input Monitoring + Documents)
 
-- **Seen:** Silicon ship-bar smoke on installed `.app` (2026-07-19); reconfirmed 2026-07-21 cold onboarding; human OK park
-- **Notes:** On launch, `start_key_listener` opens a `CGEventTap` → macOS “Keystroke Receiving” / Input Monitoring dialog before onboarding asks. Dialog often **stacks under** the Setup window (should appear on top like a normal sheet). Documents access also prompts early because default save folder is under `~/Documents/…`. Feels like a dummy trigger; should wait for the permissions step (or explicit grant) / first intentional save-folder use. Separate merge-blocker: [Persist onboarding step across quit](./issues/19-persist-onboarding-step-across-quit.md) — quit-to-grant is expected; losing the page is not.
-- **Later:** Defer key listener until Input Monitoring is granted (or user opts in); raise or coordinate window level so system dialogs are not buried; defer Documents touch until after permissions / explicit folder setup. Not blocking untagged merge this map.
+- **Seen:** Silicon ship-bar smoke on installed `.app` (2026-07-19); reconfirmed 2026-07-21 cold onboarding; human OK park; **Keystroke-under-Welcome reconfirmed 2026-07-23**
+- **Notes:** ~~On launch, `start_key_listener` opens a `CGEventTap` → macOS “Keystroke Receiving” / Input Monitoring dialog before onboarding asks. Dialog often **stacks under** the Setup window.~~ **Fixed 2026-07-23:** Dictate key listener deferred until Input Monitoring is already granted (`CGPreflightListenEventAccess`); starts after Permissions Grant / status poll / returning-user launch. Documents access can still prompt early because default save folder is under `~/Documents/…`. Separate closed merge-blocker: [Persist onboarding step across quit](./issues/19-persist-onboarding-step-across-quit.md).
+- **Later:** Defer Documents touch until after permissions / explicit folder setup. Keystroke-on-load path closed.
 
 ## Onboarding Dictate practice pays cold Whisper load
 

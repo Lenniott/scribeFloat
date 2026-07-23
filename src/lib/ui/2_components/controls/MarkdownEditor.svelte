@@ -70,6 +70,23 @@
     ".cm-cursor, .cm-dropCursor": {
       borderLeft: "1.2px solid var(--color-fg)",
     },
+    // Harden a11y announce region: CodeMirror parks it off-screen by default,
+    // but WKWebView/theme failures can leave "Selection deleted" visible at the
+    // top of the editor. Keep announcements for screen readers; clip from layout.
+    ".cm-announced": {
+      position: "absolute",
+      width: "1px",
+      height: "1px",
+      padding: "0",
+      margin: "-1px",
+      overflow: "hidden",
+      clip: "rect(0, 0, 0, 0)",
+      whiteSpace: "nowrap",
+      borderWidth: "0",
+      top: "0",
+      left: "0",
+      pointerEvents: "none",
+    },
     ".cm-gutters": { display: "none" },
     "&.cm-focused": { outline: "none", boxShadow: "none" },
     ".cm-content:focus": { outline: "none", boxShadow: "none" },

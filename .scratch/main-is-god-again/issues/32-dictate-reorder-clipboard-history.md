@@ -2,7 +2,7 @@
 title: Reorder or parallelize Dictate clipboard-write vs history-append
 labels: [wayfinder:task]
 status: closed
-assignee: claude-agent (worktree agent-ab5cdd260cc85ba7f)
+assignee: claude-agent (worktree agent-ab5cdd260cc85ba7f; hand-reconciled onto release/0.3 by orchestrating session)
 blocked_by: []
 parent: MAP.md
 ---

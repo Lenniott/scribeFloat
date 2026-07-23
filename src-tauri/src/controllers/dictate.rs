@@ -323,26 +323,31 @@ impl DictateController {
     }
 
     /// Single main-thread hop: snapshot frontmost app (for paste routing) then `show()` the HUD.
-    fn capture_paste_target_then_open_overlay(this: Arc<Self>) -> Arc<Mutex<Result<(), String>>> {
-        let open_result = Arc::new(Mutex::new(Ok(())));
-        let open_clone = Arc::clone(&open_result);
+    /// Awaits the hop's actual completion via a oneshot channel rather than a blind sleep —
+    /// on a fast system nothing is wasted, and on a loaded system the caller never reads a
+    /// stale/incomplete result.
+    async fn capture_paste_target_then_open_overlay(this: Arc<Self>) -> Result<(), String> {
+        let (tx, rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
         #[cfg(target_os = "macos")]
         let store = Arc::clone(&this.restore_paste_target_pid);
         let app_open = this.app.clone();
         let app_thread = this.app.clone();
-        let _ = app_thread.run_on_main_thread(move || {
+        if let Err(e) = app_thread.run_on_main_thread(move || {
             #[cfg(target_os = "macos")]
             if let Some(pid) =
                 crate::platform::dictate_focus::capture_frontmost_pid_excluding_self()
             {
                 let _ = store.lock().map(|mut g| *g = Some(pid));
             }
-            *open_clone.lock().unwrap_or_else(|p| p.into_inner()) =
-                crate::open_dictate_window(&app_open)
-                    .map(|_| ())
-                    .map_err(|e| e.to_string());
-        });
-        open_result
+            let result = crate::open_dictate_window(&app_open)
+                .map(|_| ())
+                .map_err(|e| e.to_string());
+            let _ = tx.send(result);
+        }) {
+            return Err(e.to_string());
+        }
+        rx.await
+            .unwrap_or_else(|_| Err("main-thread hop dropped before completion".to_string()))
     }
 
     /// Start the Dictate modifier listener if Input Monitoring is already granted.
@@ -415,6 +420,10 @@ impl DictateController {
                     }
                     _ => return,
                 }
+                // Kick off Whisper preload as early as possible (key-down/HUD-request
+                // time). Preload depends only on config, not on mic/device resolution,
+                // so it must not wait for `start()` to reach `Recording`.
+                this.spawn_record_start_preload();
                 match source {
                     DictateStartSource::Toggle => Self::spawn_dictate_window_and_start(this),
                     DictateStartSource::HoldImmediateStop => {
@@ -456,19 +465,14 @@ impl DictateController {
             let clear_in_flight = || {
                 this.hold_start_in_flight.store(false, Ordering::SeqCst);
             };
-            let open_result = Self::capture_paste_target_then_open_overlay(Arc::clone(&this));
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            let open_result =
+                Self::capture_paste_target_then_open_overlay(Arc::clone(&this)).await;
             if this.hold_start_cancel.load(Ordering::SeqCst) {
                 clear_in_flight();
                 this.hide_window();
                 return;
             }
-            if open_result
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .as_ref()
-                .is_err()
-            {
+            if open_result.is_err() {
                 clear_in_flight();
                 return;
             }
@@ -501,9 +505,9 @@ impl DictateController {
     }
 
     async fn spawn_dictate_window_and_start_inner_async(this: &Arc<Self>) {
-        let open_result = Self::capture_paste_target_then_open_overlay(Arc::clone(this));
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        if open_result.lock().unwrap().as_ref().is_err() {
+        let open_result =
+            Self::capture_paste_target_then_open_overlay(Arc::clone(this)).await;
+        if open_result.is_err() {
             return;
         }
         if let Err(e) = this.start() {
@@ -591,8 +595,6 @@ impl DictateController {
         inner.state = DictateState::Recording;
         inner.session = Some(DictateMicSession { mic });
         self.emit_state_event(&inner);
-        drop(inner);
-        self.spawn_record_start_preload();
         Ok(())
     }
 
@@ -600,6 +602,10 @@ impl DictateController {
     /// so stop-and-transcribe starts as a cache hit. Dictate uses the same model
     /// as Record and starts no diarization. The model service's per-path load lock
     /// makes a Stop that lands mid-preload wait for this load rather than duplicate it.
+    ///
+    /// Fired from `dispatch_action` at key-down/HUD-request time, not from `start()` —
+    /// preload depends only on config, not on mic/audio state, so it must not wait for
+    /// `start()` to reach `Recording`.
     fn spawn_record_start_preload(&self) {
         let path = self.model.default_model_path();
         let model = Arc::clone(&self.model);
@@ -927,6 +933,22 @@ impl DictateController {
             return Ok(false);
         }
 
+        // Nothing downstream of this point re-reads the temp WAV (every earlier failure
+        // branch that still needs it for salvage has already returned above), so delete it
+        // now instead of leaving it gated on paste completing.
+        self.delete_dictate_wav(&wav_path);
+
+        // Clipboard write gates the user-visible paste, so it runs ahead of the history
+        // append (which is not user-visible and doesn't gate anything downstream).
+        if let Err(e) = self.app.clipboard().write_text(text.clone()) {
+            tracing::error!(error = %e, "dictate failed to write clipboard");
+            self.set_error_state(
+                format!("Could not write to clipboard — {e}. Transcription: {text}"),
+                None,
+            );
+            return Ok(true);
+        }
+
         let record = HistoryRecord::from_dictate(&segments, &text, model_label);
         let history_write_failed = if let Err(e) = self.history.append(&config.save_folder, record)
         {
@@ -936,16 +958,6 @@ impl DictateController {
             self.app.emit("note://item-added", ()).ok();
             false
         };
-
-        if let Err(e) = self.app.clipboard().write_text(text.clone()) {
-            tracing::error!(error = %e, "dictate failed to write clipboard");
-            self.delete_dictate_wav(&wav_path);
-            self.set_error_state(
-                format!("Could not write to clipboard — {e}. Transcription: {text}"),
-                None,
-            );
-            return Ok(true);
-        }
 
         let mut paste_failed = false;
         if config.dictate_auto_paste {
@@ -976,8 +988,6 @@ impl DictateController {
         } else {
             self.clear_restore_paste_target_pid();
         }
-
-        self.delete_dictate_wav(&wav_path);
 
         if paste_failed {
             {

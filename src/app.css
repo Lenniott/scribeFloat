@@ -339,6 +339,30 @@ html {
   :focus-visible {
     @apply outline-none ring-2 ring-focus ring-offset-2 ring-offset-canvas;
   }
+  /* Written pane: caret only — no focus ring on CodeMirror contenteditable. */
+  .cm-editor :focus-visible,
+  .cm-content:focus,
+  .cm-content:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+    --tw-ring-shadow: 0 0 #0000;
+  }
+  /*
+   * CodeMirror a11y announce ("Selection deleted"). Must stay in the a11y
+   * tree for screen readers (aria-live), so never display:none — clip it out
+   * of layout sr-only style so it can't paint as editor content.
+   */
+  .cm-announced {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    margin: -1px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    clip-path: inset(50%) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
   a{
     @apply underline text-warning hover:underline-offset-2
   }

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { render, waitFor } from '@testing-library/svelte';
 import { EditorView } from '@codemirror/view';
 import { describe, expect, it, vi } from 'vitest';
@@ -27,11 +29,20 @@ describe('MarkdownEditor', () => {
 
 		expect(view!.state.doc.toString()).toBe('');
 		expect(view!.state.doc.toString()).not.toContain('Selection deleted');
+	});
 
-		const announced = container.querySelector('.cm-announced') as HTMLElement | null;
-		expect(announced).toBeTruthy();
-		const style = getComputedStyle(announced!);
-		// Theme must keep the announce region out of normal layout (sr-only style).
-		expect(style.position === 'absolute' || style.clip !== 'auto').toBe(true);
+	// jsdom never loads app.css, so the layout of .cm-announced cannot be
+	// asserted through the component. Guard the stylesheet source instead:
+	// ticket 21 regressed exactly here (announce region painting as content).
+	it('app.css keeps the announce region sr-only without removing it from the a11y tree', () => {
+		const css = readFileSync(resolve(__dirname, '../../../../app.css'), 'utf8');
+		const rule = css.match(/\.cm-announced\s*\{([^}]*)\}/);
+		expect(rule, 'app.css must style .cm-announced').toBeTruthy();
+		const body = rule![1];
+		// display:none would strip it from the accessibility tree entirely.
+		expect(body).not.toMatch(/display\s*:\s*none/);
+		// Must be clipped out of layout (sr-only pattern).
+		expect(body).toMatch(/position\s*:\s*absolute/);
+		expect(body).toMatch(/overflow\s*:\s*hidden/);
 	});
 });

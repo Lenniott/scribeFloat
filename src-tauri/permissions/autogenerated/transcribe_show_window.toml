@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-transcribe-show-window"
+description = "Enables the transcribe_show_window command without any pre-configured scope."
+commands.allow = ["transcribe_show_window"]
+
+[[permission]]
+identifier = "deny-transcribe-show-window"
+description = "Denies the transcribe_show_window command without any pre-configured scope."
+commands.deny = ["transcribe_show_window"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-transcribe-inspect-inputs"
+description = "Enables the transcribe_inspect_inputs command without any pre-configured scope."
+commands.allow = ["transcribe_inspect_inputs"]
+
+[[permission]]
+identifier = "deny-transcribe-inspect-inputs"
+description = "Denies the transcribe_inspect_inputs command without any pre-configured scope."
+commands.deny = ["transcribe_inspect_inputs"]

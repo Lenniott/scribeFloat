@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-transcribe-open-output"
+description = "Enables the transcribe_open_output command without any pre-configured scope."
+commands.allow = ["transcribe_open_output"]
+
+[[permission]]
+identifier = "deny-transcribe-open-output"
+description = "Denies the transcribe_open_output command without any pre-configured scope."
+commands.deny = ["transcribe_open_output"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-is-empty"
+description = "Enables the note_is_empty command without any pre-configured scope."
+commands.allow = ["note_is_empty"]
+
+[[permission]]
+identifier = "deny-note-is-empty"
+description = "Denies the note_is_empty command without any pre-configured scope."
+commands.deny = ["note_is_empty"]

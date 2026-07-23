@@ -1,13 +1,16 @@
 mod commands;
 mod controllers;
 mod platform;
-mod services;
-mod types;
+pub mod services;
+pub mod types;
+
+#[cfg(test)]
+mod acl_capabilities_test;
 
 use std::sync::Arc;
 use tauri::{
     image::Image,
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
     WindowEvent,
@@ -27,8 +30,15 @@ fn log_system_info() {
         .map(|b| format!("{:.1} GB", b as f64 / 1_073_741_824.0))
         .unwrap_or_else(|| "?".to_string());
 
-    eprintln!(
-        "[startup] scribefloat v{version} os={os} arch={arch} cpu=\"{cpu_brand}\" cores={physical}p/{logical}l ram={ram_gb}"
+    tracing::info!(
+        version,
+        os,
+        arch,
+        cpu = cpu_brand,
+        cores_physical = physical,
+        cores_logical = logical,
+        ram = ram_gb,
+        "scribefloat startup"
     );
 }
 
@@ -47,7 +57,15 @@ fn sysctl_string(name: &std::ffi::CStr) -> Option<String> {
     let mut len: libc::size_t = 0;
     // First call: ask for the length.
     // SAFETY: passing null buffer to sysctlbyname is the documented way to query length.
-    let rc = unsafe { libc::sysctlbyname(name.as_ptr(), std::ptr::null_mut(), &mut len, std::ptr::null_mut(), 0) };
+    let rc = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            std::ptr::null_mut(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
     if rc != 0 || len == 0 {
         return None;
     }
@@ -103,23 +121,29 @@ fn total_ram_bytes() -> Option<u64> {
     None
 }
 
-pub(crate) const SCRIBE_WINDOW_LABEL: &str = "scribe";
-const TRANSCRIBE_WINDOW_LABEL: &str = "transcribe";
-const SETTINGS_WINDOW_LABEL: &str = "settings";
 pub(crate) const DICTATE_WINDOW_LABEL: &str = "dictate";
-const OPEN_SCRIBE_MENU_ID: &str = "open_scribe";
-const OPEN_TRANSCRIBE_MENU_ID: &str = "open_transcribe";
+const HISTORY_WINDOW_LABEL: &str = "history";
+const ONBOARDING_WINDOW_LABEL: &str = "onboarding";
+
+const DICTATE_MENU_ID: &str = "dictate";
+const NEW_NOTE_MENU_ID: &str = "new_note";
+const OPEN_APP_MENU_ID: &str = "open_app";
 const OPEN_SETTINGS_MENU_ID: &str = "open_settings";
 const QUIT_MENU_ID: &str = "quit";
 
-const SCRIBE_WINDOW_W: f64 = 800.0;
-const SCRIBE_WINDOW_H: f64 = 600.0;
-const TRANSCRIBE_WINDOW_W: f64 = 800.0;
-const TRANSCRIBE_WINDOW_H: f64 = 600.0;
-const SETTINGS_WINDOW_W: f64 = 960.0;
-const SETTINGS_WINDOW_H: f64 = 680.0;
+const SETTINGS_MENU_ACCELERATOR: &str = "CmdOrCtrl+,";
+const QUIT_MENU_ACCELERATOR: &str = "CmdOrCtrl+Q";
+
+struct TrayMenuState {
+    new_note_item: MenuItem<tauri::Wry>,
+}
+
+const HISTORY_WINDOW_W: f64 = 980.0;
+const HISTORY_WINDOW_H: f64 = 680.0;
 const DICTATE_WINDOW_W: f64 = 240.0;
 const DICTATE_WINDOW_H: f64 = 48.0;
+const ONBOARDING_WINDOW_W: f64 = 680.0;
+const ONBOARDING_WINDOW_H: f64 = 560.0;
 /// Margin from the right and top edge of the primary monitor.
 const DICTATE_MARGIN_RIGHT: f64 = 16.0;
 const DICTATE_MARGIN_TOP: f64 = 28.0;
@@ -149,46 +173,84 @@ fn load_icon(app: &tauri::AppHandle, file_name: &str) -> Option<Image<'static>> 
     Image::from_path(path).ok()
 }
 
-fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
-    let open_scribe =
-        MenuItem::with_id(app, OPEN_SCRIBE_MENU_ID, "Scribe", true, None::<&str>)?;
-    let open_transcribe = MenuItem::with_id(
+fn build_tray_menu(
+    app: &impl Manager<tauri::Wry>,
+    open_hotkey: &str,
+) -> tauri::Result<(MenuItem<tauri::Wry>, Menu<tauri::Wry>)> {
+    let dictate_item = MenuItem::with_id(app, DICTATE_MENU_ID, "Dictate", true, None::<&str>)?;
+    let new_note_item =
+        MenuItem::with_id(app, NEW_NOTE_MENU_ID, "New note", true, Some(open_hotkey))?;
+    let open_app_item = MenuItem::with_id(
         app,
-        OPEN_TRANSCRIBE_MENU_ID,
-        "Transcribe",
+        OPEN_APP_MENU_ID,
+        "Open ScribeFloat",
         true,
         None::<&str>,
     )?;
-    let open_settings = MenuItem::with_id(
+    let settings_item = MenuItem::with_id(
         app,
         OPEN_SETTINGS_MENU_ID,
         "Settings",
         true,
-        None::<&str>,
+        Some(SETTINGS_MENU_ACCELERATOR),
     )?;
-    let quit = MenuItem::with_id(app, QUIT_MENU_ID, "Quit", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(
+        app,
+        QUIT_MENU_ID,
+        "Quit scribefloat",
+        true,
+        Some(QUIT_MENU_ACCELERATOR),
+    )?;
     let menu = Menu::with_items(
         app,
-        &[&open_scribe, &open_transcribe, &open_settings, &quit],
+        &[
+            &dictate_item,
+            &new_note_item,
+            &PredefinedMenuItem::separator(app)?,
+            &open_app_item,
+            &settings_item,
+            &PredefinedMenuItem::separator(app)?,
+            &quit_item,
+        ],
     )?;
+
+    Ok((new_note_item, menu))
+}
+
+pub(crate) fn refresh_tray_accelerators(app: &AppHandle, open_hotkey: &str) {
+    let Some(state) = app.try_state::<TrayMenuState>() else {
+        return;
+    };
+    let _ = state.new_note_item.set_text("New note");
+    let _ = state.new_note_item.set_accelerator(Some(open_hotkey));
+}
+
+fn create_tray(app: &mut tauri::App, open_hotkey: &str) -> tauri::Result<()> {
+    let (new_note_item, menu) = build_tray_menu(app, open_hotkey)?;
 
     let mut tray = TrayIconBuilder::with_id("main")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            OPEN_SCRIBE_MENU_ID => {
-                if let Err(err) = open_scribe_window(app) {
-                    eprintln!("failed to open scribe window: {err}");
+            DICTATE_MENU_ID => {
+                if let Some(ctrl) = app.try_state::<Arc<controllers::dictate::DictateController>>()
+                {
+                    ctrl.trigger_toggle();
                 }
             }
-            OPEN_TRANSCRIBE_MENU_ID => {
-                if let Err(err) = open_transcribe_window(app) {
-                    eprintln!("failed to open transcribe window: {err}");
+            NEW_NOTE_MENU_ID => {
+                if let Err(err) = open_new_note(app) {
+                    tracing::warn!(error = %err, "failed to open new note");
+                }
+            }
+            OPEN_APP_MENU_ID => {
+                if let Err(err) = navigate_history_path(app, "") {
+                    tracing::warn!(error = %err, "failed to open scribefloat window");
                 }
             }
             OPEN_SETTINGS_MENU_ID => {
                 if let Err(err) = open_settings_window(app) {
-                    eprintln!("failed to open settings window: {err}");
+                    tracing::warn!(error = %err, "failed to open settings window");
                 }
             }
             QUIT_MENU_ID => app.exit(0),
@@ -198,8 +260,8 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
     #[cfg(not(target_os = "macos"))]
     {
         let preferred_tray_icon = "sf_Transparent_tray_32x32.png";
-        if let Some(icon) =
-            load_icon(app.handle(), preferred_tray_icon).or_else(|| app.default_window_icon().cloned())
+        if let Some(icon) = load_icon(app.handle(), preferred_tray_icon)
+            .or_else(|| app.default_window_icon().cloned())
         {
             tray = tray.icon(icon.clone());
         }
@@ -218,45 +280,8 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
     }
 
     tray.build(app)?;
+    app.manage(TrayMenuState { new_note_item });
     Ok(())
-}
-
-fn prewarm_scribe_window(app: &AppHandle) {
-    let result: tauri::Result<()> = (|| {
-        let url = WebviewUrl::App("index.html".into());
-        let mut builder = WebviewWindowBuilder::new(app, SCRIBE_WINDOW_LABEL, url)
-            .title("Scribe")
-            .inner_size(SCRIBE_WINDOW_W, SCRIBE_WINDOW_H)
-            .visible(false);
-        if let Some(icon) = app.default_window_icon() {
-            builder = builder.icon(icon.clone())?;
-        }
-        let window = builder.build()?;
-        // `visible(false)` alone can still leave the webview reported visible on macOS until hide().
-        let _ = window.hide();
-        Ok(())
-    })();
-    if let Err(err) = result {
-        eprintln!("failed to prewarm scribe window: {err}");
-    }
-}
-
-fn prewarm_transcribe_window(app: &AppHandle) {
-    let result: tauri::Result<()> = (|| {
-        let url = WebviewUrl::App("?view=transcribe".into());
-        let mut builder = WebviewWindowBuilder::new(app, TRANSCRIBE_WINDOW_LABEL, url)
-            .title("Transcribe")
-            .inner_size(TRANSCRIBE_WINDOW_W, TRANSCRIBE_WINDOW_H)
-            .visible(false);
-        if let Some(icon) = app.default_window_icon() {
-            builder = builder.icon(icon.clone())?;
-        }
-        builder.build()?;
-        Ok(())
-    })();
-    if let Err(err) = result {
-        eprintln!("failed to prewarm transcribe window: {err}");
-    }
 }
 
 fn prewarm_dictate_window(app: &AppHandle) {
@@ -279,42 +304,112 @@ fn prewarm_dictate_window(app: &AppHandle) {
         Ok(())
     })();
     if let Err(err) = result {
-        eprintln!("failed to prewarm dictate window: {err}");
+        tracing::warn!(error = %err, "failed to prewarm dictate window");
     }
 }
 
-pub(crate) fn open_scribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    let window = open_or_focus_window(
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ShellNavigatePayload {
+    route: String,
+    settings_tab: Option<String>,
+}
+
+fn navigate_history_path(app: &AppHandle, path: &str) -> tauri::Result<WebviewWindow> {
+    let path = path.trim_start_matches('/');
+    if let Some(window) = app.get_webview_window(HISTORY_WINDOW_LABEL) {
+        raise_webview_window(app, &window)?;
+        let target = if path.is_empty() {
+            "/?view=history".to_string()
+        } else {
+            format!("/{path}")
+        };
+        window.eval(format!("window.location.assign('{target}');"))?;
+        return Ok(window);
+    }
+
+    let url = if path.is_empty() {
+        WebviewUrl::App("?view=history".into())
+    } else {
+        WebviewUrl::App(path.into())
+    };
+    open_or_focus_window(
         app,
-        SCRIBE_WINDOW_LABEL,
-        "Scribe",
-        WebviewUrl::App("index.html".into()),
-        SCRIBE_WINDOW_W,
-        SCRIBE_WINDOW_H,
-    )?;
+        HISTORY_WINDOW_LABEL,
+        "ScribeFloat",
+        url,
+        HISTORY_WINDOW_W,
+        HISTORY_WINDOW_H,
+    )
+}
+
+fn shell_route_to_path(route: &str) -> &str {
+    match route {
+        "home" => "",
+        "notes" => "notes",
+        "upload" => "upload",
+        "float" => "float",
+        "settings" => "settings",
+        "notes-new" | "notes/new" => "notes/new",
+        // Legacy tray/IPC route — open the shell home.
+        "scribe" => "",
+        _ => "",
+    }
+}
+
+fn navigate_shell(
+    app: &AppHandle,
+    route: &str,
+    settings_tab: Option<&str>,
+) -> tauri::Result<WebviewWindow> {
+    let window = navigate_history_path(app, shell_route_to_path(route))?;
+    if route == "settings" && settings_tab.is_some() {
+        let payload = ShellNavigatePayload {
+            route: route.to_string(),
+            settings_tab: settings_tab.map(|s| s.to_string()),
+        };
+        let _ = window.emit("app://navigate", payload);
+    }
     Ok(window)
 }
 
+pub(crate) fn open_scribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    navigate_shell(app, "scribe", None)
+}
+
+pub(crate) fn open_new_note(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    navigate_history_path(app, "notes/new")
+}
+
 pub(crate) fn open_settings_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    open_or_focus_window(
-        app,
-        SETTINGS_WINDOW_LABEL,
-        "Settings",
-        WebviewUrl::App("?view=settings".into()),
-        SETTINGS_WINDOW_W,
-        SETTINGS_WINDOW_H,
-    )
+    navigate_history_path(app, "settings")
 }
 
 pub(crate) fn open_transcribe_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    open_or_focus_window(
-        app,
-        TRANSCRIBE_WINDOW_LABEL,
-        "Transcribe",
-        WebviewUrl::App("?view=transcribe".into()),
-        TRANSCRIBE_WINDOW_W,
-        TRANSCRIBE_WINDOW_H,
-    )
+    navigate_shell(app, "upload", None)
+}
+
+pub(crate) fn open_onboarding_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    let window = if let Some(w) = app.get_webview_window(ONBOARDING_WINDOW_LABEL) {
+        raise_webview_window(app, &w)?;
+        w
+    } else {
+        let mut builder = WebviewWindowBuilder::new(
+            app,
+            ONBOARDING_WINDOW_LABEL,
+            WebviewUrl::App("?view=onboarding".into()),
+        )
+        .title("ScribeFloat Setup")
+        .inner_size(ONBOARDING_WINDOW_W, ONBOARDING_WINDOW_H)
+        .resizable(false)
+        .center();
+        if let Some(icon) = app.default_window_icon() {
+            builder = builder.icon(icon.clone())?;
+        }
+        builder.build()?
+    };
+    platform::window_impl::set_has_visible_windows(app, true);
+    Ok(window)
 }
 
 pub(crate) fn open_dictate_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
@@ -359,7 +454,6 @@ fn primary_monitor_dictate_position(app: &AppHandle) -> (f64, f64) {
     let y = DICTATE_MARGIN_TOP;
     (x, y)
 }
-
 
 /// Show, restore, and focus. On Windows, `show()` applies visibility asynchronously; a deferred
 /// `set_focus` runs after so Tao sees `VISIBLE` and can call `SetForegroundWindow`.
@@ -419,10 +513,18 @@ fn open_or_focus_window(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .with_writer(std::io::stderr)
+        .init();
     log_system_info();
 
     let audio = services::audio::AudioService::new();
     let output = services::output::OutputService::new();
+    let history = services::history::HistoryService::new();
     let permissions = services::permissions::PermissionsService::new();
     let transcribe_input = services::transcribe_input::TranscribeInputService::new();
 
@@ -435,19 +537,17 @@ pub fn run() {
                     if event.state != ShortcutState::Pressed {
                         return;
                     }
-                    let Some(config) =
-                        app.try_state::<Arc<services::config::ConfigService>>()
-                    else {
-                        return;
-                    };
-                    let scribe_str = config.get().open_scribe_hotkey.clone();
+                    let open_hotkey = app
+                        .try_state::<Arc<services::config::ConfigService>>()
+                        .map(|config| config.get().open_scribe_hotkey.clone())
+                        .unwrap_or_else(|| platform::default_open_scribe_hotkey().to_string());
                     if let Ok(scribe_sc) =
-                        scribe_str.parse::<tauri_plugin_global_shortcut::Shortcut>()
+                        open_hotkey.parse::<tauri_plugin_global_shortcut::Shortcut>()
                     {
                         if shortcut.id() == scribe_sc.id() {
                             let handle = app.clone();
                             let _ = app.run_on_main_thread(move || {
-                                open_scribe_window(&handle).ok();
+                                open_new_note(&handle).ok();
                             });
                         }
                     }
@@ -457,18 +557,17 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
-            create_tray(app)?;
-
             let data_dir = app.path().app_data_dir()?;
             #[cfg(target_os = "macos")]
             if let Some(helper) = platform::resolve_set_default_output_helper() {
                 platform::init_set_default_output_helper(helper);
             } else {
-                eprintln!(
+                tracing::warn!(
                     "set-default-output helper missing; speaker capture output restore may fail"
                 );
             }
             let config = services::config::ConfigService::load(data_dir.join("config.json"))?;
+            app.manage(Arc::clone(&config));
             {
                 let save_folder = config.get().save_folder;
                 if platform::windows_save_folder_needs_migration(&save_folder) {
@@ -491,20 +590,18 @@ pub fn run() {
 
             let models_dir = data_dir.join("models");
             std::fs::create_dir_all(&models_dir)?;
-            // Seed the bundled base model into the user's models dir on first install.
-            // Silently skipped in dev builds where the resource file isn't present.
-            let base_dest = models_dir.join("ggml-base.en-q5_1.bin");
-            if !base_dest.exists() {
-                if let Ok(resource_dir) = app.path().resource_dir() {
-                    let bundled = resource_dir.join("ggml-base.en-q5_1.bin");
-                    if bundled.is_file() {
-                        let _ = std::fs::copy(&bundled, &base_dest);
-                    }
-                }
-            }
-            let model = services::model::ModelService::new(models_dir);
-            let model_ctrl =
-                controllers::model::ModelController::new(Arc::clone(&model), Arc::clone(&config));
+            let resource_dir = app.path().resource_dir().ok();
+            let diarization = services::diarization::DiarizationService::with_resource_dir(
+                models_dir.join(services::diarization::SORTFORMER_MODEL_FILENAME),
+                resource_dir.clone(),
+            );
+            app.manage(Arc::clone(&diarization));
+            let model = services::model::ModelService::with_resource_dir(
+                models_dir.clone(),
+                resource_dir.clone(),
+            );
+            let model_ctrl = controllers::model::ModelController::new(Arc::clone(&model));
+
             let settings_ctrl = controllers::settings::SettingsController::new(
                 Arc::clone(&config),
                 Arc::clone(&hotkeys),
@@ -513,14 +610,108 @@ pub fn run() {
                 Arc::clone(&audio),
             );
             if let Err(err) = settings_ctrl.rehydrate_hotkeys() {
-                eprintln!("hotkey rehydration skipped: {err}");
+                tracing::debug!(error = %err, "hotkey rehydration skipped");
             }
+
+            let (open_hotkey, _) = settings_ctrl.get_hotkeys();
+            create_tray(app, &open_hotkey)?;
+
+            // Seed / offline-heal bundled models into the writable models dir, off the
+            // startup critical path — the tray above no longer waits on this. Missing,
+            // empty, or hash-mismatch copies are replaced from the installed app
+            // resources when those files have real content (dev 0-byte placeholders are
+            // skipped). Actual model use is always lazy (first Scribe/Dictate/Transcribe
+            // session), so this has ample time to finish before anything needs it.
+            //
+            // Large models (Whisper ~181 MB, Sortformer ~469 MB) only get a
+            // missing/empty check here — full SHA-256 runs on first use
+            // (`ensure_model` / whisper load). Debug builds use soft SHA-256;
+            // hashing Sortformer on the main thread was ~30–40s of 100% CPU
+            // before the tray appeared.
+            let model_seed_bg = Arc::clone(&model);
+            tauri::async_runtime::spawn(async move {
+                // Runs on a blocking-pool thread, not a core async-runtime worker: the
+                // loop below does synchronous file I/O (existence checks, hashing, and
+                // potentially copying up to ~650 MB across two models). Awaiting that
+                // directly inside an async task would occupy a scheduler worker thread
+                // for the whole blocking duration and could starve other IPC command
+                // handlers sharing the same runtime — exactly the regression this once
+                // caused (window IPC calls queued behind this task instead of running
+                // concurrently with it).
+                let _ = tokio::task::spawn_blocking(move || {
+                    let seed_targets: &[(&str, &str, bool)] = &[
+                        (
+                            services::model::SMALL_MODEL_FILENAME,
+                            services::model::SMALL_MODEL_SHA256,
+                            false, // hash at use-time
+                        ),
+                        (
+                            services::model::VAD_MODEL_FILENAME,
+                            services::model::VAD_MODEL_SHA256,
+                            true, // tiny — fine to pin every launch
+                        ),
+                        (
+                            services::diarization::SORTFORMER_MODEL_FILENAME,
+                            services::diarization::SORTFORMER_MODEL_SHA256,
+                            false, // hash at use-time (same reason as Whisper)
+                        ),
+                    ];
+                    for &(file_name, expected_sha, hash_at_startup) in seed_targets {
+                        let dest = models_dir.join(file_name);
+                        let needs = if hash_at_startup {
+                            services::bundled_models::dest_needs_bundle_restore_cached(
+                                &dest,
+                                expected_sha,
+                            )
+                        } else {
+                            !dest.exists()
+                                || std::fs::metadata(&dest)
+                                    .map(|m| !m.is_file() || m.len() == 0)
+                                    .unwrap_or(true)
+                        };
+                        if needs {
+                            if let Some(ref resource_dir) = resource_dir {
+                                let _ = services::bundled_models::ensure_bundled_file(
+                                    Some(resource_dir.as_path()),
+                                    &dest,
+                                    file_name,
+                                    expected_sha,
+                                );
+                            }
+                        }
+                    }
+                    if !model_seed_bg.bundled_model_available() {
+                        tracing::warn!(
+                            "bundled Whisper model missing at {}",
+                            model_seed_bg.default_model_path().display()
+                        );
+                    }
+                    if !model_seed_bg.bundled_vad_available() {
+                        tracing::warn!(
+                            "bundled VAD model missing or corrupt at {}",
+                            model_seed_bg.vad_model_path().display()
+                        );
+                    }
+                    // Warm the Whisper context now, once the model file is confirmed
+                    // present/healed above, instead of waiting for the user's first
+                    // Dictate/Scribe/Transcribe action. The context is cached for the
+                    // app's lifetime (`ModelService::loaded_contexts`) and Small is
+                    // ~181 MB — cheap enough on any machine this app targets to keep
+                    // resident, and it removes the cold-load wait from every first
+                    // capture of a session, not just from the ones after the first.
+                    let default_path = model_seed_bg.default_model_path();
+                    model_seed_bg.preload_context(&default_path);
+                })
+                .await;
+            });
 
             let ctrl = controllers::scribe::ScribeController::new(
                 Arc::clone(&audio),
                 Arc::clone(&model),
                 Arc::clone(&output),
+                Arc::clone(&history),
                 Arc::clone(&config),
+                Arc::clone(&diarization),
                 app.handle().clone(),
             );
 
@@ -528,6 +719,7 @@ pub fn run() {
                 Arc::clone(&audio),
                 Arc::clone(&model),
                 Arc::clone(&output),
+                Arc::clone(&history),
                 Arc::clone(&config),
                 app.handle().clone(),
             );
@@ -535,9 +727,29 @@ pub fn run() {
                 Arc::clone(&transcribe_input),
                 Arc::clone(&model),
                 Arc::clone(&output),
+                Arc::clone(&history),
                 Arc::clone(&config),
+                Arc::clone(&diarization),
                 app.handle().clone(),
             );
+            let speaker_names = services::speaker_names::SpeakerNameService::load(
+                data_dir.join("speaker_names.json"),
+            );
+            // Voiceprint never shipped (exploration-only); this is local hygiene so a
+            // machine that ran an earlier build doesn't keep an orphaned encryption key.
+            if let Err(e) = platform::delete_voice_crypto_key() {
+                tracing::warn!(error = %e, "could not delete legacy voice encryption key");
+            }
+            let history_ctrl = controllers::history::HistoryController::new(
+                Arc::clone(&history),
+                Arc::clone(&output),
+                Arc::clone(&config),
+                Arc::clone(&speaker_names),
+            );
+            app.manage(Arc::clone(&speaker_names));
+            app.manage(controllers::speaker_names::SpeakerNamesController::new(
+                Arc::clone(&speaker_names),
+            ));
 
             let update = services::update::UpdateService::new();
 
@@ -548,80 +760,82 @@ pub fn run() {
             app.manage(ctrl); // for scribe commands
             app.manage(Arc::clone(&dictate_ctrl)); // for dictate commands
             app.manage(Arc::clone(&transcribe_ctrl)); // for transcribe commands
+            app.manage(history_ctrl); // for history commands
             app.manage(update);
 
-            dictate_ctrl.start_key_listener();
+            dictate_ctrl.ensure_key_listener();
 
             if is_first_run {
-                open_settings_window(app.handle())?;
-                app.state::<Arc<controllers::settings::SettingsController>>()
-                    .complete_onboarding()
-                    .ok();
+                open_onboarding_window(app.handle())?;
             }
-            prewarm_scribe_window(app.handle());
-            prewarm_transcribe_window(app.handle());
             prewarm_dictate_window(app.handle());
             // Tao applies Regular activation at launch; `set_dock_visibility(false)` only runs when we
             // call it. Sync once after prewarm so a tray-only start hides the Dock (plist LSUIElement
             // is not sufficient on its own).
             platform::window_impl::sync_activation_policy(app.handle());
 
-            let save_folder = app.state::<Arc<services::config::ConfigService>>().get().save_folder;
-            match output.scan_incomplete_scribe_sessions(&save_folder) {
-                Ok(sessions) => {
-                    for info in &sessions {
-                        eprintln!(
-                            "[recovery] incomplete scribe session at {} (state: {})",
-                            info.session_dir, info.state
-                        );
-                    }
+            let save_folder = app
+                .state::<Arc<services::config::ConfigService>>()
+                .get()
+                .save_folder;
+            // Run compaction and recovery scans in the background so they never block
+            // the Tauri event loop at startup (large histories can take 100-500ms).
+            let history_bg = Arc::clone(&history);
+            let output_bg = Arc::clone(&output);
+            let save_folder_bg = save_folder.clone();
+            let temp_dir_bg = app
+                .path()
+                .app_local_data_dir()
+                .ok()
+                .map(|d| d.join("dictate_temp"));
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = history_bg.compact(&save_folder_bg) {
+                    tracing::warn!(error = %e, "startup history compaction skipped");
                 }
-                Err(e) => eprintln!("[recovery] scribe session scan failed: {e}"),
-            }
-            if let Ok(temp_dir) = app.path().app_local_data_dir().map(|d| d.join("dictate_temp")) {
-                match output.scan_and_salvage_dictate_temp_wavs(&temp_dir, &save_folder) {
-                    Ok(salvaged) => {
-                        for path in salvaged {
-                            eprintln!(
-                                "[recovery] salvaged dictate wav to {}",
-                                path.display()
+                match output_bg.scan_incomplete_scribe_sessions(&save_folder_bg) {
+                    Ok(sessions) => {
+                        for info in &sessions {
+                            tracing::info!(
+                                session_dir = %info.session_dir, state = %info.state,
+                                "incomplete scribe session found at startup"
                             );
                         }
                     }
-                    Err(e) => eprintln!("[recovery] dictate temp scan failed: {e}"),
+                    Err(e) => tracing::warn!(error = %e, "scribe session scan failed"),
                 }
-            }
+                if let Some(temp_dir) = temp_dir_bg {
+                    match output_bg.scan_and_salvage_dictate_temp_wavs(&temp_dir, &save_folder_bg) {
+                        Ok(salvaged) => {
+                            for path in salvaged {
+                                tracing::info!(path = %path.display(), "salvaged dictate wav");
+                            }
+                        }
+                        Err(e) => tracing::warn!(error = %e, "dictate temp scan failed"),
+                    }
+                }
+            });
 
             Ok(())
         })
         .on_window_event(|window, event| {
-            if window.label() == SCRIBE_WINDOW_LABEL && matches!(event, WindowEvent::Destroyed) {
-                // Release mic/speaker streams if the webview is torn down before invoke(`scribe_cancel`)
-                // completes (crash or exceptional teardown — normal close uses hide, not destroy).
-                if let Some(ctrl) = window
-                    .app_handle()
-                    .try_state::<Arc<controllers::scribe::ScribeController>>()
-                {
-                    let _ = ctrl.cancel();
+            if matches!(event, WindowEvent::Destroyed) {
+                // Sync dock visibility after onboarding is fully destroyed (not on CloseRequested,
+                // where is_visible() still returns true for the closing window).
+                if window.label() == ONBOARDING_WINDOW_LABEL {
+                    platform::window_impl::sync_activation_policy(window.app_handle());
                 }
-                platform::window_impl::sync_activation_policy(window.app_handle());
-                return;
             }
 
             if let WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == SCRIBE_WINDOW_LABEL {
-                    api.prevent_close();
-                    let _ = window.emit(
-                        "scribe://native-close-requested",
-                        serde_json::json!({}),
-                    );
-                    platform::window_impl::sync_activation_policy(window.app_handle());
+                // The onboarding window is a one-time wizard: let it destroy normally.
+                // The frontend calls settings_complete_onboarding before closing.
+                if window.label() == ONBOARDING_WINDOW_LABEL {
                     return;
                 }
 
                 api.prevent_close();
                 if let Err(err) = window.hide() {
-                    eprintln!("failed to hide window {}: {err}", window.label());
+                    tracing::debug!(label = window.label(), error = %err, "failed to hide window");
                 }
                 // Dictate is a HUD overlay — its close should never affect Dock visibility.
                 if window.label() != DICTATE_WINDOW_LABEL {
@@ -636,6 +850,7 @@ pub fn run() {
             commands::scribe::scribe_abort_transcription,
             commands::scribe::scribe_destroy_window,
             commands::scribe::scribe_cancel,
+            commands::scribe::scribe_set_attach_note,
             commands::scribe::scribe_add_note,
             commands::scribe::scribe_get_include_timestamps,
             commands::scribe::scribe_set_include_timestamps,
@@ -643,15 +858,10 @@ pub fn run() {
             commands::scribe::scribe_list_output_devices,
             commands::scribe::scribe_read_transcript,
             commands::scribe::scribe_list_recovery_sessions,
+            commands::scribe::scribe_list_transcripts,
+            commands::scribe::scribe_switch_mic,
             commands::scribe::scribe_toggle_speaker_capture,
-            commands::model::model_setup_status,
-            commands::model::model_list,
-            commands::model::model_download,
-            commands::model::model_select,
-            commands::model::model_remove,
             commands::model::model_vad_status,
-            commands::model::model_vad_download,
-            commands::model::model_vad_remove,
             commands::settings::settings_get_output_path,
             commands::settings::settings_set_output_path,
             commands::settings::settings_get_hotkeys,
@@ -674,24 +884,49 @@ pub fn run() {
             commands::settings::settings_permissions_open,
             commands::settings::settings_permissions_request,
             commands::settings::settings_onboarding_status,
+            commands::settings::settings_get_onboarding_step,
+            commands::settings::settings_set_onboarding_step,
             commands::settings::settings_complete_onboarding,
             commands::settings::settings_reset_onboarding,
             commands::settings::settings_show_window,
+            commands::settings::settings_show_onboarding_window,
+            commands::settings::settings_get_platform,
+            commands::settings::settings_open_scribe_window,
             commands::settings::settings_get_dictate_auto_paste,
             commands::settings::settings_set_dictate_auto_paste,
             commands::settings::settings_get_dictate_auto_enter,
             commands::settings::settings_set_dictate_auto_enter,
             commands::settings::settings_get_keep_wav,
             commands::settings::settings_set_keep_wav,
-            commands::settings::settings_get_dictate_model_id,
-            commands::settings::settings_set_dictate_model_id,
-            commands::settings::settings_get_replacement_rules,
-            commands::settings::settings_add_replacement_rule,
-            commands::settings::settings_update_replacement_rule,
-            commands::settings::settings_delete_replacement_rule,
+            commands::settings::settings_get_save_transcripts_as_markdown,
+            commands::settings::settings_set_save_transcripts_as_markdown,
+            commands::settings::settings_get_user_display_name,
+            commands::settings::settings_set_user_display_name,
             commands::dictate::dictate_cancel,
             commands::dictate::dictate_dismiss,
             commands::dictate::dictate_get_history,
+            commands::dictate::dictate_trigger,
+            commands::dictate::dictate_get_state,
+            commands::history::history_list,
+            commands::history::history_get_detail,
+            commands::history::history_render_markdown,
+            commands::history::history_export_markdown,
+            commands::history::history_delete,
+            commands::history::history_read_legacy,
+            commands::history::get_dashboard_stats,
+            commands::history::history_tag_vocabulary,
+            commands::history::note_create_empty,
+            commands::history::note_save_written_content,
+            commands::history::note_save_title,
+            commands::history::note_is_empty,
+            commands::history::note_has_metadata,
+            commands::history::note_set_tags,
+            commands::history::note_relabel_speaker,
+            commands::speaker_names::speaker_names_list,
+            commands::speaker_names::speaker_name_save,
+            commands::speaker_names::speaker_name_delete,
+            commands::history::note_attach_transcript,
+            commands::history::note_render_transcript_html,
             commands::transcribe::transcribe_inspect_inputs,
             commands::transcribe::transcribe_start,
             commands::transcribe::transcribe_open_output,
@@ -702,6 +937,12 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if let RunEvent::ExitRequested { code, api, .. } = event {
+                // Drop WhisperContext instances before audio teardown so Metal GPU
+                // resources are freed while the Rust runtime is still fully live.
+                // Without this, ggml-metal asserts during NSApplication terminate.
+                if let Some(svc) = app_handle.try_state::<Arc<services::model::ModelService>>() {
+                    svc.release_contexts();
+                }
                 if let Some(ctrl) =
                     app_handle.try_state::<Arc<controllers::scribe::ScribeController>>()
                 {

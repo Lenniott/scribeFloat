@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-history-tag-vocabulary"
+description = "Enables the history_tag_vocabulary command without any pre-configured scope."
+commands.allow = ["history_tag_vocabulary"]
+
+[[permission]]
+identifier = "deny-history-tag-vocabulary"
+description = "Denies the history_tag_vocabulary command without any pre-configured scope."
+commands.deny = ["history_tag_vocabulary"]

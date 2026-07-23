@@ -56,6 +56,7 @@ impl HotkeyRegistrar for TauriHotkeyRegistrar {
         } else {
             vec![open_scribe.to_string()]
         };
+        crate::refresh_tray_accelerators(&self.app, open_scribe);
         Ok(())
     }
 }

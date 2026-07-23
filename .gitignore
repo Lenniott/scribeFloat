@@ -13,4 +13,12 @@ vite.config.ts.timestamp-*
 /src-tauri/binaries/set-default-output-*
 /src-tauri/windows-resources/
 /src-tauri/bundled-models/
-/context
+/context.claude/worktrees/
+/.claude/worktrees/
+/tools
+.cursor/*.log
+.codex
+.agents
+
+# Local capture fixtures (not for git — large binaries)
+/tests/*.wav

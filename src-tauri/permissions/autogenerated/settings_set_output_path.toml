@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-settings-set-output-path"
+description = "Enables the settings_set_output_path command without any pre-configured scope."
+commands.allow = ["settings_set_output_path"]
+
+[[permission]]
+identifier = "deny-settings-set-output-path"
+description = "Denies the settings_set_output_path command without any pre-configured scope."
+commands.deny = ["settings_set_output_path"]

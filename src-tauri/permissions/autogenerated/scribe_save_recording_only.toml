@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scribe-save-recording-only"
+description = "Enables the scribe_save_recording_only command without any pre-configured scope."
+commands.allow = ["scribe_save_recording_only"]
+
+[[permission]]
+identifier = "deny-scribe-save-recording-only"
+description = "Denies the scribe_save_recording_only command without any pre-configured scope."
+commands.deny = ["scribe_save_recording_only"]

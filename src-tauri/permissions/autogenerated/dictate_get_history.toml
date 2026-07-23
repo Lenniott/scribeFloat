@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-dictate-get-history"
+description = "Enables the dictate_get_history command without any pre-configured scope."
+commands.allow = ["dictate_get_history"]
+
+[[permission]]
+identifier = "deny-dictate-get-history"
+description = "Denies the dictate_get_history command without any pre-configured scope."
+commands.deny = ["dictate_get_history"]

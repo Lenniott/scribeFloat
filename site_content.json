@@ -1,0 +1,158 @@
+{
+	"site": {
+		"name": "ScribeFloat",
+		"tagline": "Local audio transcription for macOS",
+		"github": "https://github.com/Lenniott/scribeFloat",
+		"buyMeACoffee": "https://buymeacoffee.com/benjamiz",
+		"tipNav": {
+			"labelShort": "Tip",
+			"labelLong": "Show love",
+			"aria": "Support the creator — Buy Me a Coffee"
+		},
+		"download": {
+			"_releaseHelp": "Flip macDownloadsEnabled or windowsDownloadsEnabled to true, save, deploy. false = Coming soon button (no .dmg/.exe link).",
+			"macDownloadsEnabled": true,
+			"windowsDownloadsEnabled": false,
+			"comingSoon": {
+				"windowsHint": "Not available yet — build under testing"
+			},
+			"repo": "Lenniott/scribeFloat",
+			"releasesUrl": "https://github.com/Lenniott/scribeFloat/releases/latest",
+			"cta": {
+				"mac": "Download for Mac",
+				"macAppleSilicon": "Apple Silicon",
+				"macIntel": "Intel Mac",
+				"windows": "Download for Windows",
+				"other": "View releases"
+			},
+			"sectionButton": {
+				"mac": "Download ScribeFloat (.dmg)",
+				"macAppleSilicon": "Apple Silicon (.dmg)",
+				"macIntel": "Intel Mac (.dmg)",
+				"windows": "Download ScribeFloat (.exe)",
+				"other": "View all releases"
+			},
+			"footerHint": {
+				"mac": "macOS 12+ · Apple Silicon or Intel",
+				"windows": "Windows 64-bit",
+				"other": "Choose your platform on GitHub"
+			},
+			"windowsDisclaimer": {
+				"title": "Windows — before you install",
+				"paragraphs": [
+					"Windows is supported, but I haven’t run it through as much real-world testing as macOS yet; expect rough edges.",
+					"The Windows installer isn’t code-signed yet (no paid certificate), so SmartScreen may warn until you confirm you trust the installer — and the overall experience might be flaky.",
+					"If you try it anyway, bug and regression reports are hugely welcome — I’m keen for contributors on Windows; use the GitHub link in this section."
+				]
+			}
+		}
+	},
+	"hero": {
+		"eyebrow": "macOS & Windows · free · open source",
+		"headline": ["Your words stay", "on your machine."],
+		"headlineAccent": 1,
+		"sub": "Record calls, transcribe files, dictate text. Entirely offline. No keys, no cloud, no subscription.",
+		"meta": "macOS 12+ & Windows 64-bit · free forever",
+		"ctaSecondary": "View on GitHub"
+	},
+	"modes": {
+		"label": "what it does",
+		"headline": ["Three modes.", "One menu bar icon."],
+		"headlineAccent": 1,
+		"sub": "Pick the right tool for the moment. Switch anytime from the menu bar.",
+		"items": [
+			{
+				"id": "scribe",
+				"label": "Scribe",
+				"recording": true,
+				"title": "Background call recorder",
+				"body": "Runs silently. Captures both sides of a call via dual-channel recording. Mic bleed suppression keeps the channels clean.",
+				"features": [
+					"BlackHole integration for speaker audio",
+					"Separate in: / out: transcript channels",
+					"Saves markdown to a folder you choose"
+				]
+			},
+			{
+				"id": "transcribe",
+				"label": "Transcribe",
+				"recording": false,
+				"title": "File transcription",
+				"body": "Drop any audio file. Get a clean timestamped transcript. All processing is local.",
+				"features": [
+					"Supports WAV, MP3, M4A, FLAC",
+					"Timestamped output",
+					"Multiple Whisper model sizes to choose from"
+				]
+			},
+			{
+				"id": "dictate",
+				"label": "Dictate",
+				"recording": false,
+				"title": "Hotkey speech-to-text",
+				"body": "Tap a key, speak, release. Text transcribes and pastes into whatever app is in focus. Works system-wide.",
+				"features": [
+					"Configurable hotkey",
+					"Auto-pastes to active app",
+					"Optional VAD skips silence between words"
+				]
+			}
+		]
+	},
+	"setup": {
+		"label": "setup",
+		"headline": ["Install once.", "Works forever."],
+		"headlineAccent": 1,
+		"steps": [
+			{
+				"n": "01",
+				"title": "Download the .dmg",
+				"body": "Mount, drag to Applications. No account, no App Store, no subscription. A menu bar icon appears on first launch."
+			},
+			{
+				"n": "02",
+				"title": "Grant mic access",
+				"body": "Allow microphone (and Accessibility on Mac if you use Dictate paste). The Whisper model is already in the app — nothing to download."
+			},
+			{
+				"n": "03",
+				"title": "Pick a mode",
+				"body": "Record a note, Upload a file, or Dictate with the hotkey. Configure once and forget it."
+			},
+			{
+				"n": "04",
+				"title": "Plain markdown output",
+				"body": "Transcripts save to a folder of your choice. Grep them. Pipe them. Open in anything. They're yours."
+			}
+		]
+	},
+	"privacy": {
+		"label": "privacy",
+		"headline": ["Private by", "architecture."],
+		"headlineAccent": 1,
+		"sub": "Not a setting. Not a promise. Audio is processed entirely on your hardware. There is no server.",
+		"pillars": [
+			{
+				"title": "No cloud",
+				"body": "Whisper runs locally. Audio never leaves the device. No API keys required."
+			},
+			{
+				"title": "No account",
+				"body": "Download and run. No signup, no email, no telemetry of any kind."
+			},
+			{
+				"title": "No subscription",
+				"body": "Free permanently. Open source."
+			},
+			{
+				"title": "Offline by default",
+				"body": "Models ship in the app. No Hugging Face at runtime. Optional update check only if you click it. Verifiable with a packet capture."
+			}
+		]
+	},
+	"download": {
+		"label": "download",
+		"headline": "Run it today.",
+		"sub": "Free and open source. macOS 12+ and Windows 64-bit."
+	}
+}

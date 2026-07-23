@@ -1,0 +1,10 @@
+[[set]]
+identifier = "dictate-overlay"
+description = """
+App commands for the Dictate satellite window. Add new Dictate-only invokes here.
+"""
+permissions = [
+  "allow-dictate-cancel",
+  "allow-dictate-dismiss",
+  "allow-settings-get-theme-mode"
+]

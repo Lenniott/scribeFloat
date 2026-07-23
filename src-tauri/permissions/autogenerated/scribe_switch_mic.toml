@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scribe-switch-mic"
+description = "Enables the scribe_switch_mic command without any pre-configured scope."
+commands.allow = ["scribe_switch_mic"]
+
+[[permission]]
+identifier = "deny-scribe-switch-mic"
+description = "Denies the scribe_switch_mic command without any pre-configured scope."
+commands.deny = ["scribe_switch_mic"]

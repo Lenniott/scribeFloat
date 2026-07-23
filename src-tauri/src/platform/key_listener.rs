@@ -132,7 +132,9 @@ mod macos {
                 user_info,
             );
             if tap.is_null() {
-                eprintln!("[key_listener] CGEventTapCreate failed — Input Monitoring permission may not be granted");
+                tracing::warn!(
+                    "CGEventTapCreate failed — Input Monitoring permission may not be granted"
+                );
                 return;
             }
             let source = CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);
@@ -161,7 +163,7 @@ mod windows {
                 };
                 callback(KeyEvent { kind });
             }) {
-                eprintln!("[key_listener] rdev listener stopped: {e:?}");
+                tracing::warn!(error = ?e, "rdev listener stopped");
             }
         });
     }

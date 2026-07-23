@@ -26,7 +26,7 @@ There is no separate architecture / action-flows / engineering / backlog / explo
 | `CONTEXT.md` | Domain glossary — read first |
 | `PRIVACY.md` | Privacy claims agents must not contradict |
 | `docs/adr/` | Binding and aspirational decisions |
-| `docs/agents/` | Tracker, triage labels, domain-doc consumption |
+| `docs/agents/` | Tracker, triage labels, domain-doc consumption, working method |
 | `AGENTS.md` | This file — session index, build, skills |
 | `src-tauri/permissions/` | Per-window IPC allowlists — see `permissions/README.md` when adding `#[tauri::command]` |
 
@@ -36,7 +36,7 @@ Working memory for an effort lives under `.scratch/<effort-slug>/` (maps, ticket
 
 ## Skills
 
-**Always write new or updated skills to `skills/`** — never to `.cursor/skills/` or `.claude/commands/` directly. Those directories are managed by `skills/build.sh` and will be overwritten. Run `bash skills/build.sh` after any edit to `skills/` if the PostToolUse hook has not already done so.
+**Always write new or updated skills to `skills/`** — never to `.cursor/skills/` or `.claude/commands/` directly. Those directories are managed by `skills/build.sh` and will be overwritten. Run `bash skills/build.sh` after any edit to `skills/`.
 
 **Frontend:** before writing any Tailwind classes, query the design skill:
 ```bash
@@ -101,7 +101,7 @@ After any session involving design decisions, architectural choices, or non-obvi
 - Effort work / niggles → `.scratch/<effort>/` (tickets or `KNOWN-ISSUES.md`)
 - If you have gone many exchanges or made decisions without writing either, **stop and ask before wrapping up**
 
-Full forward process (merge-blocker vs park, thin-doc rules, public tag as separate effort) is owned by the map ticket *Write the forward working method*.
+Full forward process (session classification, thin-doc rules, Known issues path, when to ADR, merge-blocker vs park, session bridge, public tag as separate effort): `docs/agents/working-method.md`.
 
 ---
 
@@ -124,3 +124,9 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
+
+### Working method
+
+Session classification, thin-doc rules, Known issues path, when to write an ADR,
+merge-blocker vs park, the HANDOFF.md session bridge, public tag as a separate
+effort. See `docs/agents/working-method.md`.

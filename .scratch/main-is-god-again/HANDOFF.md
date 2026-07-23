@@ -1,10 +1,10 @@
 # Handoff — Main is God again
 
-**When:** 2026-07-23 — merge-blockers **19** / **20** / **21** closed; next = forward method **02**  
+**When:** 2026-07-23 — forward method **02** closed; next = merge **10**  
 **Branch:** `feature/0.3/embeds` → merge into `main` **untagged**  
 **HEAD tip (last commit):** confirm with `git log -1` / `git status -sb`  
 **Open a new chat and say:**  
-> Continue from `.scratch/main-is-god-again/HANDOFF.md` — claim + write [Write the forward working method](./issues/02-write-forward-working-method.md); then [Merge spine into main untagged](./issues/10-merge-spine-into-main-untagged.md)
+> Continue from `.scratch/main-is-god-again/HANDOFF.md` — claim + do [Merge spine into main untagged](./issues/10-merge-spine-into-main-untagged.md); then [Delete stale branches](./issues/11-delete-stale-branches.md)
 
 This file is the session bridge. Prefer this path over `/var` or `$TMPDIR`.
 
@@ -16,9 +16,8 @@ Research (closed): [research/](./research/)
 
 ## Frontier next
 
-1. [Write the forward working method](./issues/02-write-forward-working-method.md)
-2. [Merge spine into main untagged](./issues/10-merge-spine-into-main-untagged.md) (`blocked_by`: 02, 09✓, 19–21✓)
-3. [Delete stale branches](./issues/11-delete-stale-branches.md)
+1. [Merge spine into main untagged](./issues/10-merge-spine-into-main-untagged.md) (`blocked_by`: 02✓, 09✓, 19–21✓ — all clear)
+2. [Delete stale branches](./issues/11-delete-stale-branches.md) — when this runs, move `.scratch/main-is-god-again/KNOWN-ISSUES.md` wholesale into `docs/ideas/` first (new rule, see `docs/agents/working-method.md`)
 
 ---
 
@@ -45,7 +44,8 @@ Ticket **09** closed with Resolution. Installed Silicon `.app` walk; relaunch al
 | `Cargo.toml` + `scribefloat.rs` | CLI bin → `scribefloat-cli` (case-insensitive macOS was killing the GUI binary in DMGs) |
 | `lib.rs` | Sortformer SHA at use-time (startup tray hang ~30–40s) |
 | Config / settings / onboarding / MarkdownEditor / clamp helper | **19** / **20** / **21** implementations |
-| `.scratch/main-is-god-again/*` | HANDOFF / MAP / tickets **19–21** closed |
+| `.scratch/main-is-god-again/*` | HANDOFF / MAP / tickets **19–21**, **02** closed |
+| `docs/agents/working-method.md` (new), `AGENTS.md`, `docs/agents/issue-tracker.md` | Ticket **02** — forward working method |
 | `dist-silicon/` | Build output — **do not commit** |
 
 Re-verify after commit: build → open `.app` → tray appears quickly; `Contents/MacOS/ScribeFloat` stays alive (not CLI help).  
@@ -66,9 +66,9 @@ Branch was **ahead 3** of origin when this handoff was written — do not push u
 |------|--------|
 | **09** Silicon ship-bar smoke | **Closed** |
 | **19** / **20** / **21** | **Closed** (implemented 2026-07-23) |
-| **02** Forward working method | Open — next |
-| **10** Merge untagged | Blocked by 02 only (09 + 19–21 done) |
-| **11** Delete stale branches | After merge |
+| **02** Forward working method | **Closed** (`docs/agents/working-method.md`) |
+| **10** Merge untagged | Unblocked — next |
+| **11** Delete stale branches | After merge; sweep `KNOWN-ISSUES.md` → `docs/ideas/` first |
 | **16** / **18** | Closed (IPC B+ / ADR School 1) |
 | **17** naming | Known issues — not a merge blocker |
 
@@ -87,6 +87,7 @@ Branch was **ahead 3** of origin when this handoff was written — do not push u
 - [Persist onboarding step across quit](./issues/z_19-persist-onboarding-step-across-quit.md)
 - [Onboarding Try Dictate Continue reachable](./issues/z_20-onboarding-try-dictate-continue-reachable.md)
 - [Deleting note text inserts Selection deleted](./issues/z_21-deleting-note-text-inserts-selection-deleted.md)
+- [Write the forward working method](./issues/02-write-forward-working-method.md)
 
 ---
 
@@ -102,6 +103,7 @@ Branch was **ahead 3** of origin when this handoff was written — do not push u
 - **Onboarding step:** Config `onboarding_step` 1=Welcome 2=Permissions 3=Try Dictate 4=Feature tour.
 - **Early Keystroke TCC:** Dictate `CGEventTap` deferred until Input Monitoring preflight is true (fixed 2026-07-23); dialog should no longer appear under Welcome.
 - **Push incident:** GitHub once rejected `tests/mic.wav` (~171 MB) in history — rewrite **unpushed** commits only; explain first.
+- **Forward working method:** `docs/agents/working-method.md` is now the standing process doc (session classification, thin-doc rule, Known issues → `docs/ideas/` at close-out, `HANDOFF.md` as a required convention for every wayfinder effort, ADR trigger, merge-blocker vs park rubric, public tag scope). Don't re-derive this from chat — read the file.
 
 ---
 

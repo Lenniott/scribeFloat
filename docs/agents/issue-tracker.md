@@ -26,8 +26,9 @@ Wayfinder maps and decision tickets live under `.scratch/<effort-slug>/`.
 
 - **Map**: `.scratch/<effort-slug>/MAP.md` — the canonical index (`labels` include `wayfinder:map`)
 - **Tickets**: `.scratch/<effort-slug>/issues/<NN>-<slug>.md` — child issues of that map
-- **Known issues** (non-blocking debt dump for an effort): `.scratch/<effort-slug>/KNOWN-ISSUES.md`
+- **Known issues** (non-blocking debt dump for an effort): `.scratch/<effort-slug>/KNOWN-ISSUES.md` — disposable while the effort is live; moved wholesale into `docs/ideas/` (renamed, no curation) when the effort closes
 - **Research findings**: linked from the ticket; usually `.scratch/<effort-slug>/research/<slug>.md`
+- **Session bridge**: `.scratch/<effort-slug>/HANDOFF.md` — short-term working memory (what's true right now), distinct from `MAP.md`'s long-term memory (decisions so far). Every session in this effort updates it before ending, whether or not it resolved a ticket. See `docs/agents/working-method.md`.
 
 ### Ticket frontmatter
 

@@ -27,7 +27,14 @@ In `src-tauri/src/lib.rs::run()`'s `.setup()` closure, `create_tray` (`lib.rs:67
 
 **Verify:** `cargo build` clean; `cargo test -p ScribeFloat` → 350 passed, 0 failed; `cargo clippy -p ScribeFloat -- -D warnings` clean. Manual relaunch check not performed (no running app in this environment) — reordering was verified by reading the dependency chain directly (settings_ctrl/hotkeys don't touch `models_dir`/`resource_dir` at all) rather than by observation.
 
+**Correction (2026-07-23, found via real `cargo tauri dev` use):** the "not performed" manual check above should have been a blocker, not a caveat. The original `tauri::async_runtime::spawn(async move { ...seed loop... })` ran its synchronous file I/O (existence checks, hashing, potential large copies) directly inside the async block — that occupies a core Tokio runtime worker thread for the whole blocking duration instead of yielding it. Human-observed symptom: opening the main window right after the tray appears showed a 16+ second skeleton, but waiting ~30s first (letting the seed task finish) made it load instantly — a classic "blocking work starving the async runtime's worker pool that window IPC commands also share" signature, not a one-off fluke.
+
+Fixed by wrapping the seed loop in `tokio::task::spawn_blocking` (the pattern already used everywhere else in this codebase for sync work — `commands/scribe.rs`, `commands/settings.rs`, `controllers/dictate.rs`, `controllers/transcribe.rs` — that this ticket should have followed the first time instead of a bare `async_runtime::spawn`). The background task now runs on the dedicated blocking thread pool, leaving async runtime workers free for window IPC regardless of how long seeding takes.
+
+**Lesson:** "moved off the main thread" and "moved off the thing this ticket cares about blocking" are not the same claim as "isolated from everything else that shares the runtime" — should have checked what pool `tauri::async_runtime::spawn` actually uses before calling this done, not just that it wasn't the main thread anymore.
+
 ## Comments
 
 - 2026-07-23: Ticketed from [[23-sequential-loading-habits-in-app-startup]]. `blocked_by` 22 only so the purge-removal diff lands first and this ticket doesn't have to re-touch code that's about to be deleted.
 - 2026-07-23: Implemented directly against `release/0.3` alongside ticket 22 (not via a worktree agent).
+- 2026-07-23: Human reported the app now takes even longer to become usable after this change. Root-caused to blocking I/O inside `async_runtime::spawn` starving the runtime; fixed with `spawn_blocking`. See Correction above.

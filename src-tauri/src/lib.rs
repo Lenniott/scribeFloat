@@ -630,6 +630,15 @@ pub fn run() {
             // before the tray appeared.
             let model_seed_bg = Arc::clone(&model);
             tauri::async_runtime::spawn(async move {
+                // Runs on a blocking-pool thread, not a core async-runtime worker: the
+                // loop below does synchronous file I/O (existence checks, hashing, and
+                // potentially copying up to ~650 MB across two models). Awaiting that
+                // directly inside an async task would occupy a scheduler worker thread
+                // for the whole blocking duration and could starve other IPC command
+                // handlers sharing the same runtime — exactly the regression this once
+                // caused (window IPC calls queued behind this task instead of running
+                // concurrently with it).
+                let _ = tokio::task::spawn_blocking(move || {
                 let seed_targets: &[(&str, &str, bool)] = &[
                     (
                         services::model::SMALL_MODEL_FILENAME,
@@ -683,6 +692,8 @@ pub fn run() {
                         model_seed_bg.vad_model_path().display()
                     );
                 }
+                })
+                .await;
             });
 
             let ctrl = controllers::scribe::ScribeController::new(

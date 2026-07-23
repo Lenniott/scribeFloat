@@ -1,4 +1,4 @@
-/* Self-hosted via @fontsource — no Google Fonts network request. */
+/* Bundled @fontsource Geist — ships in the app; no external font requests. */
 @import '@fontsource/geist-sans/latin-300.css';
 @import '@fontsource/geist-sans/latin-400.css';
 @import '@fontsource/geist-sans/latin-500.css';

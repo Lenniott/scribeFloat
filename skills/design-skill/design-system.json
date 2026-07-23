@@ -10,16 +10,14 @@
       "themeAttribute": "data-theme",
       "themeValues": ["dark", "light"],
       "fonts": {
-        "import": "https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400&family=Geist:wght@400;500&display=swap",
-        "sans": "Geist",
+        "import": "Bundled via @fontsource/geist-sans + @fontsource/geist-mono in src/app.css (latin 300/400/500 sans, 300/400 mono). Never load fonts from a CDN — no external requests.",
+        "sans": "Geist Sans",
         "mono": "Geist Mono",
         "weightsUsed": {
-          "Geist": [400, 500],
-          "Geist Mono": [400]
+          "Geist Sans": [300, 400, 500],
+          "Geist Mono": [300, 400]
         },
-        "weightsOmitted": {
-          "300": "too light on dark backgrounds — omitted entirely"
-        }
+        "weightsOmitted": {}
       },
       "tailwindThemeFile": "src/app.css",
       "tone": "instrument-grade. terse, precise, zero hype. reads like terminal output.",

@@ -1,8 +1,7 @@
 # ADR-0009: Note lifecycle — immediate creation, autosave, discard-if-empty
 
-## Status
-
-Accepted
+**Status:** Binding
+**Wayfinder:** Implemented — Main is God again / current product.
 
 ## Context
 

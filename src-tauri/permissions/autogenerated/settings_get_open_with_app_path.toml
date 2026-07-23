@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-settings-get-open-with-app-path"
+description = "Enables the settings_get_open_with_app_path command without any pre-configured scope."
+commands.allow = ["settings_get_open_with_app_path"]
+
+[[permission]]
+identifier = "deny-settings-get-open-with-app-path"
+description = "Denies the settings_get_open_with_app_path command without any pre-configured scope."
+commands.deny = ["settings_get_open_with_app_path"]

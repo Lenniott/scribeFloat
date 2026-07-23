@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-settings-list-output-devices"
+description = "Enables the settings_list_output_devices command without any pre-configured scope."
+commands.allow = ["settings_list_output_devices"]
+
+[[permission]]
+identifier = "deny-settings-list-output-devices"
+description = "Denies the settings_list_output_devices command without any pre-configured scope."
+commands.deny = ["settings_list_output_devices"]

@@ -1,6 +1,7 @@
 use crate::services::config::ConfigService;
 use crate::services::history::HistoryService;
 use crate::services::output::{self, OutputService};
+use crate::services::speaker_names::{is_reserved_speaker_label, SpeakerNameService};
 use crate::types::{
     DashboardStats, HistoryItemSource, HistoryKind, HistoryListItem, HistoryRecord,
     TagVocabularyEntry,
@@ -16,6 +17,7 @@ pub struct HistoryController {
     history: Arc<HistoryService>,
     output: Arc<OutputService>,
     config: Arc<ConfigService>,
+    speaker_names: Arc<SpeakerNameService>,
 }
 
 /// Prefix marking a legacy on-disk `.md` item id (read-only).
@@ -28,11 +30,13 @@ impl HistoryController {
         history: Arc<HistoryService>,
         output: Arc<OutputService>,
         config: Arc<ConfigService>,
+        speaker_names: Arc<SpeakerNameService>,
     ) -> Arc<Self> {
         Arc::new(Self {
             history,
             output,
             config,
+            speaker_names,
         })
     }
 
@@ -97,67 +101,40 @@ impl HistoryController {
         crate::services::note_sidecar::write_tags(&save_folder, id, tags).map_err(|e| e.to_string())
     }
 
-    pub fn rename_session_speaker(
+    /// Rename a speaker across one note and remember the new name globally
+    /// (unless it's an auto-assigned label like "Speaker 2" or "Other").
+    pub fn relabel_speaker(
         &self,
         id: &str,
-        session_speaker_id: &str,
-        label: &str,
-    ) -> Result<(), String> {
-        if is_legacy(id) {
-            return Err("legacy items are read-only".to_string());
-        }
-        let session_speaker_id = session_speaker_id.trim();
-        let label = label.trim();
-        if session_speaker_id.is_empty() {
-            return Err("session speaker id cannot be empty".to_string());
-        }
-        if label.is_empty() {
-            return Err("speaker label cannot be empty".to_string());
-        }
-        let save_folder = self.config.get().save_folder;
-        self.history
-            .rename_session_speaker(&save_folder, id, session_speaker_id, label)
-            .map_err(|e| e.to_string())
-    }
-
-    pub fn correct_chunk_label(
-        &self,
-        id: &str,
-        chunk_id: &str,
-        label: &str,
+        from_label: &str,
+        to_label: &str,
     ) -> Result<HistoryRecord, String> {
         if is_legacy(id) {
             return Err("legacy items are read-only".to_string());
         }
-        let chunk_id = chunk_id.trim();
-        let label = label.trim();
-        if chunk_id.is_empty() {
-            return Err("chunk id cannot be empty".to_string());
-        }
-        if label.is_empty() {
+        let from_label = from_label.trim();
+        let to_label = to_label.trim();
+        if from_label.is_empty() || to_label.is_empty() {
             return Err("speaker label cannot be empty".to_string());
         }
-        let save_folder = self.config.get().save_folder;
-        self.history
-            .correct_chunk_label(&save_folder, id, chunk_id, label)
-            .map_err(|e| e.to_string())
-    }
-
-    pub fn remove_voice_embeddings(&self, id: &str) -> Result<(), String> {
-        if is_legacy(id) {
-            return Err("legacy items are read-only".to_string());
+        if to_label.len() > 80 {
+            return Err("speaker label is too long (max 80 characters)".to_string());
+        }
+        if from_label == to_label {
+            return Err("new speaker label matches the current one".to_string());
         }
         let save_folder = self.config.get().save_folder;
-        self.history
-            .remove_voice_embeddings(&save_folder, id)
-            .map_err(|e| e.to_string())
-    }
-
-    pub fn remove_all_voice_embeddings(&self) -> Result<usize, String> {
-        let save_folder = self.config.get().save_folder;
-        self.history
-            .remove_all_voice_embeddings(&save_folder)
-            .map_err(|e| e.to_string())
+        let updated = self
+            .history
+            .relabel_speaker(&save_folder, id, from_label, to_label)
+            .map_err(|e| e.to_string())?;
+        if !is_reserved_speaker_label(to_label) {
+            // Global name save is a convenience; never fail the relabel over it.
+            if let Err(e) = self.speaker_names.save(to_label, None) {
+                tracing::warn!(error = %e, "failed to save relabeled speaker name globally");
+            }
+        }
+        Ok(updated)
     }
 
     /// Attach a completed transcription pass onto an existing note.
@@ -173,13 +150,12 @@ impl HistoryController {
     }
 
     /// Render transcript markdown as HTML for the note editor Transcript panel.
+    ///
+    /// Markdown is converted with a narrow option set, then scrubbed with ammonia
+    /// so user-influenced text cannot inject scripts/handlers into `{@html}`.
     pub fn render_transcript_html(&self, id: &str) -> Result<String, String> {
-        use pulldown_cmark::{html, Options, Parser};
         let markdown = self.render_markdown(id)?;
-        let parser = Parser::new_ext(&markdown, Options::all());
-        let mut html_output = String::new();
-        html::push_html(&mut html_output, parser);
-        Ok(html_output)
+        Ok(markdown_to_safe_html(&markdown))
     }
 
     /// Unified, deduped, newest-first list: store records ∪ legacy `.md` not already in the store
@@ -517,6 +493,34 @@ fn within_save_folder(path: &str, save_folder: &str) -> Option<PathBuf> {
     canonical.starts_with(&base).then_some(canonical)
 }
 
+/// Convert transcript markdown to HTML safe for webview `{@html}` injection.
+///
+/// Uses CommonMark defaults only (no `Options::all()` kitchen-sink). Raw HTML in the
+/// source still parses (CommonMark), so the result is always run through ammonia with
+/// a tight tag allowlist for note-body display.
+fn markdown_to_safe_html(markdown: &str) -> String {
+    use pulldown_cmark::{html, Options, Parser};
+
+    let parser = Parser::new_ext(markdown, Options::empty());
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, parser);
+
+    // Transcript panel needs paragraphs + light emphasis/structure from legacy .md.
+    // No scripts, forms, iframes, event-handler attrs, or javascript: URLs.
+    ammonia::Builder::default()
+        .tags(
+            [
+                "p", "br", "strong", "em", "b", "i", "ul", "ol", "li", "h1", "h2", "h3", "a",
+                "blockquote", "code", "pre", "hr",
+            ]
+            .into_iter()
+            .collect(),
+        )
+        .link_rel(Some("noopener noreferrer"))
+        .clean(&html_output)
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -526,6 +530,7 @@ mod tests {
         save_folder: String,
         ctrl: Arc<HistoryController>,
         history: Arc<HistoryService>,
+        speaker_names: Arc<SpeakerNameService>,
     }
 
     fn fixture() -> Fixture {
@@ -543,11 +548,18 @@ mod tests {
 
         let history = HistoryService::new();
         let output = OutputService::new();
-        let ctrl = HistoryController::new(Arc::clone(&history), output, Arc::clone(&config));
+        let speaker_names = SpeakerNameService::load(root.join("speaker_names.json"));
+        let ctrl = HistoryController::new(
+            Arc::clone(&history),
+            output,
+            Arc::clone(&config),
+            Arc::clone(&speaker_names),
+        );
         Fixture {
             save_folder,
             ctrl,
             history,
+            speaker_names,
         }
     }
 
@@ -597,6 +609,67 @@ mod tests {
         );
         // Idempotent.
         f.ctrl.delete(&id).unwrap();
+    }
+
+    fn labeled_record(labels: &[&str]) -> HistoryRecord {
+        let mut rec = HistoryRecord::from_dictate(&seg("note"), "note text", "tiny".to_string());
+        rec.speaker_blocks = labels
+            .iter()
+            .enumerate()
+            .map(|(i, label)| crate::types::SpeakerBlock {
+                label: label.to_string(),
+                start_ms: Some(i as u64 * 1_000),
+                end_ms: Some((i as u64 + 1) * 1_000),
+                text: format!("text {i}"),
+                chunk_id: None,
+            })
+            .collect();
+        rec
+    }
+
+    #[test]
+    fn relabel_speaker_updates_note_and_saves_name_globally() {
+        let f = fixture();
+        let id = f
+            .history
+            .append(&f.save_folder, labeled_record(&["Speaker 1", "Speaker 2"]))
+            .unwrap();
+
+        let updated = f.ctrl.relabel_speaker(&id, "Speaker 1", "Ben").unwrap();
+
+        assert_eq!(updated.speaker_blocks[0].label, "Ben");
+        assert_eq!(updated.speaker_blocks[1].label, "Speaker 2");
+        let names: Vec<String> = f.speaker_names.list().into_iter().map(|n| n.name).collect();
+        assert_eq!(names, vec!["Ben".to_string()]);
+    }
+
+    #[test]
+    fn relabel_speaker_does_not_save_reserved_labels() {
+        let f = fixture();
+        let id = f
+            .history
+            .append(&f.save_folder, labeled_record(&["Ben"]))
+            .unwrap();
+
+        f.ctrl.relabel_speaker(&id, "Ben", "Speaker 2").unwrap();
+
+        assert!(f.speaker_names.list().is_empty());
+    }
+
+    #[test]
+    fn relabel_speaker_rejects_bad_input() {
+        let f = fixture();
+        let id = f
+            .history
+            .append(&f.save_folder, labeled_record(&["Speaker 1"]))
+            .unwrap();
+
+        assert!(f.ctrl.relabel_speaker(&id, "Speaker 1", "  ").is_err());
+        assert!(f.ctrl.relabel_speaker(&id, "Speaker 1", "Speaker 1").is_err());
+        assert!(f.ctrl.relabel_speaker(&id, "Speaker 1", &"x".repeat(81)).is_err());
+        assert!(f.ctrl.relabel_speaker("md::legacy", "Speaker 1", "Ben").is_err());
+        // Nothing was saved globally by the failed attempts.
+        assert!(f.speaker_names.list().is_empty());
     }
 
     #[test]
@@ -703,6 +776,61 @@ mod tests {
         let html = f.ctrl.render_transcript_html(&id).unwrap();
         assert!(html.contains("<p>"));
         assert!(html.contains("Hello world"));
+    }
+
+    #[test]
+    fn markdown_to_safe_html_keeps_emphasis_and_paragraphs() {
+        let html = markdown_to_safe_html("Hello **world**\n\nSecond line");
+        assert!(html.contains("<p>"), "expected paragraph: {html}");
+        assert!(
+            html.contains("<strong>world</strong>") || html.contains("<b>world</b>"),
+            "expected bold: {html}"
+        );
+        assert!(html.contains("Second line"), "expected body text: {html}");
+    }
+
+    #[test]
+    fn markdown_to_safe_html_strips_script_and_event_handlers() {
+        let html = markdown_to_safe_html(
+            "Hi <script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n\n[x](javascript:alert(1))",
+        );
+        let lower = html.to_ascii_lowercase();
+        assert!(
+            !lower.contains("<script"),
+            "script tag must not survive: {html}"
+        );
+        assert!(
+            !lower.contains("onerror"),
+            "event handler must not survive: {html}"
+        );
+        assert!(
+            !lower.contains("javascript:"),
+            "javascript: URL must not survive: {html}"
+        );
+        assert!(html.contains("Hi"), "safe text must remain: {html}");
+    }
+
+    #[test]
+    fn render_transcript_html_sanitizes_segment_payload() {
+        let f = fixture();
+        let rec = HistoryRecord::from_scribe(
+            "XSS".to_string(),
+            "tiny".to_string(),
+            seg(r#"Hello <img src=x onerror="alert(1)"> world"#),
+            Vec::<Note>::new(),
+            false,
+            false,
+            None,
+            None,
+            None,
+        );
+        let id = f.history.append(&f.save_folder, rec).unwrap();
+        let html = f.ctrl.render_transcript_html(&id).unwrap();
+        let lower = html.to_ascii_lowercase();
+        assert!(!lower.contains("onerror"), "handler leaked: {html}");
+        assert!(!lower.contains("<script"), "script leaked: {html}");
+        assert!(html.contains("Hello"), "text missing: {html}");
+        assert!(html.contains("world"), "text missing: {html}");
     }
 
     #[test]

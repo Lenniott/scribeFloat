@@ -247,7 +247,7 @@
 		{:else if showMetadata}
 			<div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 				<div class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-					<p class="sf-body-md text-fg-muted">Tags, keywords, and Float layers — story 0047.</p>
+					<p class="sf-body-md text-fg-muted">Tags and keywords — not wired yet.</p>
 				</div>
 			</div>
 		{/if}

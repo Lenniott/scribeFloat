@@ -97,4 +97,28 @@ describe('DictatePracticeStep', () => {
 
 		expect(mockedInvoke).toHaveBeenCalledWith('settings_set_dictate_auto_enter', { enabled: true });
 	});
+
+	it('line-clamps long practice notes to two lines so Continue stays reachable', async () => {
+		const { container } = renderStep();
+
+		await waitFor(() => {
+			expect(screen.getByPlaceholderText('Click here and test dictate')).toBeInTheDocument();
+		});
+
+		const long = `${'# Heading\n'.repeat(20)}and more body text `.repeat(10);
+		const composer = screen.getByPlaceholderText('Click here and test dictate');
+		await fireEvent.input(composer, { target: { value: long } });
+		await fireEvent.keyDown(composer, { key: 'Enter' });
+		await tick();
+
+		const body = container.querySelector('article p.line-clamp-2');
+		expect(body).toBeTruthy();
+		expect(body).toHaveClass('line-clamp-2');
+		const card = container.querySelector('article');
+		expect(card).toHaveClass('h-auto');
+		expect(card).toHaveClass('shrink-0');
+		// Full text stays in the DOM; visual height is CSS-clamped.
+		expect(body?.textContent?.length ?? 0).toBeGreaterThan(400);
+		expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
+	});
 });

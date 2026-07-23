@@ -43,20 +43,11 @@ pub struct Config {
     #[serde(default = "default_save_folder")]
     pub save_folder: String,
 
-    /// Absolute path to the ggml .bin model file used for Scribe.
-    /// None = no model configured → NO_MODEL state after recording.
-    #[serde(default)]
-    pub scribe_model_path: Option<String>,
-
     #[serde(default)]
     pub keep_wav: bool,
 
     #[serde(default = "default_true")]
     pub include_timestamps: bool,
-
-    /// Active model id selected by user in model setup.
-    #[serde(default)]
-    pub selected_model_id: Option<String>,
 
     #[serde(default = "default_open_scribe_hotkey")]
     pub open_scribe_hotkey: String,
@@ -96,6 +87,12 @@ pub struct Config {
     #[serde(default)]
     pub onboarding_complete: bool,
 
+    /// Setup wizard step while onboarding is incomplete.
+    /// 1 = Welcome, 2 = Permissions, 3 = Try Dictate, 4 = Feature tour.
+    /// Ignored once `onboarding_complete` is true. Defaults to Welcome for old configs.
+    #[serde(default = "default_onboarding_step")]
+    pub onboarding_step: u8,
+
     /// Simulate Cmd/Ctrl+V into the focused input after dictation.
     /// Requires Accessibility permission on macOS.
     #[serde(default = "default_true")]
@@ -114,36 +111,18 @@ pub struct Config {
     /// Display name for the user in speaker-labelled transcripts. Default: "You".
     #[serde(default = "default_user_display_name")]
     pub user_display_name: String,
-
-    /// Cosine similarity gate for voiceprint matching. Default: 0.75.
-    /// Lower values are more inclusive; higher values are stricter.
-    #[serde(default = "default_voice_similarity_threshold")]
-    pub voice_similarity_threshold: f32,
-
-    /// Whether confirmed transcript speaker labels may improve saved voiceprints.
-    /// Default OFF until encrypted long-term evidence storage is implemented.
-    #[serde(default)]
-    pub voice_learning_enabled: bool,
-
-    /// Whether voice embedding vectors may be kept with transcripts for future
-    /// speaker matching. Default keeps current behaviour.
-    #[serde(default)]
-    pub voice_embeddings_retention: VoiceEmbeddingsRetention,
-
-    /// Require encrypted-at-rest embedding storage before automatic long-term
-    /// voice learning can run. Default ON.
-    #[serde(default = "default_true")]
-    pub voice_embeddings_encryption_required: bool,
+    // Retired keys ignored on read and dropped on the next config write:
+    // - voiceprint: voice_similarity_threshold, voice_learning_enabled,
+    //   voice_embeddings_retention, voice_embeddings_encryption_required
+    // - multi-model chooser: selected_model_id, scribe_model_path, dictate_model_id
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             save_folder: default_save_folder(),
-            scribe_model_path: None,
             keep_wav: false,
             include_timestamps: true,
-            selected_model_id: None,
             open_scribe_hotkey: default_open_scribe_hotkey(),
             dictate_hotkey: default_dictate_hotkey(),
             input_label: default_input_label(),
@@ -154,14 +133,11 @@ impl Default for Config {
             theme_mode: ThemeMode::System,
             open_with_app_path: None,
             onboarding_complete: false,
+            onboarding_step: default_onboarding_step(),
             dictate_auto_paste: true,
             dictate_auto_enter: false,
             save_transcripts_as_markdown: false,
             user_display_name: default_user_display_name(),
-            voice_similarity_threshold: default_voice_similarity_threshold(),
-            voice_learning_enabled: false,
-            voice_embeddings_retention: VoiceEmbeddingsRetention::Keep,
-            voice_embeddings_encryption_required: true,
         }
     }
 }
@@ -170,26 +146,13 @@ fn default_user_display_name() -> String {
     "You".to_string()
 }
 
-fn default_voice_similarity_threshold() -> f32 {
-    0.75
+fn default_onboarding_step() -> u8 {
+    1
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum VoiceEmbeddingsRetention {
-    #[default]
-    Keep,
-    DeleteAfterTranscript,
-}
-
-impl VoiceEmbeddingsRetention {
-    pub fn parse(value: &str) -> Result<Self, String> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "keep" => Ok(Self::Keep),
-            "delete_after_transcript" => Ok(Self::DeleteAfterTranscript),
-            other => Err(format!("unsupported voice embeddings retention `{other}`")),
-        }
-    }
+/// Clamp a Setup step index to the valid Welcome‥Feature-tour range.
+pub fn clamp_onboarding_step(step: u8) -> u8 {
+    step.clamp(1, 4)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -288,34 +251,16 @@ pub struct SpeakerBlock {
     pub chunk_id: Option<String>,
 }
 
+/// Legacy chunk-tier speaker evidence, kept only so pre-diarization notes stay
+/// readable (labels + correction badges). New notes never write these; the
+/// biometric fields old records carried (embeddings, scores, quality metrics)
+/// are intentionally absent and dropped on the next compaction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpeakerChunk {
     pub id: String,
     pub start_ms: u64,
     pub end_ms: u64,
     pub label: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cluster_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub matched_profile: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub embedding: Option<Vec<f32>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub encrypted_embedding: Option<EncryptedEmbedding>,
-    pub audio_duration_s: f32,
-    pub vad_purity: f32,
-    pub rms_energy: f32,
-    pub clipping: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub profile_score: Option<f32>,
-    /// Cosine similarity to this chunk's own session-speaker centroid.
-    /// Low values mark outliers that are likely mislabeled or noisy.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub session_score: Option<f32>,
-    /// Best centroid score minus second-best across all session speakers.
-    /// None when fewer than two session speakers exist to compare against.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub margin: Option<f32>,
     /// Label correction history, oldest first. User corrections have
     /// `auto: false`; cascade relabels triggered by them have `auto: true`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -330,21 +275,19 @@ pub struct LabelCorrection {
     pub auto: bool,
 }
 
+/// Legacy transcript-local speaker group, kept only so pre-diarization notes
+/// stay readable. New notes never write these; old records' centroid
+/// embeddings and quality metrics are dropped on read.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionSpeaker {
     pub session_speaker_id: String,
     pub label: String,
-    pub centroid_embedding: Vec<f32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub encrypted_centroid_embedding: Option<EncryptedEmbedding>,
-    pub clean_chunk_ids: Vec<String>,
-    pub start_ms: u64,
-    pub end_ms: u64,
-    pub duration_ms: u64,
-    pub radius: f32,
-    pub quality_score: f32,
     #[serde(default)]
-    pub user_confirmed: bool,
+    pub start_ms: u64,
+    #[serde(default)]
+    pub end_ms: u64,
+    #[serde(default)]
+    pub duration_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -381,7 +324,7 @@ pub enum CutReason {
 }
 
 /// A detected voice-change boundary. Says "the voice changed here" — spans between
-/// cuts are NOT speaker identities (identity is the voiceprint service's job).
+/// cuts are NOT speaker identities (anonymous slots come from Sortformer diarization).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpeakerChangeCut {
     pub time_s: f32,
@@ -390,6 +333,16 @@ pub struct SpeakerChangeCut {
     /// Observed jump / threshold, so >= 1.0 by construction; max over merged candidates.
     pub score: f32,
     pub reasons: std::collections::BTreeSet<CutReason>,
+}
+
+/// Anonymous "who spoke when" span from Sortformer diarization, in ms since
+/// capture start. Carries no identity — `speaker_id` is a per-recording slot
+/// (0..=3; the model separates at most 4 voices).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiarizationRange {
+    pub speaker_id: u8,
+    pub start_ms: u64,
+    pub end_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -506,121 +459,6 @@ impl TranscribeStateEvent {
             error: None,
         }
     }
-}
-
-/// Emitted on `model://download-progress` for every model the app downloads —
-/// Whisper catalog models, the Silero VAD model (`model_id = "vad"`), and the
-/// voiceprint ONNX model (`model_id = "voiceprint"`). One channel, one payload;
-/// consumers filter by `model_id`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModelDownloadEvent {
-    pub model_id: String,
-    pub progress: f32,
-    pub bytes_downloaded: u64,
-    pub total_bytes: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VoiceprintProfile {
-    pub name: String,
-    pub slug: String,
-    pub mic_device_id: Option<String>,
-    pub embedding: Vec<f32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub encrypted_embedding: Option<EncryptedEmbedding>,
-    pub sample_count: u32,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-    /// Average of enrollment prints only, captured before any transcript
-    /// evidence is mixed in. `embedding` is rebuilt from this plus `evidence`,
-    /// keeping the global print reconstructable when evidence changes.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub enrollment_embedding: Option<Vec<f32>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub encrypted_enrollment_embedding: Option<EncryptedEmbedding>,
-    /// Accepted transcript-speaker evidence. The global embedding is rebuilt
-    /// from enrollment prints plus these records, so evidence can be removed
-    /// later without leaving a poisoned rolling average behind.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub evidence: Vec<ProfileEvidence>,
-}
-
-/// One accepted transcript-speaker centroid used as global profile evidence.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProfileEvidence {
-    pub note_id: String,
-    pub session_speaker_id: String,
-    pub centroid_embedding: Vec<f32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub encrypted_centroid_embedding: Option<EncryptedEmbedding>,
-    pub duration_ms: u64,
-    pub mean_score: f32,
-    pub std_dev: f32,
-    pub mean_margin: f32,
-    pub accepted_at: chrono::DateTime<chrono::Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct EncryptedEmbedding {
-    pub version: u8,
-    pub algorithm: String,
-    pub nonce_b64: String,
-    pub ciphertext_b64: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VoiceprintProfileSummary {
-    pub slug: String,
-    pub name: String,
-    pub mic_device_id: Option<String>,
-    pub mic_device_label: Option<String>,
-    pub sample_count: u32,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VoiceprintModelStatus {
-    pub downloaded: bool,
-    pub path: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum VoiceprintClipState {
-    Pending,
-    Recording,
-    Safe,
-    Optimal,
-    Failed,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VoiceprintClipStatus {
-    pub clip_id: String,
-    pub duration_s: f32,
-    pub speech_s: f32,
-    pub purity: f32,
-    pub state: VoiceprintClipState,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionCaptureStart {
-    pub capture_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionCaptureStatus {
-    pub capture_id: String,
-    pub speech_s: f32,
-    pub purity: f32,
-    pub state: VoiceprintClipState,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VoiceprintClipResult {
-    pub duration_s: f32,
-    pub speech_s: f32,
-    pub purity: f32,
-    pub accepted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1172,11 +1010,13 @@ mod tests {
 
     #[test]
     fn config_with_removed_fields_still_deserializes() {
-        // Configs written before the replacement engine and per-mode model override
+        // Configs written before the replacement engine and multi-model chooser
         // were removed still carry these keys — serde must ignore them.
         let legacy = r#"{
             "save_folder": "/tmp/transcripts",
             "dictate_model_id": "tiny-en-q5",
+            "selected_model_id": "base-en-q5",
+            "scribe_model_path": "/old/models/ggml-base.bin",
             "replacement_prefix": "float",
             "replacement_rules": [
                 {"trigger": "dash", "type": "simple", "output": "-"}
@@ -1309,15 +1149,18 @@ mod tests {
     }
 
     #[test]
-    fn config_voice_learning_fields_default_from_old_config() {
-        let old = r#"{"save_folder":"/tmp/x"}"#;
-        let cfg: Config = serde_json::from_str(old).expect("deserialize old config");
-        assert!(!cfg.voice_learning_enabled);
-        assert_eq!(
-            cfg.voice_embeddings_retention,
-            VoiceEmbeddingsRetention::Keep
-        );
-        assert!(cfg.voice_embeddings_encryption_required);
+    fn legacy_history_line_with_embeddings_still_deserializes() {
+        // A pre-purge record line carrying biometric fields the types no longer
+        // model: they must be ignored, keeping labels and timings readable.
+        let old = r#"{"format_version":1,"id":"n1","kind":"scribe","title":"t","created_at":"2026-01-01T00:00:00Z","model":"tiny","segments":[],"duration_ms":1000,"word_count":2,"speaker_chunks":[{"id":"c1","start_ms":0,"end_ms":1000,"label":"Speaker A","cluster_id":"s1","matched_profile":"ben","embedding":[0.1,0.2],"audio_duration_s":1.0,"vad_purity":0.9,"rms_energy":0.1,"clipping":false,"corrections":[{"from_label":"Speaker B","to_label":"Speaker A","corrected_at_ms":5,"auto":false}]}],"session_speakers":[{"session_speaker_id":"s1","label":"Speaker A","centroid_embedding":[0.1],"encrypted_centroid_embedding":{"version":1,"algorithm":"a","nonce_b64":"n","ciphertext_b64":"c"},"clean_chunk_ids":["c1"],"start_ms":0,"end_ms":1000,"duration_ms":1000,"radius":0.1,"quality_score":0.9,"user_confirmed":true}]}"#;
+        let rec: HistoryRecord = serde_json::from_str(old).expect("deserialize legacy record");
+        assert_eq!(rec.speaker_chunks[0].label, "Speaker A");
+        assert_eq!(rec.speaker_chunks[0].corrections.len(), 1);
+        assert_eq!(rec.session_speakers[0].label, "Speaker A");
+        // Round-trip drops the biometric fields entirely.
+        let rewritten = serde_json::to_string(&rec).expect("serialize");
+        assert!(!rewritten.contains("embedding"));
+        assert!(!rewritten.contains("centroid"));
     }
 
     #[test]
@@ -1457,31 +1300,14 @@ mod tests {
                 start_ms: 0,
                 end_ms: 2_000,
                 label: "Speaker A".into(),
-                cluster_id: None,
-                matched_profile: None,
-                embedding: None,
-                encrypted_embedding: None,
-                audio_duration_s: 2.0,
-                vad_purity: 0.9,
-                rms_energy: 0.1,
-                clipping: false,
-                profile_score: None,
-                session_score: None,
-                margin: None,
                 corrections: Vec::new(),
             }],
             session_speakers: vec![SessionSpeaker {
                 session_speaker_id: "s-1".into(),
                 label: "Speaker A".into(),
-                centroid_embedding: vec![1.0, 0.0],
-                encrypted_centroid_embedding: None,
-                clean_chunk_ids: vec!["chunk-1".into()],
                 start_ms: 0,
                 end_ms: 2_000,
                 duration_ms: 2_000,
-                radius: 0.0,
-                quality_score: 0.9,
-                user_confirmed: false,
             }],
             notes: vec![Note {
                 id: "n-1".into(),

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-speaker-names-list"
+description = "Enables the speaker_names_list command without any pre-configured scope."
+commands.allow = ["speaker_names_list"]
+
+[[permission]]
+identifier = "deny-speaker-names-list"
+description = "Denies the speaker_names_list command without any pre-configured scope."
+commands.deny = ["speaker_names_list"]

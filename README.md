@@ -17,7 +17,7 @@ ScribeFloat runs OpenAI's [Whisper](https://github.com/openai/whisper) model ent
 | **Transcribe** | Drop an existing audio file (WAV, MP3, M4A, FLAC) and get a timestamped transcript. |
 | **Dual-source** | Scribe can capture mic and speaker simultaneously, merging them into a labelled `in:`/`out:` transcript. |
 | **Word replacement** | Apply find/replace rules to every transcript automatically. |
-| **Local models** | Choose from several Whisper model sizes. Downloaded once from Hugging Face, then run offline. |
+| **Bundled model** | Whisper Small ships in the app (plus Silero VAD). No runtime download; works offline after install. |
 
 ---
 
@@ -35,7 +35,7 @@ ScribeFloat runs OpenAI's [Whisper](https://github.com/openai/whisper) model ent
 
 ## Privacy at a glance
 
-All audio processing is local. The only outbound network request is a one-time Whisper model download from Hugging Face. Dictate streams to a short-lived temp WAV during capture (deleted after success, or salvaged to `dictate_failures/` on error).
+All audio processing is local. Models ship in the app — no Hugging Face (or other) download at runtime. The only optional outbound request is a manual "Check for updates" to GitHub. Dictate streams to a short-lived temp WAV during capture (deleted after success, or salvaged to `dictate_failures/` on error).
 
 See [PRIVACY.md](PRIVACY.md) for the full data-flow audit, OS permission breakdown, and compliance notes for security officers.
 
@@ -112,8 +112,7 @@ The onboarding wizard runs on first launch and guides you through:
 1. Granting **microphone** permission
 2. Granting **Accessibility** permission (macOS — required for Dictate paste injection)
 3. Setting up **system audio capture** (BlackHole on macOS / WASAPI on Windows)
-4. Downloading a **Whisper model**
-5. A **practice dictation** run
+4. A **practice dictation** run
 
 Once complete the app unlocks fully and the wizard can be replayed from **Settings → Help**.
 
@@ -143,7 +142,7 @@ Transcripts and audio files are saved to `~/Documents/transcripts_scribefloat/` 
 
 ## Architecture
 
-See [CONTEXT.md](CONTEXT.md) for the doc reading order and [docs/architecture.md](docs/architecture.md) for full C4 model diagrams.
+See [CONTEXT.md](CONTEXT.md) for domain terms and [AGENTS.md](AGENTS.md) for how agents load docs. Decisions live in [docs/adr/](docs/adr/).
 
 The layered call chain:
 
@@ -169,7 +168,7 @@ src/                       SvelteKit frontend
   lib/
     components/            Reusable UI components (audio, form, layout, notes)
     screens/               Full panel screens (scribe, dictate, transcribe, settings)
-    stores/                Svelte stores (model download state)
+    stores/                Svelte stores (app/UI state)
   routes/                  SvelteKit routes (+page.svelte, +layout.svelte)
 
 src-tauri/                 Tauri / Rust backend
@@ -315,7 +314,7 @@ macOS builds require Xcode command line tools; signed/notarized builds need loca
 
 **Windows contributors are especially welcome.** Most day-to-day development happens on macOS, so we rely on Windows users to test releases, report bugs, and fix Windows-specific issues (permissions, audio devices, paste, installers, and anything under `src-tauri/src/platform/`). You do not need to own the whole app — reproducible bug reports, small fixes, and “this broke on my machine” PRs are all valuable.
 
-1. Read `docs/architecture.md` before touching any Rust code
+1. Read `CONTEXT.md` and relevant ADRs under `docs/adr/` before large changes; prefer the code over inventing new doc trees
 2. Run the checks in [Running tests](#running-tests) and `cargo clippy -- -D warnings` before committing
 3. If you add a new `#[tauri::command]`, register it in `lib.rs` and validate any user-supplied strings before passing to a controller
 4. `#[cfg(target_os)]` checks belong only in `src-tauri/src/platform/` — never in commands, controllers, or services

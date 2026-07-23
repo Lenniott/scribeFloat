@@ -1,17 +1,17 @@
 use crate::services::analysis::{detect_cuts, CutConfig, PitchAnalyzer};
-use crate::services::audio::WHISPER_SAMPLE_RATE;
 use crate::services::config::ConfigService;
-use crate::services::history::{strip_voice_embeddings, HistoryService};
+use crate::services::diarization::DiarizationService;
+use crate::services::history::HistoryService;
 use crate::services::model::ModelService;
 use crate::services::output::OutputService;
 use crate::services::transcribe_input::{TranscribeInputItem, TranscribeInputService};
 use crate::services::transcription::{
-    analyze_capture_speakers, transcribe_capture, CaptureAudio, SpeakerEvidence, TranscribeOptions,
+    run_post_capture_transcription, CaptureAudio, CaptureProfile, PostCaptureInput,
+    SpeakerEvidenceInput,
 };
-use crate::services::voiceprint::VoiceprintService;
 use crate::types::{
     Config, HistoryRecord, ProcessingStage, TranscribeItemStatus, TranscribeQueueItem,
-    TranscribeState, TranscribeStateEvent, VoiceEmbeddingsRetention,
+    TranscribeState, TranscribeStateEvent,
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -24,7 +24,6 @@ struct Inner {
 pub struct TranscribeStartRequest {
     pub input_paths: Vec<String>,
     pub output_folder: Option<String>,
-    pub model_id: Option<String>,
     pub include_timestamps: Option<bool>,
 }
 
@@ -35,7 +34,7 @@ pub struct TranscribeController {
     output: Arc<OutputService>,
     history: Arc<HistoryService>,
     config: Arc<ConfigService>,
-    voiceprint: Arc<VoiceprintService>,
+    diarization: Arc<DiarizationService>,
     app: AppHandle,
 }
 
@@ -46,7 +45,7 @@ impl TranscribeController {
         output: Arc<OutputService>,
         history: Arc<HistoryService>,
         config: Arc<ConfigService>,
-        voiceprint: Arc<VoiceprintService>,
+        diarization: Arc<DiarizationService>,
         app: AppHandle,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -58,7 +57,7 @@ impl TranscribeController {
             output,
             history,
             config,
-            voiceprint,
+            diarization,
             app,
         })
     }
@@ -90,9 +89,12 @@ impl TranscribeController {
         let output_folder =
             resolve_output_folder(&this.output, &cfg, request.output_folder.as_deref())?;
         let include_timestamps = request.include_timestamps.unwrap_or(cfg.include_timestamps);
-        let model_path = resolve_model_path(&cfg, this.model.as_ref(), request.model_id.as_deref());
+        let model_path = this.model.default_model_path();
         if !this.model.model_available(&model_path) {
-            return Err("selected model is not downloaded".to_string());
+            return Err(
+                "No Whisper model available. Reinstall the app to restore the bundled model."
+                    .to_string(),
+            );
         }
         {
             let mut inner = this.lock();
@@ -114,20 +116,6 @@ impl TranscribeController {
             Some(ProcessingStage::LoadingModel),
             None,
         );
-
-        // Warm the voiceprint extractor in parallel with the first Whisper pass so
-        // per-item speaker analysis never stalls on the ~500 ms ONNX graph build.
-        {
-            let voiceprint = Arc::clone(&this.voiceprint);
-            tauri::async_runtime::spawn(async move {
-                let _ = tokio::task::spawn_blocking(move || {
-                    if let Err(err) = voiceprint.preload_extractor() {
-                        tracing::warn!(error = %err, "voiceprint extractor preload failed");
-                    }
-                })
-                .await;
-            });
-        }
 
         tauri::async_runtime::spawn(async move {
             let ctrl = Arc::clone(&this);
@@ -262,21 +250,25 @@ impl TranscribeController {
                     );
                 }
             };
-            let segments = match transcribe_capture(
+            let result = match run_post_capture_transcription(
                 &self.model,
-                CaptureAudio {
-                    mic_pcm_16k: &decoded.mic_pcm_16k,
-                    speaker_pcm_16k: decoded.speaker_pcm_16k.as_deref(),
-                },
-                TranscribeOptions {
+                PostCaptureInput {
+                    profile: CaptureProfile::Upload,
+                    audio: CaptureAudio {
+                        mic_pcm_16k: &decoded.mic_pcm_16k,
+                        speaker_pcm_16k: decoded.speaker_pcm_16k.as_deref(),
+                    },
                     model_path,
-                    source: "transcribe",
+                    speaker_evidence: Some(SpeakerEvidenceInput::DiarizeOnDemand(
+                        self.diarization.as_ref(),
+                    )),
+                    speaker_change_cuts: &speaker_change_cuts,
                     abort: None,
                     on_model_loaded: None,
                 },
                 progress_reporter,
             ) {
-                Ok(segments) => segments,
+                Ok(result) => result,
                 Err(err) => {
                     queue[index].status = TranscribeItemStatus::Error;
                     queue[index].error = Some(err.to_string());
@@ -291,6 +283,14 @@ impl TranscribeController {
                     continue;
                 }
             };
+            let crate::services::transcription::TranscriptResult {
+                segments,
+                speaker_blocks,
+                speaker_change_cuts,
+                dual_source,
+                model_label,
+                ..
+            } = result;
 
             queue[index].progress = 0.98;
             self.emit_queue_state(
@@ -301,24 +301,6 @@ impl TranscribeController {
                 None,
             );
 
-            let dual_source = decoded.speaker_pcm_16k.is_some();
-            let evidence = if dual_source {
-                SpeakerEvidence::default()
-            } else {
-                analyze_capture_speakers(
-                    &decoded.mic_pcm_16k,
-                    WHISPER_SAMPLE_RATE,
-                    &speaker_change_cuts,
-                    &self.voiceprint,
-                    cfg.voice_similarity_threshold,
-                    &segments,
-                )
-            };
-            let SpeakerEvidence {
-                speaker_blocks,
-                speaker_chunks,
-                session_speakers,
-            } = evidence;
             // Markdown is opt-in; write `.md` only when the toggle is on.
             let markdown_path = if markdown_on {
                 let output_name = format!("{}_{}.md", slugify(&input.display_name), model_name);
@@ -366,7 +348,7 @@ impl TranscribeController {
             // Persist the canonical record — always, regardless of the markdown toggle.
             let mut record = HistoryRecord::from_transcribe(
                 input.display_name.clone(),
-                model_name.to_string(),
+                model_label,
                 segments.clone(),
                 dual_source,
                 input.source_path.to_string_lossy().into_owned(),
@@ -376,11 +358,6 @@ impl TranscribeController {
             );
             record.speaker_blocks = speaker_blocks;
             record.speaker_change_cuts = speaker_change_cuts;
-            record.speaker_chunks = speaker_chunks;
-            record.session_speakers = session_speakers;
-            if cfg.voice_embeddings_retention == VoiceEmbeddingsRetention::DeleteAfterTranscript {
-                strip_voice_embeddings(&mut record);
-            }
             if let Err(e) = self.history.append(&save_folder, record) {
                 tracing::warn!(error = %e, "failed to append transcribe history record");
             } else {
@@ -455,24 +432,6 @@ fn resolve_output_folder(
         return Err(format!("output folder `{chosen}` must be absolute"));
     }
     output.ensure_output_dir(path).map_err(|e| e.to_string())
-}
-
-fn resolve_model_path(
-    config: &Config,
-    model: &ModelService,
-    explicit_model_id: Option<&str>,
-) -> PathBuf {
-    if let Some(model_id) = explicit_model_id {
-        if let Some(path) = model.model_path_for_id(model_id.trim()) {
-            return path;
-        }
-    }
-    if let Some(model_id) = &config.selected_model_id {
-        if let Some(path) = model.model_path_for_id(model_id) {
-            return path;
-        }
-    }
-    model.default_model_path()
 }
 
 fn slugify(name: &str) -> String {
@@ -585,31 +544,6 @@ mod tests {
     fn slugify_replaces_forbidden_chars() {
         let slug = slugify("a/b\\c:d");
         assert!(!slug.contains('/') && !slug.contains('\\') && !slug.contains(':'));
-    }
-
-    #[test]
-    fn resolve_model_path_prefers_explicit_id() {
-        let tmp = tempfile::tempdir().unwrap();
-        let model_svc = ModelService::new(tmp.path().to_path_buf());
-        let config = Config {
-            selected_model_id: None,
-            ..Config::default()
-        };
-        // explicit id — path doesn't exist but model_path_for_id still returns it
-        let path = resolve_model_path(&config, &model_svc, Some("small-en-q5"));
-        assert!(path.to_string_lossy().contains("small"));
-    }
-
-    #[test]
-    fn resolve_model_path_falls_back_to_selected() {
-        let tmp = tempfile::tempdir().unwrap();
-        let model_svc = ModelService::new(tmp.path().to_path_buf());
-        let config = Config {
-            selected_model_id: Some("small-en-q5".to_string()),
-            ..Config::default()
-        };
-        let path = resolve_model_path(&config, &model_svc, None);
-        assert!(path.to_string_lossy().contains("small"));
     }
 
     #[test]

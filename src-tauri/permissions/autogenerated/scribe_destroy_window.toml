@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scribe-destroy-window"
+description = "Enables the scribe_destroy_window command without any pre-configured scope."
+commands.allow = ["scribe_destroy_window"]
+
+[[permission]]
+identifier = "deny-scribe-destroy-window"
+description = "Denies the scribe_destroy_window command without any pre-configured scope."
+commands.deny = ["scribe_destroy_window"]

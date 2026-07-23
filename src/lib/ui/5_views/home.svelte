@@ -49,10 +49,8 @@
 		<p class="mt-1 sf-body-md text-fg-dim">{todayLabel}</p>
 	</header>
 
-	<div class="mb-7 grid grid-cols-4 gap-3">
+	<div class="mb-7 grid grid-cols-2 gap-3">
 		<StatTile value={stats ? String(stats.transcript_count) : '—'} label="Notes" />
-		<StatTile value="—" label="Float layers" />
-		<StatTile value="—" label="Drafts to review" />
 		<StatTile
 			value={formatWeekDuration(stats?.recorded_this_week_secs)}
 			label="Recorded this week"

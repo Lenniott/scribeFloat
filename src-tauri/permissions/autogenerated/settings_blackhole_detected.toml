@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-settings-blackhole-detected"
+description = "Enables the settings_blackhole_detected command without any pre-configured scope."
+commands.allow = ["settings_blackhole_detected"]
+
+[[permission]]
+identifier = "deny-settings-blackhole-detected"
+description = "Denies the settings_blackhole_detected command without any pre-configured scope."
+commands.deny = ["settings_blackhole_detected"]

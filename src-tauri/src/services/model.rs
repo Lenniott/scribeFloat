@@ -1,11 +1,11 @@
-use crate::types::{ModelDownloadEvent, Segment};
-use anyhow::{anyhow, Context, Result};
+use crate::services::bundled_models::{self, file_sha256_hex};
+use crate::types::Segment;
+use anyhow::{anyhow, Result};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter};
 use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperError,
     WhisperVadParams,
@@ -25,72 +25,19 @@ const VAD_MIN_PCM_SAMPLES: usize = 32_000;
 
 pub const SMALL_MODEL_FILENAME: &str = "ggml-small.en-q5_1.bin";
 
-/// The single Whisper model shipped with the app (see scripts/fetch-bundled-models.sh).
+/// Provenance label for the single Whisper model shipped with the app
+/// (see scripts/fetch-bundled-models.sh). Not a chooser id.
 pub const DEFAULT_MODEL_ID: &str = "small-en-q5";
 
+/// Verified lowercase-hex SHA-256 of the bundled Whisper Small file.
+pub const SMALL_MODEL_SHA256: &str =
+    "bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30";
+
 pub const VAD_MODEL_FILENAME: &str = "ggml-silero-v6.2.0.bin";
-const VAD_MODEL_URL: &str =
-    "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin";
-const VAD_MODEL_SHA256: Option<&str> =
-    Some("2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987");
 
-#[derive(Clone, Copy)]
-pub struct ModelCatalogItem {
-    pub id: &'static str,
-    pub file_name: &'static str,
-    /// Verified lowercase-hex SHA-256 of the model file. When `Some`, transcription
-    /// rejects the file unless its bytes hash to this value.
-    pub sha256: Option<&'static str>,
-}
-
-/// Whisper models the app knows about. The catalog is down to the bundled Small model —
-/// download URLs and checksums for the bundle live in scripts/fetch-bundled-models.sh.
-const MODEL_CATALOG: [ModelCatalogItem; 1] = [ModelCatalogItem {
-    id: DEFAULT_MODEL_ID,
-    file_name: SMALL_MODEL_FILENAME,
-    sha256: Some("bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30"),
-}];
-
-/// Compute the lowercase-hex SHA-256 of a file on disk, streaming it so a multi-hundred-MB
-/// model never lands in memory all at once.
-fn file_sha256_hex(path: &Path) -> std::io::Result<String> {
-    use sha2::{Digest, Sha256};
-    use std::fmt::Write as _;
-    use std::io::Read;
-    let mut file = std::fs::File::open(path)?;
-    let mut hasher = Sha256::new();
-    let mut buf = [0u8; 64 * 1024];
-    loop {
-        let n = file.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    let digest = hasher.finalize();
-    let mut hex = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        let _ = write!(hex, "{byte:02x}");
-    }
-    Ok(hex)
-}
-
-/// Verify a freshly downloaded file against an expected SHA-256. Runs the (CPU-bound) hash on a
-/// blocking thread so it never stalls the async runtime. Returns an error on any mismatch.
-async fn verify_sha256(path: &Path, expected_hex: &str) -> Result<()> {
-    let path = path.to_path_buf();
-    let expected = expected_hex.to_ascii_lowercase();
-    let actual = tokio::task::spawn_blocking(move || file_sha256_hex(&path))
-        .await
-        .context("checksum task panicked")?
-        .context("failed to hash downloaded file")?;
-    if actual != expected {
-        return Err(anyhow!(
-            "checksum mismatch: expected {expected}, got {actual}"
-        ));
-    }
-    Ok(())
-}
+/// Verified lowercase-hex SHA-256 of the bundled Silero VAD file.
+pub const VAD_MODEL_SHA256: &str =
+    "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987";
 
 /// Distinguishes GPU encode failures (retryable on CPU) from other inference errors.
 enum InferError {
@@ -108,6 +55,9 @@ impl From<InferError> for anyhow::Error {
 
 pub struct ModelService {
     models_dir: PathBuf,
+    /// Installed app resource dir (signed bundle models). Used to offline-restore
+    /// a bad writable copy. `None` in unit tests.
+    resource_dir: Option<PathBuf>,
     /// Append-only log of encode failures for post-mortem diagnosis (`{app_data}/transcription-failures.jsonl`).
     failure_log_path: PathBuf,
     /// Loaded Whisper contexts keyed by canonical model path. A `WhisperContext` owns the
@@ -134,9 +84,14 @@ pub struct ModelService {
 
 impl ModelService {
     pub fn new(models_dir: PathBuf) -> Arc<Self> {
+        Self::with_resource_dir(models_dir, None)
+    }
+
+    pub fn with_resource_dir(models_dir: PathBuf, resource_dir: Option<PathBuf>) -> Arc<Self> {
         let failure_log_path = transcription_failure_log_path(&models_dir);
         Arc::new(Self {
             models_dir,
+            resource_dir,
             failure_log_path,
             loaded_contexts: Mutex::new(HashMap::new()),
             loading_locks: Mutex::new(HashMap::new()),
@@ -146,14 +101,9 @@ impl ModelService {
         })
     }
 
-    /// Path where the default small model lives on disk.
+    /// Path where the bundled Small Whisper model lives on disk.
     pub fn default_model_path(&self) -> PathBuf {
         self.models_dir.join(SMALL_MODEL_FILENAME)
-    }
-
-    pub fn model_path_for_id(&self, model_id: &str) -> Option<PathBuf> {
-        self.catalog_item(model_id)
-            .map(|item| self.models_dir.join(item.file_name))
     }
 
     pub fn model_available(&self, path: &Path) -> bool {
@@ -163,10 +113,9 @@ impl ModelService {
                 .unwrap_or(false)
     }
 
-    pub fn model_downloaded(&self, model_id: &str) -> bool {
-        self.model_path_for_id(model_id)
-            .map(|p| self.model_available(&p))
-            .unwrap_or(false)
+    /// Whether the bundled Whisper Small file is present and non-empty.
+    pub fn bundled_model_available(&self) -> bool {
+        self.model_available(&self.default_model_path())
     }
 
     pub fn vad_model_path(&self) -> PathBuf {
@@ -177,46 +126,81 @@ impl ModelService {
         self.model_available(&self.vad_model_path())
     }
 
-    /// Whether the on-disk VAD file matches the catalog SHA-256.
+    /// Whether the on-disk VAD file matches the bundled SHA-256.
     pub fn vad_model_integrity_ok(&self) -> bool {
         let path = self.vad_model_path();
         if !self.vad_model_available() {
             return false;
         }
-        let Some(expected) = VAD_MODEL_SHA256 else {
-            return true;
-        };
         file_sha256_hex(&path)
-            .map(|actual| actual == expected.to_ascii_lowercase())
+            .map(|actual| actual == VAD_MODEL_SHA256.to_ascii_lowercase())
             .unwrap_or(false)
     }
 
-    /// True when VAD is missing or fails the integrity check (stale manual download).
-    pub fn vad_model_needs_redownload(&self) -> bool {
-        !self.vad_model_available() || !self.vad_model_integrity_ok()
+    /// Whether the bundled VAD file is present and passes SHA-256.
+    pub fn bundled_vad_available(&self) -> bool {
+        self.ensure_vad_integrity()
     }
 
-    /// VAD model path when the file is present, passes integrity, and PCM is long enough
-    /// for Silero trimming without starving the encoder.
-    pub fn vad_path_for_pcm(&self, pcm_samples: usize) -> Option<PathBuf> {
-        if pcm_samples < VAD_MIN_PCM_SAMPLES {
-            return None;
+    /// Offline-restore VAD from the signed app bundle when the writable copy is bad.
+    fn ensure_vad_integrity(&self) -> bool {
+        let path = self.vad_model_path();
+        bundled_models::ensure_bundled_file(
+            self.resource_dir.as_deref(),
+            &path,
+            VAD_MODEL_FILENAME,
+            VAD_MODEL_SHA256,
+        )
+    }
+
+    /// Offline-restore Whisper Small from the signed app bundle when the writable copy is bad.
+    fn ensure_whisper_integrity(&self, model_path: &Path) -> bool {
+        let Some(expected) = self.bundled_sha256_for_path(model_path) else {
+            return self.model_available(model_path);
+        };
+        let Some(name) = model_path.file_name().and_then(|n| n.to_str()) else {
+            return false;
+        };
+        // Drop any stale "verified" stamp before/after restore so a healed file re-hashes.
+        self.lock_verified_models().remove(model_path);
+        let ok = bundled_models::ensure_bundled_file(
+            self.resource_dir.as_deref(),
+            model_path,
+            name,
+            expected,
+        );
+        if ok {
+            let _ = self.model_integrity_ok_cached(model_path, expected);
         }
-        self.vad_path_for_inference()
+        ok
     }
 
-    /// VAD model path when the file is present and passes the catalog SHA-256 check.
-    pub fn vad_path_for_inference(&self) -> Option<PathBuf> {
-        (self.vad_model_available() && self.vad_model_integrity_ok()).then(|| self.vad_model_path())
+    /// Resolve VAD for a PCM length. Short clips skip VAD (encoder constraint).
+    /// Longer clips require the bundled VAD — missing/corrupt → clear offline error.
+    pub fn vad_path_for_pcm(&self, pcm_samples: usize) -> Result<Option<PathBuf>> {
+        if pcm_samples < VAD_MIN_PCM_SAMPLES {
+            return Ok(None);
+        }
+        if !self.ensure_vad_integrity() {
+            if !self.vad_model_available() {
+                return Err(anyhow!(
+                    "Bundled voice-activity model missing. Reinstall the app to restore bundled models."
+                ));
+            }
+            return Err(anyhow!(
+                "Bundled voice-activity model failed integrity check. Reinstall the app to restore bundled models."
+            ));
+        }
+        Ok(Some(self.vad_model_path()))
     }
 
-    /// Whether a catalog Whisper model on disk matches its published SHA-256.
-    /// Custom/non-catalog paths skip verification and only require a non-empty file.
+    /// Whether the bundled Whisper file on disk matches its published SHA-256.
+    /// Non-bundled filenames skip verification and only require a non-empty file.
     pub fn whisper_model_integrity_ok(&self, model_path: &Path) -> bool {
         if !self.model_available(model_path) {
             return false;
         }
-        let Some(expected) = self.catalog_sha256_for_path(model_path) else {
+        let Some(expected) = self.bundled_sha256_for_path(model_path) else {
             return true;
         };
         file_sha256_hex(model_path)
@@ -270,121 +254,9 @@ impl ModelService {
         std::fs::metadata(model_path).map(|m| m.len()).unwrap_or(0)
     }
 
-    fn catalog_sha256_for_path(&self, model_path: &Path) -> Option<&'static str> {
+    fn bundled_sha256_for_path(&self, model_path: &Path) -> Option<&'static str> {
         let name = model_path.file_name()?.to_str()?;
-        MODEL_CATALOG
-            .iter()
-            .find(|item| item.file_name == name)
-            .and_then(|item| item.sha256)
-    }
-
-    pub async fn download_vad_model(&self, app: &AppHandle) -> Result<()> {
-        let dest = self.vad_model_path();
-        let tmp = dest.with_extension("tmp");
-
-        std::fs::create_dir_all(&self.models_dir).context("create models dir")?;
-
-        let client = reqwest::Client::builder()
-            .user_agent("scribefloat/0.1")
-            .connect_timeout(Duration::from_secs(15))
-            .build()
-            .context("failed to build download client")?;
-
-        let mut response = None;
-        let mut last_err = None;
-        for attempt in 1..=3 {
-            match client.get(VAD_MODEL_URL).send().await {
-                Ok(r) if r.status().is_success() => {
-                    response = Some(r);
-                    break;
-                }
-                Ok(r) if r.status().is_server_error() && attempt < 3 => {
-                    last_err = Some(anyhow!("server error {} on attempt {attempt}", r.status()));
-                    tokio::time::sleep(Duration::from_millis(600 * attempt as u64)).await;
-                }
-                Ok(r) => {
-                    last_err = Some(anyhow!("vad download failed with HTTP {}", r.status()));
-                    break;
-                }
-                Err(e) if attempt < 3 => {
-                    last_err = Some(anyhow!("download request failed on attempt {attempt}: {e}"));
-                    tokio::time::sleep(Duration::from_millis(600 * attempt as u64)).await;
-                }
-                Err(e) => {
-                    last_err = Some(anyhow!("download request failed: {e}"));
-                    break;
-                }
-            }
-        }
-        let mut response = response.ok_or_else(|| {
-            anyhow!(
-                "failed to download VAD model after retries: {}",
-                last_err
-                    .map(|e| e.to_string())
-                    .unwrap_or_else(|| "unknown error".to_string())
-            )
-        })?;
-
-        let total = response.content_length();
-        let mut downloaded = 0u64;
-
-        let mut file = tokio::fs::File::create(&tmp)
-            .await
-            .context("failed to create temp file")?;
-
-        while let Some(chunk) = response.chunk().await.context("stream read error")? {
-            tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await?;
-            downloaded += chunk.len() as u64;
-            app.emit(
-                "model://download-progress",
-                ModelDownloadEvent {
-                    model_id: "vad".to_string(),
-                    progress: total.map(|t| downloaded as f32 / t as f32).unwrap_or(0.0),
-                    bytes_downloaded: downloaded,
-                    total_bytes: total,
-                },
-            )
-            .ok();
-        }
-
-        if let Err(e) = tokio::io::AsyncWriteExt::flush(&mut file).await {
-            drop(file);
-            let _ = tokio::fs::remove_file(&tmp).await;
-            return Err(anyhow::Error::from(e));
-        }
-        drop(file);
-
-        if let Some(expected) = VAD_MODEL_SHA256 {
-            if let Err(e) = verify_sha256(&tmp, expected).await {
-                let _ = tokio::fs::remove_file(&tmp).await;
-                return Err(e).context("VAD model failed integrity check");
-            }
-        }
-
-        if let Err(e) = tokio::fs::rename(&tmp, &dest)
-            .await
-            .context("failed to move VAD model into place")
-        {
-            let _ = tokio::fs::remove_file(&tmp).await;
-            return Err(e);
-        }
-
-        app.emit(
-            "model://download-progress",
-            ModelDownloadEvent {
-                model_id: "vad".to_string(),
-                progress: 1.0,
-                bytes_downloaded: downloaded,
-                total_bytes: total,
-            },
-        )
-        .ok();
-
-        Ok(())
-    }
-
-    fn catalog_item(&self, model_id: &str) -> Option<ModelCatalogItem> {
-        MODEL_CATALOG.iter().find(|m| m.id == model_id).copied()
+        (name == SMALL_MODEL_FILENAME).then_some(SMALL_MODEL_SHA256)
     }
 
     /// Drop all cached WhisperContexts before app exit so Metal GPU resources are
@@ -409,7 +281,7 @@ impl ModelService {
         }
         // Pay the SHA-256 integrity hash here too, so stop-and-transcribe finds
         // both the context and the verification already warm.
-        if let Some(expected) = self.catalog_sha256_for_path(model_path) {
+        if let Some(expected) = self.bundled_sha256_for_path(model_path) {
             let _ = self.model_integrity_ok_cached(model_path, expected);
         }
         if let Err(err) = self.get_or_load_context(model_path) {
@@ -561,11 +433,13 @@ impl ModelService {
             .unwrap_or_else(|p| p.into_inner());
         self.reset_gpu_preference(model_path);
 
-        if let Some(expected) = self.catalog_sha256_for_path(model_path) {
-            if !self.model_integrity_ok_cached(model_path, expected) {
+        if let Some(expected) = self.bundled_sha256_for_path(model_path) {
+            if !self.model_integrity_ok_cached(model_path, expected)
+                && !self.ensure_whisper_integrity(model_path)
+            {
                 let actual = file_sha256_hex(model_path).unwrap_or_default();
                 return Err(anyhow!(
-                    "Whisper model failed SHA-256 integrity check (expected {expected}, got {actual}). Re-download from Settings."
+                    "Whisper model failed SHA-256 integrity check (expected {expected}, got {actual}). Reinstall the app to restore the bundled model."
                 ));
             }
         } else if !self.model_available(model_path) {
@@ -912,7 +786,34 @@ impl ModelService {
             }
         }
 
+        Self::log_segment_granularity(&segments);
+
         Ok(segments)
+    }
+
+    /// Baseline diagnostic for the segment-coarseness question: how many
+    /// segments Whisper produced and how long they are. Compare against the
+    /// same numbers after enabling token-level timestamps to see whether
+    /// finer segmentation is worth the alignment/rendering churn it costs.
+    fn log_segment_granularity(segments: &[Segment]) {
+        if segments.is_empty() {
+            return;
+        }
+        let durations_ms: Vec<i64> = segments
+            .iter()
+            .map(|s| (s.end_ms - s.start_ms).max(0))
+            .collect();
+        let total_ms: i64 = durations_ms.iter().sum();
+        let avg_ms = total_ms / durations_ms.len() as i64;
+        let min_ms = durations_ms.iter().min().copied().unwrap_or(0);
+        let max_ms = durations_ms.iter().max().copied().unwrap_or(0);
+        tracing::info!(
+            segment_count = segments.len(),
+            avg_segment_ms = avg_ms,
+            min_segment_ms = min_ms,
+            max_segment_ms = max_ms,
+            "ASR segment granularity (baseline: whisper segment-level timestamps)"
+        );
     }
 
     /// Merge dual-source segments chronologically with channel metadata.
@@ -1129,14 +1030,10 @@ mod tests {
     }
 
     #[test]
-    fn model_path_for_known_id_is_stable() {
+    fn default_model_path_is_bundled_filename() {
         let dir = temp_models_dir();
         let service = ModelService::new(dir.clone());
-        assert_eq!(
-            service.model_path_for_id("small-en-q5"),
-            Some(dir.join(SMALL_MODEL_FILENAME))
-        );
-        assert!(service.model_path_for_id("unknown").is_none());
+        assert_eq!(service.default_model_path(), dir.join(SMALL_MODEL_FILENAME));
     }
 
     #[test]
@@ -1153,14 +1050,14 @@ mod tests {
     }
 
     #[test]
-    fn model_downloaded_reflects_disk_state_for_catalog_item() {
+    fn bundled_model_available_reflects_disk_state() {
         let dir = temp_models_dir();
         let service = ModelService::new(dir.clone());
         let small_path = dir.join(SMALL_MODEL_FILENAME);
 
-        assert!(!service.model_downloaded(DEFAULT_MODEL_ID));
+        assert!(!service.bundled_model_available());
         std::fs::write(&small_path, [1]).expect("write small model");
-        assert!(service.model_downloaded(DEFAULT_MODEL_ID));
+        assert!(service.bundled_model_available());
     }
 
     #[test]
@@ -1269,28 +1166,29 @@ mod tests {
     }
 
     #[test]
-    fn vad_model_needs_redownload_when_corrupt() {
+    fn bundled_vad_unavailable_when_corrupt() {
         let dir = temp_models_dir();
         let svc = ModelService::new(dir.clone());
-        assert!(svc.vad_model_needs_redownload());
+        assert!(!svc.bundled_vad_available());
 
         let path = dir.join(VAD_MODEL_FILENAME);
         std::fs::write(&path, b"not a real vad model").unwrap();
         assert!(svc.vad_model_available());
         assert!(!svc.vad_model_integrity_ok());
-        assert!(svc.vad_model_needs_redownload());
-        assert!(svc.vad_path_for_inference().is_none());
+        assert!(!svc.bundled_vad_available());
+        let err = svc.vad_path_for_pcm(32_000).unwrap_err().to_string();
+        assert!(err.contains("integrity check"));
+        assert!(err.contains("Reinstall"));
     }
 
     #[test]
-    fn vad_path_for_pcm_skips_short_clips() {
+    fn vad_path_for_pcm_skips_short_clips_even_when_missing() {
         let dir = temp_models_dir();
-        let svc = ModelService::new(dir.clone());
-        let path = dir.join(VAD_MODEL_FILENAME);
-        // Write bytes that won't match SHA but path exists — integrity fails, so inference path is None.
-        std::fs::write(&path, b"stub").unwrap();
-        assert!(svc.vad_path_for_pcm(16_000).is_none());
-        assert!(svc.vad_path_for_pcm(32_000).is_none());
+        let svc = ModelService::new(dir);
+        assert!(svc.vad_path_for_pcm(16_000).unwrap().is_none());
+        let err = svc.vad_path_for_pcm(32_000).unwrap_err().to_string();
+        assert!(err.contains("missing"));
+        assert!(err.contains("Reinstall"));
     }
 
     #[test]
@@ -1376,10 +1274,11 @@ mod tests {
         let svc = ModelService::new(models_dir);
         let pcm = read_wav_mono_f32(&wav).expect("read scribe mic.wav");
         eprintln!("pcm samples = {}", pcm.len());
+        let vad = svc.vad_path_for_pcm(pcm.len()).expect("resolve VAD for test wav");
         let result = svc.transcribe_pcm_with_progress(
             &model_path,
             &pcm,
-            svc.vad_path_for_pcm(pcm.len()).as_deref(),
+            vad.as_deref(),
             None,
             "test/scribe-wav",
             |_| {},

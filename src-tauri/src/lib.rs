@@ -1,8 +1,11 @@
 mod commands;
 mod controllers;
 mod platform;
-mod services;
-mod types;
+pub mod services;
+pub mod types;
+
+#[cfg(test)]
+mod acl_capabilities_test;
 
 use std::sync::Arc;
 use tauri::{
@@ -565,9 +568,6 @@ pub fn run() {
             }
             let config = services::config::ConfigService::load(data_dir.join("config.json"))?;
             app.manage(Arc::clone(&config));
-            let voice_embedding_store =
-                services::voice_embeddings::VoiceEmbeddingStore::from_keychain();
-            history.set_embedding_store(Arc::clone(&voice_embedding_store));
             {
                 let save_folder = config.get().save_folder;
                 if platform::windows_save_folder_needs_migration(&save_folder) {
@@ -590,82 +590,81 @@ pub fn run() {
 
             let models_dir = data_dir.join("models");
             std::fs::create_dir_all(&models_dir)?;
-            // Seed the bundled models (Small Whisper, VAD, voiceprint ONNX) into the user's
-            // models dir. Silently skipped in dev builds where the resource files aren't
-            // present (run scripts/fetch-bundled-models.sh before a release build).
-            for file_name in [
-                services::model::SMALL_MODEL_FILENAME,
-                services::model::VAD_MODEL_FILENAME,
-                services::voiceprint::VOICEPRINT_MODEL_FILE,
-            ] {
+            let resource_dir = app.path().resource_dir().ok();
+            // Seed / offline-heal bundled models into the writable models dir.
+            // Missing, empty, or hash-mismatch copies are replaced from the
+            // installed app resources when those files have real content (dev
+            // 0-byte placeholders are skipped).
+            //
+            // Large models (Whisper ~181 MB, Sortformer ~469 MB) only get a
+            // missing/empty check here — full SHA-256 runs on first use
+            // (`ensure_model` / whisper load). Debug builds use soft SHA-256;
+            // hashing Sortformer on the main thread was ~30–40s of 100% CPU
+            // before the tray appeared.
+            let seed_targets: &[(&str, &str, bool)] = &[
+                (
+                    services::model::SMALL_MODEL_FILENAME,
+                    services::model::SMALL_MODEL_SHA256,
+                    false, // hash at use-time
+                ),
+                (
+                    services::model::VAD_MODEL_FILENAME,
+                    services::model::VAD_MODEL_SHA256,
+                    true, // tiny — fine to pin every launch
+                ),
+                (
+                    services::diarization::SORTFORMER_MODEL_FILENAME,
+                    services::diarization::SORTFORMER_MODEL_SHA256,
+                    false, // hash at use-time (same reason as Whisper)
+                ),
+            ];
+            for &(file_name, expected_sha, hash_at_startup) in seed_targets {
                 let dest = models_dir.join(file_name);
-                if !dest.exists() {
-                    if let Ok(resource_dir) = app.path().resource_dir() {
-                        let bundled = resource_dir.join(file_name);
-                        // Dev builds ship 0-byte placeholders (Tauri requires the resource
-                        // paths to exist) — only seed real files.
-                        let has_content = std::fs::metadata(&bundled)
-                            .map(|m| m.is_file() && m.len() > 0)
-                            .unwrap_or(false);
-                        if has_content {
-                            let _ = std::fs::copy(&bundled, &dest);
-                        }
-                    }
-                }
-            }
-            let model = services::model::ModelService::new(models_dir);
-            if model.vad_model_needs_redownload() {
-                if model.vad_model_available() && !model.vad_model_integrity_ok() {
-                    tracing::warn!("VAD model failed integrity check — re-downloading");
-                    let _ = std::fs::remove_file(model.vad_model_path());
-                }
-                let model_bg = Arc::clone(&model);
-                let app_bg = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Err(err) = model_bg.download_vad_model(&app_bg).await {
-                        tracing::warn!(error = %err, "startup VAD preparation failed");
-                    }
-                });
-            }
-            let voiceprint = Arc::new(services::voiceprint::VoiceprintService::new(
-                &data_dir
-                    .join("models")
-                    .join(services::voiceprint::VOICEPRINT_MODEL_FILE),
-                &data_dir.join("voiceprints"),
-                config.get().voice_similarity_threshold,
-            )?);
-            voiceprint.set_embedding_store(Arc::clone(&voice_embedding_store));
-            let model_ctrl =
-                controllers::model::ModelController::new(Arc::clone(&model), Arc::clone(&config));
-            // Auto-select the bundled Small model on first run, and migrate configs whose
-            // selection points at a catalog entry that no longer exists (tiny/base/medium/large).
-            {
-                let cfg_snapshot = config.get();
-                let selection_missing = match cfg_snapshot.selected_model_id.as_deref() {
-                    None => true,
-                    Some(id) => model.model_path_for_id(id).is_none(),
+                let needs = if hash_at_startup {
+                    services::bundled_models::dest_needs_bundle_restore(&dest, expected_sha)
+                } else {
+                    !dest.exists()
+                        || std::fs::metadata(&dest)
+                            .map(|m| !m.is_file() || m.len() == 0)
+                            .unwrap_or(true)
                 };
-                if selection_missing && model.model_downloaded(services::model::DEFAULT_MODEL_ID) {
-                    if let Err(err) =
-                        model_ctrl.select_model(services::model::DEFAULT_MODEL_ID.to_string())
-                    {
-                        tracing::warn!(error = %err, "failed to select bundled model at startup");
+                if needs {
+                    if let Some(ref resource_dir) = resource_dir {
+                        let _ = services::bundled_models::ensure_bundled_file(
+                            Some(resource_dir.as_path()),
+                            &dest,
+                            file_name,
+                            expected_sha,
+                        );
                     }
                 }
             }
-            let voiceprint_ctrl = controllers::voiceprint::VoiceprintController::new(
-                Arc::clone(&voiceprint),
-                Arc::clone(&audio),
-                Arc::clone(&config),
-                data_dir.join("voiceprint_clips"),
+            let diarization = services::diarization::DiarizationService::with_resource_dir(
+                models_dir.join(services::diarization::SORTFORMER_MODEL_FILENAME),
+                resource_dir.clone(),
             );
+            app.manage(Arc::clone(&diarization));
+            let model =
+                services::model::ModelService::with_resource_dir(models_dir, resource_dir);
+            let model_ctrl = controllers::model::ModelController::new(Arc::clone(&model));
+            if !model.bundled_model_available() {
+                tracing::warn!(
+                    "bundled Whisper model missing at {}",
+                    model.default_model_path().display()
+                );
+            }
+            if !model.bundled_vad_available() {
+                tracing::warn!(
+                    "bundled VAD model missing or corrupt at {}",
+                    model.vad_model_path().display()
+                );
+            }
             let settings_ctrl = controllers::settings::SettingsController::new(
                 Arc::clone(&config),
                 Arc::clone(&hotkeys),
                 Arc::clone(&output),
                 Arc::clone(&permissions),
                 Arc::clone(&audio),
-                Arc::clone(&voiceprint),
             );
             if let Err(err) = settings_ctrl.rehydrate_hotkeys() {
                 tracing::debug!(error = %err, "hotkey rehydration skipped");
@@ -680,7 +679,7 @@ pub fn run() {
                 Arc::clone(&output),
                 Arc::clone(&history),
                 Arc::clone(&config),
-                Arc::clone(&voiceprint),
+                Arc::clone(&diarization),
                 app.handle().clone(),
             );
 
@@ -698,22 +697,50 @@ pub fn run() {
                 Arc::clone(&output),
                 Arc::clone(&history),
                 Arc::clone(&config),
-                Arc::clone(&voiceprint),
+                Arc::clone(&diarization),
                 app.handle().clone(),
             );
+            let speaker_names = services::speaker_names::SpeakerNameService::load(
+                data_dir.join("speaker_names.json"),
+            );
+            // One-time biometric purge: legacy voiceprint profiles become plain
+            // names, then the files are deleted. Always attempt Keychain key
+            // delete (missing key = success) so a prior partial purge cannot
+            // leave an orphan key. History embeddings vanish via compaction below.
+            {
+                let report =
+                    services::legacy_voice_purge::purge_legacy_voice_data(&data_dir, &speaker_names);
+                if let Err(e) = platform::delete_voice_crypto_key() {
+                    tracing::warn!(error = %e, "could not delete legacy voice encryption key");
+                }
+                if report.names_imported > 0
+                    || report.profiles_dir_removed
+                    || report.clips_dir_removed
+                {
+                    tracing::info!(
+                        names_imported = report.names_imported,
+                        profiles_dir_removed = report.profiles_dir_removed,
+                        clips_dir_removed = report.clips_dir_removed,
+                        "legacy voiceprint data purged"
+                    );
+                }
+            }
             let history_ctrl = controllers::history::HistoryController::new(
                 Arc::clone(&history),
                 Arc::clone(&output),
                 Arc::clone(&config),
+                Arc::clone(&speaker_names),
             );
+            app.manage(Arc::clone(&speaker_names));
+            app.manage(controllers::speaker_names::SpeakerNamesController::new(
+                Arc::clone(&speaker_names),
+            ));
 
             let update = services::update::UpdateService::new();
 
             app.manage(model); // shared model service
-            app.manage(voiceprint); // shared voiceprint service
             app.manage(config); // shared config service
             app.manage(model_ctrl); // model command orchestration
-            app.manage(voiceprint_ctrl); // voiceprint command orchestration
             app.manage(settings_ctrl); // settings orchestration
             app.manage(ctrl); // for scribe commands
             app.manage(Arc::clone(&dictate_ctrl)); // for dictate commands
@@ -721,7 +748,7 @@ pub fn run() {
             app.manage(history_ctrl); // for history commands
             app.manage(update);
 
-            dictate_ctrl.start_key_listener();
+            dictate_ctrl.ensure_key_listener();
 
             if is_first_run {
                 open_onboarding_window(app.handle())?;
@@ -820,22 +847,6 @@ pub fn run() {
             commands::scribe::scribe_switch_mic,
             commands::scribe::scribe_toggle_speaker_capture,
             commands::model::model_vad_status,
-            commands::voiceprint::voiceprint_list_profiles,
-            commands::voiceprint::voiceprint_list_profile_names,
-            commands::voiceprint::voiceprint_evaluate_session_evidence,
-            commands::voiceprint::voiceprint_apply_session_evidence,
-            commands::voiceprint::voiceprint_delete_profile,
-            commands::voiceprint::voiceprint_delete_all_profiles,
-            commands::voiceprint::voiceprint_rename_profile,
-            commands::voiceprint::voiceprint_model_status,
-            commands::voiceprint::voiceprint_start_clip,
-            commands::voiceprint::voiceprint_stop_clip,
-            commands::voiceprint::voiceprint_commit_clip,
-            commands::voiceprint::voiceprint_discard_clip,
-            commands::voiceprint::session_capture_start,
-            commands::voiceprint::session_capture_status,
-            commands::voiceprint::session_capture_stop,
-            commands::voiceprint::session_capture_cancel,
             commands::settings::settings_get_output_path,
             commands::settings::settings_set_output_path,
             commands::settings::settings_get_hotkeys,
@@ -858,6 +869,8 @@ pub fn run() {
             commands::settings::settings_permissions_open,
             commands::settings::settings_permissions_request,
             commands::settings::settings_onboarding_status,
+            commands::settings::settings_get_onboarding_step,
+            commands::settings::settings_set_onboarding_step,
             commands::settings::settings_complete_onboarding,
             commands::settings::settings_reset_onboarding,
             commands::settings::settings_show_window,
@@ -874,14 +887,6 @@ pub fn run() {
             commands::settings::settings_set_save_transcripts_as_markdown,
             commands::settings::settings_get_user_display_name,
             commands::settings::settings_set_user_display_name,
-            commands::settings::settings_get_voice_similarity_threshold,
-            commands::settings::settings_set_voice_similarity_threshold,
-            commands::settings::settings_get_voice_learning_enabled,
-            commands::settings::settings_set_voice_learning_enabled,
-            commands::settings::settings_get_voice_embeddings_retention,
-            commands::settings::settings_set_voice_embeddings_retention,
-            commands::settings::settings_get_voice_embeddings_encryption_required,
-            commands::settings::settings_set_voice_embeddings_encryption_required,
             commands::dictate::dictate_cancel,
             commands::dictate::dictate_dismiss,
             commands::dictate::dictate_get_history,
@@ -901,10 +906,10 @@ pub fn run() {
             commands::history::note_is_empty,
             commands::history::note_has_metadata,
             commands::history::note_set_tags,
-            commands::history::note_rename_session_speaker,
-            commands::history::note_correct_chunk_label,
-            commands::history::note_remove_voice_embeddings,
-            commands::history::history_remove_all_voice_embeddings,
+            commands::history::note_relabel_speaker,
+            commands::speaker_names::speaker_names_list,
+            commands::speaker_names::speaker_name_save,
+            commands::speaker_names::speaker_name_delete,
             commands::history::note_attach_transcript,
             commands::history::note_render_transcript_html,
             commands::transcribe::transcribe_inspect_inputs,

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-settings-show-onboarding-window"
+description = "Enables the settings_show_onboarding_window command without any pre-configured scope."
+commands.allow = ["settings_show_onboarding_window"]
+
+[[permission]]
+identifier = "deny-settings-show-onboarding-window"
+description = "Denies the settings_show_onboarding_window command without any pre-configured scope."
+commands.deny = ["settings_show_onboarding_window"]

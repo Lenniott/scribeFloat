@@ -3,7 +3,7 @@
 //! Pure module: no I/O, no locks. `PitchAnalyzer` is fed 16 kHz mono samples by
 //! the audio writer thread via `AudioService`'s PCM tap; `detect_cuts` runs once
 //! at stop. A cut says "the voice changed here" — spans between cuts are NOT
-//! speaker identities (identity is `VoiceprintService`'s job).
+//! speaker identities (anonymous slots come from Sortformer diarization).
 //!
 //! Ported from the validated offline prototype (`pitch_speaker_cuts` CLI).
 //! Benchmark on its test audio: caught 4/5 real changes, avg error 0.31 s,

@@ -1,8 +1,7 @@
 # ADR-0011: Voiceprint Engine — Binary Speaker Verification over Full Diarization
 
-## Status
-
-Accepted
+**Status:** Superseded
+**Wayfinder:** Superseded by [ADR-0014](0014-anonymous-diarization-replaces-voiceprint-identity.md) — historical record only; do not reimplement.
 
 ## Context
 

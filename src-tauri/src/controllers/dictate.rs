@@ -1,5 +1,7 @@
 use crate::services::audio::read_wav_mono_f32;
-use crate::services::transcription::{transcribe_capture, CaptureAudio, TranscribeOptions};
+use crate::services::transcription::{
+    run_post_capture_transcription, CaptureAudio, CaptureProfile, PostCaptureInput,
+};
 use crate::services::{
     audio::{AudioService, MicSession, WHISPER_SAMPLE_RATE},
     config::ConfigService,
@@ -7,7 +9,7 @@ use crate::services::{
     model::ModelService,
     output::OutputService,
 };
-use crate::types::{Config, DictateState, DictateStateEvent, HistoryRecord, ProcessingStage};
+use crate::types::{DictateState, DictateStateEvent, HistoryRecord, ProcessingStage};
 use anyhow::{anyhow, Result};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -255,6 +257,8 @@ pub struct DictateController {
     dismiss_generation: Arc<AtomicU64>,
     /// Shared with the global key listener — kept in sync when dictate starts/stops from the UI.
     key_tracker: Arc<Mutex<DictateKeyTracker>>,
+    /// True once the CGEventTap / rdev listener thread has been spawned (idempotent gate).
+    key_listener_started: AtomicBool,
 }
 
 impl DictateController {
@@ -285,6 +289,7 @@ impl DictateController {
             paste_once: AtomicBool::new(false),
             dismiss_generation: Arc::new(AtomicU64::new(0)),
             key_tracker: Arc::new(Mutex::new(DictateKeyTracker::new())),
+            key_listener_started: AtomicBool::new(false),
         })
     }
 
@@ -340,15 +345,39 @@ impl DictateController {
         open_result
     }
 
-    /// Spawn the global key listener on a background thread.
-    /// Must be called once after the controller is created.
-    pub fn start_key_listener(self: Arc<Self>) {
+    /// Start the Dictate modifier listener if Input Monitoring is already granted.
+    ///
+    /// On macOS, creating a listen-only `CGEventTap` before the user has granted
+    /// Input Monitoring triggers the system “Keystroke Receiving” dialog — often
+    /// under the onboarding window. Defer until `CGPreflightListenEventAccess` is
+    /// true (startup for returning users, or after Permissions grant).
+    /// Idempotent: safe to call from status polls and after permission requests.
+    pub fn ensure_key_listener(self: &Arc<Self>) {
+        #[cfg(target_os = "macos")]
+        {
+            if !crate::platform::permissions_impl::permission_granted("input_monitoring") {
+                tracing::debug!(
+                    "dictate key listener deferred — Input Monitoring not granted yet"
+                );
+                return;
+            }
+        }
+
+        if self
+            .key_listener_started
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return;
+        }
+
         let tracker = Arc::clone(&self.key_tracker);
+        let this = Arc::clone(self);
 
         // Timeout thread: advances timed states so the state machine resets
         // to Idle when tap windows expire without a second keypress.
         {
-            let ctrl = Arc::clone(&self);
+            let ctrl = Arc::clone(&this);
             let tracker_clone = Arc::clone(&tracker);
             std::thread::spawn(move || loop {
                 std::thread::sleep(std::time::Duration::from_millis(50));
@@ -371,7 +400,7 @@ impl DictateController {
                     KeyEventKind::Up => t.on_key_up(Instant::now()),
                 }
             };
-            Self::dispatch_action(Arc::clone(&self), action);
+            Self::dispatch_action(Arc::clone(&this), action);
         });
     }
 
@@ -567,15 +596,12 @@ impl DictateController {
         Ok(())
     }
 
-    /// Bring the Dictate model fully to ready while the user is speaking, so
-    /// stop-and-transcribe starts as a cache hit. Dictate resolves its own (usually
-    /// smaller, faster) model via `preload_path_for_dictate` — never the Record
-    /// model — and skips the voiceprint extractor because Dictate does no speaker
-    /// analysis. The model service's per-path load lock makes a Stop that lands
-    /// mid-preload wait for this load rather than duplicate it.
+    /// Bring the bundled Whisper model fully to ready while the user is speaking,
+    /// so stop-and-transcribe starts as a cache hit. Dictate uses the same model
+    /// as Record and starts no diarization. The model service's per-path load lock
+    /// makes a Stop that lands mid-preload wait for this load rather than duplicate it.
     fn spawn_record_start_preload(&self) {
-        let cfg = self.config.get();
-        let path = preload_path_for_dictate(&cfg, &self.model);
+        let path = self.model.default_model_path();
         let model = Arc::clone(&self.model);
         tauri::async_runtime::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
@@ -798,12 +824,13 @@ impl DictateController {
             return Ok(false);
         }
 
-        let model_path = resolve_dictate_model_path(&config, &self.model);
+        let model_path = self.model.default_model_path();
 
         if !self.model.model_available(&model_path) {
             let salvaged = self.salvage_dictate_wav(&wav_path);
             self.set_error_state(
-                "No Whisper model available. Download one in Settings → Models.".to_string(),
+                "No Whisper model available. Reinstall the app to restore the bundled model."
+                    .to_string(),
                 salvaged,
             );
             return Ok(false);
@@ -822,21 +849,23 @@ impl DictateController {
                 )
                 .ok();
         };
-        let segments = match transcribe_capture(
+        let result = match run_post_capture_transcription(
             &self.model,
-            CaptureAudio {
-                mic_pcm_16k: &pcm_16k,
-                speaker_pcm_16k: None,
-            },
-            TranscribeOptions {
+            PostCaptureInput {
+                profile: CaptureProfile::Dictate,
+                audio: CaptureAudio {
+                    mic_pcm_16k: &pcm_16k,
+                    speaker_pcm_16k: None,
+                },
                 model_path: &model_path,
-                source: "dictate",
+                speaker_evidence: None,
+                speaker_change_cuts: &[],
                 abort: None,
                 on_model_loaded: None,
             },
             progress_reporter,
         ) {
-            Ok(segments) => segments,
+            Ok(result) => result,
             Err(e) => {
                 if abort_flag.load(Ordering::SeqCst) {
                     self.delete_dictate_wav(&wav_path);
@@ -848,6 +877,12 @@ impl DictateController {
                 return Ok(false);
             }
         };
+        let crate::services::transcription::TranscriptResult {
+            segments,
+            dictate_text,
+            model_label,
+            ..
+        } = result;
 
         if abort_flag.load(Ordering::SeqCst) {
             self.delete_dictate_wav(&wav_path);
@@ -861,7 +896,7 @@ impl DictateController {
             return Ok(false);
         }
 
-        let text = self.output.format_dictate_text(&segments);
+        let text = dictate_text.unwrap_or_else(|| self.output.format_dictate_text(&segments));
 
         if abort_flag.load(Ordering::SeqCst) {
             self.delete_dictate_wav(&wav_path);
@@ -892,11 +927,7 @@ impl DictateController {
             return Ok(false);
         }
 
-        let model_name = model_path
-            .file_stem()
-            .map(|s| s.to_string_lossy().replace("ggml-", ""))
-            .unwrap_or_else(|| "model".to_string());
-        let record = HistoryRecord::from_dictate(&segments, &text, model_name);
+        let record = HistoryRecord::from_dictate(&segments, &text, model_label);
         let history_write_failed = if let Err(e) = self.history.append(&config.save_folder, record)
         {
             tracing::warn!(error = %e, "dictate failed to write history");
@@ -1155,30 +1186,6 @@ fn dictate_temp_wav_path(app: &AppHandle) -> Result<PathBuf> {
     Ok(dir.join(format!("{}.wav", uuid::Uuid::new_v4())))
 }
 
-fn resolve_dictate_model_path(config: &Config, model: &ModelService) -> PathBuf {
-    if let Some(id) = &config.selected_model_id {
-        if let Some(path) = model.model_path_for_id(id) {
-            if model.model_available(&path) {
-                return path;
-            }
-        }
-    }
-
-    if let Some(path) = &config.scribe_model_path {
-        let path = PathBuf::from(path);
-        if model.model_available(&path) {
-            return path;
-        }
-    }
-
-    model.default_model_path()
-}
-
-/// Path of the model that Dictate will use on stop — same resolution as transcription.
-fn preload_path_for_dictate(config: &Config, model: &ModelService) -> PathBuf {
-    resolve_dictate_model_path(config, model)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1188,63 +1195,6 @@ mod tests {
     // Using addition rather than real sleeps keeps the tests instant and deterministic.
     fn ms_ago(ms: u64) -> Instant {
         Instant::now() - Duration::from_millis(ms)
-    }
-
-    // ── Preload eligibility ──────────────────────────────────────────────────
-
-    fn fake_model_service() -> Arc<ModelService> {
-        let dir =
-            std::env::temp_dir().join(format!("liscribe-dictate-test-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).expect("create model dir");
-        ModelService::new(dir)
-    }
-
-    fn write_fake_model(model: &ModelService, id: &str) -> PathBuf {
-        let path = model.model_path_for_id(id).unwrap();
-        std::fs::write(&path, [1, 2, 3]).expect("write model");
-        path
-    }
-
-    #[test]
-    fn dictate_preload_path_uses_selected_model_id() {
-        let model = fake_model_service();
-        let small_path = write_fake_model(model.as_ref(), "small-en-q5");
-        let config = Config {
-            selected_model_id: Some("small-en-q5".to_string()),
-            ..Config::default()
-        };
-        let path = preload_path_for_dictate(&config, model.as_ref());
-        assert_eq!(path, small_path);
-    }
-
-    #[test]
-    fn dictate_preload_path_falls_back_to_scribe_model_path() {
-        let model = fake_model_service();
-        let custom_path = model.default_model_path().with_file_name("custom.bin");
-        std::fs::write(&custom_path, [1, 2, 3]).expect("write model");
-        let config = Config {
-            scribe_model_path: Some(custom_path.to_string_lossy().to_string()),
-            ..Config::default()
-        };
-
-        let path = preload_path_for_dictate(&config, model.as_ref());
-
-        assert_eq!(path, custom_path);
-    }
-
-    #[test]
-    fn dictate_preload_path_ignores_selection_pointing_at_removed_catalog_entry() {
-        let model = fake_model_service();
-        let small_path = write_fake_model(model.as_ref(), "small-en-q5");
-        let config = Config {
-            selected_model_id: Some("tiny-en-q5".to_string()),
-            scribe_model_path: Some(small_path.to_string_lossy().to_string()),
-            ..Config::default()
-        };
-
-        let path = preload_path_for_dictate(&config, model.as_ref());
-
-        assert_eq!(path, small_path);
     }
 
     // ── First press behaviour ────────────────────────────────────────────────

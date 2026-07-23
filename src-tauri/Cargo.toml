@@ -4,6 +4,7 @@ version = "0.2.195"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
+default-run = "ScribeFloat"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -13,6 +14,13 @@ edition = "2021"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "scribefloat_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+# Must not be named `scribefloat` — on macOS case-insensitive volumes that collides
+# with the GUI binary `ScribeFloat` (package default-run), so the CLI overwrites the
+# app executable and the .app "opens" then immediately exits (prints CLI help).
+[[bin]]
+name = "scribefloat-cli"
+path = "src/bin/scribefloat.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -36,6 +44,7 @@ num_cpus = "1.16"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 pulldown-cmark = "0.12"
+ammonia = "4"
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -45,10 +54,10 @@ enigo = "0.6"
 symphonia = { version = "0.5", features = ["aac", "flac", "isomp4", "mp3", "ogg", "pcm", "vorbis", "wav"] }
 regex = "1"
 sha2 = "0.10"
-sherpa-onnx = "1"
+# Sortformer streaming diarization only (ASR stays whisper-rs); shares ort with fastembed.
+parakeet-rs = { version = "0.3.6", features = ["sortformer"] }
 pitch-detection = "0.3"
-base64 = "0.22"
-ring = "0.17"
+fastembed = "5.17"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Used directly for sysctlbyname in lib::log_system_info; pinned loose to match the

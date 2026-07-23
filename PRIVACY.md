@@ -1,6 +1,6 @@
 # Data Privacy & Security Policy — ScribeFloat
 
-**Version 1.0 | Last updated: 2026-05-05**
+**Version 1.1 | Last updated: 2026-07-19**
 
 This document is written for **security officers, IT auditors, and compliance teams** evaluating whether ScribeFloat can be deployed in their environment. It is intentionally comprehensive and direct.
 
@@ -16,12 +16,12 @@ This document is written for **security officers, IT auditors, and compliance te
 | Does the app collect telemetry or analytics? | **No** |
 | Does the app phone home for updates? | **No — but "Check for updates" in Settings → Help makes a single opt-in request to `api.github.com` if the user clicks the button** |
 | Does the app require an always-on internet connection? | **No** |
-| Is an internet connection ever required? | **Yes — once to download a Whisper transcription model, and optionally once to download the Silero VAD model (~2 MB). Both are user-initiated. Optionally when the user manually clicks "Check for updates".** |
+| Is an internet connection ever required? | **No — not for transcription. Optionally when the user manually clicks "Check for updates".** |
 | Where is all user data stored? | **Exclusively on the user's local device** |
-| What AI model runs the transcription? | **OpenAI Whisper (ggml format), running locally** |
-| Does the AI model phone home? | **No — inference is fully offline** |
+| What AI model runs the transcription? | **OpenAI Whisper Small (ggml format), bundled with the app and running locally** |
+| Does the AI model phone home? | **No — inference is fully offline; models are never downloaded at runtime** |
 | What OS permissions are required? | **Microphone (all platforms), Accessibility (macOS only for paste), Input Monitoring (macOS only for hotkey)** |
-| Can the app be used fully offline after setup? | **Yes** |
+| Can the app be used fully offline after install? | **Yes** |
 
 ---
 
@@ -29,31 +29,9 @@ This document is written for **security officers, IT auditors, and compliance te
 
 ### 1.1 Outbound requests
 
-The application makes at most two types of outbound network requests.
+Transcription models (Whisper Small, Silero VAD, and the voiceprint ONNX) **ship inside the application bundle**. They are seeded into the local app-data `models/` directory on first launch. The app never downloads models at runtime — not on launch, not from Settings, and not from Hugging Face.
 
-**Request 1 — Model download**
-
-**HTTP GETs to `huggingface.co`**, each initiated only when the user explicitly clicks a download button in Settings → Models.
-
-There are two distinct model types:
-
-| Model | Source | Size | Purpose |
-|-------|--------|------|---------|
-| Whisper transcription model | `huggingface.co/ggml-org/` | 75 MB – 1.5 GB depending on variant | Speech-to-text inference (Scribe, Dictate, Transcribe) |
-| Silero VAD model | `huggingface.co/ggml-org/whisper-vad` | ~2 MB | Voice activity detection — skips silence during transcription |
-
-Both downloads share the same attributes:
-
-| Attribute | Detail |
-|-----------|--------|
-| Destination | `https://huggingface.co` |
-| When it occurs | Only on explicit user action. Never automatically on launch. |
-| Account required | No |
-| What is sent to Hugging Face | An HTTP GET request. No user data, audio, or identifiers are sent in the request body. Standard HTTP headers only. |
-| Protocol | HTTPS with certificate verification via `rustls-tls` |
-| After download | Model files are stored locally in the app-data `models/` directory. No further contact with Hugging Face occurs. |
-
-**Request 2 — Update check (opt-in, user-initiated only)**
+The only outbound network request the application can make is an **opt-in update check**:
 
 | Attribute | Detail |
 |-----------|--------|
@@ -72,8 +50,9 @@ The application makes **no automatic network connections** of any kind. There is
 - Crash reporting service
 - Licence validation server
 - Background update check (the update check in Settings → Help is manual and user-initiated only)
+- Runtime model download (including Voice Activity Detection)
 - WebSocket or long-lived connection
-- DNS resolution for any domain other than `huggingface.co` and (optionally) `api.github.com` on explicit user action
+- DNS resolution for any domain other than (optionally) `api.github.com` on explicit user action
 
 The Tauri WebView's Content Security Policy enforces this at the browser layer:
 
@@ -92,8 +71,9 @@ This CSP prevents the frontend from making any external HTTP requests — the on
 To verify no unexpected outbound connections:
 
 1. Run the app with a packet capture tool (e.g. Wireshark, Little Snitch, Windows Firewall log)
-2. Use all features: open Scribe, record, transcribe, open Dictate, use Settings
-3. Confirm the only DNS queries and TCP connections are to `huggingface.co` and only when you explicitly initiate a model download
+2. Use all features: open Record, record, Upload an audio file, use Dictate, open Settings — **without** clicking "Check for updates"
+3. Confirm there are **no** DNS queries or TCP connections to external hosts (including Hugging Face)
+4. Optionally click **"Check for updates"** once and confirm the only connection is to `api.github.com`
 
 ---
 
@@ -185,7 +165,6 @@ OS app-data directories:
 
 - `save_folder` — path to transcript output directory
 - `open_scribe_hotkey`, `dictate_hotkey` — hotkey strings (stored in config; not currently editable via the Settings UI)
-- `selected_model_id`, `dictate_model_id`, `scribe_model_path` — local model file paths
 - `include_timestamps` — whether transcripts include timestamps
 - `keep_wav` — whether WAV recordings are retained after transcription (default: deleted)
 - `scribe_capture_speaker` — whether speaker capture is enabled
@@ -225,7 +204,7 @@ All libraries run in-process with no network communication of their own.
 |---------|---------|---------|----------------|
 | [whisper-rs](https://github.com/tazz4843/whisper-rs) | 0.13 | Whisper model inference (wraps whisper.cpp) | None |
 | [cpal](https://github.com/RustAudio/cpal) | 0.15 | Cross-platform audio capture | None |
-| [reqwest](https://github.com/seanmonstar/reqwest) | 0.12 | HTTP download (model) and update metadata fetch | `huggingface.co` during model download; `api.github.com` when user manually checks for updates |
+| [reqwest](https://github.com/seanmonstar/reqwest) | 0.12 | Update metadata fetch only | `api.github.com` when user manually checks for updates |
 | [hound](https://github.com/ruud-v-a/hound) | 3.5 | WAV file read/write | None |
 | [symphonia](https://github.com/pdeljanov/Symphonia) | 0.5 | Decode MP3, M4A, FLAC for Transcribe | None |
 | [tauri](https://tauri.app) | 2 | App framework (Rust + OS WebView) | None at runtime |
@@ -241,26 +220,25 @@ No analytics SDKs, advertising SDKs, or crash reporting libraries are included.
 
 ## 6. AI model provenance
 
-### Whisper transcription models
+### Whisper transcription model
 
-OpenAI Whisper weights converted to ggml format, distributed via Hugging Face (`huggingface.co/ggml-org/`). They are:
+The app ships a single Whisper Small English ggml file (`ggml-small.en-q5_1.bin`). Upstream weights are published on Hugging Face for packaging; **the installed app never contacts Hugging Face**. The file is:
 
-- Publicly available and widely audited
-- Static inference artifacts — they do not update themselves or make network calls
-- Stored as local binary files; they do not execute with elevated privileges
+- Bundled in the release binary and seeded into the local app-data `models/` directory
+- Verified with a pinned SHA-256 before inference; missing or corrupt copies fail with a clear offline/reinstall error
+- A static inference artifact — it does not update itself or make network calls
 - Run inside the app process via [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (via the whisper-rs wrapper)
 
-The model files do not contain user data. They are model weights produced by training on a public speech dataset.
+The model file does not contain user data. It is model weights produced by training on a public speech dataset.
 
 ### Silero VAD model
 
-The optional Voice Activity Detection model (`ggml-silero-v6.2.0.bin`) is distributed via `huggingface.co/ggml-org/whisper-vad`. It is:
+The Voice Activity Detection model (`ggml-silero-v6.2.0.bin`) is also bundled and seeded the same way. It is:
 
 - A ggml-format version of [Silero VAD](https://github.com/snakers4/silero-vad), an open-source voice activity detector
-- Used by whisper.cpp to skip silence between speech segments, improving transcription speed and accuracy
-- ~2 MB; downloaded only if the user clicks "Install" in Settings → Models
-- Loaded and run entirely in-process alongside the Whisper model; makes no network calls
-- Optional — if not downloaded, transcription runs without VAD (silence is not filtered)
+- Used by whisper.cpp to skip silence between speech segments on clips long enough for VAD
+- ~2 MB; required for normal-length transcription (missing/corrupt → offline/reinstall error; never re-fetched at runtime)
+- Loaded and run entirely in-process alongside Whisper; makes no network calls
 
 ---
 
@@ -311,7 +289,7 @@ There are no cloud components. The entire audit surface is the endpoint. There i
 
 ### UK NCSC / ISO 27001
 
-The application's local-only data processing model means it does not introduce a third-party cloud data-sharing risk. The model download from Hugging Face is the only external data dependency and involves no transmission of organisational data.
+The application's local-only data processing model means it does not introduce a third-party cloud data-sharing risk. Bundled models involve no transmission of organisational data. The only optional external contact is the user-initiated update check to GitHub.
 
 ---
 

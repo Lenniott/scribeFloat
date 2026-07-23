@@ -71,8 +71,9 @@
       borderLeft: "1.2px solid var(--color-fg)",
     },
     ".cm-gutters": { display: "none" },
+    // Focus-ring suppression lives in app.css (".cm-editor :focus-visible")
+    // so it also covers release builds; keep the theme free of duplicates.
     "&.cm-focused": { outline: "none", boxShadow: "none" },
-    ".cm-content:focus": { outline: "none", boxShadow: "none" },
   });
 
   const updateListener = EditorView.updateListener.of((update) => {

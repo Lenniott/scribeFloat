@@ -1,6 +1,6 @@
 # scribefloat — Agent Guide
 
-> Read CONTEXT.md first if you haven't already. Then classify the session below and load only what that mode needs.
+> Read `CONTEXT.md` first if you haven't already. Then classify the session below and load only what that mode needs.
 
 ---
 
@@ -11,39 +11,26 @@ Read the user's opening message and pick the mode. If it's ambiguous, ask:
 
 | Mode | Signs | Load |
 |------|-------|------|
-| **Exploring** | "how does X work", "what should we do about Y", "help me understand", writing an exploration or ADR | `CONTEXT.md` + `docs/architecture.md` + `docs/explorations/` |
-| **Building** | "implement X", "fix Y", "add Z", writing code | `CONTEXT.md` + relevant docs from the pointer table below |
-| **Managing** | stories, backlog grooming, priorities, ADRs | `CONTEXT.md` + `docs/backlog/` + `docs/adr/` |
+| **Exploring** | "how does X work", "what should we do about Y", "help me understand", writing an ADR | `CONTEXT.md` + relevant `docs/adr/` + code under the area in question |
+| **Building** | "implement X", "fix Y", "add Z", writing code | `CONTEXT.md` + relevant `docs/adr/` + code; design skill before Tailwind |
+| **Managing** | priorities, Known issues, ADRs, wayfinder maps | `CONTEXT.md` + `docs/adr/` + `docs/agents/` + `.scratch/<effort>/` |
+
+There is no separate architecture / action-flows / engineering / backlog / explorations tree. Prefer code + ADRs over inventing replacement essays.
 
 ---
 
-## Step 2 — Load what you need (building sessions)
+## Canonical docs (keep-set)
 
-Pull only the docs relevant to the task. Do not load everything.
+| Path | Role |
+|------|------|
+| `CONTEXT.md` | Domain glossary — read first |
+| `PRIVACY.md` | Privacy claims agents must not contradict |
+| `docs/adr/` | Binding and aspirational decisions |
+| `docs/agents/` | Tracker, triage labels, domain-doc consumption |
+| `AGENTS.md` | This file — session index, build, skills |
+| `src-tauri/permissions/` | Per-window IPC allowlists — see `permissions/README.md` when adding `#[tauri::command]` |
 
-```
-docs/architecture.md                    ← System diagrams (C4), component maps, module map
-docs/engineering/layer-rules.md         ← Adding a feature or IPC command; layer ownership rules
-docs/engineering/history-storage.md     ← Note jsonl vs sidecar persistence, autosave
-docs/engineering/async-rules.md         ← Controller threading, state machines, Whisper paths
-docs/engineering/platform-rules.md      ← macOS threading, audio drain, paste behaviour
-docs/engineering/debugging.md           ← Bug investigation table, Whisper debugging
-docs/engineering/config-rules.md        ← Adding or changing a Config field
-docs/action-flows.md                    ← Step-by-step flows for each workflow
-docs/components.md                      ← UI component catalogue
-docs/scribe-ui-review.md                ← Before touching Scribe screens or navigation
-docs/history-ui-review.md              ← Before touching History screens or components
-docs/backlog/active/                    ← Active stories
-```
-
----
-
-## Building code of conduct
-
-- If you change behaviour described in a doc, update that doc in the same session.
-- If you add a new layer, service, or platform rule, add it to the relevant `docs/engineering/` file.
-- If you add a new UI component or screen, update `docs/components.md`.
-- If you change a user-facing flow, update `docs/action-flows.md`.
+Working memory for an effort lives under `.scratch/<effort-slug>/` (maps, tickets, Known issues). See `docs/agents/issue-tracker.md`.
 
 ---
 
@@ -101,7 +88,7 @@ without hardware — use it only when the test genuinely requires a device.
 - `cargo clippy -- -D warnings` passes
 - `cargo test -p ScribeFloat` passes
 - If you changed a `#[tauri::command]` signature, verify the JS caller uses matching camelCase argument names
-- If you changed `Config`, verify a file missing the new field still loads (see `docs/engineering/config-rules.md`)
+- If you changed `Config`, verify a file missing the new field still loads (serde defaults / `#[serde(default)]`)
 - If you changed `platform/`, verify the other platform compiles: `cargo check --target x86_64-pc-windows-msvc`
 
 ---
@@ -110,12 +97,30 @@ without hardware — use it only when the test genuinely requires a device.
 
 After any session involving design decisions, architectural choices, or non-obvious implementation choices:
 
-- Check whether anything belongs in `docs/backlog/active/` (`/new-story`) or `docs/adr/` (`/new-adr`)
+- Binding decisions → `docs/adr/` (new file + index line)
+- Effort work / niggles → `.scratch/<effort>/` (tickets or `KNOWN-ISSUES.md`)
 - If you have gone many exchanges or made decisions without writing either, **stop and ask before wrapping up**
-- Any exploration in `docs/explorations/active/` not yet `status: captured` should either be linked to a story/ADR or moved to `docs/explorations/stale/`
+
+Full forward process (merge-blocker vs park, thin-doc rules, public tag as separate effort) is owned by the map ticket *Write the forward working method*.
 
 ---
 
 ## Out of scope
 
 Do not build without explicit instruction: Linux, mobile, cloud sync/accounts, pause/resume recording, webhook output, auto-escalation from Dictate to Scribe.
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Local markdown under `.scratch/<feature>/` (no GitHub Issues; PRs are not a triage surface). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.

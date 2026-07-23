@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scribe-toggle-speaker-capture"
+description = "Enables the scribe_toggle_speaker_capture command without any pre-configured scope."
+commands.allow = ["scribe_toggle_speaker_capture"]
+
+[[permission]]
+identifier = "deny-scribe-toggle-speaker-capture"
+description = "Denies the scribe_toggle_speaker_capture command without any pre-configured scope."
+commands.deny = ["scribe_toggle_speaker_capture"]

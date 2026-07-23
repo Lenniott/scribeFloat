@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scribe-cancel"
+description = "Enables the scribe_cancel command without any pre-configured scope."
+commands.allow = ["scribe_cancel"]
+
+[[permission]]
+identifier = "deny-scribe-cancel"
+description = "Denies the scribe_cancel command without any pre-configured scope."
+commands.deny = ["scribe_cancel"]

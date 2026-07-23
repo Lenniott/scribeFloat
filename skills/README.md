@@ -30,8 +30,8 @@ Agent instructions live in **`AGENTS.md`** (canonical). **`CLAUDE.md`** is a Cla
 | `ui-enforcement/` | Typography, color, layout/scroll rules for frontend |
 | `ui-taxonomy/` | UI taxonomy reference |
 | `commit-curator/` | Git commit / branch hygiene workflows |
-| `new-story/` | Create backlog stories |
-| `new-adr/` | Create architecture decision records |
+
+Do **not** recreate `new-story/` or `new-adr/` — retired. Capture effort work in `.scratch/` per `docs/agents/issue-tracker.md`; ADRs are written under `docs/adr/` without a skill.
 
 ## Related (not synced by build.sh)
 

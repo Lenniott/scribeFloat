@@ -745,7 +745,7 @@
           <NavItem label="Home" icon={Home} active onclick={() => {}} />
           <NavItem label="Notes" icon={FileText} onclick={() => {}} />
           <NavItem label="General" icon={Settings} active onclick={() => {}} />
-          <NavItem label="Float" icon={Home} disabled badge="Coming soon" />
+          <NavItem label="Reports" icon={Home} disabled badge="Unavailable" />
           <NavItem label="Settings" icon={Settings} accent onclick={() => {}} />
         </div>
       </div>

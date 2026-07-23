@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-dictate-cancel"
+description = "Enables the dictate_cancel command without any pre-configured scope."
+commands.allow = ["dictate_cancel"]
+
+[[permission]]
+identifier = "deny-dictate-cancel"
+description = "Denies the dictate_cancel command without any pre-configured scope."
+commands.deny = ["dictate_cancel"]

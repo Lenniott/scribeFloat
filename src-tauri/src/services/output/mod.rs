@@ -76,15 +76,7 @@ impl OutputService {
 
     /// Join segments, clean Whisper artifacts, and return the final text ready for pasting.
     pub fn format_dictate_text(&self, segments: &[Segment]) -> String {
-        let joined = segments
-            .iter()
-            .map(|s| cleanup::cleanup_text(s.text.trim()))
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ");
-        dedup::dedup_repeated_block(&dedup::dedup_consecutive_phrases(
-            &dedup::dedup_exact_halves(&joined),
-        ))
+        format_dictate_segments(segments)
     }
 
     /// Render segments as markdown and write. Verifies file is non-empty before returning Ok.
@@ -256,6 +248,19 @@ impl OutputService {
     ) -> Result<Vec<PathBuf>> {
         legacy::scan_and_salvage_dictate_temp_wavs(temp_dir, save_folder)
     }
+}
+
+/// Join segments, clean Whisper artifacts, and return the final text ready for Dictate paste.
+pub fn format_dictate_segments(segments: &[Segment]) -> String {
+    let joined = segments
+        .iter()
+        .map(|s| cleanup::cleanup_text(s.text.trim()))
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    dedup::dedup_repeated_block(&dedup::dedup_consecutive_phrases(
+        &dedup::dedup_exact_halves(&joined),
+    ))
 }
 
 #[cfg(test)]

@@ -39,7 +39,7 @@
 			</p>
 			{#if vocabulary.length === 0}
 				<p class="sf-body-md text-fg-muted">
-					No vocabulary yet — approve a Float result to populate this layer.
+					No vocabulary yet.
 				</p>
 			{:else}
 				<CheckboxGroup>

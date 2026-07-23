@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scribe-start"
+description = "Enables the scribe_start command without any pre-configured scope."
+commands.allow = ["scribe_start"]
+
+[[permission]]
+identifier = "deny-scribe-start"
+description = "Denies the scribe_start command without any pre-configured scope."
+commands.deny = ["scribe_start"]

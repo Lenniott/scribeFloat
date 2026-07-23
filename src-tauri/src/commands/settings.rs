@@ -1,5 +1,6 @@
+use crate::controllers::dictate::DictateController;
 use crate::controllers::settings::SettingsController;
-use crate::types::{AppError, PermissionStatus, ThemeMode, VoiceEmbeddingsRetention};
+use crate::types::{AppError, PermissionStatus, ThemeMode};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
@@ -143,11 +144,24 @@ pub fn settings_set_theme_mode(
 #[tauri::command]
 pub async fn settings_permissions_status(
     ctrl: State<'_, Arc<SettingsController>>,
+    dictate: State<'_, Arc<DictateController>>,
 ) -> Result<Vec<PermissionStatus>, AppError> {
     let ctrl = Arc::clone(&ctrl);
-    tokio::task::spawn_blocking(move || ctrl.permission_statuses())
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))
+    let dictate = Arc::clone(&dictate);
+    tokio::task::spawn_blocking(move || {
+        let statuses = ctrl.permission_statuses();
+        // If the user granted Input Monitoring in System Settings without a
+        // fresh CGRequest, start the Dictate tap once preflight says yes.
+        if statuses
+            .iter()
+            .any(|s| s.kind == "input_monitoring" && s.granted)
+        {
+            dictate.ensure_key_listener();
+        }
+        statuses
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))
 }
 
 #[tauri::command]
@@ -161,13 +175,21 @@ pub fn settings_permissions_open(
 #[tauri::command]
 pub async fn settings_permissions_request(
     ctrl: State<'_, Arc<SettingsController>>,
+    dictate: State<'_, Arc<DictateController>>,
     kind: String,
 ) -> Result<(), AppError> {
     let ctrl = Arc::clone(&ctrl);
-    tokio::task::spawn_blocking(move || ctrl.request_permission(&kind))
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?
-        .map_err(AppError::from)
+    let dictate = Arc::clone(&dictate);
+    tokio::task::spawn_blocking(move || {
+        ctrl.request_permission(&kind)?;
+        if kind == "input_monitoring" {
+            dictate.ensure_key_listener();
+        }
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -175,6 +197,21 @@ pub fn settings_onboarding_status(
     ctrl: State<'_, Arc<SettingsController>>,
 ) -> Result<bool, AppError> {
     Ok(ctrl.is_onboarding_complete())
+}
+
+#[tauri::command]
+pub fn settings_get_onboarding_step(
+    ctrl: State<'_, Arc<SettingsController>>,
+) -> Result<u8, AppError> {
+    Ok(ctrl.get_onboarding_step())
+}
+
+#[tauri::command]
+pub fn settings_set_onboarding_step(
+    ctrl: State<'_, Arc<SettingsController>>,
+    step: u8,
+) -> Result<(), AppError> {
+    ctrl.set_onboarding_step(step).map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -289,66 +326,3 @@ pub fn settings_set_user_display_name(
     ctrl.set_user_display_name(name).map_err(AppError::from)
 }
 
-#[tauri::command]
-pub fn settings_get_voice_similarity_threshold(
-    ctrl: State<'_, Arc<SettingsController>>,
-) -> Result<f32, AppError> {
-    Ok(ctrl.get_voice_similarity_threshold())
-}
-
-#[tauri::command]
-pub fn settings_set_voice_similarity_threshold(
-    ctrl: State<'_, Arc<SettingsController>>,
-    threshold: f32,
-) -> Result<(), AppError> {
-    ctrl.set_voice_similarity_threshold(threshold)
-        .map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn settings_get_voice_learning_enabled(
-    ctrl: State<'_, Arc<SettingsController>>,
-) -> Result<bool, AppError> {
-    Ok(ctrl.get_voice_learning_enabled())
-}
-
-#[tauri::command]
-pub fn settings_set_voice_learning_enabled(
-    ctrl: State<'_, Arc<SettingsController>>,
-    enabled: bool,
-) -> Result<(), AppError> {
-    ctrl.set_voice_learning_enabled(enabled)
-        .map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn settings_get_voice_embeddings_retention(
-    ctrl: State<'_, Arc<SettingsController>>,
-) -> Result<VoiceEmbeddingsRetention, AppError> {
-    Ok(ctrl.get_voice_embeddings_retention())
-}
-
-#[tauri::command]
-pub fn settings_set_voice_embeddings_retention(
-    ctrl: State<'_, Arc<SettingsController>>,
-    retention: String,
-) -> Result<(), AppError> {
-    ctrl.set_voice_embeddings_retention(retention)
-        .map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn settings_get_voice_embeddings_encryption_required(
-    ctrl: State<'_, Arc<SettingsController>>,
-) -> Result<bool, AppError> {
-    Ok(ctrl.get_voice_embeddings_encryption_required())
-}
-
-#[tauri::command]
-pub fn settings_set_voice_embeddings_encryption_required(
-    ctrl: State<'_, Arc<SettingsController>>,
-    required: bool,
-) -> Result<(), AppError> {
-    ctrl.set_voice_embeddings_encryption_required(required)
-        .map_err(AppError::from)
-}

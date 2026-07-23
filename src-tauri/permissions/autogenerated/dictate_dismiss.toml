@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-dictate-dismiss"
+description = "Enables the dictate_dismiss command without any pre-configured scope."
+commands.allow = ["dictate_dismiss"]
+
+[[permission]]
+identifier = "deny-dictate-dismiss"
+description = "Denies the dictate_dismiss command without any pre-configured scope."
+commands.deny = ["dictate_dismiss"]

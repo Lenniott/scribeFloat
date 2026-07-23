@@ -1,32 +1,29 @@
 # Docs index
 
-Human-readable documentation. Load only what your session needs — see `AGENTS.md` for the session-type reading lists.
+Thin keep-set. Load only what your session needs — see `AGENTS.md`.
 
 ---
 
-## Folders
+## Keep
 
-| Folder / File | What's here | When to read |
-|---|---|---|
-| [../CONTEXT.md](../CONTEXT.md) | Domain model, app overview, reading order | Always — first |
-| [architecture.md](architecture.md) | C4 diagrams, component maps, module map | Exploring the system; frontend work |
-| [action-flows.md](action-flows.md) | Step-by-step user flows (source of truth) | Before changing any user-facing flow |
-| [components.md](components.md) | UI component catalogue | Frontend building sessions |
-| [engineering/](engineering/) | Focused rules for building: layers, async, platform, debugging, config | Building sessions — load the specific file, not the whole folder |
-| [scribe-ui-review.md](scribe-ui-review.md) | Scribe screen regression rules | Before touching Scribe screens or navigation |
-| [history-ui-review.md](history-ui-review.md) | History screen regression rules | Before touching History screens or components |
-| [backlog/](backlog/) | Active stories (one file each) | Managing sessions; checking scope |
-| [adr/](adr/) | Architecture Decision Records | Exploring sessions; before making architectural choices |
-| [explorations/](explorations/) | Pre-decision explorations and intent docs | Exploring sessions |
-| [features/](features/) | Per-feature implementation notes | Building a specific feature |
-| [audits/](audits/) | Typography and colour audit inventories | UI enforcement sessions |
+| Path | What's here | When to read |
+|------|-------------|--------------|
+| [../CONTEXT.md](../CONTEXT.md) | Domain glossary | Always — first |
+| [../PRIVACY.md](../PRIVACY.md) | Privacy claims | Before network / data behaviour changes |
+| [adr/](adr/) | Architecture Decision Records | Exploring; before architectural choices |
+| [agents/](agents/) | Issue tracker, triage labels, domain-doc rules | Managing / wayfinding sessions |
+| [assets/](assets/) | Static assets referenced by docs | As needed |
+
+---
+
+## Cut (do not recreate without an ADR + human OK)
+
+Deleted from the spine on purpose: `architecture.md`, `action-flows.md`, `components.md`, `engineering/`, `backlog/`, `explorations/`, `audits/`, `features/`, UI review essays. Prefer code + ADRs + `.scratch/` over bringing those trees back.
 
 ---
 
 ## Update rules
 
-- Change a user-facing flow → update `action-flows.md`
-- Change a UI component → update `components.md`
-- Change layer ownership, call chain, or platform rules → update the relevant file in `engineering/`
-- Make an architectural decision → write an ADR (`/new-adr`)
-- Identify new work → write a story (`/new-story`)
+- Make an architectural decision → add a file under `adr/` and update `adr/README.md`
+- Effort work / Known issues → `.scratch/<effort-slug>/` (see `agents/issue-tracker.md`)
+- Do not invent replacement architecture essays to fill the cut

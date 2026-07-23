@@ -33,7 +33,6 @@
 		home: '/',
 		notes: '/notes',
 		upload: '/upload',
-		float: '/float',
 		settings: '/settings',
 	};
 
@@ -41,14 +40,12 @@
 		home: 'Home',
 		notes: 'Notes',
 		upload: 'Upload',
-		float: 'Float',
 		settings: 'Settings',
 	};
 
 	function pathnameToRoute(pathname: string): AppRoute {
 		if (pathname.startsWith('/notes')) return 'notes';
 		if (pathname.startsWith('/upload')) return 'upload';
-		if (pathname.startsWith('/float')) return 'float';
 		if (pathname.startsWith('/settings')) return 'settings';
 		return 'home';
 	}

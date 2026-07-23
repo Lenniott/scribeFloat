@@ -15,43 +15,16 @@ function detailFixture(): Detail {
 	return {
 		notes: [],
 		speaker_blocks: [
-			{
-				label: 'Speaker A',
-				start_ms: 0,
-				end_ms: 10_000,
-				text: 'first block',
-				chunk_id: 'chunk-0001',
-			},
-			{
-				label: 'Speaker B',
-				start_ms: 10_000,
-				end_ms: 20_000,
-				text: 'second block',
-				chunk_id: 'chunk-0002',
-			},
-		],
-		speaker_chunks: [
-			{ id: 'chunk-0001', label: 'Speaker A', corrections: [] },
-			{ id: 'chunk-0002', label: 'Speaker B', corrections: [] },
-		],
-		session_speakers: [
-			{ session_speaker_id: 'speaker-1', label: 'Speaker A' },
-			{ session_speaker_id: 'speaker-2', label: 'Speaker B' },
+			{ label: 'Speaker 1', start_ms: 0, end_ms: 10_000, text: 'first block' },
+			{ label: 'Speaker 2', start_ms: 10_000, end_ms: 20_000, text: 'second block' },
 		],
 	};
 }
 
-function correctedDetail(): Detail {
+function relabeledDetail(): Detail {
 	const detail = detailFixture();
 	const blocks = detail.speaker_blocks as Array<Record<string, unknown>>;
 	blocks[1].label = 'Alice';
-	const chunks = detail.speaker_chunks as Array<Record<string, unknown>>;
-	chunks[1].label = 'Alice';
-	chunks[1].corrections = [
-		{ from_label: 'Speaker B', to_label: 'Alice', corrected_at_ms: 1, auto: false },
-	];
-	const speakers = detail.session_speakers as Array<Record<string, unknown>>;
-	speakers[1].label = 'Alice';
 	return detail;
 }
 
@@ -68,7 +41,7 @@ function stubInvoke(overrides: Record<string, unknown | ((args: unknown) => unkn
 				return detailFixture();
 			case 'settings_get_input_labels':
 				return ['Mic', 'Speaker'];
-			case 'voiceprint_list_profiles':
+			case 'speaker_names_list':
 				return [{ slug: 'alice', name: 'Alice' }];
 			case 'settings_get_user_display_name':
 				return 'You';
@@ -86,103 +59,119 @@ async function renderPanel() {
 	return result;
 }
 
-describe('TranscriptPanel speaker correction', () => {
+describe('TranscriptPanel speaker relabeling', () => {
 	beforeEach(() => {
 		mockedInvoke.mockReset();
 		stubInvoke();
 	});
 
-	it('opens a picker with profiles, other session speakers, and Other', async () => {
+	it('opens a picker with saved names, other block labels, and Other', async () => {
 		await renderPanel();
 
-		await fireEvent.click(screen.getByRole('button', { name: '[Speaker B]' }));
+		await fireEvent.click(screen.getByRole('button', { name: '[Speaker 2]' }));
 
 		expect(screen.getByText('Who is speaking?')).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: 'Alice' })).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: 'Speaker A' })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Speaker 1' })).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: 'Other' })).toBeInTheDocument();
-		// The block's current label is not offered as a correction target.
-		expect(screen.queryByRole('button', { name: 'Speaker B' })).not.toBeInTheDocument();
+		// The block's current label is not offered as a target.
+		expect(screen.queryByRole('button', { name: 'Speaker 2' })).not.toBeInTheDocument();
 	});
 
-	it('applies a correction and re-renders labels from the updated record', async () => {
-		stubInvoke({ note_correct_chunk_label: correctedDetail() });
+	it('relabels via note_relabel_speaker and re-renders from the returned record', async () => {
+		stubInvoke({ note_relabel_speaker: relabeledDetail() });
 		await renderPanel();
 
-		await fireEvent.click(screen.getByRole('button', { name: '[Speaker B]' }));
+		await fireEvent.click(screen.getByRole('button', { name: '[Speaker 2]' }));
 		await fireEvent.click(screen.getByRole('button', { name: 'Alice' }));
 
 		await waitFor(() => {
-			expect(mockedInvoke).toHaveBeenCalledWith('note_correct_chunk_label', {
+			expect(mockedInvoke).toHaveBeenCalledWith('note_relabel_speaker', {
 				id: 'note-1',
-				chunkId: 'chunk-0002',
-				label: 'Alice',
+				fromLabel: 'Speaker 2',
+				toLabel: 'Alice',
 			});
 		});
 		await waitFor(() => {
 			expect(screen.getByRole('button', { name: '[Alice]' })).toBeInTheDocument();
 		});
-		expect(screen.getByText('corrected')).toBeInTheDocument();
 	});
 
-	it('marks cascade relabels as auto-corrected', async () => {
-		const detail = correctedDetail();
-		const chunks = detail.speaker_chunks as Array<Record<string, unknown>>;
-		chunks[0].corrections = [
-			{ from_label: 'Speaker A', to_label: 'Alice', corrected_at_ms: 2, auto: true },
-		];
-		stubInvoke({ note_correct_chunk_label: detail });
+	it('relabels to a typed new name', async () => {
+		stubInvoke({ note_relabel_speaker: relabeledDetail() });
 		await renderPanel();
 
-		await fireEvent.click(screen.getByRole('button', { name: '[Speaker B]' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Alice' }));
+		await fireEvent.click(screen.getByRole('button', { name: '[Speaker 2]' }));
+		const field = screen.getByLabelText('New speaker');
+		await fireEvent.input(field, { target: { value: 'Ben' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
 		await waitFor(() => {
-			expect(screen.getByText('auto-corrected')).toBeInTheDocument();
-		});
-	});
-
-	it('offers to improve the voiceprint when evidence passes the gates', async () => {
-		stubInvoke({
-			note_correct_chunk_label: correctedDetail(),
-			voiceprint_evaluate_session_evidence: { eligible: true, reasons: [] },
-		});
-		await renderPanel();
-
-		await fireEvent.click(screen.getByRole('button', { name: '[Speaker B]' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Alice' }));
-
-		await waitFor(() => {
-			expect(
-				screen.getByText("Improve Alice's voiceprint from this recording?"),
-			).toBeInTheDocument();
-		});
-
-		await fireEvent.click(screen.getByRole('button', { name: 'Add' }));
-		await waitFor(() => {
-			expect(mockedInvoke).toHaveBeenCalledWith('voiceprint_apply_session_evidence', {
-				noteId: 'note-1',
-				sessionSpeakerId: 'speaker-2',
-				profileName: 'Alice',
+			expect(mockedInvoke).toHaveBeenCalledWith('note_relabel_speaker', {
+				id: 'note-1',
+				fromLabel: 'Speaker 2',
+				toLabel: 'Ben',
 			});
 		});
 	});
 
-	it('stays quiet when the learning evaluation is rejected or unavailable', async () => {
+	it('never calls voiceprint or learning IPC', async () => {
+		stubInvoke({ note_relabel_speaker: relabeledDetail() });
+		await renderPanel();
+
+		await fireEvent.click(screen.getByRole('button', { name: '[Speaker 2]' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Alice' }));
+		await waitFor(() => {
+			expect(screen.getByRole('button', { name: '[Alice]' })).toBeInTheDocument();
+		});
+
+		const commands = mockedInvoke.mock.calls.map(([cmd]) => cmd);
+		expect(commands.some((cmd) => String(cmd).startsWith('voiceprint_'))).toBe(false);
+	});
+
+	it('does not offer relabeling on channel-tier (In/Out) blocks', async () => {
 		stubInvoke({
-			note_correct_chunk_label: correctedDetail(),
-			voiceprint_evaluate_session_evidence: () => {
-				throw new Error('voice learning is disabled in settings');
+			history_get_detail: {
+				notes: [],
+				speaker_blocks: [
+					{ label: 'In', start_ms: 0, end_ms: 5_000, text: 'me talking' },
+					{ label: 'Out', start_ms: 5_000, end_ms: 9_000, text: 'them talking' },
+				],
 			},
 		});
-		await renderPanel();
-
-		await fireEvent.click(screen.getByRole('button', { name: '[Speaker B]' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Alice' }));
-
+		render(TranscriptPanel, { props: { noteId: 'note-1' } });
 		await waitFor(() => {
-			expect(screen.getByRole('button', { name: '[Alice]' })).toBeInTheDocument();
+			expect(screen.getByText('me talking')).toBeInTheDocument();
 		});
-		expect(screen.queryByText(/Improve/)).not.toBeInTheDocument();
+
+		expect(screen.queryByRole('button', { name: '[Mic]' })).not.toBeInTheDocument();
+		expect(screen.getByText('[Mic]')).toBeInTheDocument();
+		expect(screen.getByText('[Speaker]')).toBeInTheDocument();
+	});
+
+	it('still shows correction badges on legacy chunk-based notes', async () => {
+		stubInvoke({
+			history_get_detail: {
+				notes: [],
+				speaker_blocks: [
+					{ label: 'Alice', start_ms: 0, end_ms: 10_000, text: 'legacy block', chunk_id: 'chunk-0001' },
+				],
+				speaker_chunks: [
+					{
+						id: 'chunk-0001',
+						label: 'Alice',
+						corrections: [
+							{ from_label: 'Speaker A', to_label: 'Alice', corrected_at_ms: 1, auto: false },
+						],
+					},
+				],
+			},
+		});
+		render(TranscriptPanel, { props: { noteId: 'note-1' } });
+		await waitFor(() => {
+			expect(screen.getByText('legacy block')).toBeInTheDocument();
+		});
+
+		expect(screen.getByText('corrected')).toBeInTheDocument();
 	});
 });

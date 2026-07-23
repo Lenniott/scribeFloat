@@ -17,14 +17,12 @@ pub fn transcribe_start(
     ctrl: State<'_, Arc<TranscribeController>>,
     input_paths: Vec<String>,
     output_folder: Option<String>,
-    model_id: Option<String>,
     include_timestamps: Option<bool>,
 ) -> Result<(), AppError> {
     validate_input_paths(&input_paths)?;
     let request = TranscribeStartRequest {
         input_paths,
         output_folder,
-        model_id,
         include_timestamps,
     };
     TranscribeController::start(Arc::clone(&ctrl), request).map_err(AppError::from)

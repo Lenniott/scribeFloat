@@ -1,22 +1,21 @@
 use crate::services::analysis::{detect_cuts, CutConfig, PitchAnalyzer};
 use crate::services::audio::{read_wav_mono_f32, WHISPER_SAMPLE_RATE};
-use crate::services::speaker_blocks::build_speaker_blocks;
+use crate::services::diarization::{DiarizationService, LiveDiarization};
 use crate::services::transcription::{
-    analyze_capture_speakers, transcribe_capture, CaptureAudio, TranscribeOptions,
+    run_post_capture_transcription, CaptureAudio, CaptureProfile, PostCaptureInput,
+    SpeakerEvidenceInput, TranscriptResult,
 };
 use crate::services::{
     audio::{AudioService, MicSession},
     config::ConfigService,
-    history::{strip_voice_embeddings, HistoryService},
+    history::HistoryService,
     model::ModelService,
     output::{speaker_pcm_has_signal, OutputService, SPEAKER_SILENCE_THRESHOLD},
-    voiceprint::VoiceprintService,
 };
 use crate::types::{
-    Config, HistoryRecord, Note, ProcessingStage, RecoverySessionInfo, ScribeState,
-    ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest, SessionManifestState,
-    SessionSpeaker, SpeakerBlock, SpeakerChangeCut, SpeakerChunk, TranscriptAttachment,
-    VoiceEmbeddingsRetention,
+    Config, DiarizationRange, HistoryRecord, Note, ProcessingStage, RecoverySessionInfo,
+    ScribeState, ScribeStateEvent, ScribeTranscriptEntry, Segment, SessionManifest,
+    SessionManifestState, SpeakerBlock, SpeakerChangeCut, TranscriptAttachment,
 };
 use anyhow::{anyhow, Result};
 use serde_json::json;
@@ -67,17 +66,21 @@ struct ActiveSession {
     /// Fed by the mic writer thread's PCM tap; harvested after `stop_and_finalize`
     /// joins the writer (so the post-stop lock is uncontended by construction).
     pitch_analyzer: Arc<Mutex<PitchAnalyzer>>,
+    /// Live Sortformer worker fed by the same tap; `finish()`/`cancel()` only
+    /// after `stop_and_finalize` joins the writer (which drops the tap's channel
+    /// sender — joining earlier would deadlock the worker's recv loop).
+    live_diarization: Option<LiveDiarization>,
 }
 
 /// Intermediate state produced by prepare_audio and consumed by run_transcription / write_outputs.
 struct PreparedAudio {
     session_dir: PathBuf,
     wav_path: PathBuf,
-    pcm_16k: Vec<f32>,
     speaker_pcm_16k: Option<Vec<f32>>,
     speaker_change_cuts: Vec<SpeakerChangeCut>,
-    speaker_chunks: Vec<SpeakerChunk>,
-    session_speakers: Vec<SessionSpeaker>,
+    /// Anonymous speaker spans from the live diarization worker; `None` when the
+    /// model is missing or the worker failed (plain transcript).
+    diarization_ranges: Option<Vec<DiarizationRange>>,
 }
 
 enum ProgressMessage {
@@ -112,18 +115,19 @@ pub struct ScribeController {
     output: Arc<OutputService>,
     history: Arc<HistoryService>,
     config: Arc<ConfigService>,
-    voiceprint: Arc<VoiceprintService>,
+    diarization: Arc<DiarizationService>,
     app: AppHandle,
 }
 
 impl ScribeController {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         audio: Arc<AudioService>,
         model: Arc<ModelService>,
         output: Arc<OutputService>,
         history: Arc<HistoryService>,
         config: Arc<ConfigService>,
-        voiceprint: Arc<VoiceprintService>,
+        diarization: Arc<DiarizationService>,
         app: AppHandle,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -143,7 +147,7 @@ impl ScribeController {
             output,
             history,
             config,
-            voiceprint,
+            diarization,
             app,
         })
     }
@@ -176,6 +180,11 @@ impl ScribeController {
         };
         let pitch_analyzer = Arc::new(Mutex::new(PitchAnalyzer::new()));
         let analyzer_tap = Arc::clone(&pitch_analyzer);
+        // Started for every Record: if the capture turns out dual-source the
+        // ranges are simply ignored (channel labels win), and if loopback fails
+        // to start we still have live speaker evidence for the mic track.
+        let live_diarization = this.diarization.start_live_session();
+        let diar_tap = live_diarization.as_ref().map(|live| live.tap());
         let mic = this.audio.start_mic(
             preferred_mic.as_deref(),
             true,
@@ -187,6 +196,9 @@ impl ScribeController {
             Some(Arc::new(move |pcm_16k: &[f32]| {
                 if let Ok(mut analyzer) = analyzer_tap.lock() {
                     analyzer.feed(pcm_16k);
+                }
+                if let Some(tap) = &diar_tap {
+                    tap(pcm_16k);
                 }
             })),
         )?;
@@ -249,6 +261,7 @@ impl ScribeController {
             started_at: Instant::now(),
             started_at_iso: started_at.clone(),
             pitch_analyzer,
+            live_diarization,
         });
         inner.notes.clear();
         this.emit_state(&inner);
@@ -273,7 +286,7 @@ impl ScribeController {
             None,
             Vec::new(),
         )?;
-        this.spawn_record_start_preload(&cfg);
+        this.spawn_record_start_preload();
         Ok(())
     }
 
@@ -400,21 +413,17 @@ impl ScribeController {
         );
     }
 
-    /// Bring the Record model and the voiceprint extractor fully to ready while the
-    /// user is still speaking, so stop-and-transcribe starts as a cache hit instead
-    /// of a frozen "Loading model". Safe against stop-and-transcribe: the model
-    /// service's per-path load lock makes a Stop that lands mid-preload wait for
-    /// this load rather than duplicate it.
-    fn spawn_record_start_preload(&self, cfg: &Config) {
-        let path = preload_path_for_config(cfg, &self.model);
+    /// Bring the Record model fully to ready while the user is still speaking, so
+    /// stop-and-transcribe starts as a cache hit instead of a frozen "Loading
+    /// model". Safe against stop-and-transcribe: the model service's per-path
+    /// load lock makes a Stop that lands mid-preload wait for this load rather
+    /// than duplicate it.
+    fn spawn_record_start_preload(&self) {
+        let path = self.model.default_model_path();
         let model = Arc::clone(&self.model);
-        let voiceprint = Arc::clone(&self.voiceprint);
         tauri::async_runtime::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
                 model.preload_context(&path);
-                if let Err(err) = voiceprint.preload_extractor() {
-                    tracing::warn!(error = %err, "voiceprint extractor preload failed");
-                }
             })
             .await;
         });
@@ -453,11 +462,16 @@ impl ScribeController {
                 speaker_accum,
                 previous_output_device,
                 session_dir,
+                live_diarization,
                 ..
             } = session;
             let _ = mic
                 .stop_and_finalize()
                 .map_err(|e| tracing::debug!(error = %e, "cancel finalize mic"));
+            // Writer is joined (tap sender dropped) — safe to join the worker.
+            if let Some(live) = live_diarization {
+                live.cancel();
+            }
             let _ = finalize_speaker_segments(speaker_accum);
             self.restore_output_device(previous_output_device.as_deref());
             self.emit_capture_levels_idle();
@@ -492,11 +506,16 @@ impl ScribeController {
             previous_output_device,
             session_dir,
             pitch_analyzer,
+            live_diarization,
             ..
         } = session;
         // mic.wav was streamed to disk during capture; finalize and we're done. Speaker
         // segments aren't kept by save-recording-only (the original behavior).
         let wav_path = mic.stop_and_finalize()?;
+        // No transcript in a WAV-only save, so speaker ranges have no use.
+        if let Some(live) = live_diarization {
+            live.cancel();
+        }
         for path in finalize_speaker_segments(speaker_accum) {
             let _ = self.output.delete_wav(&path);
         }
@@ -664,7 +683,7 @@ impl ScribeController {
     ) -> Result<()> {
         let config = self.config.get();
 
-        let model_path = resolve_model_path(&config, &self.model);
+        let model_path = self.model.default_model_path();
         if !self.model.model_available(&model_path) {
             self.clear_transcription_tracking();
             self.transition(ScribeState::NoModel);
@@ -689,8 +708,8 @@ impl ScribeController {
             return Ok(());
         }
 
-        let segments = match self.run_transcription(&model_path, &prepared, &abort_flag) {
-            Ok(segments) => segments,
+        let result = match self.run_transcription(&model_path, &prepared, &abort_flag) {
+            Ok(result) => result,
             Err(e) => {
                 // An abort interrupting `full()` can surface as an Err; treat that as a clean
                 // stop rather than a transcription error.
@@ -715,10 +734,10 @@ impl ScribeController {
             return Ok(());
         }
 
-        let speaker_blocks = self.build_chunk_speaker_blocks(&segments, &mut prepared, &config);
+        prepared.speaker_change_cuts = result.speaker_change_cuts.clone();
         let (history_record_id, transcript_path) = match self.write_outputs(
-            &segments,
-            &speaker_blocks,
+            &result.segments,
+            &result.speaker_blocks,
             &notes,
             title,
             &model_path,
@@ -769,6 +788,7 @@ impl ScribeController {
             previous_output_device,
             session_dir,
             pitch_analyzer,
+            live_diarization,
             ..
         } = session;
 
@@ -782,13 +802,17 @@ impl ScribeController {
         let speaker_capture_enabled = !speaker_accum.segments.is_empty();
 
         let wav_path = mic.stop_and_finalize()?;
+        // Writer thread is joined, so its tap (a channel sender clone) is
+        // dropped — the worker's final flush can complete. Do not reorder
+        // before stop_and_finalize: finish() would deadlock waiting for the
+        // channel to close.
+        let diarization_ranges = live_diarization.and_then(|live| live.finish());
         self.restore_output_device(previous_output_device.as_deref());
         self.emit_capture_levels_idle();
 
         // Writer thread is joined; the analyzer lock is uncontended from here on.
         let speaker_change_cuts = self.harvest_audio_analysis(&session_dir, &pitch_analyzer);
 
-        let pcm_16k = read_wav_mono_f32(&wav_path)?;
         self.lock().transcription_wav_path = Some(wav_path.clone());
 
         let speaker_wav_names: Vec<String> = speaker_accum
@@ -841,11 +865,9 @@ impl ScribeController {
         Ok(PreparedAudio {
             session_dir,
             wav_path,
-            pcm_16k,
             speaker_pcm_16k,
             speaker_change_cuts,
-            speaker_chunks: Vec::new(),
-            session_speakers: Vec::new(),
+            diarization_ranges,
         })
     }
 
@@ -885,7 +907,7 @@ impl ScribeController {
         model_path: &Path,
         prepared: &PreparedAudio,
         abort_flag: &Arc<AtomicBool>,
-    ) -> Result<Vec<Segment>> {
+    ) -> Result<TranscriptResult> {
         let (progress_tx, progress_rx) = mpsc::channel::<ProgressMessage>();
         let progress_app = self.app.clone();
         let progress_thread = std::thread::spawn(move || {
@@ -933,15 +955,20 @@ impl ScribeController {
                 tx.send(ProgressMessage::Progress(p)).ok();
             }
         };
-        let segments = transcribe_capture(
+        let result = run_post_capture_transcription(
             &self.model,
-            CaptureAudio {
-                mic_pcm_16k: &pcm_16k,
-                speaker_pcm_16k: prepared.speaker_pcm_16k.as_deref(),
-            },
-            TranscribeOptions {
+            PostCaptureInput {
+                profile: CaptureProfile::Record,
+                audio: CaptureAudio {
+                    mic_pcm_16k: &pcm_16k,
+                    speaker_pcm_16k: prepared.speaker_pcm_16k.as_deref(),
+                },
                 model_path,
-                source: "scribe",
+                speaker_evidence: prepared
+                    .diarization_ranges
+                    .as_deref()
+                    .map(SpeakerEvidenceInput::LiveRanges),
+                speaker_change_cuts: &prepared.speaker_change_cuts,
                 abort: Some(Arc::clone(abort_flag)),
                 on_model_loaded: Some(Box::new(on_model_loaded)),
             },
@@ -950,57 +977,7 @@ impl ScribeController {
 
         progress_tx.send(ProgressMessage::Finished).ok();
         progress_thread.join().ok();
-        segments
-    }
-
-    fn label_speaker_blocks(
-        &self,
-        segments: &[Segment],
-        prepared: &PreparedAudio,
-        config: &Config,
-    ) -> Vec<SpeakerBlock> {
-        let dual_source = prepared.speaker_pcm_16k.is_some();
-        match build_speaker_blocks(
-            segments,
-            &prepared.pcm_16k,
-            WHISPER_SAMPLE_RATE,
-            &self.voiceprint,
-            config.voice_similarity_threshold,
-            dual_source,
-        ) {
-            Ok(blocks) => blocks,
-            Err(err) => {
-                tracing::warn!(error = %err, "speaker labelling skipped");
-                Vec::new()
-            }
-        }
-    }
-
-    fn build_chunk_speaker_blocks(
-        &self,
-        segments: &[Segment],
-        prepared: &mut PreparedAudio,
-        config: &Config,
-    ) -> Vec<SpeakerBlock> {
-        if prepared.speaker_pcm_16k.is_some() {
-            return self.label_speaker_blocks(segments, prepared, config);
-        }
-        let evidence = analyze_capture_speakers(
-            &prepared.pcm_16k,
-            WHISPER_SAMPLE_RATE,
-            &prepared.speaker_change_cuts,
-            &self.voiceprint,
-            config.voice_similarity_threshold,
-            segments,
-        );
-        prepared.speaker_chunks = evidence.speaker_chunks;
-        prepared.session_speakers = evidence.session_speakers;
-        let blocks = evidence.speaker_blocks;
-        if blocks.iter().any(|block| block.label != "Other") {
-            blocks
-        } else {
-            self.label_speaker_blocks(segments, prepared, config)
-        }
+        result
     }
 
     /// Write the transcript file, persist the history record, and optionally delete WAVs.
@@ -1096,11 +1073,6 @@ impl ScribeController {
         let mut record = record;
         record.speaker_blocks = speaker_blocks.to_vec();
         record.speaker_change_cuts = prepared.speaker_change_cuts.clone();
-        record.speaker_chunks = prepared.speaker_chunks.clone();
-        record.session_speakers = prepared.session_speakers.clone();
-        if config.voice_embeddings_retention == VoiceEmbeddingsRetention::DeleteAfterTranscript {
-            strip_voice_embeddings(&mut record);
-        }
 
         let attach_note_id = self.lock().attach_note_id.take();
         let history_record_id = if attach_note_id.is_some() {
@@ -1108,8 +1080,8 @@ impl ScribeController {
                 segments: segments.to_vec(),
                 speaker_blocks: speaker_blocks.to_vec(),
                 speaker_change_cuts: prepared.speaker_change_cuts.clone(),
-                speaker_chunks: record.speaker_chunks.clone(),
-                session_speakers: record.session_speakers.clone(),
+                speaker_chunks: Vec::new(),
+                session_speakers: Vec::new(),
                 notes: notes.to_vec(),
                 model: model_name,
                 speaker_capture,
@@ -1554,27 +1526,9 @@ fn speaker_manifest_wav_names(session_dir: &Path, accum: &SpeakerAccumulator) ->
     names
 }
 
-fn resolve_model_path(config: &Config, model: &ModelService) -> PathBuf {
-    if let Some(p) = &config.scribe_model_path {
-        PathBuf::from(p)
-    } else if let Some(model_id) = &config.selected_model_id {
-        model
-            .model_path_for_id(model_id)
-            .unwrap_or_else(|| model.default_model_path())
-    } else {
-        model.default_model_path()
-    }
-}
-
-/// Path of the model that Scribe will use on stop — same resolution as transcription.
-fn preload_path_for_config(config: &Config, model: &ModelService) -> PathBuf {
-    resolve_model_path(config, model)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::model::SMALL_MODEL_FILENAME;
     use hound::{SampleFormat, WavSpec, WavWriter};
     use std::path::PathBuf;
 
@@ -1611,21 +1565,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_model_path_prefers_explicit_path() {
-        let models_dir =
-            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
-        let model = ModelService::new(models_dir.clone());
-        let config = Config {
-            scribe_model_path: Some("/tmp/custom-model.bin".to_string()),
-            selected_model_id: Some("tiny-en-q5".to_string()),
-            ..Config::default()
-        };
-
-        let chosen = resolve_model_path(&config, model.as_ref());
-        assert_eq!(chosen, PathBuf::from("/tmp/custom-model.bin"));
-    }
-
-    #[test]
     fn speaker_manifest_wav_names_lists_segments_and_active() {
         let dir = std::env::temp_dir().join(format!("speaker-manifest-{}", uuid::Uuid::new_v4()));
         let mut accum = SpeakerAccumulator::new();
@@ -1636,20 +1575,6 @@ mod tests {
         accum.active = None;
         let names = speaker_manifest_wav_names(&dir, &accum);
         assert_eq!(names, vec!["speaker_seg_0.wav".to_string()]);
-    }
-
-    #[test]
-    fn resolve_model_path_uses_selected_model_id_when_present() {
-        let models_dir =
-            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
-        let model = ModelService::new(models_dir.clone());
-        let config = Config {
-            selected_model_id: Some("small-en-q5".to_string()),
-            ..Config::default()
-        };
-
-        let chosen = resolve_model_path(&config, model.as_ref());
-        assert_eq!(chosen, models_dir.join(SMALL_MODEL_FILENAME));
     }
 
     #[test]
@@ -1671,55 +1596,6 @@ mod tests {
                 "start should be allowed from {state:?}"
             );
         }
-    }
-
-    #[test]
-    fn preload_path_uses_custom_scribe_model_path() {
-        let models_dir =
-            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
-        let model = ModelService::new(models_dir);
-        let config = Config {
-            scribe_model_path: Some("/tmp/custom.bin".to_string()),
-            selected_model_id: Some("tiny-en-q5".to_string()),
-            ..Config::default()
-        };
-        assert_eq!(
-            preload_path_for_config(&config, model.as_ref()),
-            PathBuf::from("/tmp/custom.bin")
-        );
-    }
-
-    #[test]
-    fn preload_path_returns_catalog_path_for_bundled_model() {
-        let models_dir =
-            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
-        let model = ModelService::new(models_dir.clone());
-        let config = Config {
-            selected_model_id: Some("small-en-q5".to_string()),
-            ..Config::default()
-        };
-        let p = preload_path_for_config(&config, model.as_ref());
-        assert_eq!(
-            p,
-            model
-                .model_path_for_id("small-en-q5")
-                .expect("catalog path")
-        );
-        assert!(p.starts_with(&models_dir), "preload path under models dir");
-    }
-
-    #[test]
-    fn resolve_model_path_falls_back_to_default_when_unknown_selected_id() {
-        let models_dir =
-            std::env::temp_dir().join(format!("liscribe-test-models-{}", uuid::Uuid::new_v4()));
-        let model = ModelService::new(models_dir.clone());
-        let config = Config {
-            selected_model_id: Some("not-a-real-model".to_string()),
-            ..Config::default()
-        };
-
-        let chosen = resolve_model_path(&config, model.as_ref());
-        assert_eq!(chosen, models_dir.join(SMALL_MODEL_FILENAME));
     }
 
     // ── SpeakerAccumulator state ───────────────────────────────────────────────

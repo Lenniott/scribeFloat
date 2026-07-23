@@ -3,8 +3,7 @@ use crate::services::config::ConfigService;
 use crate::services::hotkeys::HotkeyService;
 use crate::services::output::OutputService;
 use crate::services::permissions::PermissionsService;
-use crate::services::voiceprint::VoiceprintService;
-use crate::types::{PermissionStatus, ThemeMode, VoiceEmbeddingsRetention};
+use crate::types::{PermissionStatus, ThemeMode};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -35,7 +34,6 @@ pub struct SettingsController {
     output: Arc<OutputService>,
     permissions: Arc<PermissionsService>,
     audio: Arc<AudioService>,
-    voiceprint: Arc<VoiceprintService>,
 }
 
 impl SettingsController {
@@ -45,7 +43,6 @@ impl SettingsController {
         output: Arc<OutputService>,
         permissions: Arc<PermissionsService>,
         audio: Arc<AudioService>,
-        voiceprint: Arc<VoiceprintService>,
     ) -> Arc<Self> {
         Arc::new(Self {
             config,
@@ -53,7 +50,6 @@ impl SettingsController {
             output,
             permissions,
             audio,
-            voiceprint,
         })
     }
 
@@ -330,15 +326,32 @@ impl SettingsController {
         self.config.get().onboarding_complete
     }
 
+    pub fn get_onboarding_step(&self) -> u8 {
+        crate::types::clamp_onboarding_step(self.config.get().onboarding_step)
+    }
+
+    pub fn set_onboarding_step(&self, step: u8) -> Result<(), String> {
+        let step = crate::types::clamp_onboarding_step(step);
+        self.config
+            .update(|cfg| cfg.onboarding_step = step)
+            .map_err(|e| format!("failed to save onboarding step: {e}"))
+    }
+
     pub fn complete_onboarding(&self) -> Result<(), String> {
         self.config
-            .update(|cfg| cfg.onboarding_complete = true)
+            .update(|cfg| {
+                cfg.onboarding_complete = true;
+                cfg.onboarding_step = 1;
+            })
             .map_err(|e| format!("failed to save onboarding status: {e}"))
     }
 
     pub fn reset_onboarding(&self) -> Result<(), String> {
         self.config
-            .update(|cfg| cfg.onboarding_complete = false)
+            .update(|cfg| {
+                cfg.onboarding_complete = false;
+                cfg.onboarding_step = 1;
+            })
             .map_err(|e| format!("failed to reset onboarding status: {e}"))
     }
 
@@ -356,58 +369,12 @@ impl SettingsController {
             .map_err(|e| format!("failed to persist user display name: {e}"))
     }
 
-    pub fn get_voice_similarity_threshold(&self) -> f32 {
-        self.config.get().voice_similarity_threshold
-    }
-
-    pub fn set_voice_similarity_threshold(&self, threshold: f32) -> Result<(), String> {
-        if !(0.0..=1.0).contains(&threshold) {
-            return Err("voice similarity threshold must be between 0.0 and 1.0".to_string());
-        }
-        self.config
-            .update(|cfg| cfg.voice_similarity_threshold = threshold)
-            .map_err(|e| format!("failed to persist voice similarity threshold: {e}"))?;
-        self.voiceprint.set_threshold(threshold);
-        Ok(())
-    }
-
-    pub fn get_voice_learning_enabled(&self) -> bool {
-        self.config.get().voice_learning_enabled
-    }
-
-    pub fn set_voice_learning_enabled(&self, enabled: bool) -> Result<(), String> {
-        self.config
-            .update(|cfg| cfg.voice_learning_enabled = enabled)
-            .map_err(|e| format!("failed to persist voice learning setting: {e}"))
-    }
-
-    pub fn get_voice_embeddings_retention(&self) -> VoiceEmbeddingsRetention {
-        self.config.get().voice_embeddings_retention
-    }
-
-    pub fn set_voice_embeddings_retention(&self, retention: String) -> Result<(), String> {
-        let retention = VoiceEmbeddingsRetention::parse(&retention)?;
-        self.config
-            .update(|cfg| cfg.voice_embeddings_retention = retention)
-            .map_err(|e| format!("failed to persist voice data retention setting: {e}"))
-    }
-
-    pub fn get_voice_embeddings_encryption_required(&self) -> bool {
-        self.config.get().voice_embeddings_encryption_required
-    }
-
-    pub fn set_voice_embeddings_encryption_required(&self, required: bool) -> Result<(), String> {
-        self.config
-            .update(|cfg| cfg.voice_embeddings_encryption_required = required)
-            .map_err(|e| format!("failed to persist voice encryption requirement: {e}"))
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::services::hotkeys::HotkeyRegistrar;
-    use crate::services::voiceprint::VOICEPRINT_MODEL_FILE;
     use std::sync::Mutex;
 
     struct MockHotkeyRegistrar {
@@ -447,17 +414,6 @@ mod tests {
             crate::services::output::OutputService::new(),
             PermissionsService::new(),
             AudioService::new(),
-            Arc::new(
-                VoiceprintService::new(
-                    &std::env::temp_dir().join(VOICEPRINT_MODEL_FILE),
-                    &std::env::temp_dir().join(format!(
-                        "scribefloat-settings-voiceprints-{}",
-                        uuid::Uuid::new_v4()
-                    )),
-                    config.get().voice_similarity_threshold,
-                )
-                .unwrap(),
-            ),
         )
     }
 
@@ -605,50 +561,6 @@ mod tests {
         assert!(ctrl.set_theme_mode("sepia".to_string()).is_err());
     }
 
-    #[test]
-    fn voice_learning_settings_default_off_and_persist() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config_path = tmp.path().join("config.json");
-        let config = ConfigService::load(config_path.clone()).unwrap();
-        let ctrl = make_controller(config, None);
-
-        assert!(!ctrl.get_voice_learning_enabled());
-        assert_eq!(
-            ctrl.get_voice_embeddings_retention(),
-            VoiceEmbeddingsRetention::Keep
-        );
-        assert!(ctrl.get_voice_embeddings_encryption_required());
-
-        ctrl.set_voice_learning_enabled(true).unwrap();
-        ctrl.set_voice_embeddings_retention("delete_after_transcript".to_string())
-            .unwrap();
-        ctrl.set_voice_embeddings_encryption_required(false)
-            .unwrap();
-
-        let reloaded = ConfigService::load(config_path).unwrap();
-        let ctrl2 = make_controller(reloaded, None);
-        assert!(ctrl2.get_voice_learning_enabled());
-        assert_eq!(
-            ctrl2.get_voice_embeddings_retention(),
-            VoiceEmbeddingsRetention::DeleteAfterTranscript
-        );
-        assert!(!ctrl2.get_voice_embeddings_encryption_required());
-    }
-
-    #[test]
-    fn voice_embeddings_retention_rejects_unknown_values() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
-        let ctrl = make_controller(config, None);
-
-        assert!(ctrl
-            .set_voice_embeddings_retention("forever_maybe".to_string())
-            .is_err());
-        assert_eq!(
-            ctrl.get_voice_embeddings_retention(),
-            VoiceEmbeddingsRetention::Keep
-        );
-    }
 
     #[test]
     fn onboarding_starts_incomplete_and_completes() {
@@ -658,8 +570,10 @@ mod tests {
         let ctrl = make_controller(config, None);
 
         assert!(!ctrl.is_onboarding_complete());
+        assert_eq!(ctrl.get_onboarding_step(), 1);
         ctrl.complete_onboarding().expect("complete onboarding");
         assert!(ctrl.is_onboarding_complete());
+        assert_eq!(ctrl.get_onboarding_step(), 1);
 
         let reloaded = ConfigService::load(config_path).unwrap();
         let ctrl2 = make_controller(reloaded, None);
@@ -672,10 +586,32 @@ mod tests {
         let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
         let ctrl = make_controller(config, None);
 
+        ctrl.set_onboarding_step(3).unwrap();
         ctrl.complete_onboarding().unwrap();
         assert!(ctrl.is_onboarding_complete());
         ctrl.reset_onboarding().unwrap();
         assert!(!ctrl.is_onboarding_complete());
+        assert_eq!(ctrl.get_onboarding_step(), 1);
+    }
+
+    #[test]
+    fn onboarding_step_persists_and_clamps() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("config.json");
+        let config = ConfigService::load(config_path.clone()).unwrap();
+        let ctrl = make_controller(config, None);
+
+        ctrl.set_onboarding_step(3).unwrap();
+        assert_eq!(ctrl.get_onboarding_step(), 3);
+
+        let reloaded = ConfigService::load(config_path).unwrap();
+        let ctrl2 = make_controller(reloaded, None);
+        assert_eq!(ctrl2.get_onboarding_step(), 3);
+
+        ctrl2.set_onboarding_step(0).unwrap();
+        assert_eq!(ctrl2.get_onboarding_step(), 1);
+        ctrl2.set_onboarding_step(9).unwrap();
+        assert_eq!(ctrl2.get_onboarding_step(), 4);
     }
 
     #[test]
@@ -707,32 +643,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn voiceprint_settings_validate_and_persist() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config_path = tmp.path().join("config.json");
-        let config = ConfigService::load(config_path.clone()).unwrap();
-        let ctrl = make_controller(config, None);
 
-        ctrl.set_user_display_name("  Ben  ".to_string()).unwrap();
-        ctrl.set_voice_similarity_threshold(0.9).unwrap();
-
-        let reloaded = ConfigService::load(config_path).unwrap();
-        let cfg = reloaded.get();
-        assert_eq!(cfg.user_display_name, "Ben");
-        assert_eq!(cfg.voice_similarity_threshold, 0.9);
-    }
-
-    #[test]
-    fn voiceprint_settings_reject_invalid_values() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
-        let ctrl = make_controller(config, None);
-
-        assert!(ctrl.set_user_display_name("   ".to_string()).is_err());
-        assert!(ctrl.set_voice_similarity_threshold(-0.1).is_err());
-        assert!(ctrl.set_voice_similarity_threshold(1.1).is_err());
-    }
 
     #[cfg(target_os = "windows")]
     #[test]

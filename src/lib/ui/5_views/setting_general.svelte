@@ -157,7 +157,10 @@
 	}
 
 	async function openDownloadPage() {
-		if (updateResult) await openUrl(updateResult.release_url);
+		if (!updateResult) return;
+		const url = updateResult.release_url;
+		if (!url.startsWith('https://github.com/Lenniott/scribefloat/')) return;
+		await openUrl(url);
 	}
 
 	onMount(refresh);

@@ -594,9 +594,13 @@ pub fn run() {
             // Seed / offline-heal bundled models into the writable models dir.
             // Missing, empty, or hash-mismatch copies are replaced from the
             // installed app resources when those files have real content (dev
-            // 0-byte placeholders are skipped). Whisper Small is only filled
-            // when missing/empty here — its SHA is checked (and healed) on first
-            // use so every launch does not re-hash ~181 MB.
+            // 0-byte placeholders are skipped).
+            //
+            // Large models (Whisper ~181 MB, Sortformer ~469 MB) only get a
+            // missing/empty check here — full SHA-256 runs on first use
+            // (`ensure_model` / whisper load). Debug builds use soft SHA-256;
+            // hashing Sortformer on the main thread was ~30–40s of 100% CPU
+            // before the tray appeared.
             let seed_targets: &[(&str, &str, bool)] = &[
                 (
                     services::model::SMALL_MODEL_FILENAME,
@@ -606,12 +610,12 @@ pub fn run() {
                 (
                     services::model::VAD_MODEL_FILENAME,
                     services::model::VAD_MODEL_SHA256,
-                    true,
+                    true, // tiny — fine to pin every launch
                 ),
                 (
                     services::diarization::SORTFORMER_MODEL_FILENAME,
                     services::diarization::SORTFORMER_MODEL_SHA256,
-                    true,
+                    false, // hash at use-time (same reason as Whisper)
                 ),
             ];
             for &(file_name, expected_sha, hash_at_startup) in seed_targets {

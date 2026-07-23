@@ -42,6 +42,9 @@ assignee:
 - Ticket **16** aggression **B+** agreed; ticket **18** **School 1** + wayfinder provenance stamps agreed (School 2 too harsh for wayfinder-before-code).
 - [Least-privilege IPC per window](./issues/16-least-privilege-ipc-per-window.md) — B+ capability split (`dictate` / `onboarding` / `shell`); AppManifest ACL; static deny-list tests.
 - [Mark and amend ADRs for reality](./issues/18-mark-and-amend-adrs-for-reality.md) — School 1 status marks on all 14 ADRs; ADR-0010/0003 amended for one bundled Whisper Small; README index updated; grep clean for multi-model stale prose.
+- **Silicon smoke 2026-07-21 onboarding findings sorted** — Merge-blockers: [Persist onboarding step across quit](./issues/19-persist-onboarding-step-across-quit.md), [Onboarding Try Dictate Continue reachable](./issues/20-onboarding-try-dictate-continue-reachable.md). Parked in Known issues: Keystroke dialog under Setup (expand early-TCC), nonsense Try Dictate timestamps, gamify double-tap + tap-and-hold, stale “You’re All Set” tray mockup. Smoke walk (Record → Notes → rename → relaunch) still open on ticket **09**.
+- **Silicon smoke 2026-07-21 Notes / Dictate Spaces findings** — Record once **pass**. Merge-blocker: [Deleting note text inserts Selection deleted](./issues/21-deleting-note-text-inserts-selection-deleted.md). Parked Known issues: written pane height; speaker rename this-vs-all; Dictate overlay / main window vs full-screen Spaces; Record button new-note vs in-note; focus ring styling.
+- [Silicon ship-bar smoke](./issues/09-silicon-ship-bar-smoke.md) — **closed** 2026-07-21. Pass: preflight, Dictate capture, Record, rename cascade, relaunch (file-backed). Fail dispositioned → **19** / **20** / **21**. Next: `/to-spec` those three → forward method **02** → merge **10**.
 
 ## Not yet specified
 

@@ -7,6 +7,9 @@ blocked_by:
   - "02-write-forward-working-method.md"
   - "06-sort-findings-merge-vs-known.md"
   - "09-silicon-ship-bar-smoke.md"
+  - "19-persist-onboarding-step-across-quit.md"
+  - "20-onboarding-try-dictate-continue-reachable.md"
+  - "21-deleting-note-text-inserts-selection-deleted.md"
 parent: MAP.md
 ---
 

@@ -1,63 +1,66 @@
 # Handoff — Main is God again
 
-**When:** 2026-07-19 (tickets 16 + 18 committed; ready for Silicon ship-bar smoke)  
+**When:** 2026-07-23 — smoke closed; Known issues confirmed complete for this walk; next = `/to-spec` blockers  
 **Branch:** `feature/0.3/embeds` → merge into `main` **untagged**  
-**HEAD:** confirm with `git log -1` / `git status -sb` (tip should include IPC + ADR docs commits)  
+**HEAD tip (last commit):** `7a1473e` — confirm with `git log -1` / `git status -sb`  
 **Open a new chat and say:**  
-> Continue from `.scratch/main-is-god-again/HANDOFF.md` — run [Silicon ship-bar smoke](./issues/09-silicon-ship-bar-smoke.md) on Apple Silicon
+> Continue from `.scratch/main-is-god-again/HANDOFF.md` — `/to-spec` [Persist onboarding step across quit](./issues/19-persist-onboarding-step-across-quit.md), [Onboarding Try Dictate Continue reachable](./issues/20-onboarding-try-dictate-continue-reachable.md), and [Deleting note text inserts Selection deleted](./issues/21-deleting-note-text-inserts-selection-deleted.md); then [Write the forward working method](./issues/02-write-forward-working-method.md)
 
 This file is the session bridge. Prefer this path over `/var` or `$TMPDIR`.
 
 Map / out of scope: [MAP.md](./MAP.md)  
-Parked debt: [KNOWN-ISSUES.md](./KNOWN-ISSUES.md)  
+Parked debt: [KNOWN-ISSUES.md](./KNOWN-ISSUES.md) — smoke parks audited 2026-07-21/23; nothing missing from that walk  
 Research (closed): [research/](./research/)
 
 ---
 
-## Frontier next — Silicon smoke (human + agent)
+## Frontier next
 
-**Ticket:** [Silicon ship-bar smoke](./issues/09-silicon-ship-bar-smoke.md)  
-**Platform:** Apple Silicon only (this map’s confidence bar).  
-**Blockers for smoke:** all closed (**16**, **18**). Ticket **17** is Known issues — not required.
-
-This is a **live product walk**, not a code ticket. Agent claims the ticket, guides the checklist, records pass/fail on the ticket + map Decisions. Failures → fix as new merge-blocker **or** park in Known issues with human OK.
-
-### Before you start
-
-1. Restart the app so new IPC capabilities load (`capabilities/dictate|onboarding|shell.json`). Old `default.json` is gone.
-2. Prefer a cold-ish launch (quit fully, relaunch). Dev: `npm run tauri dev` or your usual Silicon run.
-3. Bundled models: release/dev with real model files in resources; empty placeholders skip seeding — smoke needs real Whisper/VAD/Sortformer for a full pass.
-
-### Ship-bar checklist (ticket Question)
-
-Record pass/fail per step on the ticket:
-
-1. **First-run / permissions** — onboarding (or reset onboarding from Settings if already done) → mic (+ optional Accessibility / Input Monitoring for Dictate paste).
-2. **Dictate once** — hotkey → speak → release → text pastes or lands on clipboard; quick Note appears in history/Notes.
-3. **Record once** — New Note / Record → stop → transcript on the Note; speaker labels if Sortformer available.
-4. **Notes** — note visible with transcript; open it; content looks sane (no XSS junk if you paste weird markdown — ticket 13).
-5. **Speaker rename** — rename a speaker on that Note; turns for that speaker update.
-6. **Relaunch** — quit → open again → same Note still there.
-
-Optional smoke notes (not blockers unless they fail the bar):
-
-- Satellite windows still work after ACL (Dictate overlay, onboarding if shown).
-- No Settings → Models; errors say reinstall / bundled models, not download.
-- Offline: no surprise network fetch for models.
-
-### After smoke
-
-- Append `## Resolution` on ticket **09** (pass/fail table); close if pass (or human OK with parked fails).
-- Map Decisions gist + update this HANDOFF.
-- Next: [Write the forward working method](./issues/02-write-forward-working-method.md) → [Merge spine into main untagged](./issues/10-merge-spine-into-main-untagged.md) → [Delete stale branches](./issues/11-delete-stale-branches.md).
+1. **`/to-spec` then implement** (claim first; do not code cold):
+   - [Persist onboarding step across quit](./issues/19-persist-onboarding-step-across-quit.md)
+   - [Onboarding Try Dictate Continue reachable](./issues/20-onboarding-try-dictate-continue-reachable.md)
+   - [Deleting note text inserts Selection deleted](./issues/21-deleting-note-text-inserts-selection-deleted.md)
+2. [Write the forward working method](./issues/02-write-forward-working-method.md)
+3. [Merge spine into main untagged](./issues/10-merge-spine-into-main-untagged.md) (`blocked_by`: 02, 09✓, 19–21)
+4. [Delete stale branches](./issues/11-delete-stale-branches.md)
 
 ---
 
-## Session ritual (smoke vs code tickets)
+## Smoke bar (closed 2026-07-21)
 
-**Smoke (09):** no `/to-spec` required — execute the checklist, write results.  
-**New merge-blocker found during smoke:** claim → `/to-spec` → human OK → implement (same ritual as 13–16 / 18).  
-**Do not** jump straight to coding a new blocker cold.
+Ticket **09** closed with Resolution. Installed Silicon `.app` walk; relaunch also fine in `tauri dev` (file-backed Notes + `history.jsonl`, not a DB).
+
+| Step | Status |
+|------|--------|
+| Preflight / real models | Pass |
+| First-run / permissions | Fail → **19**; early TCC → Known issues |
+| Dictate once | Capture pass; Continue → **20**; Spaces/overlay → Known issues |
+| Record once | Pass |
+| Notes | Read pass; “Selection deleted” → **21** |
+| Speaker rename | Pass (cascade); this-vs-all → Known issues |
+| Relaunch | Pass |
+
+---
+
+## Dirty tree (commit only if human asks)
+
+| Change | Why |
+|--------|-----|
+| `Cargo.toml` + `scribefloat.rs` | CLI bin → `scribefloat-cli` (case-insensitive macOS was killing the GUI binary in DMGs) |
+| `lib.rs` | Sortformer SHA at use-time (startup tray hang ~30–40s) |
+| `.scratch/main-is-god-again/*` | HANDOFF / MAP / Known issues / **09** Resolution / **10** blocked_by / tickets **19–21** |
+| `dist-silicon/` | Build output — **do not commit** |
+
+Re-verify after commit: build → open `.app` → tray appears quickly; `Contents/MacOS/ScribeFloat` stays alive (not CLI help).  
+Branch was **ahead 3** of origin when this handoff was written — do not push unless asked.
+
+---
+
+## Session ritual
+
+- Claim → `/to-spec` → human OK → implement for **19** / **20** / **21**
+- Known issues: park only unless human elevates
+- Do not commit / push unless asked
 
 ---
 
@@ -65,13 +68,13 @@ Optional smoke notes (not blockers unless they fail the bar):
 
 | Area | State |
 |------|--------|
-| Ticket **16** | B+ least-privilege IPC — capabilities split; `permissions/README.md`; ACL tests |
-| Ticket **18** | School 1 ADR stamps + ADR-0010 one-model amend |
-| Ticket **17** | Demoted → Known issues (later wayfinder) |
-| Verify | `cargo test -p ScribeFloat` → 349 passed, 5 ignored; `cargo clippy -p ScribeFloat -- -D warnings` clean (re-run if tree dirty) |
-
-**Push:** only if human asks.  
-**Commit:** only if human asks.
+| **09** Silicon ship-bar smoke | **Closed** |
+| **19** / **20** / **21** | Open merge-blockers — need `/to-spec` |
+| **02** Forward working method | Open |
+| **10** Merge untagged | Blocked by 02 + 19–21 (09 done) |
+| **11** Delete stale branches | After merge |
+| **16** / **18** | Closed (IPC B+ / ADR School 1) |
+| **17** naming | Known issues — not a merge blocker |
 
 ---
 
@@ -79,41 +82,36 @@ Optional smoke notes (not blockers unless they fail the bar):
 
 - Thin-docs, Float UI cut, multi-model delete, bundle-only models
 - [Sanitize transcript HTML](./issues/13-sanitize-transcript-html.md)
-- [Always delete legacy voice Keychain key](./issues/14-always-delete-legacy-voice-keychain-key.md) — voiceprint topic **closed**
+- [Always delete legacy voice Keychain key](./issues/14-always-delete-legacy-voice-keychain-key.md) — voiceprint **closed**
 - [Verify all bundled models before load](./issues/15-verify-all-bundled-models-before-load.md)
 - [Least-privilege IPC per window](./issues/16-least-privilege-ipc-per-window.md) — B+
 - [Mark and amend ADRs for reality](./issues/18-mark-and-amend-adrs-for-reality.md) — School 1
 - Sort / reviews (06 + research)
+- [Silicon ship-bar smoke](./issues/09-silicon-ship-bar-smoke.md)
 
 ---
 
 ## Context the next agent must not rediscover
 
-- **Voiceprint never shipped** — local hygiene only; do not invent released-user blast radius.
-- **SHA-256:** pack pin in fetch script + runtime trust of writable `{app_data}/models` (ticket 15 heal from *installed* app resources).
-- **IPC:** new `#[tauri::command]` → `generate_handler` + `APP_COMMANDS` in `build.rs` + right set in `src-tauri/permissions/sets/` (see `permissions/README.md`). Ids are kebab (`allow-scribe-start`).
-- **ADRs:** School 1 — binding / aspirational / superseded + Wayfinder provenance. Aspirational stays in `docs/adr/`.
-- **Known issues:** Record/Dictate naming honesty (ex-17); spoken triggers as Dictate-only later; other parked S7–S12 items.
-
----
-
-## Push incident (resolved — remember if it recurs)
-
-Push once failed: GitHub rejected history containing `tests/mic.wav` (~171 MB). Fix = rewrite **unpushed** commits to drop `tests/*.wav`. Explain in plain language before rewriting.
+- **Voiceprint never shipped** — local hygiene only; do not re-litigate.
+- **Installed `.app`** = honest TCC; persistence works in dev because Notes are files.
+- **CLI name** = `scribefloat-cli` (macOS case collision with `ScribeFloat`).
+- **SHA-256:** Whisper + Sortformer at use-time; VAD OK at startup.
+- **IPC:** new commands → `generate_handler` + `APP_COMMANDS` in `build.rs` + `permissions/sets/` (see `permissions/README.md`).
+- **Selection deleted** is ticket **21**, not Known issues.
+- **Push incident:** GitHub once rejected `tests/mic.wav` (~171 MB) in history — rewrite **unpushed** commits only; explain first.
 
 ---
 
 ## Human hard preference
 
-**Do not recreate `skills/new-adr` or `skills/new-story`.** Capture via `.scratch/` + `docs/agents/issue-tracker.md`; ADRs as plain files under `docs/adr/`.
-
-**Voiceprint never shipped / do not re-litigate.**
+Do **not** recreate `skills/new-adr` or `skills/new-story`. Use `.scratch/` + `docs/agents/issue-tracker.md`; ADRs as plain files under `docs/adr/`.
 
 ---
 
 ## How to talk to the human
 
-Plain language. One checklist question at a time if something fails. Prefer common words over ticket-speak.
+Plain language. One question at a time when something fails. Prefer common words over ticket-speak.
 
 ---
 
@@ -121,10 +119,9 @@ Plain language. One checklist question at a time if something fails. Prefer comm
 
 | Skill | When |
 |-------|------|
-| Wayfinder / issue-tracker | Claim **09**, write Resolution, map gist |
-| `/to-spec` | Only if smoke finds a **new** merge-blocker |
-| Design / UI enforcement | Only if a fix touches Svelte chrome |
-| Commit curator | When human asks to commit — **never restore deleted skills** |
+| `/to-spec` | **19** / **20** / **21** before implement |
+| Wayfinder / issue-tracker | Forward method **02**; map gist |
+| Commit curator | When human asks — CLI rename + Sortformer fix + scratch tickets |
 
 ---
 
@@ -133,11 +130,9 @@ Plain language. One checklist question at a time if something fails. Prefer comm
 Unease + real finding = merge-blocker. “Just get it done” is not a resolution.
 
 - No release tag / website publish this map
-- No Upload redesign beyond honesty
 - No knowledge / embeddings / retrieval rebuild
-- Do not recreate cut doc trees without ADR + human OK
-- Do not recreate `new-adr` / `new-story` skills
-- Do not implement new merge-blockers without `/to-spec` first
+- No Upload redesign beyond honesty
+- Do not implement merge-blockers without `/to-spec` first
 - Do not commit unless asked
 - Do not re-litigate voiceprint
-- Do not block smoke on ticket **17** naming debt
+- Do not block on Known issues (ex-17, Spaces, this-vs-all rename, early TCC, etc.)

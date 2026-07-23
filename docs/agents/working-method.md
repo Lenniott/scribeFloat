@@ -14,7 +14,7 @@ ticket inside a Managing session, or a `/wayfinder` "chart the map" pass. See
 
 ## Thin-doc rule
 
-The keep-set decided in [Finish the thin-docs cut](../../.scratch/main-is-god-again/issues/z_01-finish-thin-docs-cut.md)
+The keep-set decided during the "Main is God again" thin-docs cut (closed effort)
 is permanent: `CONTEXT.md`, `PRIVACY.md`, `AGENTS.md`, `docs/adr/`, `docs/agents/`,
 `docs/assets/`, `docs/README.md`. Everything that was cut (`architecture.md`,
 `action-flows.md`, `components.md`, `engineering/`, `backlog/`, `explorations/`,
@@ -54,7 +54,7 @@ Non-wayfinder sessions (a self-contained bug fix, no map involved) don't need a
 
 ## When to write an ADR
 
-School 1, agreed in [Mark and amend ADRs for reality](../../.scratch/main-is-god-again/issues/z_18-mark-and-amend-adrs-for-reality.md):
+School 1, agreed during the "Main is God again" ADR-reality pass (closed effort):
 ADRs capture durable or architectural decisions, binding or aspirational, each
 stamped with a Status (Binding / Aspirational / Superseded) and a Wayfinder
 provenance line. Never deleted, only amended or re-stamped.
@@ -66,7 +66,7 @@ ticket, it belongs in that ticket's resolution, not `docs/adr/`.
 
 ## Merge-blocker vs park
 
-Default rubric from [Sort findings into merge-blockers vs Known issues](../../.scratch/main-is-god-again/issues/z_06-sort-findings-merge-vs-known.md):
+Default rubric agreed during the "Main is God again" effort (closed):
 human unease + real evidence ⇒ merge-blocker. Everything else parks in that
 effort's Known issues. "Just get it done" without sorting is not a resolution.
 

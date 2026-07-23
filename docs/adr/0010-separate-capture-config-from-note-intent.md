@@ -1,7 +1,7 @@
 # ADR-0010: Separate Capture Configuration from Note Intent
 
 **Status:** Aspirational
-**Wayfinder:** pre-wayfinder / orphan — `quick`/`origin` vs `HistoryKind` migration not shipped; revisit in a future wayfinder (see `.scratch/main-is-god-again/issues/17-unify-record-dictate-naming-and-seams.md`).
+**Wayfinder:** pre-wayfinder / orphan — `quick`/`origin` vs `HistoryKind` migration not shipped; revisit in a future wayfinder (deferred as Known issue "Record vs Dictate naming / dual-controller honesty" during the closed "Main is God again" effort — see `docs/ideas/main-is-god-again-known-issues.md`).
 
 ## Context
 

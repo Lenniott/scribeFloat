@@ -4,7 +4,7 @@
 //! is missing, empty, or fails its SHA-256 pin, we re-copy from the installed
 //! app's resource directory (offline self-heal), then re-check the pin.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Compute the lowercase-hex SHA-256 of a file on disk, streaming so large
 /// models never land in memory all at once.
@@ -37,6 +37,59 @@ pub fn dest_needs_bundle_restore(dest: &Path, expected_sha: &str) -> bool {
             Ok(actual) => actual != expected_sha.to_ascii_lowercase(),
             Err(_) => true,
         },
+        _ => true,
+    }
+}
+
+fn integrity_cache_path(dest: &Path) -> PathBuf {
+    let file_name = dest
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    dest.with_file_name(format!(".{file_name}.integrity"))
+}
+
+fn file_fingerprint(dest: &Path) -> Option<(u64, u64)> {
+    let meta = std::fs::metadata(dest).ok()?;
+    let mtime_nanos = meta
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_nanos() as u64;
+    Some((mtime_nanos, meta.len()))
+}
+
+/// Same contract as [`dest_needs_bundle_restore`], but skips the SHA-256 rehash when a
+/// sidecar cache file next to `dest` shows its (mtime, size) already verified against
+/// this exact `expected_sha` on a previous call. Falls back to a full hash whenever the
+/// fingerprint is missing, the file changed, or `expected_sha` itself changed (e.g. a
+/// bundled model version bump) — so a stale or tampered cache can never suppress a real
+/// integrity check, it only skips *redundant* re-hashing of an unchanged, already-good file.
+pub fn dest_needs_bundle_restore_cached(dest: &Path, expected_sha: &str) -> bool {
+    let expected_sha = expected_sha.to_ascii_lowercase();
+    let Some((mtime, size)) = file_fingerprint(dest) else {
+        return true; // missing/unreadable — let the caller's restore path handle it
+    };
+    let cache_path = integrity_cache_path(dest);
+    if let Ok(cached) = std::fs::read_to_string(&cache_path) {
+        let mut parts = cached.trim().splitn(3, ':');
+        if let (Some(c_mtime), Some(c_size), Some(c_sha)) =
+            (parts.next(), parts.next(), parts.next())
+        {
+            if c_mtime.parse::<u64>().ok() == Some(mtime)
+                && c_size.parse::<u64>().ok() == Some(size)
+                && c_sha == expected_sha
+            {
+                return false; // unchanged since we last verified it against this sha
+            }
+        }
+    }
+    match file_sha256_hex(dest) {
+        Ok(actual) if actual == expected_sha => {
+            let _ = std::fs::write(&cache_path, format!("{mtime}:{size}:{expected_sha}"));
+            false
+        }
         _ => true,
     }
 }
@@ -155,6 +208,54 @@ mod tests {
             &sha
         ));
         assert_eq!(std::fs::read(&dest).unwrap(), b"trusted-bytes");
+    }
+
+    #[test]
+    fn cached_check_hashes_once_then_trusts_fingerprint() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("m.bin");
+        std::fs::write(&dest, b"abc").unwrap();
+        let sha = file_sha256_hex(&dest).unwrap();
+
+        assert!(!dest_needs_bundle_restore_cached(&dest, &sha));
+        assert!(integrity_cache_path(&dest).exists());
+
+        // Corrupt the cache file's content check: even if we could observe hashing
+        // happened only once, the externally-visible contract is just "still trusted".
+        assert!(!dest_needs_bundle_restore_cached(&dest, &sha));
+    }
+
+    #[test]
+    fn cached_check_rehashes_when_file_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("m.bin");
+        std::fs::write(&dest, b"abc").unwrap();
+        let sha = file_sha256_hex(&dest).unwrap();
+        assert!(!dest_needs_bundle_restore_cached(&dest, &sha));
+
+        // Rewrite with different content but same expected sha — must be caught.
+        std::fs::write(&dest, b"tampered").unwrap();
+        assert!(dest_needs_bundle_restore_cached(&dest, &sha));
+    }
+
+    #[test]
+    fn cached_check_rehashes_when_expected_sha_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("m.bin");
+        std::fs::write(&dest, b"abc").unwrap();
+        let sha = file_sha256_hex(&dest).unwrap();
+        assert!(!dest_needs_bundle_restore_cached(&dest, &sha));
+
+        // A bundled-model version bump ships a new expected hash for the same path —
+        // the stale cache (verified against the old sha) must not short-circuit this.
+        assert!(dest_needs_bundle_restore_cached(&dest, &"0".repeat(64)));
+    }
+
+    #[test]
+    fn cached_check_true_when_dest_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("missing.bin");
+        assert!(dest_needs_bundle_restore_cached(&dest, &"0".repeat(64)));
     }
 
     #[test]

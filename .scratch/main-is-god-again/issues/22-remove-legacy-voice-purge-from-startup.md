@@ -1,8 +1,8 @@
 ---
 title: Remove legacy voice purge from startup
 labels: [wayfinder:task]
-status: open
-assignee:
+status: closed
+assignee: claude
 blocked_by: []
 parent: MAP.md
 ---
@@ -18,6 +18,13 @@ parent: MAP.md
 4. `cargo test -p ScribeFloat` and `cargo clippy -- -D warnings` pass with the module gone.
 5. Approach recorded in Resolution.
 
+## Resolution
+
+Deleted `src-tauri/src/services/legacy_voice_purge.rs` entirely and its `pub mod legacy_voice_purge;` line in `services/mod.rs`. In `lib.rs` setup, replaced the whole purge block (report handling + conditional Keychain delete) with just the unconditional Keychain-key delete call, matching ticket 14's existing reasoning — a two-line block now, no filesystem scan on every launch. `speaker_names.json` load untouched, sits right above where the purge block used to be.
+
+**Verify:** `cargo test -p ScribeFloat` → 350 passed, 0 failed (5 fewer than before — the deleted module's own tests; no other regressions). `cargo clippy -p ScribeFloat -- -D warnings` clean.
+
 ## Comments
 
 - 2026-07-23: Ticketed out of a load-performance review session ([[23-sequential-loading-habits-in-app-startup]]). Human: "this isn't a thing that needs to happen now... we can get rid of this."
+- 2026-07-23: Implemented directly against `release/0.3` (not via a worktree agent, after the Dictate cluster showed hand-reconciliation was needed anyway for stale worktrees).

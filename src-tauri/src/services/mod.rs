@@ -6,7 +6,6 @@ pub mod context_search;
 pub mod diarization;
 pub mod history;
 pub mod hotkeys;
-pub mod legacy_voice_purge;
 pub mod model;
 pub mod note_sidecar;
 pub mod output;

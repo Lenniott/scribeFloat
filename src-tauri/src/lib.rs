@@ -591,74 +591,17 @@ pub fn run() {
             let models_dir = data_dir.join("models");
             std::fs::create_dir_all(&models_dir)?;
             let resource_dir = app.path().resource_dir().ok();
-            // Seed / offline-heal bundled models into the writable models dir.
-            // Missing, empty, or hash-mismatch copies are replaced from the
-            // installed app resources when those files have real content (dev
-            // 0-byte placeholders are skipped).
-            //
-            // Large models (Whisper ~181 MB, Sortformer ~469 MB) only get a
-            // missing/empty check here — full SHA-256 runs on first use
-            // (`ensure_model` / whisper load). Debug builds use soft SHA-256;
-            // hashing Sortformer on the main thread was ~30–40s of 100% CPU
-            // before the tray appeared.
-            let seed_targets: &[(&str, &str, bool)] = &[
-                (
-                    services::model::SMALL_MODEL_FILENAME,
-                    services::model::SMALL_MODEL_SHA256,
-                    false, // hash at use-time
-                ),
-                (
-                    services::model::VAD_MODEL_FILENAME,
-                    services::model::VAD_MODEL_SHA256,
-                    true, // tiny — fine to pin every launch
-                ),
-                (
-                    services::diarization::SORTFORMER_MODEL_FILENAME,
-                    services::diarization::SORTFORMER_MODEL_SHA256,
-                    false, // hash at use-time (same reason as Whisper)
-                ),
-            ];
-            for &(file_name, expected_sha, hash_at_startup) in seed_targets {
-                let dest = models_dir.join(file_name);
-                let needs = if hash_at_startup {
-                    services::bundled_models::dest_needs_bundle_restore(&dest, expected_sha)
-                } else {
-                    !dest.exists()
-                        || std::fs::metadata(&dest)
-                            .map(|m| !m.is_file() || m.len() == 0)
-                            .unwrap_or(true)
-                };
-                if needs {
-                    if let Some(ref resource_dir) = resource_dir {
-                        let _ = services::bundled_models::ensure_bundled_file(
-                            Some(resource_dir.as_path()),
-                            &dest,
-                            file_name,
-                            expected_sha,
-                        );
-                    }
-                }
-            }
             let diarization = services::diarization::DiarizationService::with_resource_dir(
                 models_dir.join(services::diarization::SORTFORMER_MODEL_FILENAME),
                 resource_dir.clone(),
             );
             app.manage(Arc::clone(&diarization));
-            let model =
-                services::model::ModelService::with_resource_dir(models_dir, resource_dir);
+            let model = services::model::ModelService::with_resource_dir(
+                models_dir.clone(),
+                resource_dir.clone(),
+            );
             let model_ctrl = controllers::model::ModelController::new(Arc::clone(&model));
-            if !model.bundled_model_available() {
-                tracing::warn!(
-                    "bundled Whisper model missing at {}",
-                    model.default_model_path().display()
-                );
-            }
-            if !model.bundled_vad_available() {
-                tracing::warn!(
-                    "bundled VAD model missing or corrupt at {}",
-                    model.vad_model_path().display()
-                );
-            }
+
             let settings_ctrl = controllers::settings::SettingsController::new(
                 Arc::clone(&config),
                 Arc::clone(&hotkeys),
@@ -672,6 +615,75 @@ pub fn run() {
 
             let (open_hotkey, _) = settings_ctrl.get_hotkeys();
             create_tray(app, &open_hotkey)?;
+
+            // Seed / offline-heal bundled models into the writable models dir, off the
+            // startup critical path — the tray above no longer waits on this. Missing,
+            // empty, or hash-mismatch copies are replaced from the installed app
+            // resources when those files have real content (dev 0-byte placeholders are
+            // skipped). Actual model use is always lazy (first Scribe/Dictate/Transcribe
+            // session), so this has ample time to finish before anything needs it.
+            //
+            // Large models (Whisper ~181 MB, Sortformer ~469 MB) only get a
+            // missing/empty check here — full SHA-256 runs on first use
+            // (`ensure_model` / whisper load). Debug builds use soft SHA-256;
+            // hashing Sortformer on the main thread was ~30–40s of 100% CPU
+            // before the tray appeared.
+            let model_seed_bg = Arc::clone(&model);
+            tauri::async_runtime::spawn(async move {
+                let seed_targets: &[(&str, &str, bool)] = &[
+                    (
+                        services::model::SMALL_MODEL_FILENAME,
+                        services::model::SMALL_MODEL_SHA256,
+                        false, // hash at use-time
+                    ),
+                    (
+                        services::model::VAD_MODEL_FILENAME,
+                        services::model::VAD_MODEL_SHA256,
+                        true, // tiny — fine to pin every launch
+                    ),
+                    (
+                        services::diarization::SORTFORMER_MODEL_FILENAME,
+                        services::diarization::SORTFORMER_MODEL_SHA256,
+                        false, // hash at use-time (same reason as Whisper)
+                    ),
+                ];
+                for &(file_name, expected_sha, hash_at_startup) in seed_targets {
+                    let dest = models_dir.join(file_name);
+                    let needs = if hash_at_startup {
+                        services::bundled_models::dest_needs_bundle_restore_cached(
+                            &dest,
+                            expected_sha,
+                        )
+                    } else {
+                        !dest.exists()
+                            || std::fs::metadata(&dest)
+                                .map(|m| !m.is_file() || m.len() == 0)
+                                .unwrap_or(true)
+                    };
+                    if needs {
+                        if let Some(ref resource_dir) = resource_dir {
+                            let _ = services::bundled_models::ensure_bundled_file(
+                                Some(resource_dir.as_path()),
+                                &dest,
+                                file_name,
+                                expected_sha,
+                            );
+                        }
+                    }
+                }
+                if !model_seed_bg.bundled_model_available() {
+                    tracing::warn!(
+                        "bundled Whisper model missing at {}",
+                        model_seed_bg.default_model_path().display()
+                    );
+                }
+                if !model_seed_bg.bundled_vad_available() {
+                    tracing::warn!(
+                        "bundled VAD model missing or corrupt at {}",
+                        model_seed_bg.vad_model_path().display()
+                    );
+                }
+            });
 
             let ctrl = controllers::scribe::ScribeController::new(
                 Arc::clone(&audio),
@@ -703,27 +715,10 @@ pub fn run() {
             let speaker_names = services::speaker_names::SpeakerNameService::load(
                 data_dir.join("speaker_names.json"),
             );
-            // One-time biometric purge: legacy voiceprint profiles become plain
-            // names, then the files are deleted. Always attempt Keychain key
-            // delete (missing key = success) so a prior partial purge cannot
-            // leave an orphan key. History embeddings vanish via compaction below.
-            {
-                let report =
-                    services::legacy_voice_purge::purge_legacy_voice_data(&data_dir, &speaker_names);
-                if let Err(e) = platform::delete_voice_crypto_key() {
-                    tracing::warn!(error = %e, "could not delete legacy voice encryption key");
-                }
-                if report.names_imported > 0
-                    || report.profiles_dir_removed
-                    || report.clips_dir_removed
-                {
-                    tracing::info!(
-                        names_imported = report.names_imported,
-                        profiles_dir_removed = report.profiles_dir_removed,
-                        clips_dir_removed = report.clips_dir_removed,
-                        "legacy voiceprint data purged"
-                    );
-                }
+            // Voiceprint never shipped (exploration-only); this is local hygiene so a
+            // machine that ran an earlier build doesn't keep an orphaned encryption key.
+            if let Err(e) = platform::delete_voice_crypto_key() {
+                tracing::warn!(error = %e, "could not delete legacy voice encryption key");
             }
             let history_ctrl = controllers::history::HistoryController::new(
                 Arc::clone(&history),

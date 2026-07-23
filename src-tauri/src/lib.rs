@@ -639,59 +639,68 @@ pub fn run() {
                 // caused (window IPC calls queued behind this task instead of running
                 // concurrently with it).
                 let _ = tokio::task::spawn_blocking(move || {
-                let seed_targets: &[(&str, &str, bool)] = &[
-                    (
-                        services::model::SMALL_MODEL_FILENAME,
-                        services::model::SMALL_MODEL_SHA256,
-                        false, // hash at use-time
-                    ),
-                    (
-                        services::model::VAD_MODEL_FILENAME,
-                        services::model::VAD_MODEL_SHA256,
-                        true, // tiny — fine to pin every launch
-                    ),
-                    (
-                        services::diarization::SORTFORMER_MODEL_FILENAME,
-                        services::diarization::SORTFORMER_MODEL_SHA256,
-                        false, // hash at use-time (same reason as Whisper)
-                    ),
-                ];
-                for &(file_name, expected_sha, hash_at_startup) in seed_targets {
-                    let dest = models_dir.join(file_name);
-                    let needs = if hash_at_startup {
-                        services::bundled_models::dest_needs_bundle_restore_cached(
-                            &dest,
-                            expected_sha,
-                        )
-                    } else {
-                        !dest.exists()
-                            || std::fs::metadata(&dest)
-                                .map(|m| !m.is_file() || m.len() == 0)
-                                .unwrap_or(true)
-                    };
-                    if needs {
-                        if let Some(ref resource_dir) = resource_dir {
-                            let _ = services::bundled_models::ensure_bundled_file(
-                                Some(resource_dir.as_path()),
+                    let seed_targets: &[(&str, &str, bool)] = &[
+                        (
+                            services::model::SMALL_MODEL_FILENAME,
+                            services::model::SMALL_MODEL_SHA256,
+                            false, // hash at use-time
+                        ),
+                        (
+                            services::model::VAD_MODEL_FILENAME,
+                            services::model::VAD_MODEL_SHA256,
+                            true, // tiny — fine to pin every launch
+                        ),
+                        (
+                            services::diarization::SORTFORMER_MODEL_FILENAME,
+                            services::diarization::SORTFORMER_MODEL_SHA256,
+                            false, // hash at use-time (same reason as Whisper)
+                        ),
+                    ];
+                    for &(file_name, expected_sha, hash_at_startup) in seed_targets {
+                        let dest = models_dir.join(file_name);
+                        let needs = if hash_at_startup {
+                            services::bundled_models::dest_needs_bundle_restore_cached(
                                 &dest,
-                                file_name,
                                 expected_sha,
-                            );
+                            )
+                        } else {
+                            !dest.exists()
+                                || std::fs::metadata(&dest)
+                                    .map(|m| !m.is_file() || m.len() == 0)
+                                    .unwrap_or(true)
+                        };
+                        if needs {
+                            if let Some(ref resource_dir) = resource_dir {
+                                let _ = services::bundled_models::ensure_bundled_file(
+                                    Some(resource_dir.as_path()),
+                                    &dest,
+                                    file_name,
+                                    expected_sha,
+                                );
+                            }
                         }
                     }
-                }
-                if !model_seed_bg.bundled_model_available() {
-                    tracing::warn!(
-                        "bundled Whisper model missing at {}",
-                        model_seed_bg.default_model_path().display()
-                    );
-                }
-                if !model_seed_bg.bundled_vad_available() {
-                    tracing::warn!(
-                        "bundled VAD model missing or corrupt at {}",
-                        model_seed_bg.vad_model_path().display()
-                    );
-                }
+                    if !model_seed_bg.bundled_model_available() {
+                        tracing::warn!(
+                            "bundled Whisper model missing at {}",
+                            model_seed_bg.default_model_path().display()
+                        );
+                    }
+                    if !model_seed_bg.bundled_vad_available() {
+                        tracing::warn!(
+                            "bundled VAD model missing or corrupt at {}",
+                            model_seed_bg.vad_model_path().display()
+                        );
+                    }
+                    // Warm the Whisper context now, once the model file is confirmed
+                    // present/healed above, instead of waiting for the user's first
+                    // Dictate/Scribe/Transcribe action. The context is cached for the
+                    // app's lifetime (`ModelService::loaded_contexts`) and Small is
+                    // ~181 MB — cheap enough on any machine this app targets to keep
+                    // resident, and it removes the cold-load wait from every first
+                    // capture of a session, not just from the ones after the first.
+                    let default_path = model_seed_bg.default_model_path();
+                    model_seed_bg.preload_context(&default_path);
                 })
                 .await;
             });

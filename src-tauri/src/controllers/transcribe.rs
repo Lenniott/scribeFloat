@@ -1,10 +1,17 @@
+use crate::services::analysis::{detect_cuts, CutConfig, PitchAnalyzer};
 use crate::services::config::ConfigService;
+use crate::services::diarization::DiarizationService;
+use crate::services::history::HistoryService;
 use crate::services::model::ModelService;
 use crate::services::output::OutputService;
 use crate::services::transcribe_input::{TranscribeInputItem, TranscribeInputService};
+use crate::services::transcription::{
+    run_post_capture_transcription, CaptureAudio, CaptureProfile, PostCaptureInput,
+    SpeakerEvidenceInput,
+};
 use crate::types::{
-    Config, ProcessingStage, TranscribeItemStatus, TranscribeQueueItem, TranscribeState,
-    TranscribeStateEvent,
+    Config, HistoryRecord, ProcessingStage, TranscribeItemStatus, TranscribeQueueItem,
+    TranscribeState, TranscribeStateEvent,
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -17,7 +24,6 @@ struct Inner {
 pub struct TranscribeStartRequest {
     pub input_paths: Vec<String>,
     pub output_folder: Option<String>,
-    pub model_id: Option<String>,
     pub include_timestamps: Option<bool>,
 }
 
@@ -26,7 +32,9 @@ pub struct TranscribeController {
     input: Arc<TranscribeInputService>,
     model: Arc<ModelService>,
     output: Arc<OutputService>,
+    history: Arc<HistoryService>,
     config: Arc<ConfigService>,
+    diarization: Arc<DiarizationService>,
     app: AppHandle,
 }
 
@@ -35,7 +43,9 @@ impl TranscribeController {
         input: Arc<TranscribeInputService>,
         model: Arc<ModelService>,
         output: Arc<OutputService>,
+        history: Arc<HistoryService>,
         config: Arc<ConfigService>,
+        diarization: Arc<DiarizationService>,
         app: AppHandle,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -45,12 +55,17 @@ impl TranscribeController {
             input,
             model,
             output,
+            history,
             config,
+            diarization,
             app,
         })
     }
 
-    pub fn inspect_inputs(&self, input_paths: Vec<String>) -> Result<Vec<TranscribeQueueItem>, String> {
+    pub fn inspect_inputs(
+        &self,
+        input_paths: Vec<String>,
+    ) -> Result<Vec<TranscribeQueueItem>, String> {
         let items = self.input.expand_inputs(&input_paths)?;
         Ok(items
             .into_iter()
@@ -74,9 +89,12 @@ impl TranscribeController {
         let output_folder =
             resolve_output_folder(&this.output, &cfg, request.output_folder.as_deref())?;
         let include_timestamps = request.include_timestamps.unwrap_or(cfg.include_timestamps);
-        let model_path = resolve_model_path(&cfg, this.model.as_ref(), request.model_id.as_deref());
+        let model_path = this.model.default_model_path();
         if !this.model.model_available(&model_path) {
-            return Err("selected model is not downloaded".to_string());
+            return Err(
+                "No Whisper model available. Reinstall the app to restore the bundled model."
+                    .to_string(),
+            );
         }
         {
             let mut inner = this.lock();
@@ -99,18 +117,30 @@ impl TranscribeController {
             None,
         );
 
-        let replacement_rules = cfg.replacement_rules.clone();
         tauri::async_runtime::spawn(async move {
             let ctrl = Arc::clone(&this);
             let result = tokio::task::spawn_blocking(move || {
-                ctrl.run_batch(inputs, &model_path, &model_name, &output_folder, include_timestamps, &replacement_rules, &mut queue)
+                ctrl.run_batch(
+                    inputs,
+                    &model_path,
+                    &model_name,
+                    &output_folder,
+                    include_timestamps,
+                    &mut queue,
+                )
             })
             .await;
 
             match result {
                 Ok(Ok(final_queue)) => {
                     this.lock().state = TranscribeState::Done;
-                    this.emit_queue_state(TranscribeState::Done, final_queue, Some(1.0), None, None);
+                    this.emit_queue_state(
+                        TranscribeState::Done,
+                        final_queue,
+                        Some(1.0),
+                        None,
+                        None,
+                    );
                 }
                 Ok(Err(err)) => {
                     this.lock().state = TranscribeState::Error;
@@ -159,7 +189,6 @@ impl TranscribeController {
             .open_file_for_user(canonical.to_string_lossy().as_ref(), open_with.as_deref())
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn run_batch(
         &self,
         inputs: Vec<TranscribeInputItem>,
@@ -167,9 +196,13 @@ impl TranscribeController {
         model_name: &str,
         output_folder: &Path,
         include_timestamps: bool,
-        replacement_rules: &[crate::types::ReplacementRule],
         queue: &mut [TranscribeQueueItem],
     ) -> Result<Vec<TranscribeQueueItem>, String> {
+        // Snapshot once: history records always go to the save folder; `.md` is opt-in (and may
+        // target a different output folder).
+        let cfg = self.config.get();
+        let save_folder = cfg.save_folder.clone();
+        let markdown_on = cfg.save_transcripts_as_markdown;
         for (index, input) in inputs.iter().enumerate() {
             if queue.get(index).is_none() {
                 continue;
@@ -177,11 +210,12 @@ impl TranscribeController {
             queue[index].status = TranscribeItemStatus::Processing;
             queue[index].progress = 0.0;
             queue[index].error = None;
+            // The per-item wait here is decode_input, not model loading.
             self.emit_queue_state(
                 TranscribeState::Transcribing,
                 queue.to_vec(),
                 Some(overall_progress(queue)),
-                Some(ProcessingStage::LoadingModel),
+                Some(ProcessingStage::PreparingAudio),
                 None,
             );
 
@@ -202,112 +236,61 @@ impl TranscribeController {
                 }
             };
 
-            let vad_path = self.model.vad_model_path();
-            let vad = self.model.model_available(&vad_path).then_some(vad_path.as_path());
-            let segments = if let Some(speaker_pcm) = decoded.speaker_pcm_16k.as_ref() {
-                let mic_segments = self
-                    .model
-                    .transcribe_pcm_with_progress(model_path, &decoded.mic_pcm_16k, vad, None, {
-                        let app = self.app.clone();
-                        let item_id = queue[index].id.clone();
-                        move |p| {
-                            let _ = app.emit(
-                                "transcribe://item-progress",
-                                serde_json::json!({
-                                    "item_id": item_id,
-                                    "progress": p * 0.5
-                                }),
-                            );
-                        }
-                    })
-                    .map_err(|e| e.to_string());
-                let mic_segments = match mic_segments {
-                    Ok(segments) => segments,
-                    Err(err) => {
-                        queue[index].status = TranscribeItemStatus::Error;
-                        queue[index].error = Some(err);
-                        queue[index].progress = 1.0;
-                        self.emit_queue_state(
-                            TranscribeState::Transcribing,
-                            queue.to_vec(),
-                            Some(overall_progress(queue)),
-                            Some(ProcessingStage::TranscribingAudio),
-                            None,
-                        );
-                        continue;
-                    }
-                };
-
-                let speaker_segments = self
-                    .model
-                    .transcribe_pcm_with_progress(model_path, speaker_pcm, vad, None, {
-                        let app = self.app.clone();
-                        let item_id = queue[index].id.clone();
-                        move |p| {
-                            let _ = app.emit(
-                                "transcribe://item-progress",
-                                serde_json::json!({
-                                    "item_id": item_id,
-                                    "progress": 0.5 + p * 0.5
-                                }),
-                            );
-                        }
-                    })
-                    .map_err(|e| e.to_string());
-                let speaker_segments = match speaker_segments {
-                    Ok(segments) => segments,
-                    Err(err) => {
-                        queue[index].status = TranscribeItemStatus::Error;
-                        queue[index].error = Some(err);
-                        queue[index].progress = 1.0;
-                        self.emit_queue_state(
-                            TranscribeState::Transcribing,
-                            queue.to_vec(),
-                            Some(overall_progress(queue)),
-                            Some(ProcessingStage::TranscribingAudio),
-                            None,
-                        );
-                        continue;
-                    }
-                };
-
-                self.model.merge_dual_source(&mic_segments, &speaker_segments)
-            } else {
-                match self.model.transcribe_pcm_with_progress(
-                    model_path,
-                    &decoded.mic_pcm_16k,
-                    vad,
-                    None,
-                    {
-                        let app = self.app.clone();
-                        let item_id = queue[index].id.clone();
-                        move |p| {
-                            let _ = app.emit(
-                                "transcribe://item-progress",
-                                serde_json::json!({
-                                    "item_id": item_id,
-                                    "progress": p
-                                }),
-                            );
-                        }
-                    },
-                ) {
-                    Ok(segments) => segments,
-                    Err(err) => {
-                        queue[index].status = TranscribeItemStatus::Error;
-                        queue[index].error = Some(err.to_string());
-                        queue[index].progress = 1.0;
-                        self.emit_queue_state(
-                            TranscribeState::Transcribing,
-                            queue.to_vec(),
-                            Some(overall_progress(queue)),
-                            Some(ProcessingStage::TranscribingAudio),
-                            None,
-                        );
-                        continue;
-                    }
+            let speaker_change_cuts = offline_cuts(&decoded.mic_pcm_16k);
+            let progress_reporter = {
+                let app = self.app.clone();
+                let item_id = queue[index].id.clone();
+                move |p: f32| {
+                    let _ = app.emit(
+                        "transcribe://item-progress",
+                        serde_json::json!({
+                            "item_id": item_id,
+                            "progress": p
+                        }),
+                    );
                 }
             };
+            let result = match run_post_capture_transcription(
+                &self.model,
+                PostCaptureInput {
+                    profile: CaptureProfile::Upload,
+                    audio: CaptureAudio {
+                        mic_pcm_16k: &decoded.mic_pcm_16k,
+                        speaker_pcm_16k: decoded.speaker_pcm_16k.as_deref(),
+                    },
+                    model_path,
+                    speaker_evidence: Some(SpeakerEvidenceInput::DiarizeOnDemand(
+                        self.diarization.as_ref(),
+                    )),
+                    speaker_change_cuts: &speaker_change_cuts,
+                    abort: None,
+                    on_model_loaded: None,
+                },
+                progress_reporter,
+            ) {
+                Ok(result) => result,
+                Err(err) => {
+                    queue[index].status = TranscribeItemStatus::Error;
+                    queue[index].error = Some(err.to_string());
+                    queue[index].progress = 1.0;
+                    self.emit_queue_state(
+                        TranscribeState::Transcribing,
+                        queue.to_vec(),
+                        Some(overall_progress(queue)),
+                        Some(ProcessingStage::TranscribingAudio),
+                        None,
+                    );
+                    continue;
+                }
+            };
+            let crate::services::transcription::TranscriptResult {
+                segments,
+                speaker_blocks,
+                speaker_change_cuts,
+                dual_source,
+                model_label,
+                ..
+            } = result;
 
             queue[index].progress = 0.98;
             self.emit_queue_state(
@@ -318,29 +301,73 @@ impl TranscribeController {
                 None,
             );
 
-            let output_name = format!("{}_{}.md", slugify(&input.display_name), model_name);
-            let transcript_dest = output_folder.join(output_name);
-            match self.output.write_transcript(
-                &segments,
-                &[],
-                &input.display_name,
-                model_name,
-                include_timestamps,
-                replacement_rules,
-                &transcript_dest,
-            ) {
-                Ok(path) => {
-                    queue[index].status = TranscribeItemStatus::Done;
-                    queue[index].progress = 1.0;
-                    queue[index].transcript_path = Some(path.to_string_lossy().to_string());
-                    queue[index].error = None;
+            // Markdown is opt-in; write `.md` only when the toggle is on.
+            let markdown_path = if markdown_on {
+                let output_name = format!("{}_{}.md", slugify(&input.display_name), model_name);
+                let transcript_dest = output_folder.join(output_name);
+                let write_result = if speaker_blocks.is_empty() {
+                    self.output.write_transcript(
+                        &segments,
+                        &[],
+                        &input.display_name,
+                        model_name,
+                        include_timestamps,
+                        &transcript_dest,
+                    )
+                } else {
+                    let cfg = self.config.get();
+                    self.output.write_speaker_blocks_transcript(
+                        &speaker_blocks,
+                        &input.display_name,
+                        model_name,
+                        &cfg.input_label,
+                        &cfg.output_label,
+                        &transcript_dest,
+                    )
+                };
+                match write_result {
+                    Ok(path) => Some(path),
+                    Err(err) => {
+                        queue[index].status = TranscribeItemStatus::Error;
+                        queue[index].progress = 1.0;
+                        queue[index].error = Some(err.to_string());
+                        self.emit_queue_state(
+                            TranscribeState::Transcribing,
+                            queue.to_vec(),
+                            Some(overall_progress(queue)),
+                            Some(ProcessingStage::WritingTranscript),
+                            None,
+                        );
+                        continue;
+                    }
                 }
-                Err(err) => {
-                    queue[index].status = TranscribeItemStatus::Error;
-                    queue[index].progress = 1.0;
-                    queue[index].error = Some(err.to_string());
-                }
+            } else {
+                None
+            };
+
+            // Persist the canonical record — always, regardless of the markdown toggle.
+            let mut record = HistoryRecord::from_transcribe(
+                input.display_name.clone(),
+                model_label,
+                segments.clone(),
+                dual_source,
+                input.source_path.to_string_lossy().into_owned(),
+                markdown_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().into_owned()),
+            );
+            record.speaker_blocks = speaker_blocks;
+            record.speaker_change_cuts = speaker_change_cuts;
+            if let Err(e) = self.history.append(&save_folder, record) {
+                tracing::warn!(error = %e, "failed to append transcribe history record");
+            } else {
+                self.app.emit("note://item-added", ()).ok();
             }
+
+            queue[index].status = TranscribeItemStatus::Done;
+            queue[index].progress = 1.0;
+            queue[index].transcript_path = markdown_path.map(|p| p.to_string_lossy().to_string());
+            queue[index].error = None;
 
             self.emit_queue_state(
                 TranscribeState::Transcribing,
@@ -407,20 +434,6 @@ fn resolve_output_folder(
     output.ensure_output_dir(path).map_err(|e| e.to_string())
 }
 
-fn resolve_model_path(config: &Config, model: &ModelService, explicit_model_id: Option<&str>) -> PathBuf {
-    if let Some(model_id) = explicit_model_id {
-        if let Some(path) = model.model_path_for_id(model_id.trim()) {
-            return path;
-        }
-    }
-    if let Some(model_id) = &config.selected_model_id {
-        if let Some(path) = model.model_path_for_id(model_id) {
-            return path;
-        }
-    }
-    model.default_model_path()
-}
-
 fn slugify(name: &str) -> String {
     let stem = Path::new(name)
         .file_stem()
@@ -453,4 +466,107 @@ fn overall_progress(items: &[TranscribeQueueItem]) -> f32 {
         })
         .sum();
     (total / items.len() as f32).clamp(0.0, 1.0)
+}
+
+fn offline_cuts(pcm_16k: &[f32]) -> Vec<crate::types::SpeakerChangeCut> {
+    let mut analyzer = PitchAnalyzer::new();
+    analyzer.feed(pcm_16k);
+    let analysis = analyzer.finish();
+    detect_cuts(&analysis, &CutConfig::default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{Config, TranscribeItemStatus, TranscribeQueueItem};
+
+    fn make_queue_item(status: TranscribeItemStatus, progress: f32) -> TranscribeQueueItem {
+        TranscribeQueueItem {
+            id: "test".to_string(),
+            source_path: "".to_string(),
+            display_name: "".to_string(),
+            source_type: crate::types::TranscribeSourceType::SingleAudio,
+            duration_ms: 0,
+            status,
+            progress,
+            transcript_path: None,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn overall_progress_empty_returns_zero() {
+        assert_eq!(overall_progress(&[]), 0.0);
+    }
+
+    #[test]
+    fn overall_progress_all_done() {
+        let items = vec![
+            make_queue_item(TranscribeItemStatus::Done, 1.0),
+            make_queue_item(TranscribeItemStatus::Done, 1.0),
+        ];
+        assert_eq!(overall_progress(&items), 1.0);
+    }
+
+    #[test]
+    fn overall_progress_all_queued() {
+        let items = vec![
+            make_queue_item(TranscribeItemStatus::Queued, 0.0),
+            make_queue_item(TranscribeItemStatus::Queued, 0.0),
+        ];
+        assert_eq!(overall_progress(&items), 0.0);
+    }
+
+    #[test]
+    fn overall_progress_mixed() {
+        let items = vec![
+            make_queue_item(TranscribeItemStatus::Done, 1.0),
+            make_queue_item(TranscribeItemStatus::Queued, 0.0),
+            make_queue_item(TranscribeItemStatus::Processing, 0.5),
+            make_queue_item(TranscribeItemStatus::Error, 1.0),
+        ];
+        // (1.0 + 0.0 + 0.5 + 1.0) / 4 = 0.625
+        let p = overall_progress(&items);
+        assert!((p - 0.625).abs() < 1e-5, "expected 0.625, got {p}");
+    }
+
+    #[test]
+    fn slugify_spaces_become_underscores() {
+        assert_eq!(slugify("hello world"), "hello_world");
+    }
+
+    #[test]
+    fn slugify_strips_extension() {
+        assert_eq!(slugify("audio file.wav"), "audio_file");
+    }
+
+    #[test]
+    fn slugify_replaces_forbidden_chars() {
+        let slug = slugify("a/b\\c:d");
+        assert!(!slug.contains('/') && !slug.contains('\\') && !slug.contains(':'));
+    }
+
+    #[test]
+    fn resolve_output_folder_rejects_relative_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let output_svc = crate::services::output::OutputService::new();
+        let config = Config {
+            save_folder: tmp.path().to_string_lossy().to_string(),
+            ..Config::default()
+        };
+        let result = resolve_output_folder(&output_svc, &config, Some("relative/path"));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("must be absolute"));
+    }
+
+    #[test]
+    fn resolve_output_folder_rejects_empty() {
+        let output_svc = crate::services::output::OutputService::new();
+        let config = Config {
+            save_folder: String::new(),
+            ..Config::default()
+        };
+        let result = resolve_output_folder(&output_svc, &config, None);
+        assert!(result.is_err());
+    }
 }

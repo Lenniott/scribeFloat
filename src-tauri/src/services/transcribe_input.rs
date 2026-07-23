@@ -1,4 +1,5 @@
 use crate::services::audio::{resample_linear, WHISPER_SAMPLE_RATE};
+use crate::services::output::speaker_pcm_has_signal;
 use crate::types::TranscribeSourceType;
 use std::collections::HashSet;
 use std::fs::File;
@@ -101,16 +102,23 @@ impl TranscribeInputService {
         Ok(items)
     }
 
-    pub fn decode_input(&self, input: &TranscribeInputItem) -> Result<DecodedTranscribeInput, String> {
+    pub fn decode_input(
+        &self,
+        input: &TranscribeInputItem,
+    ) -> Result<DecodedTranscribeInput, String> {
         let (mic_pcm, mic_rate) = decode_audio_file(&input.mic_path)?;
         let mic_pcm_16k = resample_linear(&mic_pcm, mic_rate, WHISPER_SAMPLE_RATE);
         let speaker_pcm_16k = if let Some(speaker_path) = &input.speaker_path {
             let (speaker_pcm, speaker_rate) = decode_audio_file(speaker_path)?;
-            Some(resample_linear(
-                &speaker_pcm,
-                speaker_rate,
-                WHISPER_SAMPLE_RATE,
-            ))
+            let resampled = resample_linear(&speaker_pcm, speaker_rate, WHISPER_SAMPLE_RATE);
+            if speaker_pcm_has_signal(&resampled) {
+                Some(resampled)
+            } else {
+                tracing::info!(
+                    "speaker channel is silent — skipping speaker transcription for upload"
+                );
+                None
+            }
         } else {
             None
         };
@@ -140,7 +148,9 @@ impl TranscribeInputService {
     fn estimate_duration_ms(&self, path: &Path) -> Result<u64, String> {
         let probed = probe_stream(path)?;
         if let Some(track) = probed.format.default_track() {
-            if let (Some(time_base), Some(n_frames)) = (track.codec_params.time_base, track.codec_params.n_frames) {
+            if let (Some(time_base), Some(n_frames)) =
+                (track.codec_params.time_base, track.codec_params.n_frames)
+            {
                 let time = time_base.calc_time(n_frames);
                 let millis = time
                     .seconds
@@ -171,8 +181,7 @@ fn canonicalize_existing(path: &str) -> Result<PathBuf, String> {
     if !candidate.exists() {
         return Err(format!("input path does not exist: `{trimmed}`"));
     }
-    std::fs::canonicalize(candidate)
-        .map_err(|e| format!("failed to resolve `{trimmed}`: {e}"))
+    std::fs::canonicalize(candidate).map_err(|e| format!("failed to resolve `{trimmed}`: {e}"))
 }
 
 fn classify_session_dir(dir: &Path) -> Option<(PathBuf, Option<PathBuf>)> {
@@ -181,7 +190,8 @@ fn classify_session_dir(dir: &Path) -> Option<(PathBuf, Option<PathBuf>)> {
         return None;
     }
     let speaker = dir.join("speaker.wav");
-    let has_session_metadata = dir.join("session.json").is_file() || dir.join("notes.json").is_file();
+    let has_session_metadata =
+        dir.join("session.json").is_file() || dir.join("notes.json").is_file();
     if speaker.is_file() {
         return Some((mic, Some(speaker)));
     }
@@ -218,8 +228,7 @@ fn is_supported_audio_file(path: &Path) -> bool {
 }
 
 fn probe_stream(path: &Path) -> Result<ProbedStream, String> {
-    let file = File::open(path)
-        .map_err(|e| format!("failed to open `{}`: {e}", path.display()))?;
+    let file = File::open(path).map_err(|e| format!("failed to open `{}`: {e}", path.display()))?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
     let mut hint = Hint::new();
     if let Some(ext) = path.extension().and_then(|ext| ext.to_str()) {
@@ -233,12 +242,13 @@ fn probe_stream(path: &Path) -> Result<ProbedStream, String> {
             &MetadataOptions::default(),
         )
         .map_err(|e| format!("failed to probe `{}`: {e}", path.display()))?;
-    Ok(ProbedStream { format: probed.format })
+    Ok(ProbedStream {
+        format: probed.format,
+    })
 }
 
 fn decode_audio_file(path: &Path) -> Result<(Vec<f32>, u32), String> {
-    let file = File::open(path)
-        .map_err(|e| format!("failed to open `{}`: {e}", path.display()))?;
+    let file = File::open(path).map_err(|e| format!("failed to open `{}`: {e}", path.display()))?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
     let mut hint = Hint::new();
     if let Some(ext) = path.extension().and_then(|ext| ext.to_str()) {
@@ -362,7 +372,10 @@ mod tests {
             .expand_inputs(&[dir.path().to_string_lossy().to_string()])
             .expect("expand session");
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].source_type, TranscribeSourceType::DualSourceSession);
+        assert_eq!(
+            items[0].source_type,
+            TranscribeSourceType::DualSourceSession
+        );
         assert!(items[0].speaker_path.is_some());
     }
 
@@ -382,7 +395,9 @@ mod tests {
             .expand_inputs(&[dir.path().to_string_lossy().to_string()])
             .expect("expand folder");
         assert_eq!(items.len(), 2);
-        assert!(items.iter().all(|item| item.source_type == TranscribeSourceType::SingleAudio));
+        assert!(items
+            .iter()
+            .all(|item| item.source_type == TranscribeSourceType::SingleAudio));
     }
 
     #[test]
@@ -397,6 +412,9 @@ mod tests {
             .expect("expand");
         let decoded = service.decode_input(&items[0]).expect("decode");
         assert!(!decoded.mic_pcm_16k.is_empty());
-        assert!(wav.exists(), "source file must not be deleted by transcribe");
+        assert!(
+            wav.exists(),
+            "source file must not be deleted by transcribe"
+        );
     }
 }

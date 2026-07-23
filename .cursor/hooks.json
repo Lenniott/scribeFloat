@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "node .cursor/hooks/ui-enforcement-check.mjs",
+        "matcher": "Write|StrReplace"
+      },
+      {
+        "command": "bash -c \"f=$(jq -r '.tool_input.file_path // \\\"\\\"' 2>/dev/null); echo \\\"$f\\\" | grep -qE '(\\.cursor/skills/|\\.claude/commands/)' && echo '{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Write to skills/ instead\\\"}' || true\"",
+        "matcher": "Write|StrReplace"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "node .cursor/hooks/ui-enforcement-check.mjs",
+        "matcher": "Write|StrReplace"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "node .cursor/hooks/ui-enforcement-check.mjs",
+        "matcher": "Write|StrReplace"
+      }
+    ]
+  }
+}

@@ -1,9 +1,9 @@
+use crate::services::audio::AudioService;
 use crate::services::config::ConfigService;
 use crate::services::hotkeys::HotkeyService;
 use crate::services::output::OutputService;
 use crate::services::permissions::PermissionsService;
-use crate::services::audio::AudioService;
-use crate::types::{PermissionStatus, ReplacementRule, ReplacementRuleType, ThemeMode};
+use crate::types::{PermissionStatus, ThemeMode};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -228,7 +228,9 @@ impl SettingsController {
                 return Err("app path must be an absolute path".to_string());
             }
             if !candidate.exists() {
-                return Err(format!("app path `{trimmed}` does not exist on this system"));
+                return Err(format!(
+                    "app path `{trimmed}` does not exist on this system"
+                ));
             }
         }
         self.config
@@ -310,77 +312,63 @@ impl SettingsController {
             .map_err(|e| format!("failed to persist keep_wav: {e}"))
     }
 
-    pub fn get_dictate_model_id(&self) -> Option<String> {
-        self.config.get().dictate_model_id
+    pub fn get_save_transcripts_as_markdown(&self) -> bool {
+        self.config.get().save_transcripts_as_markdown
     }
 
-    pub fn set_dictate_model_id(&self, model_id: Option<String>) -> Result<(), String> {
-        let model_id = model_id.and_then(|id| {
-            let trimmed = id.trim().to_string();
-            if trimmed.is_empty() { None } else { Some(trimmed) }
-        });
+    pub fn set_save_transcripts_as_markdown(&self, enabled: bool) -> Result<(), String> {
         self.config
-            .update(|cfg| cfg.dictate_model_id = model_id)
-            .map_err(|e| format!("failed to persist dictate_model_id: {e}"))
+            .update(|cfg| cfg.save_transcripts_as_markdown = enabled)
+            .map_err(|e| format!("failed to persist save_transcripts_as_markdown: {e}"))
     }
 
     pub fn is_onboarding_complete(&self) -> bool {
         self.config.get().onboarding_complete
     }
 
+    pub fn get_onboarding_step(&self) -> u8 {
+        crate::types::clamp_onboarding_step(self.config.get().onboarding_step)
+    }
+
+    pub fn set_onboarding_step(&self, step: u8) -> Result<(), String> {
+        let step = crate::types::clamp_onboarding_step(step);
+        self.config
+            .update(|cfg| cfg.onboarding_step = step)
+            .map_err(|e| format!("failed to save onboarding step: {e}"))
+    }
+
     pub fn complete_onboarding(&self) -> Result<(), String> {
         self.config
-            .update(|cfg| cfg.onboarding_complete = true)
+            .update(|cfg| {
+                cfg.onboarding_complete = true;
+                cfg.onboarding_step = 1;
+            })
             .map_err(|e| format!("failed to save onboarding status: {e}"))
     }
 
     pub fn reset_onboarding(&self) -> Result<(), String> {
         self.config
-            .update(|cfg| cfg.onboarding_complete = false)
+            .update(|cfg| {
+                cfg.onboarding_complete = false;
+                cfg.onboarding_step = 1;
+            })
             .map_err(|e| format!("failed to reset onboarding status: {e}"))
     }
 
-    pub fn get_replacement_rules(&self) -> Vec<ReplacementRule> {
-        self.config.get().replacement_rules
+    pub fn get_user_display_name(&self) -> String {
+        self.config.get().user_display_name
     }
 
-    pub fn add_replacement_rule(&self, rule: ReplacementRule) -> Result<(), String> {
-        validate_rule(&rule)?;
-        self.config
-            .update(|cfg| cfg.replacement_rules.push(rule))
-            .map_err(|e| format!("failed to save replacement rule: {e}"))
-    }
-
-    pub fn update_replacement_rule(&self, index: usize, rule: ReplacementRule) -> Result<(), String> {
-        validate_rule(&rule)?;
-        let len = self.config.get().replacement_rules.len();
-        if index >= len {
-            return Err(format!("replacement rule index {index} out of range (len={len})"));
+    pub fn set_user_display_name(&self, name: String) -> Result<(), String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("user display name cannot be empty".to_string());
         }
         self.config
-            .update(|cfg| cfg.replacement_rules[index] = rule)
-            .map_err(|e| format!("failed to update replacement rule: {e}"))
+            .update(|cfg| cfg.user_display_name = name.to_string())
+            .map_err(|e| format!("failed to persist user display name: {e}"))
     }
 
-    pub fn delete_replacement_rule(&self, index: usize) -> Result<(), String> {
-        let len = self.config.get().replacement_rules.len();
-        if index >= len {
-            return Err(format!("replacement rule index {index} out of range (len={len})"));
-        }
-        self.config
-            .update(|cfg| { cfg.replacement_rules.remove(index); })
-            .map_err(|e| format!("failed to delete replacement rule: {e}"))
-    }
-}
-
-fn validate_rule(rule: &ReplacementRule) -> Result<(), String> {
-    if rule.trigger.trim().is_empty() {
-        return Err("replacement rule trigger cannot be empty".to_string());
-    }
-    if matches!(rule.rule_type, ReplacementRuleType::Wrap) && rule.prefix.is_empty() && rule.suffix.is_empty() {
-        return Err("wrap rule must have a non-empty prefix or suffix".to_string());
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -421,7 +409,7 @@ mod tests {
         });
         let hotkeys = HotkeyService::new(registrar);
         SettingsController::new(
-            config,
+            Arc::clone(&config),
             hotkeys,
             crate::services::output::OutputService::new(),
             PermissionsService::new(),
@@ -573,6 +561,7 @@ mod tests {
         assert!(ctrl.set_theme_mode("sepia".to_string()).is_err());
     }
 
+
     #[test]
     fn onboarding_starts_incomplete_and_completes() {
         let tmp = tempfile::tempdir().unwrap();
@@ -581,8 +570,10 @@ mod tests {
         let ctrl = make_controller(config, None);
 
         assert!(!ctrl.is_onboarding_complete());
+        assert_eq!(ctrl.get_onboarding_step(), 1);
         ctrl.complete_onboarding().expect("complete onboarding");
         assert!(ctrl.is_onboarding_complete());
+        assert_eq!(ctrl.get_onboarding_step(), 1);
 
         let reloaded = ConfigService::load(config_path).unwrap();
         let ctrl2 = make_controller(reloaded, None);
@@ -595,10 +586,32 @@ mod tests {
         let config = ConfigService::load(tmp.path().join("config.json")).unwrap();
         let ctrl = make_controller(config, None);
 
+        ctrl.set_onboarding_step(3).unwrap();
         ctrl.complete_onboarding().unwrap();
         assert!(ctrl.is_onboarding_complete());
         ctrl.reset_onboarding().unwrap();
         assert!(!ctrl.is_onboarding_complete());
+        assert_eq!(ctrl.get_onboarding_step(), 1);
+    }
+
+    #[test]
+    fn onboarding_step_persists_and_clamps() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("config.json");
+        let config = ConfigService::load(config_path.clone()).unwrap();
+        let ctrl = make_controller(config, None);
+
+        ctrl.set_onboarding_step(3).unwrap();
+        assert_eq!(ctrl.get_onboarding_step(), 3);
+
+        let reloaded = ConfigService::load(config_path).unwrap();
+        let ctrl2 = make_controller(reloaded, None);
+        assert_eq!(ctrl2.get_onboarding_step(), 3);
+
+        ctrl2.set_onboarding_step(0).unwrap();
+        assert_eq!(ctrl2.get_onboarding_step(), 1);
+        ctrl2.set_onboarding_step(9).unwrap();
+        assert_eq!(ctrl2.get_onboarding_step(), 4);
     }
 
     #[test]
@@ -629,6 +642,8 @@ mod tests {
             assert_eq!(dictate, "Ctrl+D");
         }
     }
+
+
 
     #[cfg(target_os = "windows")]
     #[test]

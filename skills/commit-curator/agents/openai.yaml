@@ -1,0 +1,3 @@
+display_name: Commit Curator
+short_description: Plan commit splits first; execute only after user approval.
+default_prompt: Propose a logical commit split for my current changes. Do not commit until I approve the plan.

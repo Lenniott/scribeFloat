@@ -59,6 +59,12 @@ jobs:
 
       - run: npm ci
 
+      # Whisper Small + VAD + voiceprint ONNX. Must run before any cargo step:
+      # the Tauri build script requires bundle.resources paths to exist.
+      - name: Fetch bundled models
+        shell: bash
+        run: bash scripts/fetch-bundled-models.sh
+
       # macOS: Tauri imports APPLE_CERTIFICATE (.p12) and signs with that cert's identity.
       # Do not set APPLE_SIGNING_IDENTITY unless it is a substring of the p12 identity
       # (tauri-bundler: certificate_identity.contains(identity)).
@@ -105,14 +111,17 @@ jobs:
           mkdir -p src-tauri/windows-resources
           cp "${OPENBLAS_BIN}/libopenblas.dll" src-tauri/windows-resources/libopenblas.dll
 
-      - name: Download bundled base model
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p src-tauri/bundled-models
-          curl -fL \
-            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin" \
-            -o src-tauri/bundled-models/ggml-base.en-q5_1.bin
+      - name: Check formatting
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Lint
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        working-directory: src-tauri
+        run: cargo test --lib --no-fail-fast
 
       - name: Build
         shell: bash

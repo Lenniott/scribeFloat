@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-render-transcript-html"
+description = "Enables the note_render_transcript_html command without any pre-configured scope."
+commands.allow = ["note_render_transcript_html"]
+
+[[permission]]
+identifier = "deny-note-render-transcript-html"
+description = "Denies the note_render_transcript_html command without any pre-configured scope."
+commands.deny = ["note_render_transcript_html"]

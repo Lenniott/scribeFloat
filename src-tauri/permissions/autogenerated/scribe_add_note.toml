@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scribe-add-note"
+description = "Enables the scribe_add_note command without any pre-configured scope."
+commands.allow = ["scribe_add_note"]
+
+[[permission]]
+identifier = "deny-scribe-add-note"
+description = "Denies the scribe_add_note command without any pre-configured scope."
+commands.deny = ["scribe_add_note"]

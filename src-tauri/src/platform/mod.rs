@@ -4,6 +4,11 @@ pub mod paste_impl;
 pub mod permissions_impl;
 pub mod window_impl;
 
+#[cfg(target_os = "macos")]
+const VOICE_CRYPTO_KEY_SERVICE: &str = "com.benjamin.scribefloat-v8.voice-embeddings-key";
+#[cfg(target_os = "macos")]
+const VOICE_CRYPTO_KEY_ACCOUNT: &str = "default";
+
 /// Open a file, optionally with a specific application.
 /// On macOS `app` is either a bare app name ("Obsidian") or a full path ("/Applications/Obsidian.app").
 /// On Windows `app` is the full path to the executable.
@@ -142,6 +147,38 @@ pub fn set_default_output_device(_device_name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Delete the legacy voice-embedding encryption key. The voiceprint feature is
+/// gone; its ciphertext is purged at startup, so the key has nothing to guard.
+/// Missing key (already deleted, or never created) is success.
+#[cfg(target_os = "macos")]
+pub fn delete_voice_crypto_key() -> Result<(), String> {
+    let output = std::process::Command::new("/usr/bin/security")
+        .args([
+            "delete-generic-password",
+            "-s",
+            VOICE_CRYPTO_KEY_SERVICE,
+            "-a",
+            VOICE_CRYPTO_KEY_ACCOUNT,
+        ])
+        .output()
+        .map_err(|e| format!("failed to run macOS Keychain delete: {e}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr.contains("could not be found") {
+        Ok(())
+    } else {
+        Err(stderr.trim().to_string())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn delete_voice_crypto_key() -> Result<(), String> {
+    // Key storage was only ever implemented on macOS.
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
 pub fn default_open_scribe_hotkey() -> &'static str {
     "Alt+Shift+L"
@@ -240,14 +277,18 @@ mod save_folder_tests {
     fn legacy_unix_tmp_path_migration_flag() {
         #[cfg(target_os = "windows")]
         {
-            assert!(windows_save_folder_needs_migration("/tmp/transcripts_scribefloat"));
+            assert!(windows_save_folder_needs_migration(
+                "/tmp/transcripts_scribefloat"
+            ));
             assert!(!windows_save_folder_needs_migration(
                 r"C:\Users\me\Documents\transcripts_scribefloat"
             ));
         }
         #[cfg(not(target_os = "windows"))]
         {
-            assert!(!windows_save_folder_needs_migration("/tmp/transcripts_scribefloat"));
+            assert!(!windows_save_folder_needs_migration(
+                "/tmp/transcripts_scribefloat"
+            ));
         }
     }
 }

@@ -25,22 +25,27 @@ impl PermissionsService {
 
     pub fn statuses(&self) -> Vec<PermissionStatus> {
         let speaker_granted = self.speaker_capture_granted();
-        ["microphone", "accessibility", "input_monitoring", "speaker_capture"]
-            .iter()
-            .map(|kind| {
-                let granted = if *kind == "speaker_capture" {
-                    speaker_granted
-                } else {
-                    permissions_impl::permission_granted(kind)
-                };
-                PermissionStatus {
-                    kind: kind.to_string(),
-                    granted,
-                    can_request: permissions_impl::permission_can_request(kind),
-                    hint: permissions_impl::permission_hint(kind),
-                }
-            })
-            .collect()
+        [
+            "microphone",
+            "accessibility",
+            "input_monitoring",
+            "speaker_capture",
+        ]
+        .iter()
+        .map(|kind| {
+            let granted = if *kind == "speaker_capture" {
+                speaker_granted
+            } else {
+                permissions_impl::permission_granted(kind)
+            };
+            PermissionStatus {
+                kind: kind.to_string(),
+                granted,
+                can_request: permissions_impl::permission_can_request(kind),
+                hint: permissions_impl::permission_hint(kind),
+            }
+        })
+        .collect()
     }
 
     pub fn open_settings(&self, kind: &str) -> Result<bool> {

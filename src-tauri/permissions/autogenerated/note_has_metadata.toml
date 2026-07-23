@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-note-has-metadata"
+description = "Enables the note_has_metadata command without any pre-configured scope."
+commands.allow = ["note_has_metadata"]
+
+[[permission]]
+identifier = "deny-note-has-metadata"
+description = "Denies the note_has_metadata command without any pre-configured scope."
+commands.deny = ["note_has_metadata"]

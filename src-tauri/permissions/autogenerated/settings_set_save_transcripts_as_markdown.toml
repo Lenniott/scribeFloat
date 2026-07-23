@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-settings-set-save-transcripts-as-markdown"
+description = "Enables the settings_set_save_transcripts_as_markdown command without any pre-configured scope."
+commands.allow = ["settings_set_save_transcripts_as_markdown"]
+
+[[permission]]
+identifier = "deny-settings-set-save-transcripts-as-markdown"
+description = "Denies the settings_set_save_transcripts_as_markdown command without any pre-configured scope."
+commands.deny = ["settings_set_save_transcripts_as_markdown"]

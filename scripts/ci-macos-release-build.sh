@@ -60,6 +60,9 @@ fi
 
 echo "==> tauri build target: ${TAURI_BUILD_TARGET}"
 
+echo "==> fetch bundled models"
+bash "$ROOT/scripts/fetch-bundled-models.sh"
+
 echo "==> npm ci"
 npm ci
 

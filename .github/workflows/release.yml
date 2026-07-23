@@ -21,7 +21,7 @@ jobs:
       target: aarch64-apple-darwin
       artifact_path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
       artifact_name: macos-arm-dmg
-      # Native Apple Silicon. whisper-rs `metal` + Accelerate from .cargo/config.toml.
+      # Native Apple Silicon. whisper-rs `metal` only — no BLAS (Metal handles everything).
 
   build-macos-intel:
     uses: ./.github/workflows/reusable-tauri-build.yml
@@ -33,7 +33,7 @@ jobs:
       target: x86_64-apple-darwin
       artifact_path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
       artifact_name: macos-intel-dmg
-      extra_cmake_args: '-DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON'
+      extra_cmake_args: '-DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=Apple -DGGML_ACCELERATE=ON'
       timeout_minutes: 120
 
   build-windows:

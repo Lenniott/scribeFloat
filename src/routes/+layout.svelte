@@ -6,6 +6,7 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { listen } from '@tauri-apps/api/event';
 	import { watchThemeMode, type ThemeMode } from '@utils/theme';
+	import { debounce } from '@utils/debounce';
 	import '../app.css';
 
 	import AppSidebar, { type AppRoute } from '@regions/AppSidebar.svelte';
@@ -166,11 +167,17 @@
 
 		void loadNotes();
 		void scribe.init();
-		const unlistenNoteP = listen('note://item-added', () => {
+		// Coalesce bursts of note add/update events (e.g. a batch of Dictate
+		// captures or an Upload batch) into a single `loadNotes()` refetch,
+		// while still refreshing promptly for a single isolated event.
+		const debouncedLoadNotes = debounce(() => {
 			void loadNotes();
+		}, 200);
+		const unlistenNoteP = listen('note://item-added', () => {
+			debouncedLoadNotes();
 		});
 		const unlistenNoteUpdatedP = listen<{ id: string }>('note://item-updated', () => {
-			void loadNotes();
+			debouncedLoadNotes();
 		});
 		const unlistenNavP = listen<AppNavigateEvent>('app://navigate', (event) => {
 			const next = event.payload.route;
@@ -185,6 +192,7 @@
 			cleanup();
 			window.removeEventListener('storage', onStorage);
 			scribe.destroy();
+			debouncedLoadNotes.cancel();
 			await (await unlistenNoteP)();
 			await (await unlistenNoteUpdatedP)();
 			await (await unlistenNavP)();

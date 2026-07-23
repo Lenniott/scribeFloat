@@ -20,6 +20,7 @@
 	let autoEnter = $state(false);
 	let noteDraft = $state("");
 	let notes = $state<Note[]>([]);
+	let notesScrollEl = $state<HTMLDivElement | null>(null);
 	let unlisteners: (() => void)[] = [];
 
 	type DictateState = "IDLE" | "RECORDING" | "TRANSCRIBING" | "PASTING" | "DONE" | "ERROR";
@@ -34,12 +35,17 @@
 		const text = noteDraft.trim();
 		if (!text) return;
 		const next: Note[] = [
-			{ id: crypto.randomUUID(), text, recordedAtMs: Date.now() },
 			...notes,
-		].slice(0, MAX_NOTES);
+			{ id: crypto.randomUUID(), text, recordedAtMs: Date.now() },
+		].slice(-MAX_NOTES);
 		notes = next;
 		noteDraft = "";
 		dictateError = "";
+		queueMicrotask(() => {
+			if (notesScrollEl) {
+				notesScrollEl.scrollTop = notesScrollEl.scrollHeight;
+			}
+		});
 	}
 
 	async function toggleEnter(enabled: boolean) {
@@ -99,27 +105,31 @@
 				</div>
 			</div>
 
-			<div class="flex flex-col flex-1 min-h-0 gap-2">
-				<div class="relative min-h-0 flex-1">
-					<div class="space-y-2">
-						{#each notes as note (note.id)}
-							<NoteCard {note} />
-						{/each}
-					</div>
+			<div class="flex min-h-0 flex-1 flex-col gap-2">
+				<!-- List region fills leftover space; cards themselves stay content-sized. -->
+				<div class="relative min-h-0 flex-1 overflow-y-auto" bind:this={notesScrollEl}>
 					{#if notes.length === 0}
-						<div class="flex items-center justify-center h-full">
-							<p class="sf-label-md text-fg-muted text-center px-3">
+						<div class="flex h-full items-center justify-center">
+							<p class="sf-label-md px-3 text-center text-fg-muted">
 								Dictated notes will appear here
 							</p>
 						</div>
+					{:else}
+						<ul class="flex flex-col justify-start gap-2">
+							{#each notes as note (note.id)}
+								<li class="w-full shrink-0">
+									<NoteCard {note} maxLines={2} />
+								</li>
+							{/each}
+						</ul>
 					{/if}
 				</div>
 
 				{#if dictateError}
-					<p class="sf-label-sm text-destructive px-1">{dictateError}</p>
+					<p class="shrink-0 px-1 sf-label-sm text-destructive">{dictateError}</p>
 				{/if}
 
-				<div>
+				<div class="shrink-0">
 					<NoteComposer
 						bind:value={noteDraft}
 						placeholder="Click here and test dictate"

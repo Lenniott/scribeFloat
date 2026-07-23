@@ -15,8 +15,11 @@ default-run = "ScribeFloat"
 name = "scribefloat_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# Must not be named `scribefloat` — on macOS case-insensitive volumes that collides
+# with the GUI binary `ScribeFloat` (package default-run), so the CLI overwrites the
+# app executable and the .app "opens" then immediately exits (prints CLI help).
 [[bin]]
-name = "scribefloat"
+name = "scribefloat-cli"
 path = "src/bin/scribefloat.rs"
 
 [build-dependencies]

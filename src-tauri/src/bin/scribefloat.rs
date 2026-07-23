@@ -150,10 +150,10 @@ fn format_ms(ms: i64) -> String {
 
 fn print_help() {
     println!(
-        "scribefloat local context search\n\n\
+        "scribefloat-cli local context search\n\n\
 Usage:\n  \
-scribefloat [--save-folder <path>] index build\n  \
-scribefloat [--save-folder <path>] search <query> [--limit 20] [--since 90d] [--tag tag]\n  \
-scribefloat [--save-folder <path>] context --query <query> --out <path> [--limit 12] [--since 90d] [--tag tag]\n"
+scribefloat-cli [--save-folder <path>] index build\n  \
+scribefloat-cli [--save-folder <path>] search <query> [--limit 20] [--since 90d] [--tag tag]\n  \
+scribefloat-cli [--save-folder <path>] context --query <query> --out <path> [--limit 12] [--since 90d] [--tag tag]\n"
     );
 }

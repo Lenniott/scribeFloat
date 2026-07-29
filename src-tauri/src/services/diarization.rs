@@ -170,7 +170,17 @@ impl DiarizationService {
     }
 
     /// Offline-restore from the signed app bundle when the writable copy is bad.
+    ///
+    /// Checks the cached (mtime, size) fingerprint first — same pattern as Whisper's
+    /// `model_integrity_ok_cached` — so a recording start doesn't re-hash this file
+    /// (streamed SHA-256 over the full ONNX model) on every single call.
     pub fn ensure_model(&self) -> bool {
+        if !bundled_models::dest_needs_bundle_restore_cached(
+            &self.model_path,
+            SORTFORMER_MODEL_SHA256,
+        ) {
+            return true;
+        }
         bundled_models::ensure_bundled_file(
             self.resource_dir.as_deref(),
             &self.model_path,
@@ -332,6 +342,33 @@ mod tests {
         assert!(svc.model_available());
         assert!(!svc.model_integrity_ok());
         assert!(!svc.ensure_model()); // no resource_dir to heal from
+    }
+
+    #[test]
+    fn ensure_model_trusts_cached_fingerprint_without_rehashing() {
+        let dir = tempfile::tempdir().unwrap();
+        let model_path = dir.path().join(SORTFORMER_MODEL_FILENAME);
+        std::fs::write(&model_path, b"not-real-onnx-bytes").unwrap();
+        let meta = std::fs::metadata(&model_path).unwrap();
+        let mtime = meta
+            .modified()
+            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as u64;
+        let size = meta.len();
+        let cache_path = dir.path().join(format!(".{SORTFORMER_MODEL_FILENAME}.integrity"));
+        std::fs::write(
+            &cache_path,
+            format!("{mtime}:{size}:{}", SORTFORMER_MODEL_SHA256.to_ascii_lowercase()),
+        )
+        .unwrap();
+
+        let svc = service_in(dir.path());
+        // Content doesn't actually hash to SORTFORMER_MODEL_SHA256, but the fingerprint
+        // cache already attests this exact (mtime, size) as verified — ensure_model must
+        // trust that and skip the expensive re-hash, same as Whisper's cached path.
+        assert!(svc.ensure_model());
     }
 
     #[test]

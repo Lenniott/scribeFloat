@@ -1,11 +1,19 @@
 ---
 title: "Triage: Opening transcript output allows any .md path"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
+
+## Resolution
+
+**Now, done 2026-07-29.** `TranscribeController::open_output_path` confines to `config.save_folder`, mirroring `SettingsController::open_transcript`'s existing pattern exactly (canonicalize both, require `starts_with`). Design call: confine to `save_folder`, not the per-request output folder — that folder isn't persisted anywhere retrievable at open time, so `save_folder` is the only base reliably available.
+
+Follow-up found in the same session: the `save_transcripts_as_markdown` toggle was silently swapping a store-backed note's UI from the normal in-app editor to an external "Open .md" action once `has_markdown` flipped true — a genuinely different route, not just an auto-export side effect. Scoped that affordance (`NoteCard.svelte`, `NoteDetailPane.svelte`, `notes.svelte`) to `item.source !== 'store'` so legacy/orphaned `.md` items keep it (their only view) while store notes stay on their normal editor path regardless of the toggle.
+
+Also surfaced and fixed a real, unrelated perf bug while testing this: `DiarizationService::ensure_model()` was re-hashing the full Sortformer ONNX file on every recording start (no cached fingerprint check, unlike Whisper's equivalent). Fixed in `7de6462`.
 
 ## Issue
 

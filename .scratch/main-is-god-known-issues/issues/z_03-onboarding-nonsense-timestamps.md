@@ -1,11 +1,15 @@
 ---
 title: "Triage: Onboarding Try Dictate shows nonsense timestamps"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
+
+## Resolution
+
+**Now, done 2026-07-29.** `Timestamp.svelte`'s `format()` now renders wall-clock time via `toLocaleTimeString` (matching `FeatureTourStep.svelte`'s existing clock pattern) instead of misreading epoch ms as an elapsed duration.
 
 ## Issue
 

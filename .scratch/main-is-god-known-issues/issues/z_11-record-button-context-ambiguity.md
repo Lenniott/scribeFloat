@@ -1,11 +1,15 @@
 ---
 title: "Triage: Record button context: new note vs continue in note"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
+
+## Resolution
+
+**Now, done 2026-07-29.** Label-only fix, no confirmation modal needed. `TitleBar.svelte`'s button now matches the tray's own semantics exactly: **"New note"** outside a note (creates a note, no auto-record — the `scribeAutoStart` auto-start flag was removed as dead code once this stopped being set), **"Record"** inside a note (starts recording into it, unchanged behavior, reusing the existing route-match logic).
 
 ## Issue
 

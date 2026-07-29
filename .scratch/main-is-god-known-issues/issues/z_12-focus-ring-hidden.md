@@ -1,11 +1,15 @@
 ---
 title: "Triage: Focus ring hidden or overridden by styling"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
+
+## Resolution
+
+**Now, done 2026-07-29.** One-line CSS fix: `.sf-select` (`src/app.css`) now carries the same `focus-visible:ring-2 ring-focus` rule `.sf-input` already had.
 
 ## Issue
 

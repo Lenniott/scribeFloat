@@ -1,11 +1,15 @@
 ---
 title: "Triage: TCC prompts fire too early (Documents access remainder)"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
+
+## Resolution
+
+**Now, done 2026-07-29.** Both options: gated the startup background compaction+scan behind `!is_first_run` (`src-tauri/src/lib.rs`) — nothing to compact/recover on a fresh install anyway — and added a dedicated save-folder-picker onboarding step (`SaveFolderStep.svelte`, step 3, between Permissions and Dictate Practice) so the folder is user-confirmed before Dictate Practice's test recording ever touches it. `clamp_onboarding_step` bumped 1..4 → 1..5 to fit the new step; onboarding's `dialog:default`/`settings_set_output_path` capability grant added with a documented ACL guard-test exception (see ticket 19's commit `7de6462`).
 
 ## Issue
 

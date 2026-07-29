@@ -1,11 +1,15 @@
 ---
 title: "Triage: Onboarding "You're All Set" tray mockup is stale"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
+
+## Resolution
+
+**Now, done 2026-07-29.** `FeatureTourStep.svelte`'s mockup rewritten to Dictate / New note / Open ScribeFloat / Settings / Quit ScribeFloat with two separators, matching the live tray exactly; `lib.rs` casing fixed to `"Quit ScribeFloat"`. Mockup rows simplified (icon + label, no per-item description) after a follow-up correction — the original description-heavy version overflowed the step footer; the real fix was proportioning the mockup like the compact native menu, not adding scroll clipping.
 
 ## Issue
 

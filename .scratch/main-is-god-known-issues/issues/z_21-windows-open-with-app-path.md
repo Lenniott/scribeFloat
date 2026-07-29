@@ -1,11 +1,15 @@
 ---
 title: "Triage: Windows file-open / "open with" app path"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
+
+## Resolution
+
+**Later, closed 2026-07-29.** No distinct work needed — ticket 19's `save_folder` confinement fix (`7de6462`) is upstream of the Windows `cfg(target_os)` split, so it covers Windows automatically. Windows CI/manual verification stays deferred per the map ("after main is clean / when Windows care returns").
 
 ## Issue
 

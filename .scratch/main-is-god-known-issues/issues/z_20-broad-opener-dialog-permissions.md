@@ -1,15 +1,23 @@
 ---
 title: "Triage: Broad opener / dialog plugin permissions"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+The original concern — the GitHub API's `html_url` field could be used to redirect the update-check opener to an arbitrary URL/scheme — is already fixed by commit `0129179`; the update URL is now built from a hardcoded trusted base plus a sanitized tag. What remains is that the `opener`/`dialog` Tauri capabilities are still granted as broad defaults with no URL-pattern allowlist, so any *future* command introducing another externally-sourced URL would inherit the same unscoped permission.
+
 ## Question
 
-Read the "Broad opener / dialog plugin permissions" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Broad opener / dialog plugin permissions" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. Resolved for the original concern; residual URL-allowlist hardening left for whenever a new external-URL command shows up (not worth doing speculatively).
+
+## Resolution
+
+**Verified 2026-07-29.** `update.rs` builds the release URL from a hardcoded trusted base (`REPO_RELEASES_BASE`) plus a sanitized tag (`release_url_for_tag`, alphanumeric/`.`/`-`/`_` only) — the API's `html_url` is never used. `capabilities/shell.json` still grants `opener:default`/`dialog:default` unscoped, which is a defense-in-depth gap for future commands, not an active vulnerability today. No code change needed now.
 
 ## Findings
 

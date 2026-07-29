@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+Dictate transcription only starts after the user releases/stops recording, then runs as a single Whisper pass over the entire buffer — so every Dictate session pays a fixed latency tax after Stop, proportional to how long the recording was. Raw mic audio is already streamed to disk during capture; only transcription itself is not incremental. No live silence/VAD detection exists to chunk work earlier.
+
 ## Question
 
-Read the "Start transcript work before Dictate fully stops" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Start transcript work before Dictate fully stops" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Later** — large and architecturally significant: needs new live VAD/silence detection during capture, a chunk-and-stitch transcription pipeline, Dictate state-machine changes, and a real accuracy-vs-latency tradeoff decision (chunk-boundary errors) before implementation. Confirm this stays its own future wayfinder rather than folding into this effort?
 
 ## Findings
 

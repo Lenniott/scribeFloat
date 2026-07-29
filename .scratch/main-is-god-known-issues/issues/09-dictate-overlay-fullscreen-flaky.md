@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+The Dictate HUD window disappears when a full-screen app is frontmost on another macOS Space, even though capture (audio/hotkey) keeps working. Root cause: the window is never given a macOS collection behavior (`NSWindowCollectionBehaviorCanJoinAllSpaces`/`FullScreenAuxiliary`) — `always_on_top` only affects layering within a Space, not cross-Space visibility, and Tauri's Rust API has no builder method for this, so it needs a raw Cocoa call.
+
 ## Question
 
-Read the "Dictate overlay flaky in macOS full-screen / other Spaces" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Dictate overlay flaky in macOS full-screen / other Spaces" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Now** or **Later**? Small-medium: the raw-objc pattern already exists elsewhere in the codebase to copy from, but full-screen Space behavior is fiddly and needs real on-device testing across macOS versions (~0.5-1.5 days). Worth the testing overhead now?
 
 ## Findings
 

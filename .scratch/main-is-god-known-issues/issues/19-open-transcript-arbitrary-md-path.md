@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+`TranscribeController::open_output_path` can open any `.md` file anywhere on disk — it checks the extension but never confines the path to the configured save folder, unlike the sibling `SettingsController::open_transcript`, which already does exactly this confinement correctly. An inconsistency between two near-identical helpers, not a missing mechanism.
+
 ## Question
 
-Read the "Opening transcript output allows any .md path" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Opening transcript output allows any .md path" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Now**, small — port `open_transcript`'s existing confinement pattern into `open_output_path`. Needs one small design call first: confine to `save_folder` or to whichever output folder was actually configured for that transcription run (they can differ)?
 
 ## Findings
 

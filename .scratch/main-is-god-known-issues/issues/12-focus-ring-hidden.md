@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+`<select>` controls styled with `.sf-select` (used for Settings dropdowns) show no keyboard focus indicator at all: the class removes the default outline but, unlike the near-identical `.sf-input` right above it in `app.css`, never re-adds the focus-visible ring. Every other interactive primitive in the app already has a consistent focus ring via `.sf-focus-ring`/`.sf-input`.
+
 ## Question
 
-Read the "Focus ring hidden or overridden by styling" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Focus ring hidden or overridden by styling" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Now** — trivial, one CSS rule added to `.sf-select` (`app.css:304-310`) plus a visual smoke check. Any reason not to just fix it?
 
 ## Findings
 

@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+Reported: the note editor's Written pane renders as a short bordered box instead of filling the available height. A static code read of the flex/height chain (`note-editor.svelte`, `MarkdownEditor.svelte`, CodeMirror theme) shows nothing structurally wrong and no fixed-height/border rule — this may already be fixed, or only reproduces under specific content/viewport conditions not visible from source alone.
+
 ## Question
 
-Read the "Note written pane does not fill editor height" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Note written pane does not fill editor height" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. Needs a live screenshot check before scoping further — if it reproduces, **Now** (trivial-small, CSS-only); if not, close as already-fixed. Can someone run a live check?
 
 ## Findings
 

@@ -17,7 +17,7 @@ Every item in the archived [known-issues dump](../../docs/ideas/main-is-god-agai
 
 ## Decisions so far
 
-<!-- append one line per closed ticket -->
+- [Triage: Onboarding Dictate practice pays cold Whisper load](issues/02-onboarding-dictate-cold-whisper-load.md) — **Done** already (`bb027de` eager Whisper preload at startup)
 
 ## Not yet specified
 

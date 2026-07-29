@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+The note editor's "Metadata" side panel is a fully wired, working toggle button that opens onto a single placeholder line ("Tags and keywords — not wired yet.") — dead-end chrome with zero backing feature (no tags field on the note data model, no storage, no commands).
+
 ## Question
 
-Read the "Unfinished Notes UI leftovers" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Unfinished Notes UI leftovers" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Now**, trivial — strip the placeholder panel and toggle entirely (net simplification, nothing else depends on it)? Or is tags/keywords a real feature worth building properly instead (small-medium, touches `HistoryRecord` + persistence)?
 
 ## Findings
 

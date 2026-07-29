@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+On every app start — before onboarding's Permissions step is even shown — a background task unconditionally touches the default save folder (`~/Documents/transcripts_scribefloat`), which triggers macOS's Documents-folder TCC permission prompt at launch instead of when the user expects it (during Permissions setup). There is currently no save-folder-picker step in onboarding at all.
+
 ## Question
 
-Read the "TCC prompts fire too early (Documents access remainder)" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "TCC prompts fire too early (Documents access remainder)" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Now**: defer/gate the startup background compaction+scan (`lib.rs:781-815`) until after onboarding completes or the save folder is confirmed — small. Should this also grow an explicit save-folder-picker onboarding step (medium), or is deferring the scan enough on its own?
 
 ## Findings
 

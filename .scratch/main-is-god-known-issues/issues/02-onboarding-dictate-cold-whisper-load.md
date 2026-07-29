@@ -1,15 +1,19 @@
 ---
 title: "Triage: Onboarding Dictate practice pays cold Whisper load"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+Onboarding's first Dictate practice recording paid the cost of a cold Whisper model load, because nothing preloaded the model until the moment the user actually triggered a dictate action — the preload call only fired at key-down/HUD-request time, with no earlier hook during onboarding's mic-permission or practice-instructions screens.
+
 ## Question
 
-Read the "Onboarding Dictate practice pays cold Whisper load" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Onboarding Dictate practice pays cold Whisper load" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. Already resolved outside this effort (`bb027de`, eager Whisper preload at startup) — see Resolution below.
 
 ## Findings
 
@@ -18,3 +22,7 @@ Read the "Onboarding Dictate practice pays cold Whisper load" entry in [docs/ide
 - Idle window confirmed: after mic permission is granted (`PermissionsStep` `Continue` enabled) and before the user actually double-taps to record in `DictatePracticeStep`, there's dead time (step transition + reading "How to use" instructions) where a preload could be kicked off, e.g. in `DictatePracticeStep.svelte` `onMount` (`:56`) or right when `PermissionsStep`'s `onNext` fires once mic is granted.
 - A fix would concretely touch: either add a Tauri command that calls the dictate controller's model preload (reusing `DictateController::spawn_record_start_preload`, which needs to become `pub`/exposed, or a new thin wrapper) and invoke it from `PermissionsStep.svelte` once `micGranted` flips true, or from `DictatePracticeStep.svelte`'s `onMount`. Backend side is `src-tauri/src/controllers/dictate.rs:609-618`; frontend side is `PermissionsStep.svelte` or `DictatePracticeStep.svelte` plus wiring a new/reused Tauri command.
 - Size estimate: small. Preload logic already exists and is decoupled from mic/audio state per its own doc comment (`dictate.rs:606-608`); this is mostly "call it earlier" plus exposing a command.
+
+## Resolution
+
+**Done** — already fixed outside this effort. `bb027de` (`feat(startup): eagerly preload Whisper context…`, Main is God again ticket 39) warms Whisper at the end of the startup model-seed task (`lib.rs` ~699–707). Covers first Dictate / onboarding practice. Findings above were stale (looked for an onboarding-specific hook, missed startup warm). No further work.

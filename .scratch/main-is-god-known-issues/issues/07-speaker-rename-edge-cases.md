@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+Renaming a speaker always renames every occurrence of that label in the transcript — `relabel_speaker_blocks` matches purely by label string, with no way to scope a rename to a single occurrence. There's no plumbing anywhere (frontend or backend) for "rename just this turn."
+
 ## Question
 
-Read the "Speaker rename edge cases" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Speaker rename edge cases" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Now** or **Later**? Small-medium: needs a new `chunk_id`-scoped rename path alongside the existing label-scoped one, plus a scope toggle in the existing correction popover. Worth building single-occurrence rename, or is rename-all the intended behavior?
 
 ## Findings
 

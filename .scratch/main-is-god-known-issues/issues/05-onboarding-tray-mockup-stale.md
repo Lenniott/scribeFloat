@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+Onboarding's "You're All Set" step shows a mock tray dropdown (Scribe/Transcribe/History/Settings, 4 items, no separators) that no longer matches the real tray menu (Dictate/New note/Open ScribeFloat/Settings/Quit, 5 items, two separators) — mismatched on labels, count, and structure. Separately, the real menu's Quit item is cased "Quit scribefloat" instead of "Quit ScribeFloat", inconsistent with the rest of the menu.
+
 ## Question
 
-Read the "Onboarding "You're All Set" tray mockup is stale" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Onboarding "You're All Set" tray mockup is stale" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Now** — small, pure copy fix in one onboarding component plus a one-line backend casing fix. Any reason to defer?
 
 ## Findings
 

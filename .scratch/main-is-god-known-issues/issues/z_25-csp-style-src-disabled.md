@@ -1,15 +1,23 @@
 ---
 title: "Triage: CSP: style-src left unmodified by Tauri"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+`tauri.conf.json` deliberately disables Tauri's asset-CSP nonce/hash injection for `style-src` only (via `dangerousDisableAssetCspModification: ["style-src"]`), relying instead on a static `'self' 'unsafe-inline'` value — this is intentional (needed for CodeMirror/skeleton runtime style injection). `script-src` is untouched and still gets Tauri's normal hardening.
+
 ## Question
 
-Read the "CSP: style-src left unmodified by Tauri" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "CSP: style-src left unmodified by Tauri" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. No action needed — informational, current config is intentional.
+
+## Resolution
+
+**Verified 2026-07-29.** `tauri.conf.json:15-16` unchanged: `dangerousDisableAssetCspModification: ["style-src"]` scopes only to style-src, `script-src 'self'` still gets Tauri's normal nonce/hash hardening. No code change needed.
 
 ## Findings
 

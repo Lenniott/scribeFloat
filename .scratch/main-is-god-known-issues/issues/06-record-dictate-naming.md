@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+"Record" and "Dictate" are presented to users as one product surface, but the codebase still has two large, genuinely divergent controllers (`ScribeController` 1777 lines, `DictateController` 1489 lines) that ADR-0003 already flagged as an artefact of build order and deferred unifying, plus scattered leftover "Scribe" strings in live UI (notes filter chip, onboarding copy, settings labels) that never got renamed to "Record".
+
 ## Question
 
-Read the "Record vs Dictate naming / dual-controller honesty" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Record vs Dictate naming / dual-controller honesty" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. Two separable pieces: (1) cosmetic "Scribe"→"Record" string rename in ~6 UI spots — small, low-risk, could be Now; (2) controller unification behind a shared `CaptureProfile` per ADR-0003 — large, architecturally risky, already deferred once. Do the cosmetic rename Now and leave unification Later (its own wayfinder), or defer both together?
 
 ## Findings
 

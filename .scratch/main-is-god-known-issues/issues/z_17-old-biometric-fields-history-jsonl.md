@@ -1,15 +1,23 @@
 ---
 title: "Triage: Old biometric fields in history.jsonl until compact finishes"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+Ticket claims stale biometric/voiceprint fields (`embedding`, `centroid_embedding`, `rms_energy`, etc.) linger in `history.jsonl` until compaction runs. Investigation confirms `HistoryService::compact` already silently drops these fields on every rewrite, as intended by the 2026-07-16 voiceprint-purge migration, and this behavior is already covered by tests.
+
 ## Question
 
-Read the "Old biometric fields in history.jsonl until compact finishes" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Old biometric fields in history.jsonl until compact finishes" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. Resolved — no action needed, already implemented and tested.
+
+## Resolution
+
+**Verified 2026-07-29.** `HistoryRecord` (`src-tauri/src/types.rs`) has no biometric fields on the struct at all; `HistoryService::compact` (`history.rs:276-302`) rewrites every surviving record through that struct, so legacy `embedding`/`centroid_embedding`/`vad_purity`/etc. keys are dropped on the next compaction. Covered by `legacy_history_line_with_embeddings_still_deserializes` (`types.rs:1152-1163`), which asserts the rewritten line contains neither `"embedding"` nor `"centroid"`. No code change needed.
 
 ## Findings
 

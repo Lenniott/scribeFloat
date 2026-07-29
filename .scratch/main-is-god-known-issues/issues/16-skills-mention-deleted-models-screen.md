@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+Ticket claims skills/docs still reference a deleted "Models" screen that no longer exists in the product. A repo-wide grep (skills/, docs/) found no live references anywhere — only the known-issues doc itself and stale `.claude/worktrees/agent-*` artifacts, which aren't part of live docs/skills content.
+
 ## Question
 
-Read the "Skills / plans still mention deleted Models screen" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Skills / plans still mention deleted Models screen" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Later** — no action needed, the premise appears already stale/resolved. Does anyone recall a specific stale mention elsewhere (e.g. `.scratch/` plan files) worth a targeted follow-up grep?
 
 ## Findings
 

@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+No dependency or vulnerability scanning exists anywhere in CI — no `cargo audit`, no Dependabot config, no `npm audit` job — despite the app carrying a large native ML dependency surface (Whisper, VAD, Sortformer models and their crates).
+
 ## Question
 
-Read the "Heavy native ML / dependency surface" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Heavy native ML / dependency surface" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Now** — trivial: adding `.github/dependabot.yml` requires zero custom CI code and gets native GitHub scanning for both Rust and JS deps. Worth doing now, or Later alongside a broader CI pass?
 
 ## Findings
 

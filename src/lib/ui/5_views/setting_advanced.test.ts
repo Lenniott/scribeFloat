@@ -14,6 +14,7 @@ describe('setting_advanced.svelte', () => {
 				settings_get_save_transcripts_as_markdown: false,
 				settings_get_keep_wav: false,
 				settings_get_open_with_app_path: null,
+				settings_get_dictate_auto_paste: true,
 			}),
 		);
 	});
@@ -49,6 +50,21 @@ describe('setting_advanced.svelte', () => {
 
 		await waitFor(() => {
 			expect(screen.getByRole('status')).toHaveTextContent('Saved');
+		});
+	});
+
+	it('loads and persists the dictate auto-paste toggle', async () => {
+		render(SettingAdvanced);
+
+		const toggle = await screen.findByRole('switch', { name: 'Auto-paste after Dictate' });
+		expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+		await fireEvent.click(toggle);
+
+		await waitFor(() => {
+			expect(mockedInvoke).toHaveBeenCalledWith('settings_set_dictate_auto_paste', {
+				enabled: false,
+			});
 		});
 	});
 

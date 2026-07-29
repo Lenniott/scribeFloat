@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+Onboarding's "Try Dictate" practice notes show garbled timestamps like `495740:07:43`. Root cause: `Timestamp.svelte`'s formatter treats its `at` value as an elapsed duration since zero (no modulo on hours), but `DictatePracticeStep.svelte` feeds it a real wall-clock epoch (`Date.now()`) — a type/unit mismatch, not a display glitch. It has effectively one live caller in the app.
+
 ## Question
 
-Read the "Onboarding Try Dictate shows nonsense timestamps" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Onboarding Try Dictate shows nonsense timestamps" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Now** — trivial, single-file fix: render wall-clock time in `Timestamp.svelte` (or stop feeding it epoch ms). Any reason this should wait?
 
 ## Findings
 

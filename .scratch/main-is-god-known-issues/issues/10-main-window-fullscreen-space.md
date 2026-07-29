@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+Opening the main window from the tray menu can switch the user into whatever Space a full-screen app currently occupies, instead of staying on the primary desktop — because the window-open path (`open_or_focus_window`/`raise_webview_window`) sets no macOS collection behavior at all and just relies on default AppKit activation heuristics. Same root-cause class as ticket 09.
+
 ## Question
 
-Read the "Opening main window from tray lands on full-screen Space" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Opening main window from tray lands on full-screen Space" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Now** or **Later**? Mechanically small-medium (mirrors ticket 09's fix pattern), but the desired target behavior (always force primary desktop? just avoid full-screen Spaces?) is a product decision that needs to be made before implementing. Which behavior is wanted, and is it worth deciding now?
 
 ## Findings
 

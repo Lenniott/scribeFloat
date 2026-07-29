@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+The word-replacement engine (rule types, Settings UI, multi-surface application across transcripts/dictate/history) was fully removed in commit `0f35959` and is cleanly recoverable via git. But the ask isn't to restore what existed — it's a narrower, different feature: Dictate-only spoken triggers that insert prompt/text, not the old general Record+Dictate replacement system. A straight revert would need trimming down, not un-deleting verbatim.
+
 ## Question
 
-Read the "Bring back spoken triggers as Dictate prompt / insert text" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Bring back spoken triggers as Dictate prompt / insert text" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Later** — this is revert-then-redesign (reuse the surface-agnostic string-transform primitives, rebuild a narrower Dictate-only schema/UI), not a quick undo. Is a scoped Dictate-only insert-prompt feature wanted, and if so does it warrant its own wayfinder rather than folding into this triage effort?
 
 ## Findings
 

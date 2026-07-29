@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+Onboarding's Dictate practice step only teaches and tracks double-tap activation. Tap-and-hold is a fully implemented, live activation path in the backend state machine (`Toggle`/`HoldImmediateStop`/`HoldWhileHeld`), but onboarding has no copy explaining it, no progress tracking toward it, and no way for the frontend to even tell which gesture triggered a given recording.
+
 ## Question
 
-Read the "Onboarding should teach double-tap and tap-and-hold" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Onboarding should teach double-tap and tap-and-hold" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Now** or **Later**? Medium-sized: needs a backend event-payload change (to surface which gesture started a session) plus new onboarding UI/copy/progress tracking — worth doing now, or does it wait behind the related merge-blocker ticket it touches?
 
 ## Findings
 

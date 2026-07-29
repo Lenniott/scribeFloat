@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+The Upload IPC commands (`transcribe_inspect_inputs`/`transcribe_start`) accept any file path string from the renderer with no extension allowlist or directory confinement — a compromised renderer (XSS) could pass an arbitrary OS-readable path to be decoded/processed. Since Upload legitimately needs to read arbitrary user-picked files, the fix isn't a folder allowlist but scoping input paths to come only from the OS-native file picker (dialog-scoped tokens).
+
 ## Question
 
-Read the "Upload can read any audio path you pass it" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Upload can read any audio path you pass it" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Later** — medium-sized rework of the Upload IPC surface to use dialog-scoped file tokens instead of raw path strings; matches the map's existing "Dialog-only tokens" classification. Confirm this stays Later given it requires renderer compromise to exploit?
 
 ## Findings
 

@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+Confirmed: when Record captures dual audio (mic + system audio), Sortformer diarization never runs at all — speakers are labeled purely by which channel they came from ("Mic"/"Speaker"), not by identity. So a call with several people on the same channel (e.g. several remote participants on system audio) can't be broken out into individual speakers today, only single-source (mic-only) recordings get real per-speaker diarization.
+
 ## Question
 
-Read the "Dual audio vs how many speakers we can get" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Dual audio vs how many speakers we can get" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. Medium change (diarize both channels, remap speaker-id ranges, merge into channel+identity labels, rewrite existing tests) blocked on an undecided product question: would a "Speaker 5" derived from the system-audio channel actually read as meaningful to users, or is channel labeling preferable as-is? Is that product call worth making now, or should this stay Later as its own scoped follow-up?
 
 ## Findings
 

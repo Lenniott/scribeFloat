@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+The single "Record" button in the title bar silently branches its behavior — start a new note vs. continue recording into the currently open note — based purely on the current route, with no label, tooltip, or visual cue distinguishing the two. It's a discoverability gap, not a logic bug: the underlying route-detection and recording plumbing already work correctly.
+
 ## Question
 
-Read the "Record button context: new note vs continue in note" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Record button context: new note vs continue in note" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Now**, small — swap the static "Record" label for context-aware copy/tooltip using the route-match logic that already exists. Is a label change enough, or does this need the larger confirmation-modal variant (small-medium) instead?
 
 ## Findings
 

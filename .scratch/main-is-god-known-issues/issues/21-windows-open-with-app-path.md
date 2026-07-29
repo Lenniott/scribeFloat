@@ -7,9 +7,13 @@ blocked_by: []
 parent: ../MAP.md
 ---
 
+## Issue
+
+Windows already has a working file-open implementation (`platform/mod.rs`, configured-app or `cmd /c start` fallback) sharing the same upstream path validation as macOS, so any confinement fix for ticket 19 covers Windows automatically. The only Windows-specific gap is that this code path is likely unexercised/unverified since the project is macOS-first with no Windows CI.
+
 ## Question
 
-Read the "Windows file-open / "open with" app path" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) (search for that heading). Decide: is this **Now** (fix it in this effort — state the concrete change, then make it) or **Later** (state why, and whether it's big enough to need its own future wayfinder)?
+Read the "Windows file-open / "open with" app path" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. **Later** — no distinct fix needed beyond whatever lands for ticket 19; Windows CI/manual verification is a separate, larger ask the map already defers until "Windows care returns." Confirm this rides along with ticket 19 rather than needing its own work now?
 
 ## Findings
 

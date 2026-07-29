@@ -197,7 +197,7 @@ fn build_tray_menu(
     let quit_item = MenuItem::with_id(
         app,
         QUIT_MENU_ID,
-        "Quit scribefloat",
+        "Quit ScribeFloat",
         true,
         Some(QUIT_MENU_ACCELERATOR),
     )?;
@@ -778,46 +778,53 @@ pub fn run() {
             // is not sufficient on its own).
             platform::window_impl::sync_activation_policy(app.handle());
 
-            let save_folder = app
-                .state::<Arc<services::config::ConfigService>>()
-                .get()
-                .save_folder;
-            // Run compaction and recovery scans in the background so they never block
-            // the Tauri event loop at startup (large histories can take 100-500ms).
-            let history_bg = Arc::clone(&history);
-            let output_bg = Arc::clone(&output);
-            let save_folder_bg = save_folder.clone();
-            let temp_dir_bg = app
-                .path()
-                .app_local_data_dir()
-                .ok()
-                .map(|d| d.join("dictate_temp"));
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = history_bg.compact(&save_folder_bg) {
-                    tracing::warn!(error = %e, "startup history compaction skipped");
-                }
-                match output_bg.scan_incomplete_scribe_sessions(&save_folder_bg) {
-                    Ok(sessions) => {
-                        for info in &sessions {
-                            tracing::info!(
-                                session_dir = %info.session_dir, state = %info.state,
-                                "incomplete scribe session found at startup"
-                            );
-                        }
+            // On first run, the save folder hasn't been confirmed via onboarding yet, so don't
+            // touch it here — that's what fires the Documents-folder TCC prompt before the
+            // Permissions step is even shown. There's nothing to compact/recover on a fresh
+            // install anyway; the scan runs on every later, non-first-run launch instead.
+            if !is_first_run {
+                let save_folder = app
+                    .state::<Arc<services::config::ConfigService>>()
+                    .get()
+                    .save_folder;
+                // Run compaction and recovery scans in the background so they never block
+                // the Tauri event loop at startup (large histories can take 100-500ms).
+                let history_bg = Arc::clone(&history);
+                let output_bg = Arc::clone(&output);
+                let save_folder_bg = save_folder.clone();
+                let temp_dir_bg = app
+                    .path()
+                    .app_local_data_dir()
+                    .ok()
+                    .map(|d| d.join("dictate_temp"));
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = history_bg.compact(&save_folder_bg) {
+                        tracing::warn!(error = %e, "startup history compaction skipped");
                     }
-                    Err(e) => tracing::warn!(error = %e, "scribe session scan failed"),
-                }
-                if let Some(temp_dir) = temp_dir_bg {
-                    match output_bg.scan_and_salvage_dictate_temp_wavs(&temp_dir, &save_folder_bg) {
-                        Ok(salvaged) => {
-                            for path in salvaged {
-                                tracing::info!(path = %path.display(), "salvaged dictate wav");
+                    match output_bg.scan_incomplete_scribe_sessions(&save_folder_bg) {
+                        Ok(sessions) => {
+                            for info in &sessions {
+                                tracing::info!(
+                                    session_dir = %info.session_dir, state = %info.state,
+                                    "incomplete scribe session found at startup"
+                                );
                             }
                         }
-                        Err(e) => tracing::warn!(error = %e, "dictate temp scan failed"),
+                        Err(e) => tracing::warn!(error = %e, "scribe session scan failed"),
                     }
-                }
-            });
+                    if let Some(temp_dir) = temp_dir_bg {
+                        match output_bg.scan_and_salvage_dictate_temp_wavs(&temp_dir, &save_folder_bg)
+                        {
+                            Ok(salvaged) => {
+                                for path in salvaged {
+                                    tracing::info!(path = %path.display(), "salvaged dictate wav");
+                                }
+                            }
+                            Err(e) => tracing::warn!(error = %e, "dictate temp scan failed"),
+                        }
+                    }
+                });
+            }
 
             Ok(())
         })

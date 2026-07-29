@@ -1,7 +1,7 @@
 <script lang="ts">
   import Button from "@components/controls/Button.svelte";
   import StepShell from "@primitives/layout/StepFrame.svelte";
-  import { Mic, FileVolume, History, Settings, Wifi } from "lucide-svelte";
+  import { Mic, SquarePen, AppWindow, Settings, Wifi, LogOut } from "lucide-svelte";
   import { isWindows } from '@utils/platform';
   import { onDestroy, onMount } from "svelte";
 
@@ -14,26 +14,11 @@
   } = $props();
 
   const features = [
-    {
-      label: "Scribe",
-      description: "Transcribe long-form recordings and take notes.",
-      Icon: Mic,
-    },
-    {
-      label: "Transcribe",
-      description: "Transcribe pre-recorded audio files.",
-      Icon: FileVolume,
-    },
-    {
-      label: "History",
-      description: "View and manage all transcriptions and dictations.",
-      Icon: History,
-    },
-    {
-      label: "Settings",
-      description: "Further customise your setup.",
-      Icon: Settings,
-    },
+    { label: "Dictate", Icon: Mic },
+    { label: "New note", Icon: SquarePen },
+    { separatorBefore: true, label: "Open ScribeFloat", Icon: AppWindow },
+    { label: "Settings", Icon: Settings },
+    { separatorBefore: true, label: "Quit ScribeFloat", Icon: LogOut },
   ];
 
   let timeStr = $state("");
@@ -114,26 +99,20 @@
           {/if}
         </div>
 
-        <div class="bg-card px-3 py-2 space-y-0.5">
-          {#each features as { label, description, Icon } (label)}
-            <div class="flex items-center gap-3 px-1 py-1.5">
-              <div
-                class="size-6 rounded bg-fill flex items-center justify-center shrink-0"
-              >
-                <Icon class="size-3.5 text-fg-dim" />
-              </div>
-              <div>
-                <span class="sf-body-md-strong text-fg">{label}</span>
-                <span class="sf-body-md text-fg-dim ml-1.5"
-                  >{description}</span
-                >
-              </div>
+        <div class="bg-card px-2 py-1.5">
+          {#each features as { label, Icon, separatorBefore } (label)}
+            {#if separatorBefore}
+              <div class="sf-divider my-1"></div>
+            {/if}
+            <div class="flex items-center gap-2 px-1.5 py-1">
+              <Icon class="size-3.5 text-fg-dim shrink-0" />
+              <span class="sf-body-md text-fg">{label}</span>
             </div>
           {/each}
         </div>
       </div>
 
-      <div class="rounded-md bg-card border border-fill px-3 py-3 space-y-1">
+      <div class="rounded-md bg-card border border-fill px-3 py-2 space-y-0.5">
         <p class="sf-section-label text-fg-dim">
           Start on login
         </p>

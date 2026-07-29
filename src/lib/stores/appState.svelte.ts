@@ -16,7 +16,6 @@ class AppState {
 	noteLeaveGuard = $state<((proceed: () => void, cancel: () => void) => void) | null>(null);
 	scribeNoteId = $state<string | null>(null);
 	scribeAwaitingAttach = $state(false);
-	scribeAutoStart = $state(false);
 }
 
 export const appState = new AppState();

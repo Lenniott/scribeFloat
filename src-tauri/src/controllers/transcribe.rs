@@ -184,6 +184,17 @@ impl TranscribeController {
         if !is_markdown {
             return Err("only transcript (.md) files can be opened".to_string());
         }
+        // Confine to the configured save folder, matching `SettingsController::open_transcript`.
+        // Batch transcribe runs can target a different output folder, but that folder isn't
+        // persisted anywhere retrievable at open time, so save_folder is the only base we can
+        // reliably confine to here.
+        let save_folder = self.config.get().save_folder;
+        let base = Path::new(&save_folder)
+            .canonicalize()
+            .map_err(|_| "save folder is not accessible".to_string())?;
+        if !canonical.starts_with(&base) {
+            return Err("transcript path is outside the configured save folder".to_string());
+        }
         let open_with = self.config.get().open_with_app_path;
         self.output
             .open_file_for_user(canonical.to_string_lossy().as_ref(), open_with.as_deref())

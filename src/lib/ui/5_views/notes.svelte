@@ -234,7 +234,7 @@
 									disabled={deleting}
 									onselect={() => openNote(item)}
 									oncopy={() => oncopy(item)}
-									onopen={item.has_markdown && item.markdown_path
+									onopen={item.has_markdown && item.markdown_path && item.source !== 'store'
 										? () => onopen(item)
 										: undefined}
 									ondelete={item.source === 'store' ? () => ondelete(item) : undefined}

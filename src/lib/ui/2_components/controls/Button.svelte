@@ -19,6 +19,8 @@
 		class: className = "",
 		children,
 		onclick,
+		title,
+		"aria-label": ariaLabel,
 	}: {
 		variant?: Variant;
 		size?: Size;
@@ -29,6 +31,8 @@
 		class?: string;
 		children?: Snippet;
 		onclick?: (e: MouseEvent) => void;
+		title?: string;
+		"aria-label"?: string;
 	} = $props();
 
 	const base =
@@ -80,6 +84,8 @@
 	class={classes}
 	{type}
 	{disabled}
+	{title}
+	aria-label={ariaLabel}
 	onclick={onclick}
 >
 	{#if Icon}

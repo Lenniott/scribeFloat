@@ -152,7 +152,7 @@ fn default_onboarding_step() -> u8 {
 
 /// Clamp a Setup step index to the valid Welcome‥Feature-tour range.
 pub fn clamp_onboarding_step(step: u8) -> u8 {
-    step.clamp(1, 4)
+    step.clamp(1, 5)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

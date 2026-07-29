@@ -45,6 +45,9 @@
 			page.url.pathname === `/notes/${appState.scribeNoteId}`,
 	);
 
+	const openNoteId = $derived(page.url.pathname.match(/^\/notes\/([^/]+)$/)?.[1]);
+	const recordLabel = $derived(openNoteId && openNoteId !== 'new' ? 'Record' : 'New note');
+
 	function handleRecordClick() {
 		if (scribe.phase !== 'idle') return;
 		const match = page.url.pathname.match(/^\/notes\/([^/]+)$/);
@@ -54,7 +57,6 @@
 			return;
 		}
 		if (!onNewNote) return;
-		appState.scribeAutoStart = true;
 		onNewNote();
 	}
 
@@ -193,7 +195,15 @@
 			<RecordingStatusDot status="recording" pulseWhileRecording={false} />
 		{/if}
 		{#if scribe.phase === 'idle' && onNewNote}
-			<Button variant="normal" size="small" onclick={handleRecordClick}>Record</Button>
+			<Button
+				variant="normal"
+				size="small"
+				onclick={handleRecordClick}
+				title={recordLabel}
+				aria-label={recordLabel}
+			>
+				{recordLabel}
+			</Button>
 		{/if}
 		<Button
 			variant={isRecording ? 'active' : 'normal'}

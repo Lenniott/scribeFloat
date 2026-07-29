@@ -12,5 +12,7 @@ permissions = [
   "allow-settings-set-onboarding-step",
   "allow-settings-show-window",
   "allow-settings-get-dictate-auto-enter",
-  "allow-settings-set-dictate-auto-enter"
+  "allow-settings-set-dictate-auto-enter",
+  "allow-settings-get-output-path",
+  "allow-settings-set-output-path"
 ]

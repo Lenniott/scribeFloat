@@ -123,11 +123,6 @@
 		savedTitle = title;
 		savedContent = writtenContent;
 		initialized = true;
-
-		if (appState.scribeAutoStart && scribe.phase === 'idle') {
-			appState.scribeAutoStart = false;
-			await scribe.startRecording(id);
-		}
 	});
 
 	onDestroy(() => {

@@ -88,6 +88,18 @@ pub(crate) enum DictateStartSource {
     HoldImmediateStop,
 }
 
+impl DictateStartSource {
+    /// Gesture identity as the user perceives it, for onboarding to tell double-tap
+    /// from hold-to-talk apart. `HoldWhileHeld`/`HoldImmediateStop` are the same
+    /// gesture from the user's perspective (release timing only), so both map to "hold".
+    fn gesture_label(self) -> &'static str {
+        match self {
+            DictateStartSource::Toggle => "double_tap",
+            DictateStartSource::HoldWhileHeld | DictateStartSource::HoldImmediateStop => "hold",
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub(crate) enum DictateAction {
     None,
@@ -235,6 +247,9 @@ struct Inner {
     transcription_abort: Option<Arc<AtomicBool>>,
     /// Temp WAV path while Transcribing/Pasting — used to delete on user abort.
     processing_wav_path: Option<PathBuf>,
+    /// Which gesture started the current Recording session; surfaced on the
+    /// Recording state event so onboarding can credit double-tap vs hold-to-talk.
+    last_gesture: Option<DictateStartSource>,
 }
 
 pub struct DictateController {
@@ -276,6 +291,7 @@ impl DictateController {
                 session: None,
                 transcription_abort: None,
                 processing_wav_path: None,
+                last_gesture: None,
             }),
             audio,
             model,
@@ -456,7 +472,8 @@ impl DictateController {
 
     fn spawn_dictate_window_and_start(this: Arc<Self>) {
         tauri::async_runtime::spawn(async move {
-            Self::spawn_dictate_window_and_start_inner_async(&this).await;
+            Self::spawn_dictate_window_and_start_inner_async(&this, DictateStartSource::Toggle)
+                .await;
         });
     }
 
@@ -481,7 +498,7 @@ impl DictateController {
                 this.hide_window();
                 return;
             }
-            match this.start() {
+            match this.start(DictateStartSource::HoldWhileHeld) {
                 Err(e) => {
                     tracing::error!(error = %e, "dictate failed to start mic (hold)");
                     clear_in_flight();
@@ -495,7 +512,11 @@ impl DictateController {
 
     fn spawn_dictate_hold_immediate_stop(this: Arc<Self>) {
         tauri::async_runtime::spawn(async move {
-            Self::spawn_dictate_window_and_start_inner_async(&this).await;
+            Self::spawn_dictate_window_and_start_inner_async(
+                &this,
+                DictateStartSource::HoldImmediateStop,
+            )
+            .await;
             if this.current_state() == DictateState::Recording {
                 if let Err(e) = Self::stop_and_transcribe(Arc::clone(&this)) {
                     tracing::error!(error = %e, "dictate failed to stop after hold-blip");
@@ -504,13 +525,16 @@ impl DictateController {
         });
     }
 
-    async fn spawn_dictate_window_and_start_inner_async(this: &Arc<Self>) {
+    async fn spawn_dictate_window_and_start_inner_async(
+        this: &Arc<Self>,
+        source: DictateStartSource,
+    ) {
         let open_result =
             Self::capture_paste_target_then_open_overlay(Arc::clone(this)).await;
         if open_result.is_err() {
             return;
         }
-        if let Err(e) = this.start() {
+        if let Err(e) = this.start(source) {
             tracing::error!(error = %e, "dictate failed to start mic");
         }
     }
@@ -549,7 +573,7 @@ impl DictateController {
     }
 
     /// Transition Idle → Recording. Opens mic stream, emits audio level events.
-    pub fn start(&self) -> Result<()> {
+    pub fn start(&self, source: DictateStartSource) -> Result<()> {
         self.bump_dismiss_generation();
         {
             let inner = self.lock();
@@ -594,6 +618,7 @@ impl DictateController {
         }
         inner.state = DictateState::Recording;
         inner.session = Some(DictateMicSession { mic });
+        inner.last_gesture = Some(source);
         self.emit_state_event(&inner);
         Ok(())
     }
@@ -1170,12 +1195,11 @@ impl DictateController {
     }
 
     fn emit_state_event(&self, inner: &Inner) {
-        self.app
-            .emit(
-                DICTATE_STATE_EVENT,
-                DictateStateEvent::new(inner.state.clone()),
-            )
-            .ok();
+        let mut event = DictateStateEvent::new(inner.state.clone());
+        if inner.state == DictateState::Recording {
+            event.gesture = inner.last_gesture.map(|g| g.gesture_label().to_string());
+        }
+        self.app.emit(DICTATE_STATE_EVENT, event).ok();
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
@@ -1326,6 +1350,23 @@ mod tests {
             DictateAction::Start(DictateStartSource::Toggle)
         );
         assert!(matches!(t.state, DictateKeyState::ToggleRecording { .. }));
+    }
+
+    // ── Gesture label (onboarding needs to tell double-tap from hold-to-talk) ──
+
+    #[test]
+    fn toggle_source_labels_as_double_tap() {
+        assert_eq!(DictateStartSource::Toggle.gesture_label(), "double_tap");
+    }
+
+    #[test]
+    fn hold_while_held_source_labels_as_hold() {
+        assert_eq!(DictateStartSource::HoldWhileHeld.gesture_label(), "hold");
+    }
+
+    #[test]
+    fn hold_immediate_stop_source_labels_as_hold() {
+        assert_eq!(DictateStartSource::HoldImmediateStop.gesture_label(), "hold");
     }
 
     // ── Toggle mode ──────────────────────────────────────────────────────────

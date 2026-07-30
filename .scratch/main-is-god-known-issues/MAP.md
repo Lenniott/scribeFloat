@@ -26,6 +26,7 @@ Every item in the archived [known-issues dump](../../docs/ideas/main-is-god-agai
 - [Triage: Focus ring hidden on `.sf-select`](issues/z_12-focus-ring-hidden.md) — **Now**, done: added the same `focus-visible:ring-2 ring-focus` rule `.sf-input` already has (`src/app.css:305`).
 - [Triage: Opening transcript output allows any .md path](issues/z_19-open-transcript-arbitrary-md-path.md) — **Now**, done: `TranscribeController::open_output_path` now confines to `config.save_folder`, mirroring `SettingsController::open_transcript`. Design call: confine to `save_folder` (not the per-request output folder) since that folder isn't persisted anywhere retrievable at open time.
 - [Triage: Windows file-open / "open with" app path](issues/z_21-windows-open-with-app-path.md) — **Later**: rides along with ticket 19's fix automatically (same upstream confinement, shared platform code path). Windows CI/manual verification remains a separate, larger ask deferred until "Windows care returns."
+- [Triage: Onboarding should teach double-tap and tap-and-hold](issues/z_04-onboarding-teach-both-gestures.md) — **Now**, done: `dictate://state-changed` event gained a `gesture` field (`"double_tap"`/`"hold"`) sourced from `DictateStartSource`; `DictatePracticeStep.svelte` teaches both gestures in copy and adds a "Gestures tried" progress card. No Continue-gating added — teaching/crediting both, not forcing both.
 
 ## Not yet specified
 

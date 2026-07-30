@@ -521,6 +521,10 @@ pub struct RecoverySessionInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DictateStateEvent {
     pub state: DictateState,
+    /// Recording state only: which gesture started this session — "double_tap" or
+    /// "hold" — so onboarding can teach and credit both activation paths.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gesture: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -553,6 +557,7 @@ impl DictateStateEvent {
     pub fn new(state: DictateState) -> Self {
         Self {
             state,
+            gesture: None,
             progress: None,
             processing_stage: None,
             text: None,

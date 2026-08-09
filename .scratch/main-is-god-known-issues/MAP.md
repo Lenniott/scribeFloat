@@ -32,6 +32,7 @@ Every item in the archived [known-issues dump](../../docs/ideas/main-is-god-agai
 - [Triage: Dictate overlay flaky in macOS full-screen / other Spaces](issues/z_09-dictate-overlay-fullscreen-flaky.md) — **Later**: parked to [`docs/ideas/dictate-overlay-fullscreen-spaces.md`](../../docs/ideas/dictate-overlay-fullscreen-spaces.md) (experiment branch).
 - [Triage: Start transcript work before Dictate fully stops](issues/z_14-streaming-transcription-before-stop.md) — **Later**: parked to [`docs/ideas/streaming-dictate-transcription.md`](../../docs/ideas/streaming-dictate-transcription.md) (experiment / own wayfinder).
 - [Triage: Unfinished Notes UI leftovers](issues/z_15-unfinished-notes-ui-leftovers.md) — **Later**: hold until processing/Float needs tags — parked to [`docs/ideas/notes-metadata-tags.md`](../../docs/ideas/notes-metadata-tags.md).
+- [Triage: Skills / plans still mention deleted Models screen](issues/z_16-skills-mention-deleted-models-screen.md) — **Later** / no action: re-grep found no live Models-screen mentions in `skills/`/`docs/`/`src/`; premise already stale.
 
 ## Not yet specified
 

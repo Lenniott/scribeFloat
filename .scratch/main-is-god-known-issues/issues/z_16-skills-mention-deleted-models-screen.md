@@ -1,11 +1,17 @@
 ---
 title: "Triage: Skills / plans still mention deleted Models screen"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
+
+## Resolution
+
+**Later / no action, closed 2026-08-09.** Premise is already stale. Repo-wide re-grep of `skills/`, `docs/`, and `src/` found no live "Models screen" (or Models route) references — only this ticket's source dump entry in `docs/ideas/main-is-god-again-known-issues.md`. `skills/ui-taxonomy/SKILL.md` Views list has Home + Notes only. Nothing to edit.
+
+**Manual check:** none — no product behavior changed. Optional: `rg -ni 'models screen' skills docs src` should hit only the archived known-issues dump.
 
 ## Issue
 

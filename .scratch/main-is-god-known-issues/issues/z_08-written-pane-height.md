@@ -1,11 +1,20 @@
 ---
 title: "Triage: Note written pane does not fill editor height"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
+
+## Resolution
+
+**Done already, closed 2026-08-09.** No longer reproduces. Current layout is the standard fill-parent chain: `note-editor.svelte` Written column (`flex min-h-0 flex-1`) → wrapper (`min-h-0 flex-1`) → `MarkdownEditor` root (`h-full w-full`) → CodeMirror theme (`height: "100%"`). No short bordered/fixed-height box remains in source. Human confirms it is not a thing anymore.
+
+### Manual check (optional)
+1. Open any Note with Written + Transcript side-by-side.
+2. Confirm the Written pane stretches to the full editor height beside Transcript (not a short inset box).
+3. Resize the window — Written should keep filling the left column.
 
 ## Issue
 

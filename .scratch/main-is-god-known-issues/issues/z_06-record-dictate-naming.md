@@ -1,11 +1,15 @@
 ---
 title: "Triage: Record vs Dictate naming / dual-controller honesty"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
+
+## Resolution
+
+**Later, closed 2026-08-09.** Parked to its own future wayfinder/branch as [`docs/ideas/record-dictate-capture-unification.md`](../../../docs/ideas/record-dictate-capture-unification.md). Cosmetic rename and controller unification are both out of this triage effort — unification is large/architectural; naming alone is too easy to conflate with it.
 
 ## Issue
 

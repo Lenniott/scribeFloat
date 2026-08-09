@@ -1,11 +1,15 @@
 ---
 title: "Triage: Unfinished Notes UI leftovers"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
+
+## Resolution
+
+**Later, closed 2026-08-09.** Hold — parked to [`docs/ideas/notes-metadata-tags.md`](../../../docs/ideas/notes-metadata-tags.md). Tags/keywords belong with processing/Float features not yet added; neither strip-the-chrome nor finish-the-feature is worth doing in this triage effort.
 
 ## Issue
 

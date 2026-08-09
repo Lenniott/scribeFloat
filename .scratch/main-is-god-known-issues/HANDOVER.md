@@ -6,41 +6,32 @@ Short-term working memory for this effort. Every session working this map reads 
 
 Wayfinder map: [MAP.md](MAP.md). Destination: triage all 25 items from the archived [known-issues dump](../../docs/ideas/main-is-god-again-known-issues.md) into Now/Later, then build the Now items in this same effort (execution is in-scope here — see the map's Notes).
 
-## State as of 2026-07-30
+## State as of 2026-08-09
 
-All 25 tickets in `issues/` exist and are **research-grounded** (each has a `## Findings` section). **13/25 closed** (5 from earlier sessions, 8 more since), none assigned.
+**18/25 closed**, none assigned. This session parked four large/experiment items to `docs/ideas/` and closed #08 as already-fixed.
 
-- Closed earlier: 02 (Done already), 17, 20, 22, 25 (all no-action Later, see map's Decisions so far).
-- **Closed 2026-07-29 (§2, all Now, built and shipped)**: 01, 03, 05, 11, 12, 19, 21 — commits `2b33036` (onboarding save-folder step, Record/New-note label fix, StepFrame/tray-mockup sizing, markdown-toggle "different route" fix) and `7de6462` (ACL guard exceptions + an unrelated real perf bug found along the way — see below). Each ticket now has a `## Resolution` section and `status: closed`; map's Decisions so far updated to match.
-- **Closed 2026-07-30**: 04 (onboarding teach both gestures) — **Now**, built and shipped. `dictate://state-changed` gained a `gesture` field sourced from `DictateStartSource`; `DictatePracticeStep.svelte` teaches both gestures in copy and adds a "Gestures tried" progress card. No Continue-gating added. See `z_04-onboarding-teach-both-gestures.md` `## Resolution` for full detail.
-- Open: 06, 07, 08, 09, 10, 13, 14, 15, 16, 18, 23, 24 — 12 tickets left, none have a Now/Later resolution yet.
-
-**Bonus fix, not a ticket**: while testing 19, found `DiarizationService::ensure_model()` was re-hashing the full Sortformer ONNX model file on every recording start (missing the cached-fingerprint short-circuit Whisper already has) — real, reproducible slowdown on "record into note," unrelated to any ticket. Fixed + regression-tested in `7de6462`.
-
-Final Now/Later calls land on the map when each ticket closes. The queue below is provisional working order only — re-read the ticket before committing.
+- Closed earlier: 01–05, 11, 12, 17, 19–22, 25 (builds + no-action Laters).
+- **Closed 2026-08-09**:
+  - **08** — Done already (written pane height). Fill-parent layout is correct; human confirms not a thing anymore.
+  - **06, 09, 14, 15** — **Later**, moved to idea docs (own future wayfinder/branch each):
+    - [`docs/ideas/record-dictate-capture-unification.md`](../../docs/ideas/record-dictate-capture-unification.md)
+    - [`docs/ideas/dictate-overlay-fullscreen-spaces.md`](../../docs/ideas/dictate-overlay-fullscreen-spaces.md)
+    - [`docs/ideas/streaming-dictate-transcription.md`](../../docs/ideas/streaming-dictate-transcription.md)
+    - [`docs/ideas/notes-metadata-tags.md`](../../docs/ideas/notes-metadata-tags.md)
+- **Still open (7)**: 07, 10, 13, 16, 18, 23, 24 — no Now/Later call yet.
 
 ## Remaining tickets, grouped
 
-12 open. User-facing = changes what a user sees/does. Maintenance/optimization = internal correctness, security, or dependency hygiene with no direct user-visible feature.
-
-### User-facing (9)
-- **06** — Record/Dictate naming — *naming slice only* (scattered "Scribe" strings never renamed); the controller-unification half of this ticket is maintenance/large, see below
+### User-facing (4)
 - **07** — Speaker rename edge cases (can't scope a rename to one occurrence)
-- **08** — Written pane doesn't fill editor height (needs a live UI check — static read found nothing wrong)
-- **09** — Dictate overlay disappears in macOS full-screen/other Spaces
 - **10** — Opening main window from tray can land on a full-screen Space
 - **13** — Dual audio recordings get no real per-speaker diarization
-- **14** — Dictate pays a fixed latency tax after Stop (no streaming transcription)
-- **15** — Notes UI has a dead "Metadata" panel (tags/keywords never wired up)
 - **24** — Bring back spoken triggers as a narrower Dictate-only feature
 
 ### Maintenance / optimization (3)
 - **16** — Skills/docs mention a deleted Models screen — likely no-action (grep found nothing live), needs final confirm
 - **18** — Upload accepts any OS-readable path with no dialog-scoped confinement (security hardening)
 - **23** — No dependency/vulnerability scanning in CI (`cargo audit`, `npm audit`, Dependabot)
-
-### Large / needs its own wayfinder either way
-- **06** (unification slice — merging `ScribeController`/`DictateController`)
 
 ## Workflow for the next ticket (confirmed with Benjamin 2026-07-29)
 
@@ -54,7 +45,7 @@ One ticket at a time, in this exact order — do not batch multiple tickets befo
 6. Commit, then push.
 7. Move to the next ticket.
 
-If a ticket is **Later**: state why (and flag §"Large" above if it needs its own future wayfinder), same confirm-before-closing rule applies, then commit/push before moving on.
+If a ticket is **Later**: state why (and flag if it needs its own future wayfinder), same confirm-before-closing rule applies, then commit/push before moving on.
 
 Update this file's Session log before ending a session, even if nothing closed.
 
@@ -65,3 +56,4 @@ Update this file's Session log before ending a session, even if nothing closed.
 - **2026-07-29 (later same day)**: Closed all of §2 (01, 03, 05, 11, 12, 19, 21) as Now and built every fix — see per-ticket `## Resolution` sections and map's Decisions so far for specifics. Two corrections landed mid-session from live user feedback, worth knowing before touching this area again: (1) the tray-mockup fix for #05 first tried `overflow-y-auto` clipping on `StepFrame.svelte` to fix a footer overlap — wrong approach, reverted; the real fix was shrinking the mockup itself to the tray's actual compact proportions. (2) #11's first pass kept an `scribeAutoStart` auto-record-on-new-note behavior — wrong, the tray's own "New note" never auto-records; removed that flag entirely (it's genuinely dead now) so "New note" only creates, "Record" (shown only inside an open note) starts capture. Also: adding the onboarding save-folder step required threading `settings_set_output_path`/`dialog:default` through `permissions/sets/onboarding.toml` + `capabilities/onboarding.json` — this trips `acl_capabilities_test.rs`'s satellite-window deny-list guard, which had to be updated with an explicit, documented onboarding-only exception (dictate-overlay stays fully locked down). Next: §3 (04, 06 naming slice, 07, 08) needs product/design calls or a live UI check before triage — no code exploration done on these yet this session.
 - **2026-07-29 (process correction)**: Benjamin flagged two things after the §2 batch above: (1) the remaining 13 tickets should be grouped user-facing vs. maintenance/optimization for planning — done, see "Remaining tickets, grouped" above. (2) The `z_` rename should be the *last* step of closing a ticket (done together with `## Resolution`/`status: closed`), not applied before the work/status settles — and going forward, work one ticket at a time with an explicit confirm-with-Benjamin checkpoint before finalizing/committing, rather than batching several tickets through autonomously like the §2 session did. Replaced the old "Next steps" section with the confirmed workflow — read it before starting the next ticket.
 - **2026-07-30**: Closed ticket 04 (onboarding teach both gestures) as **Now**, following the one-ticket-at-a-time workflow with a confirm checkpoint before finalizing. Backend: `dictate://state-changed` event gained a `gesture` field; frontend: `DictatePracticeStep.svelte` teaches and credits both double-tap and hold-to-talk. Full detail in the ticket's `## Resolution`. Also found (and corrected) a stale cross-reference in the ticket's Findings — it pointed to a "merge-blocker" ticket name that doesn't exist; the real underlying fix (Continue button reachability) was already shipped and tested, so it wasn't actually a blocker. Next: pick the next ticket from §3 user-facing (06 naming slice, 07, 08) or continue down the grouped list — none of the remaining 12 have a Now/Later call yet.
+- **2026-08-09**: Benjamin call — park experiments/large items to idea docs, close #08 as already-fixed. Closed **08** (Done already). Closed **06, 09, 14, 15** as Later → new idea docs under `docs/ideas/`. Human framed this batch as "done here" for the session; **7 tickets still open** (07, 10, 13, 16, 18, 23, 24) if the effort continues. No commit this session unless asked.

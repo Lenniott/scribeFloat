@@ -1,11 +1,15 @@
 ---
 title: "Triage: Dictate overlay flaky in macOS full-screen / other Spaces"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
+
+## Resolution
+
+**Later, closed 2026-08-09.** Parked as a platform experiment to [`docs/ideas/dictate-overlay-fullscreen-spaces.md`](../../../docs/ideas/dictate-overlay-fullscreen-spaces.md). Full-screen Spaces behavior needs iterative on-device testing on its own branch — not a one-and-done triage fix. Related surface: [`docs/ideas/recordingGlow.md`](../../../docs/ideas/recordingGlow.md).
 
 ## Issue
 

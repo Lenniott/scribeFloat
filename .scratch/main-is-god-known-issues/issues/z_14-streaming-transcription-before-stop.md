@@ -1,11 +1,15 @@
 ---
 title: "Triage: Start transcript work before Dictate fully stops"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
+
+## Resolution
+
+**Later, closed 2026-08-09.** Parked as an experiment to [`docs/ideas/streaming-dictate-transcription.md`](../../../docs/ideas/streaming-dictate-transcription.md). Needs live VAD, chunk-and-stitch pipeline, state-machine changes, and an accuracy-vs-latency product call — own wayfinder/branch.
 
 ## Issue
 

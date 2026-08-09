@@ -1,11 +1,19 @@
 ---
 title: "Triage: Heavy native ML / dependency surface"
 labels: [wayfinder:grilling]
-status: open
+status: closed
 assignee:
 blocked_by: []
 parent: ../MAP.md
 ---
+
+## Resolution
+
+**Now, closed 2026-08-09.** Added [`.github/dependabot.yml`](../../../.github/dependabot.yml): weekly version updates for `npm` (`/`), `cargo` (`/src-tauri`), and `github-actions` (`/`). Minor/patch updates are grouped into one PR per ecosystem so the inbox stays quiet; majors stay ungrouped. Caps: 5 open PRs for npm/cargo, 3 for actions.
+
+Deliberately **not** adding a `cargo audit` / `npm audit` CI job in this ticket — Dependabot covers the “advisory habit” ask without custom workflow code. A blocking audit job can be a future Known issue if we want PR-gate failures.
+
+**Manual check:** After this lands on the **default branch**, open the repo on GitHub → Settings → Code security → Dependabot → confirm Version updates is on. Optionally wait for the weekly run or trigger via the Dependabot “Check for updates” UI. No local app behavior to smoke-test.
 
 ## Issue
 

@@ -33,6 +33,7 @@ Every item in the archived [known-issues dump](../../docs/ideas/main-is-god-agai
 - [Triage: Start transcript work before Dictate fully stops](issues/z_14-streaming-transcription-before-stop.md) — **Later**: parked to [`docs/ideas/streaming-dictate-transcription.md`](../../docs/ideas/streaming-dictate-transcription.md) (experiment / own wayfinder).
 - [Triage: Unfinished Notes UI leftovers](issues/z_15-unfinished-notes-ui-leftovers.md) — **Later**: hold until processing/Float needs tags — parked to [`docs/ideas/notes-metadata-tags.md`](../../docs/ideas/notes-metadata-tags.md).
 - [Triage: Skills / plans still mention deleted Models screen](issues/z_16-skills-mention-deleted-models-screen.md) — **Later** / no action: re-grep found no live Models-screen mentions in `skills/`/`docs/`/`src/`; premise already stale.
+- [Triage: Heavy native ML / dependency surface](issues/z_23-heavy-native-ml-dependency-surface.md) — **Now**, done: `.github/dependabot.yml` weekly for npm, cargo (`src-tauri`), and github-actions (grouped minor/patch). No `cargo audit` CI job yet.
 
 ## Not yet specified
 

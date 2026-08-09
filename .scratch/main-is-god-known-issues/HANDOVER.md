@@ -8,15 +8,16 @@ Wayfinder map: [MAP.md](MAP.md). Destination: triage all 25 items from the archi
 
 ## State as of 2026-08-09
 
-**19/25 closed**, none assigned.
+**20/25 closed**, none assigned.
 
 - Closed earlier: 01–05, 11, 12, 17, 19–22, 25 (builds + no-action Laters).
 - **Closed 2026-08-09 (earlier)**:
   - **08** — Done already (written pane height).
   - **06, 09, 14, 15** — **Later**, moved to idea docs (own future wayfinder/branch each).
+  - **16** — **Later** / no action: no live Models-screen mentions.
 - **Closed 2026-08-09 (this session)**:
-  - **16** — **Later** / no action: re-grep confirmed no live Models-screen mentions.
-- **Still open (6)**: 07, 10, 13, 18, 23, 24 — no Now/Later call yet (except ticket-local suggestions).
+  - **23** — **Now**: `.github/dependabot.yml` (npm + cargo + github-actions, weekly).
+- **Still open (5)**: 07, 10, 13, 18, 24 — no Now/Later call yet (except ticket-local suggestions).
 
 ## Remaining tickets, grouped
 
@@ -26,9 +27,8 @@ Wayfinder map: [MAP.md](MAP.md). Destination: triage all 25 items from the archi
 - **13** — Dual audio recordings get no real per-speaker diarization
 - **24** — Bring back spoken triggers as a narrower Dictate-only feature
 
-### Maintenance / optimization (2)
+### Maintenance / optimization (1)
 - **18** — Upload accepts any OS-readable path with no dialog-scoped confinement (security hardening)
-- **23** — No dependency/vulnerability scanning in CI (`cargo audit`, `npm audit`, Dependabot)
 
 ## Workflow for the next ticket (confirmed with Benjamin 2026-07-29)
 
@@ -55,3 +55,4 @@ Update this file's Session log before ending a session, even if nothing closed.
 - **2026-07-30**: Closed ticket 04 (onboarding teach both gestures) as **Now**, following the one-ticket-at-a-time workflow with a confirm checkpoint before finalizing. Backend: `dictate://state-changed` event gained a `gesture` field; frontend: `DictatePracticeStep.svelte` teaches and credits both double-tap and hold-to-talk. Full detail in the ticket's `## Resolution`. Also found (and corrected) a stale cross-reference in the ticket's Findings — it pointed to a "merge-blocker" ticket name that doesn't exist; the real underlying fix (Continue button reachability) was already shipped and tested, so it wasn't actually a blocker. Next: pick the next ticket from §3 user-facing (06 naming slice, 07, 08) or continue down the grouped list — none of the remaining 12 have a Now/Later call yet.
 - **2026-08-09**: Benjamin call — park experiments/large items to idea docs, close #08 as already-fixed. Closed **08** (Done already). Closed **06, 09, 14, 15** as Later → new idea docs under `docs/ideas/`. Human framed this batch as "done here" for the session; **7 tickets still open** (07, 10, 13, 16, 18, 23, 24) if the effort continues. No commit this session unless asked.
 - **2026-08-09 (later)**: Closed **16** as Later / no action — final re-grep of `skills/`/`docs/`/`src/` found no live Models-screen references. **6 open** (07, 10, 13, 18, 23, 24). Next candidate if continuing: **23** (Dependabot — trivial Now).
+- **2026-08-09 (evening)**: Closed **23** as Now — added `.github/dependabot.yml` (npm `/`, cargo `/src-tauri`, github-actions; weekly; grouped minor/patch). Skipped custom `cargo audit` CI for now. **5 open** (07, 10, 13, 18, 24).

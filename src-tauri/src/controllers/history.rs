@@ -3,7 +3,7 @@ use crate::services::history::HistoryService;
 use crate::services::output::{self, OutputService};
 use crate::services::speaker_names::{is_reserved_speaker_label, SpeakerNameService};
 use crate::types::{
-    DashboardStats, HistoryItemSource, HistoryKind, HistoryListItem, HistoryRecord,
+    DashboardStats, HistoryItemSource, HistoryKind, HistoryListItem, HistoryRecord, RelabelScope,
     TagVocabularyEntry,
 };
 use std::collections::{HashMap, HashSet};
@@ -101,33 +101,66 @@ impl HistoryController {
         crate::services::note_sidecar::write_tags(&save_folder, id, tags).map_err(|e| e.to_string())
     }
 
-    /// Rename a speaker across one note and remember the new name globally
-    /// (unless it's an auto-assigned label like "Speaker 2" or "Other").
+    /// Rename a speaker in one note and remember the new name globally (unless
+    /// it's an auto-assigned label like "Speaker 2" or "Other").
+    ///
+    /// `scope: All` renames every turn labeled `from_label` (requires it);
+    /// `scope: One` renames only the turn at `block_index` (requires it),
+    /// leaving other turns sharing that label untouched.
     pub fn relabel_speaker(
         &self,
         id: &str,
-        from_label: &str,
         to_label: &str,
+        scope: RelabelScope,
+        from_label: Option<&str>,
+        block_index: Option<usize>,
     ) -> Result<HistoryRecord, String> {
         if is_legacy(id) {
             return Err("legacy items are read-only".to_string());
         }
-        let from_label = from_label.trim();
         let to_label = to_label.trim();
-        if from_label.is_empty() || to_label.is_empty() {
+        if to_label.is_empty() {
             return Err("speaker label cannot be empty".to_string());
         }
         if to_label.len() > 80 {
             return Err("speaker label is too long (max 80 characters)".to_string());
         }
-        if from_label == to_label {
-            return Err("new speaker label matches the current one".to_string());
-        }
         let save_folder = self.config.get().save_folder;
-        let updated = self
-            .history
-            .relabel_speaker(&save_folder, id, from_label, to_label)
-            .map_err(|e| e.to_string())?;
+        let updated = match scope {
+            RelabelScope::All => {
+                let from_label = from_label.map(str::trim).unwrap_or_default();
+                if from_label.is_empty() {
+                    return Err("from_label is required to rename all turns".to_string());
+                }
+                if from_label == to_label {
+                    return Err("new speaker label matches the current one".to_string());
+                }
+                self.history
+                    .relabel_speaker(&save_folder, id, from_label, to_label)
+                    .map_err(|e| e.to_string())?
+            }
+            RelabelScope::One => {
+                let block_index = block_index
+                    .ok_or_else(|| "block_index is required to rename a single turn".to_string())?;
+                let current = self
+                    .history
+                    .get(&save_folder, id)
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| format!("note `{id}` not found"))?;
+                let current_label = current
+                    .speaker_blocks
+                    .get(block_index)
+                    .ok_or_else(|| format!("block index {block_index} out of range"))?
+                    .label
+                    .as_str();
+                if current_label == to_label {
+                    return Err("new speaker label matches the current one".to_string());
+                }
+                self.history
+                    .relabel_speaker_block(&save_folder, id, block_index, to_label)
+                    .map_err(|e| e.to_string())?
+            }
+        };
         if !is_reserved_speaker_label(to_label) {
             // Global name save is a convenience; never fail the relabel over it.
             if let Err(e) = self.speaker_names.save(to_label, None) {
@@ -635,7 +668,10 @@ mod tests {
             .append(&f.save_folder, labeled_record(&["Speaker 1", "Speaker 2"]))
             .unwrap();
 
-        let updated = f.ctrl.relabel_speaker(&id, "Speaker 1", "Ben").unwrap();
+        let updated = f
+            .ctrl
+            .relabel_speaker(&id, "Ben", RelabelScope::All, Some("Speaker 1"), None)
+            .unwrap();
 
         assert_eq!(updated.speaker_blocks[0].label, "Ben");
         assert_eq!(updated.speaker_blocks[1].label, "Speaker 2");
@@ -651,7 +687,9 @@ mod tests {
             .append(&f.save_folder, labeled_record(&["Ben"]))
             .unwrap();
 
-        f.ctrl.relabel_speaker(&id, "Ben", "Speaker 2").unwrap();
+        f.ctrl
+            .relabel_speaker(&id, "Speaker 2", RelabelScope::All, Some("Ben"), None)
+            .unwrap();
 
         assert!(f.speaker_names.list().is_empty());
     }
@@ -664,12 +702,93 @@ mod tests {
             .append(&f.save_folder, labeled_record(&["Speaker 1"]))
             .unwrap();
 
-        assert!(f.ctrl.relabel_speaker(&id, "Speaker 1", "  ").is_err());
-        assert!(f.ctrl.relabel_speaker(&id, "Speaker 1", "Speaker 1").is_err());
-        assert!(f.ctrl.relabel_speaker(&id, "Speaker 1", &"x".repeat(81)).is_err());
-        assert!(f.ctrl.relabel_speaker("md::legacy", "Speaker 1", "Ben").is_err());
+        assert!(f
+            .ctrl
+            .relabel_speaker(&id, "  ", RelabelScope::All, Some("Speaker 1"), None)
+            .is_err());
+        assert!(f
+            .ctrl
+            .relabel_speaker(&id, "Speaker 1", RelabelScope::All, Some("Speaker 1"), None)
+            .is_err());
+        assert!(f
+            .ctrl
+            .relabel_speaker(
+                &id,
+                &"x".repeat(81),
+                RelabelScope::All,
+                Some("Speaker 1"),
+                None
+            )
+            .is_err());
+        assert!(f
+            .ctrl
+            .relabel_speaker(
+                "md::legacy",
+                "Ben",
+                RelabelScope::All,
+                Some("Speaker 1"),
+                None
+            )
+            .is_err());
         // Nothing was saved globally by the failed attempts.
         assert!(f.speaker_names.list().is_empty());
+    }
+
+    #[test]
+    fn relabel_speaker_one_renames_only_that_block() {
+        let f = fixture();
+        let id = f
+            .history
+            .append(
+                &f.save_folder,
+                labeled_record(&["Speaker 1", "Speaker 1", "Speaker 1"]),
+            )
+            .unwrap();
+
+        let updated = f
+            .ctrl
+            .relabel_speaker(&id, "Ben", RelabelScope::One, None, Some(1))
+            .unwrap();
+
+        assert_eq!(updated.speaker_blocks[0].label, "Speaker 1");
+        assert_eq!(updated.speaker_blocks[1].label, "Ben");
+        assert_eq!(updated.speaker_blocks[2].label, "Speaker 1");
+        let names: Vec<String> = f.speaker_names.list().into_iter().map(|n| n.name).collect();
+        assert_eq!(names, vec!["Ben".to_string()]);
+    }
+
+    #[test]
+    fn relabel_speaker_one_rejects_bad_input() {
+        let f = fixture();
+        let id = f
+            .history
+            .append(&f.save_folder, labeled_record(&["Speaker 1", "Speaker 2"]))
+            .unwrap();
+
+        // Missing block_index.
+        assert!(f
+            .ctrl
+            .relabel_speaker(&id, "Ben", RelabelScope::One, None, None)
+            .is_err());
+        // Out-of-range block_index.
+        assert!(f
+            .ctrl
+            .relabel_speaker(&id, "Ben", RelabelScope::One, None, Some(9))
+            .is_err());
+        // Same label as the block already carries.
+        assert!(f
+            .ctrl
+            .relabel_speaker(&id, "Speaker 1", RelabelScope::One, None, Some(0))
+            .is_err());
+        // Missing from_label for scope All.
+        assert!(f
+            .ctrl
+            .relabel_speaker(&id, "Ben", RelabelScope::All, None, None)
+            .is_err());
+        assert!(f
+            .ctrl
+            .relabel_speaker("md::legacy", "Ben", RelabelScope::One, None, Some(0))
+            .is_err());
     }
 
     #[test]

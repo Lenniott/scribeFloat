@@ -251,6 +251,15 @@ pub struct SpeakerBlock {
     pub chunk_id: Option<String>,
 }
 
+/// Scope of a speaker relabel: every turn sharing the current label, or just
+/// the one turn the user is correcting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RelabelScope {
+    All,
+    One,
+}
+
 /// Legacy chunk-tier speaker evidence, kept only so pre-diarization notes stay
 /// readable (labels + correction badges). New notes never write these; the
 /// biometric fields old records carried (embeddings, scores, quality metrics)

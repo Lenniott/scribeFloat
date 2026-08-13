@@ -15,6 +15,16 @@ Confirmed: when Record captures dual audio (mic + system audio), Sortformer diar
 
 Read the "Dual audio vs how many speakers we can get" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. Medium change (diarize both channels, remap speaker-id ranges, merge into channel+identity labels, rewrite existing tests) blocked on an undecided product question: would a "Speaker 5" derived from the system-audio channel actually read as meaningful to users, or is channel labeling preferable as-is? Is that product call worth making now, or should this stay Later as its own scoped follow-up?
 
+## Decision (2026-08-13) — Now
+
+Confirmed with Benjamin: **build it now.** Resolved product question: identity replaces channel labeling — once a dual-audio block is diarized, it's shown as "Speaker N" (up to 8 total: mic ids 0-3, system-audio ids offset to 4-7, never colliding), not as a separate "In"/"Out" channel tag. Channel labeling remains only as the fallback when diarization is unavailable or fails on either side (whole-recording fallback, not a partial mix).
+
+**Scope correction during planning:** the diarizer (`Diarizer::diarize(pcm_16k: &[f32])`) is source-agnostic — it doesn't know or care whether the PCM came from Record or Upload. Both already have full `mic_pcm_16k`/`speaker_pcm_16k` buffers in memory by the time diarization would run (`dual_source` is gated purely on `speaker_pcm_16k.is_some()`, not on profile type). So this is **not** an "Upload-only" feature — final-result dual-channel diarization applies to any dual-source recording, Record or Upload alike, once capture is complete.
+
+The one genuine scope boundary: **real-time diarization while actively recording** (live mic-tap `StreamingDiarizer`/`LiveRanges`, which only ever existed for mic audio) stays out of scope — wiring a live system-audio tap during an in-progress Record session is a separate, larger follow-up ticket. This plan only covers diarizing the final result once both channels' full audio is available, which is already true for Record (post-stop) and Upload alike.
+
+Implementation plan: `/Users/benjamin/.claude/plans/yea-do-it-as-typed-sunrise.md`.
+
 ## Findings
 
 **Confirmed: the note is accurate.** Today, dual-source (Record with speaker capture) never invokes Sortformer at all. Speaker labeling is purely channel-based: every mic segment → "Mic", every speaker segment → "Speaker".

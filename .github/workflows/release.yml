@@ -56,7 +56,7 @@ jobs:
     steps:
       - name: Download macOS Apple Silicon artifact
         if: needs.build-macos-arm.result == 'success'
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: macos-arm-dmg
           path: artifacts/macos-arm
@@ -70,7 +70,7 @@ jobs:
 
       - name: Download Windows artifact
         if: needs.build-windows.result == 'success'
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: windows-nsis
           path: artifacts/windows
@@ -101,7 +101,7 @@ jobs:
           } > release-notes.md
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: artifacts/**/*
           body_path: release-notes.md
@@ -115,7 +115,7 @@ jobs:
 
     steps:
       - name: Download macOS Intel artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: macos-intel-dmg
           path: artifacts/macos-intel
@@ -127,7 +127,7 @@ jobs:
           done
 
       - name: Attach Intel DMG to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           files: artifacts/macos-intel/*

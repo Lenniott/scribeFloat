@@ -16,7 +16,7 @@ use crate::services::model::ModelService;
 use crate::services::output::{filter_hallucination_phrases, format_dictate_segments};
 use crate::services::speaker_align::align_ranges_to_segments;
 use crate::services::speaker_blocks::build_channel_blocks;
-use crate::types::{DiarizationRange, Segment, SpeakerBlock, SpeakerChangeCut};
+use crate::types::{DiarizationRange, Segment, SpeakerBlock};
 use anyhow::Result;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -65,8 +65,6 @@ pub struct PostCaptureInput<'a> {
     pub audio: CaptureAudio<'a>,
     pub model_path: &'a Path,
     pub speaker_evidence: Option<SpeakerEvidenceInput<'a>>,
-    /// Persisted timeline enrichment (pitch/loudness jumps); no longer drives labels.
-    pub speaker_change_cuts: &'a [SpeakerChangeCut],
     pub abort: Option<Arc<AtomicBool>>,
     /// Invoked once, when the model finishes loading for the first (mic) pass.
     pub on_model_loaded: Option<Box<dyn FnOnce() + Send>>,
@@ -76,7 +74,6 @@ pub struct PostCaptureInput<'a> {
 pub struct TranscriptResult {
     pub segments: Vec<Segment>,
     pub speaker_blocks: Vec<SpeakerBlock>,
-    pub speaker_change_cuts: Vec<SpeakerChangeCut>,
     pub dual_source: bool,
     pub model_label: String,
     pub dictate_text: Option<String>,
@@ -231,7 +228,6 @@ where
     Ok(TranscriptResult {
         segments,
         speaker_blocks,
-        speaker_change_cuts: input.speaker_change_cuts.to_vec(),
         dual_source,
         model_label,
         dictate_text: None,
@@ -370,18 +366,9 @@ fn model_label(model_path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{CutReason, SegmentSource};
-    use std::collections::{BTreeSet, VecDeque};
+    use crate::types::SegmentSource;
+    use std::collections::VecDeque;
     use std::sync::Mutex;
-
-    fn cut(time_s: f32) -> SpeakerChangeCut {
-        SpeakerChangeCut {
-            time_s,
-            end_s: time_s,
-            score: 1.0,
-            reasons: BTreeSet::from([CutReason::Pitch]),
-        }
-    }
 
     fn range(speaker_id: u8, start_ms: u64, end_ms: u64) -> DiarizationRange {
         DiarizationRange {
@@ -501,7 +488,6 @@ mod tests {
         mic_pcm: &'a [f32],
         speaker_pcm: Option<&'a [f32]>,
         speaker_evidence: Option<SpeakerEvidenceInput<'a>>,
-        cuts: &'a [SpeakerChangeCut],
         abort: Option<Arc<AtomicBool>>,
     ) -> PostCaptureInput<'a> {
         PostCaptureInput {
@@ -512,14 +498,13 @@ mod tests {
             },
             model_path,
             speaker_evidence,
-            speaker_change_cuts: cuts,
             abort,
             on_model_loaded: None,
         }
     }
 
     #[test]
-    fn record_with_live_ranges_yields_aligned_speaker_blocks_and_cuts() {
+    fn record_with_live_ranges_yields_aligned_speaker_blocks() {
         let tmp = tempfile::tempdir().unwrap();
         let model_path = tmp.path().join("model.bin");
         let pcm = vec![0.01f32; 6 * 16_000];
@@ -528,7 +513,6 @@ mod tests {
             Segment::new(3_200, 5_800, "second turn"),
         ]]);
         let ranges = [range(0, 0, 2_900), range(1, 3_000, 6_000)];
-        let cuts = [cut(3.0)];
 
         let result = run_post_capture_transcription_with_inference(
             &inference,
@@ -538,7 +522,6 @@ mod tests {
                 &pcm,
                 None,
                 Some(SpeakerEvidenceInput::LiveRanges(&ranges)),
-                &cuts,
                 None,
             ),
             |_p| {},
@@ -548,7 +531,6 @@ mod tests {
         assert_eq!(result.segments.len(), 2);
         let labels: Vec<&str> = result.speaker_blocks.iter().map(|b| b.label.as_str()).collect();
         assert_eq!(labels, vec!["Speaker 1", "Speaker 2"]);
-        assert_eq!(result.speaker_change_cuts.len(), 1);
         assert!(!result.dual_source);
         assert_eq!(result.model_label, "model");
         assert!(result.dictate_text.is_none());
@@ -569,7 +551,6 @@ mod tests {
                 &pcm,
                 None,
                 Some(SpeakerEvidenceInput::LiveRanges(&[])),
-                &[],
                 None,
             ),
             |_p| {},
@@ -595,7 +576,6 @@ mod tests {
                 &pcm,
                 None,
                 None,
-                &[],
                 None,
             ),
             |_p| {},
@@ -622,7 +602,6 @@ mod tests {
                 &pcm,
                 None,
                 Some(SpeakerEvidenceInput::DiarizeOnDemand(&diarizer)),
-                &[],
                 None,
             ),
             |_p| {},
@@ -652,7 +631,6 @@ mod tests {
                 &pcm,
                 None,
                 Some(SpeakerEvidenceInput::DiarizeOnDemand(&diarizer)),
-                &[],
                 None,
             ),
             |_p| {},
@@ -681,7 +659,6 @@ mod tests {
                 &pcm,
                 None,
                 Some(SpeakerEvidenceInput::DiarizeOnDemand(&diarizer)),
-                &[],
                 None,
             ),
             move |p| sink.lock().unwrap().push(p),
@@ -714,7 +691,6 @@ mod tests {
                 &pcm,
                 None,
                 None,
-                &[],
                 None,
             ),
             |_p| {},
@@ -746,7 +722,6 @@ mod tests {
                 &mic_pcm,
                 Some(&speaker_pcm),
                 Some(SpeakerEvidenceInput::DiarizeOnDemand(&diarizer)),
-                &[],
                 None,
             ),
             |_p| {},
@@ -775,7 +750,6 @@ mod tests {
                 &pcm,
                 None,
                 None,
-                &[],
                 None,
             ),
             |_p| {},
@@ -807,7 +781,6 @@ mod tests {
                 &mic_pcm,
                 Some(&speaker_pcm),
                 None,
-                &[],
                 Some(abort),
             ),
             |_p| {},

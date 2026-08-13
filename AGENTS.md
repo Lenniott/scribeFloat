@@ -76,7 +76,11 @@ run them there. On a developer machine with hardware:
 cargo test -p ScribeFloat -- --ignored          # hardware-gated tests only
 cargo test -p ScribeFloat -- --include-ignored  # everything
 ```
-
+if in roo:
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml -- --ignored
+cargo test --manifest-path src-tauri/Cargo.toml -- --include-ignored
+```
 Currently gated: `mic_session_*` (real mic, any OS), `loopback_session_*`
 (macOS speaker capture). Do **not** add `#[ignore]` to tests that can run
 without hardware — use it only when the test genuinely requires a device.

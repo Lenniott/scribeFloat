@@ -830,12 +830,6 @@ mod tests {
                     text: "second".into(),
                     source: None,
                 }],
-                speaker_change_cuts: vec![crate::types::SpeakerChangeCut {
-                    time_s: 0.5,
-                    end_s: 0.5,
-                    score: 1.5,
-                    reasons: [crate::types::CutReason::Pitch].into_iter().collect(),
-                }],
                 session_speakers: vec![crate::types::SessionSpeaker {
                     session_speaker_id: "speaker-1".into(),
                     label: "Speaker A".into(),
@@ -863,9 +857,6 @@ mod tests {
         assert_eq!(got.notes.len(), 2);
         assert_eq!(got.notes[1].recorded_at_ms, 1_250);
         assert_eq!(got.duration_ms, 3_000);
-        // Cut attached in the second recording shifts by the 1 s offset.
-        assert_eq!(got.speaker_change_cuts.len(), 1);
-        assert!((got.speaker_change_cuts[0].time_s - 1.5).abs() < 1e-6);
         assert_eq!(got.session_speakers.len(), 1);
         assert_eq!(got.session_speakers[0].start_ms, 1_000);
         assert_eq!(got.session_speakers[0].end_ms, 3_000);

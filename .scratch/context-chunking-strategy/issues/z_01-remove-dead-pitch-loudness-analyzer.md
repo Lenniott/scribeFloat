@@ -1,13 +1,16 @@
 ---
 title: Remove dead pitch/loudness change-cut analyzer (ADR-0013)
 labels: [wayfinder:task]
-status: open
+status: done
 assignee:
 blocked_by: []
 parent: MAP.md
 ---
 
-Status: ready-for-agent
+Status: done (2026-08-13) — removed in the same session this ticket was
+written. `cargo check`, `cargo clippy -p ScribeFloat -- -D warnings`, and
+`cargo test -p ScribeFloat` all pass (347 passed, 5 ignored hardware-gated).
+ADR-0013 amended with a removal note; `docs/adr/README.md` updated.
 
 ## Question
 

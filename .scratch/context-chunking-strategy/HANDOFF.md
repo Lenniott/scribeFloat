@@ -1,19 +1,18 @@
 # Handoff — context-chunking-strategy
 
-**State right now**: pure exploration, nothing built. No code has changed;
-this effort folder itself was created in this session to stop the exploration
-from evaporating when the thread ends.
+**State right now**: `issues/01-remove-dead-pitch-loudness-analyzer.md` is
+done — the dead pitch/loudness cut-detection machinery (ADR-0013) is removed
+from `src-tauri/src`, ADR-0013 carries a removal note, `docs/adr/README.md`
+is updated. `cargo check` / `cargo clippy -p ScribeFloat -- -D warnings` /
+`cargo test -p ScribeFloat` all pass (347 passed, 5 ignored hardware-gated —
+ignore that count if it moves, it's unrelated hardware-gated tests). Not yet
+committed as of this handoff.
 
-**What's next on the frontier**: `issues/01-remove-dead-pitch-loudness-analyzer.md`
-is fully specified and ready to pick up. Everything else on `MAP.md`'s
-"Decisions so far" (chunk boundary policy, `ContextChunk` schema fork,
-silence-triggered ASR chunking) is still exploration-stage — needs a session
-to turn each into a concrete ticket before an agent should touch code.
+**What's next on the frontier**: everything else on `MAP.md`'s "Decisions so
+far" (chunk boundary policy, `ContextChunk` schema fork, silence-triggered
+ASR chunking) is still exploration-stage — needs a session to turn each into
+a concrete ticket before an agent should touch code.
 
-**Don't re-discover**: the grep evidence in issue 01 (call sites, what's dead
-vs. what's live via `rms()`) was exhaustive at time of writing — re-verify
-rather than re-deriving from scratch if the codebase has moved since
-2026-08-13, but don't assume the negative result needs re-proving from zero.
-
-**Nothing dirty in the working tree** — this session only wrote files under
-`.scratch/context-chunking-strategy/`.
+**Don't re-discover**: the grep evidence that motivated issue 01 (call sites,
+what was dead vs. what stayed live via `rms()`) doesn't need re-proving —
+that work is done and verified, not just planned.

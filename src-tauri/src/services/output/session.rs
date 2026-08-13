@@ -46,20 +46,6 @@ pub(super) fn write_session_manifest(session_dir: &Path, manifest: &SessionManif
     Ok(())
 }
 
-/// Write or replace `{session_dir}/analysis.json` — the full pitch/loudness frame
-/// timeline from live recording analysis. Deliberately NOT `session.json` (deleted on
-/// finalize) and NOT `history.jsonl` (too large to parse on every history load); it
-/// lives and dies with the kept audio.
-pub(super) fn write_audio_analysis(
-    session_dir: &Path,
-    analysis: &crate::types::AudioAnalysis,
-) -> Result<PathBuf> {
-    let dest = session_dir.join("analysis.json");
-    let json = serde_json::to_string(analysis).context("serialize analysis.json")?;
-    std::fs::write(&dest, json).context("write analysis.json")?;
-    Ok(dest)
-}
-
 /// After a successful Scribe transcription: drop `session.json` (and `notes.json`).
 /// When `keep_wav` is false, delete staging WAVs and remove the session directory.
 pub(super) fn finalize_scribe_session(session_dir: &Path, keep_wav: bool) -> Result<()> {
@@ -136,7 +122,6 @@ mod tests {
             speaker_wavs: vec!["speaker_seg_0.wav".to_string()],
             transcript_path: None,
             title: None,
-            speaker_change_cuts: Vec::new(),
         };
         write_session_manifest(&dir, &manifest).expect("write");
         let raw = std::fs::read_to_string(dir.join("session.json")).expect("read");
@@ -173,31 +158,10 @@ mod tests {
         std::fs::write(session_dir.join("session.json"), b"{}").unwrap();
         std::fs::write(session_dir.join("notes.json"), b"{}").unwrap();
         std::fs::write(session_dir.join("mic.wav"), b"fake wav").unwrap();
-        std::fs::write(session_dir.join("analysis.json"), b"{}").unwrap();
         finalize_scribe_session(&session_dir, true).expect("finalize");
         assert!(session_dir.is_dir());
         assert!(session_dir.join("mic.wav").is_file());
-        // The analysis timeline is an artifact of the kept audio — it survives with it.
-        assert!(session_dir.join("analysis.json").is_file());
         assert!(!session_dir.join("session.json").exists());
         assert!(!session_dir.join("notes.json").exists());
-    }
-
-    #[test]
-    fn write_audio_analysis_roundtrip() {
-        let dir = temp_session_dir();
-        let analysis = crate::types::AudioAnalysis {
-            format_version: 1,
-            sample_rate: 16_000,
-            window_samples: 2048,
-            hop_samples: 1024,
-            f0_hz: vec![Some(110.0), None],
-            rms: vec![0.05, 0.0001],
-        };
-        let dest = write_audio_analysis(&dir, &analysis).expect("write");
-        assert_eq!(dest.file_name().unwrap(), "analysis.json");
-        let raw = std::fs::read_to_string(&dest).expect("read");
-        let parsed: crate::types::AudioAnalysis = serde_json::from_str(&raw).expect("parse");
-        assert_eq!(parsed, analysis);
     }
 }

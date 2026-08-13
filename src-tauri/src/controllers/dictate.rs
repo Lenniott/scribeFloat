@@ -890,7 +890,6 @@ impl DictateController {
                 },
                 model_path: &model_path,
                 speaker_evidence: None,
-                speaker_change_cuts: &[],
                 abort: None,
                 on_model_loaded: None,
             },

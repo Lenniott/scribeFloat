@@ -56,12 +56,13 @@ of one full-buffer pass after stop).
     real accuracy check before committing.
 - Found during this exploration, not part of the destination but worth acting on
   separately: `services/analysis.rs`'s `PitchAnalyzer`/`detect_cuts`/
-  `SpeakerChangeCut` (ADR-0013) has zero downstream consumers today (frontend,
-  chunking, and rendering all ignore it) — see `issues/01-remove-dead-pitch-loudness-analyzer.md`.
+  `SpeakerChangeCut` (ADR-0013) had zero downstream consumers today (frontend,
+  chunking, and rendering all ignore it) — removed, see
+  `issues/01-remove-dead-pitch-loudness-analyzer.md` (done).
 
 ## Frontier
 
-- `issues/01-remove-dead-pitch-loudness-analyzer.md` — open, ready-for-agent.
+- `issues/01-remove-dead-pitch-loudness-analyzer.md` — done (2026-08-13).
 - No other tickets cut yet. Next session should turn "Decisions so far" into
   concrete tickets (chunk boundary policy, `ContextChunk` schema fork, silence-
   triggered ASR chunking) once the user is ready to move from exploring to

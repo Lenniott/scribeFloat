@@ -13,10 +13,16 @@ not the frontend (`TranscriptPanel.svelte` doesn't even declare the field), not
 diarization (which is fully independent — see [ADR-0014](0014-anonymous-diarization-replaces-voiceprint-identity.md)).
 ADR-0014's claim below that these cuts "remain as identity-free timeline
 enrichment" describes intent, not anything actually built — see the amendment on
-that ADR. The code still exists at time of writing; removal is tracked in
-`.scratch/context-chunking-strategy/issues/01-remove-dead-pitch-loudness-analyzer.md`.
-`services/analysis.rs::rms()` is the one piece that stays live — it's used by
-hallucination-phrase gating and is unrelated to the cut-detection machinery below.
+that ADR.
+
+**Removed (2026-08-13):** `PitchAnalyzer`, `detect_cuts`, `CutConfig`,
+`SpeakerChangeCut`, `CutReason`, `harvest_audio_analysis`, `offline_cuts`, and
+the `speaker_change_cuts` field on `SessionManifest`/`HistoryRecord`/
+`TranscriptAttachment` are gone from `src-tauri/src` — see
+`.scratch/context-chunking-strategy/issues/01-remove-dead-pitch-loudness-analyzer.md`
+for the removal record. `services/analysis.rs::rms()` is the one piece that
+stayed live — it's used by hallucination-phrase gating and was unrelated to
+the cut-detection machinery removed here.
 
 The rest of this document is kept as historical record of the original decision.
 

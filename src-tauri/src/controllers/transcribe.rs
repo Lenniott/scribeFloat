@@ -1,4 +1,3 @@
-use crate::services::analysis::{detect_cuts, CutConfig, PitchAnalyzer};
 use crate::services::config::ConfigService;
 use crate::services::diarization::DiarizationService;
 use crate::services::history::HistoryService;
@@ -247,7 +246,6 @@ impl TranscribeController {
                 }
             };
 
-            let speaker_change_cuts = offline_cuts(&decoded.mic_pcm_16k);
             let progress_reporter = {
                 let app = self.app.clone();
                 let item_id = queue[index].id.clone();
@@ -273,7 +271,6 @@ impl TranscribeController {
                     speaker_evidence: Some(SpeakerEvidenceInput::DiarizeOnDemand(
                         self.diarization.as_ref(),
                     )),
-                    speaker_change_cuts: &speaker_change_cuts,
                     abort: None,
                     on_model_loaded: None,
                 },
@@ -297,7 +294,6 @@ impl TranscribeController {
             let crate::services::transcription::TranscriptResult {
                 segments,
                 speaker_blocks,
-                speaker_change_cuts,
                 dual_source,
                 model_label,
                 ..
@@ -368,7 +364,6 @@ impl TranscribeController {
                     .map(|p| p.to_string_lossy().into_owned()),
             );
             record.speaker_blocks = speaker_blocks;
-            record.speaker_change_cuts = speaker_change_cuts;
             if let Err(e) = self.history.append(&save_folder, record) {
                 tracing::warn!(error = %e, "failed to append transcribe history record");
             } else {
@@ -477,13 +472,6 @@ fn overall_progress(items: &[TranscribeQueueItem]) -> f32 {
         })
         .sum();
     (total / items.len() as f32).clamp(0.0, 1.0)
-}
-
-fn offline_cuts(pcm_16k: &[f32]) -> Vec<crate::types::SpeakerChangeCut> {
-    let mut analyzer = PitchAnalyzer::new();
-    analyzer.feed(pcm_16k);
-    let analysis = analyzer.finish();
-    detect_cuts(&analysis, &CutConfig::default())
 }
 
 #[cfg(test)]

@@ -1,7 +1,24 @@
 # ADR-0013: Live pitch analysis with cuts in HistoryRecord, timeline in analysis.json
 
-**Status:** Binding
-**Wayfinder:** Implemented — Main is God again / current product (`pitch-detection`, `analysis.json`).
+**Status:** Superseded
+**Wayfinder:** Superseded — orphaned, not reimplemented. Historical record only.
+
+## Superseded (2026-08-13)
+
+The "smarter Whisper chunking" and "change-cut hints" this ADR's analyzer was meant
+to enable were never built. A full trace of `PitchAnalyzer` / `detect_cuts` /
+`SpeakerChangeCut` across the backend and frontend found zero downstream consumers:
+not the frontend (`TranscriptPanel.svelte` doesn't even declare the field), not
+`context_search.rs`'s chunking/embedding pipeline, not markdown rendering, not
+diarization (which is fully independent — see [ADR-0014](0014-anonymous-diarization-replaces-voiceprint-identity.md)).
+ADR-0014's claim below that these cuts "remain as identity-free timeline
+enrichment" describes intent, not anything actually built — see the amendment on
+that ADR. The code still exists at time of writing; removal is tracked in
+`.scratch/context-chunking-strategy/issues/01-remove-dead-pitch-loudness-analyzer.md`.
+`services/analysis.rs::rms()` is the one piece that stays live — it's used by
+hallucination-phrase gating and is unrelated to the cut-detection machinery below.
+
+The rest of this document is kept as historical record of the original decision.
 
 ## Context
 

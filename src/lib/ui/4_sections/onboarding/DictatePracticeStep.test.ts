@@ -6,7 +6,8 @@ import { listen } from '@tauri-apps/api/event';
 import DictatePracticeStep from './DictatePracticeStep.svelte';
 
 type DictateState = 'IDLE' | 'RECORDING' | 'TRANSCRIBING' | 'PASTING' | 'DONE' | 'ERROR';
-type DictateStateEvent = { state: DictateState; text?: string; error?: string };
+type DictateGesture = 'double_tap' | 'hold';
+type DictateStateEvent = { state: DictateState; text?: string; error?: string; gesture?: DictateGesture };
 type EventCallback = (event: { payload: DictateStateEvent }) => void;
 
 const mockedInvoke = vi.mocked(invoke);
@@ -120,5 +121,29 @@ describe('DictatePracticeStep', () => {
 		// Full text stays in the DOM; visual height is CSS-clamped.
 		expect(body?.textContent?.length ?? 0).toBeGreaterThan(400);
 		expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
+	});
+
+	it('credits a gesture as tried only once its RECORDING event reports it', async () => {
+		renderStep();
+
+		await waitFor(() => {
+			expect(mockedListen).toHaveBeenCalledWith('dictate://state-changed', expect.any(Function));
+		});
+
+		const doubleTapRow = screen.getByText('Double-tap').closest('div');
+		const holdRow = screen.getByText('Press-and-hold').closest('div');
+		expect(doubleTapRow).toHaveClass('text-fg-muted');
+		expect(holdRow).toHaveClass('text-fg-muted');
+
+		stateChanged({ payload: { state: 'RECORDING', gesture: 'double_tap' } });
+		await tick();
+
+		expect(doubleTapRow).toHaveClass('text-success');
+		expect(holdRow).toHaveClass('text-fg-muted');
+
+		stateChanged({ payload: { state: 'RECORDING', gesture: 'hold' } });
+		await tick();
+
+		expect(holdRow).toHaveClass('text-success');
 	});
 });

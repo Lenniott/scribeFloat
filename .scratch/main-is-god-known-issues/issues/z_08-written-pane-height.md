@@ -1,0 +1,34 @@
+---
+title: "Triage: Note written pane does not fill editor height"
+labels: [wayfinder:grilling]
+status: closed
+assignee:
+blocked_by: []
+parent: ../MAP.md
+---
+
+## Resolution
+
+**Done already, closed 2026-08-09.** No longer reproduces. Current layout is the standard fill-parent chain: `note-editor.svelte` Written column (`flex min-h-0 flex-1`) → wrapper (`min-h-0 flex-1`) → `MarkdownEditor` root (`h-full w-full`) → CodeMirror theme (`height: "100%"`). No short bordered/fixed-height box remains in source. Human confirms it is not a thing anymore.
+
+### Manual check (optional)
+1. Open any Note with Written + Transcript side-by-side.
+2. Confirm the Written pane stretches to the full editor height beside Transcript (not a short inset box).
+3. Resize the window — Written should keep filling the left column.
+
+## Issue
+
+Reported: the note editor's Written pane renders as a short bordered box instead of filling the available height. A static code read of the flex/height chain (`note-editor.svelte`, `MarkdownEditor.svelte`, CodeMirror theme) shows nothing structurally wrong and no fixed-height/border rule — this may already be fixed, or only reproduces under specific content/viewport conditions not visible from source alone.
+
+## Question
+
+Read the "Note written pane does not fill editor height" entry in [docs/ideas/main-is-god-again-known-issues.md](../../../docs/ideas/main-is-god-again-known-issues.md) for full context. Needs a live screenshot check before scoping further — if it reproduces, **Now** (trivial-small, CSS-only); if not, close as already-fixed. Can someone run a live check?
+
+## Findings
+
+- Layout chain in `src/lib/ui/5_views/note-editor.svelte:227-237`: outer row is `flex min-h-0 flex-1 overflow-hidden`; the Written column is `flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden`; its inner wrapper is `min-h-0 flex-1 overflow-y-auto` and hosts `<MarkdownEditor>`.
+- `MarkdownEditor.svelte` root div is `h-full w-full` (last line of file), and its CodeMirror theme (`theme` object, ~line 55) sets `"&": { height: "100%", ... }` on `.cm-editor`. This is the standard "fill parent" pattern and looks structurally correct — no bordered/fixed-height box in the current code.
+- No `border` or explicit `height`/`max-height` rule was found on `.cm-editor`/`.cm-scroller` in `app.css` (only a `.cm-editor :focus-visible` rule at app.css:343) that would cap it to a "short bordered box."
+- Given the ticket's evidence date (2026-07-21, Silicon smoke) and that `note-editor.svelte`'s last functional layout commit is `ddd6ae0` (CodeMirror written source editor) with later commits (`1640704`, `ba56f8f`, `bbfee2a`, `c6df606`) not obviously touching this pane's box model, this may already be fixed, or the bug is more subtle (e.g. only reproduces with certain content/viewport sizes, or was screenshot before a later fix). Could not visually reproduce via static code read — needs a live run to confirm.
+- If still reproducing live: fix would touch only `note-editor.svelte`'s flex classes and/or `MarkdownEditor.svelte`'s root/theme height rules — no data-model or backend changes.
+- Size estimate: trivial-to-small if a real regression is found (CSS-only); zero-effort (close as already-fixed) if it does not reproduce — recommend a quick live screenshot check before scoping further.

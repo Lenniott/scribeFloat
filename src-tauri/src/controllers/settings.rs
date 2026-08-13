@@ -611,7 +611,7 @@ mod tests {
         ctrl2.set_onboarding_step(0).unwrap();
         assert_eq!(ctrl2.get_onboarding_step(), 1);
         ctrl2.set_onboarding_step(9).unwrap();
-        assert_eq!(ctrl2.get_onboarding_step(), 4);
+        assert_eq!(ctrl2.get_onboarding_step(), 5);
     }
 
     #[test]

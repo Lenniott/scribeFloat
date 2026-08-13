@@ -28,7 +28,9 @@
 		ondelete?: () => void;
 	} = $props();
 
-	const showOpen = $derived(item.has_markdown && !!item.markdown_path);
+	// Markdown export is a silent side artifact for store-backed notes (already viewable in-app
+	// via the editor/detail pane) — only legacy items with no other view need this affordance.
+	const showOpen = $derived(item.has_markdown && !!item.markdown_path && item.source !== 'store');
 	const showDelete = $derived(item.source === 'store');
 	const isLegacy = $derived(item.source !== 'store');
 	const metaLine = $derived(

@@ -73,7 +73,11 @@
   const showExport = $derived(
     item.source === "store" && item.kind !== "dictate" && !item.has_markdown,
   );
-  const showOpenMd = $derived(item.has_markdown && !!item.markdown_path);
+  // Markdown export is a silent side artifact for store-backed items (this pane already renders
+  // their content in-app) — only legacy items with no other view need this affordance.
+  const showOpenMd = $derived(
+    item.has_markdown && !!item.markdown_path && item.source !== "store",
+  );
 
   function showToast(msg: string, state: ToastState = "normal") {
     if (toastTimeout) clearTimeout(toastTimeout);

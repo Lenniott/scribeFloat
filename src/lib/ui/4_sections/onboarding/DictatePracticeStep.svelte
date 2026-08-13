@@ -2,6 +2,8 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
 	import { onDestroy, onMount } from "svelte";
+	import { SvelteSet } from "svelte/reactivity";
+	import { CircleCheckBig, Circle } from "lucide-svelte";
 	import Button from "@components/controls/Button.svelte";
 	import ToggleSwitch from "@components/controls/Toggle.svelte";
 	import NoteComposer from "@patterns/NoteComposer.svelte";
@@ -24,10 +26,17 @@
 	let unlisteners: (() => void)[] = [];
 
 	type DictateState = "IDLE" | "RECORDING" | "TRANSCRIBING" | "PASTING" | "DONE" | "ERROR";
-	type DictateStateEvent = { state: DictateState; text?: string; error?: string };
+	type DictateGesture = "double_tap" | "hold";
+	type DictateStateEvent = {
+		state: DictateState;
+		text?: string;
+		error?: string;
+		gesture?: DictateGesture;
+	};
 
 	let dictateState = $state<DictateState>("IDLE");
 	let dictateError = $state("");
+	const triedGestures = new SvelteSet<DictateGesture>();
 
 	const MAX_NOTES = 2;
 
@@ -60,6 +69,10 @@
 			const prev = dictateState;
 			dictateState = e.payload.state;
 
+			if (e.payload.state === "RECORDING" && e.payload.gesture) {
+				triedGestures.add(e.payload.gesture);
+			}
+
 			if (e.payload.state === "DONE") {
 				dictateError = "";
 				if (!e.payload.text) {
@@ -81,7 +94,7 @@
 
 <StepShell
 	title="Try Dictate"
-	subtitle="Double-tap {dictateModifierLabel}, speak, then release. Text is saved to history and copied to clipboard."
+	subtitle="Double-tap {dictateModifierLabel} to toggle, or press and hold to talk. Text is saved to history and copied to clipboard."
 >
 	{#snippet children()}
 		<div class="flex gap-3 h-full min-h-0">
@@ -90,10 +103,32 @@
 					<p class="sf-section-label text-fg-dim">How to use</p>
 					<ol class="space-y-1.5 sf-body-md text-fg-dim list-decimal list-inside">
 						<li>Click the text area on the right</li>
-						<li>Double-tap <strong class="text-fg">{dictateModifierLabel}</strong></li>
+						<li>Double-tap, or press and hold, <strong class="text-fg">{dictateModifierLabel}</strong></li>
 						<li>Speak clearly for 2+ seconds</li>
 						<li>Release (or tap) to stop</li>
 					</ol>
+				</div>
+
+				<div class="rounded-md bg-card border border-fill px-3 py-3 space-y-2">
+					<p class="sf-section-label text-fg-dim">Gestures tried</p>
+					<div class="space-y-1.5">
+						<div class="flex items-center gap-1.5 {triedGestures.has('double_tap') ? 'text-success' : 'text-fg-muted'}">
+							{#if triedGestures.has('double_tap')}
+								<CircleCheckBig class="size-4" />
+							{:else}
+								<Circle class="size-4" />
+							{/if}
+							<span class="sf-label-sm">Double-tap</span>
+						</div>
+						<div class="flex items-center gap-1.5 {triedGestures.has('hold') ? 'text-success' : 'text-fg-muted'}">
+							{#if triedGestures.has('hold')}
+								<CircleCheckBig class="size-4" />
+							{:else}
+								<Circle class="size-4" />
+							{/if}
+							<span class="sf-label-sm">Press-and-hold</span>
+						</div>
+					</div>
 				</div>
 
 				<div class="rounded-md px-3 py-3 h-22 flex items-center justify-between">

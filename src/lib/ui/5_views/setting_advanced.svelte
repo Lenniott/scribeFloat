@@ -13,6 +13,7 @@
 	let saveTranscriptsAsMarkdown = $state(false);
 	let keepWav = $state(false);
 	let openWithApp = $state('');
+	let dictateAutoPaste = $state(false);
 	let loadError = $state('');
 	let actionError = $state('');
 	const toast = createToast();
@@ -20,14 +21,16 @@
 	async function refresh() {
 		loadError = '';
 		try {
-			const [nextMarkdown, nextKeepWav, nextOpenWithApp] = await Promise.all([
+			const [nextMarkdown, nextKeepWav, nextOpenWithApp, nextAutoPaste] = await Promise.all([
 				invoke<boolean>('settings_get_save_transcripts_as_markdown'),
 				invoke<boolean>('settings_get_keep_wav'),
 				invoke<string | null>('settings_get_open_with_app_path'),
+				invoke<boolean>('settings_get_dictate_auto_paste'),
 			]);
 			saveTranscriptsAsMarkdown = nextMarkdown;
 			keepWav = nextKeepWav;
 			openWithApp = nextOpenWithApp ?? '';
+			dictateAutoPaste = nextAutoPaste;
 		} catch (e) {
 			loadError = `Could not load settings: ${appErrorMessage(e)}`;
 		}
@@ -56,6 +59,19 @@
 		} catch (e) {
 			keepWav = previous;
 			actionError = `Could not save audio setting: ${appErrorMessage(e)}`;
+		}
+	}
+
+	async function setDictateAutoPaste(enabled: boolean) {
+		const previous = dictateAutoPaste;
+		dictateAutoPaste = enabled;
+		actionError = '';
+		try {
+			await invoke('settings_set_dictate_auto_paste', { enabled });
+			toast.show('Saved', 'success');
+		} catch (e) {
+			dictateAutoPaste = previous;
+			actionError = `Could not save auto-paste setting: ${appErrorMessage(e)}`;
 		}
 	}
 
@@ -120,6 +136,20 @@
 						checked={keepWav}
 						onchange={(next) => void setKeepWav(next)}
 						aria-label="Keep audio after transcription"
+					/>
+				{/snippet}
+			</SettingsRow>
+		</SettingsList>
+	</SettingsSection>
+
+	<SettingsSection title="Dictate">
+		<SettingsList>
+			<SettingsRow title="Auto-paste after Dictate">
+				{#snippet control()}
+					<ToggleSwitch
+						checked={dictateAutoPaste}
+						onchange={(next) => void setDictateAutoPaste(next)}
+						aria-label="Auto-paste after Dictate"
 					/>
 				{/snippet}
 			</SettingsRow>

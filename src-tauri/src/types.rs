@@ -152,7 +152,7 @@ fn default_onboarding_step() -> u8 {
 
 /// Clamp a Setup step index to the valid Welcome‥Feature-tour range.
 pub fn clamp_onboarding_step(step: u8) -> u8 {
-    step.clamp(1, 4)
+    step.clamp(1, 5)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -249,6 +249,15 @@ pub struct SpeakerBlock {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chunk_id: Option<String>,
+}
+
+/// Scope of a speaker relabel: every turn sharing the current label, or just
+/// the one turn the user is correcting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RelabelScope {
+    All,
+    One,
 }
 
 /// Legacy chunk-tier speaker evidence, kept only so pre-diarization notes stay
@@ -521,6 +530,10 @@ pub struct RecoverySessionInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DictateStateEvent {
     pub state: DictateState,
+    /// Recording state only: which gesture started this session — "double_tap" or
+    /// "hold" — so onboarding can teach and credit both activation paths.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gesture: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -553,6 +566,7 @@ impl DictateStateEvent {
     pub fn new(state: DictateState) -> Self {
         Self {
             state,
+            gesture: None,
             progress: None,
             processing_stage: None,
             text: None,

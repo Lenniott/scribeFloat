@@ -1,6 +1,8 @@
 use crate::controllers::history::HistoryController;
 use crate::controllers::scribe::ScribeController;
-use crate::types::{AppError, DashboardStats, HistoryListItem, HistoryRecord, TagVocabularyEntry};
+use crate::types::{
+    AppError, DashboardStats, HistoryListItem, HistoryRecord, RelabelScope, TagVocabularyEntry,
+};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 
@@ -200,17 +202,21 @@ pub fn note_set_tags(
 }
 
 
+/// `scope: "all"` renames every turn labeled `from_label` (required for that scope);
+/// `scope: "one"` renames only the turn at `block_index` (required for that scope).
 #[tauri::command]
 pub fn note_relabel_speaker(
     ctrl: State<'_, Arc<HistoryController>>,
     app: AppHandle,
     id: String,
-    from_label: String,
     to_label: String,
+    scope: RelabelScope,
+    from_label: Option<String>,
+    block_index: Option<usize>,
 ) -> Result<HistoryRecord, AppError> {
     validate_id(&id)?;
     let updated = ctrl
-        .relabel_speaker(&id, &from_label, &to_label)
+        .relabel_speaker(&id, &to_label, scope, from_label.as_deref(), block_index)
         .map_err(AppError::from)?;
     emit_note_item_updated(&app, &id);
     Ok(updated)

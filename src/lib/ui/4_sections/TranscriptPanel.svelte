@@ -57,6 +57,8 @@
 	let hideOthers = $state(false);
 	let correctingIndex = $state<number | null>(null);
 	let newSpeakerName = $state('');
+	/** Target name chosen from the picker or typed field, awaiting a this-turn/all-turns scope choice. */
+	let pendingLabel = $state<string | null>(null);
 	let correctionError = $state('');
 	let loadError = $state('');
 
@@ -157,21 +159,25 @@
 	function startCorrection(index: number) {
 		correctingIndex = correctingIndex === index ? null : index;
 		newSpeakerName = '';
+		pendingLabel = null;
 		correctionError = '';
 	}
 
-	async function applyRelabel(block: SpeakerBlock, label: string) {
+	async function applyRelabel(block: SpeakerBlock, label: string, scope: 'all' | 'one', index: number) {
 		const trimmed = label.trim();
 		if (!trimmed) return;
 		correctionError = '';
 		try {
-			const updated = await invoke<NoteDetail>('note_relabel_speaker', {
-				id: noteId,
-				fromLabel: block.label,
-				toLabel: trimmed,
-			});
+			const payload: Record<string, unknown> = { id: noteId, toLabel: trimmed, scope };
+			if (scope === 'all') {
+				payload.fromLabel = block.label;
+			} else {
+				payload.blockIndex = index;
+			}
+			const updated = await invoke<NoteDetail>('note_relabel_speaker', payload);
 			adoptDetail(updated);
 			correctingIndex = null;
+			pendingLabel = null;
 			newSpeakerName = '';
 			savedNames = await invoke<SpeakerNameEntry[]>('speaker_names_list').catch(() => savedNames);
 		} catch (e) {
@@ -234,26 +240,47 @@
 							</div>
 							{#if correctingIndex === index}
 								<div class="flex flex-col gap-2 rounded border border-fill bg-fill/50 p-2">
-									<span class="sf-label-sm text-fg-dim">Who is speaking?</span>
-									<div class="flex flex-wrap gap-1.5">
-										{#each relabelOptions(block) as option (option)}
-											<Button variant="normal" size="small" onclick={() => void applyRelabel(block, option)}>
-												{displayLabel(option)}
+									{#if pendingLabel === null}
+										<span class="sf-label-sm text-fg-dim">Who is speaking?</span>
+										<div class="flex flex-wrap gap-1.5">
+											{#each relabelOptions(block) as option (option)}
+												<Button variant="normal" size="small" onclick={() => (pendingLabel = option)}>
+													{displayLabel(option)}
+												</Button>
+											{/each}
+										</div>
+										<div class="flex items-end gap-2">
+											<TextField label="New speaker" bind:value={newSpeakerName} />
+											<Button variant="ghost" size="small" onclick={() => (correctingIndex = null)}>Cancel</Button>
+											<Button
+												variant="primary"
+												size="small"
+												disabled={!newSpeakerName.trim()}
+												onclick={() => (pendingLabel = newSpeakerName.trim())}
+											>
+												Continue
 											</Button>
-										{/each}
-									</div>
-									<div class="flex items-end gap-2">
-										<TextField label="New speaker" bind:value={newSpeakerName} />
-										<Button variant="ghost" size="small" onclick={() => (correctingIndex = null)}>Cancel</Button>
-										<Button
-											variant="primary"
-											size="small"
-											disabled={!newSpeakerName.trim()}
-											onclick={() => void applyRelabel(block, newSpeakerName)}
-										>
-											Save
-										</Button>
-									</div>
+										</div>
+									{:else}
+										<span class="sf-label-sm text-fg-dim">Rename to "{displayLabel(pendingLabel)}"</span>
+										<div class="flex flex-wrap gap-1.5">
+											<Button
+												variant="primary"
+												size="small"
+												onclick={() => void applyRelabel(block, pendingLabel ?? '', 'one', index)}
+											>
+												This turn
+											</Button>
+											<Button
+												variant="normal"
+												size="small"
+												onclick={() => void applyRelabel(block, pendingLabel ?? '', 'all', index)}
+											>
+												All turns named {displayLabel(block.label)}
+											</Button>
+											<Button variant="ghost" size="small" onclick={() => (pendingLabel = null)}>Back</Button>
+										</div>
+									{/if}
 									{#if correctionError}
 										<p class="sf-body-sm text-destructive">{correctionError}</p>
 									{/if}

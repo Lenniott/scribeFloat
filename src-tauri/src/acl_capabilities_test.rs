@@ -19,10 +19,15 @@ mod tests {
         "transcribe_inspect_inputs",
         "transcribe_open_output",
         "settings_set_open_with_app_path",
-        "settings_set_output_path",
         "note_create_empty",
         "update_check",
     ];
+
+    /// `settings_set_output_path` stays on the satellite deny list for every window except
+    /// onboarding: its save-folder step needs to persist the user's chosen folder before
+    /// completing setup. Kept out of `SATELLITE_DENY_LIST` itself (rather than deny-listed
+    /// then re-allowed) so this exception is explicit and doesn't silently cover dictate-overlay.
+    const ONBOARDING_ONLY_ALLOW: &[&str] = &["settings_set_output_path"];
 
     fn manifest_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -60,6 +65,12 @@ mod tests {
                 "onboarding set must not allow {cmd}"
             );
         }
+        for cmd in ONBOARDING_ONLY_ALLOW {
+            assert!(
+                !dictate.contains(*cmd),
+                "dictate-overlay must not allow {cmd}"
+            );
+        }
     }
 
     #[test]
@@ -75,13 +86,17 @@ mod tests {
                 "{name} must not include opener:default"
             );
             assert!(
-                !body.contains("dialog:default"),
-                "{name} must not include dialog:default"
-            );
-            assert!(
                 !body.contains("clipboard-manager"),
                 "{name} must not include clipboard-manager"
             );
+            // onboarding's save-folder step needs the native folder picker; dictate-overlay
+            // has no such need and stays fully locked down.
+            if name == "dictate.json" {
+                assert!(
+                    !body.contains("dialog:default"),
+                    "{name} must not include dialog:default"
+                );
+            }
         }
     }
 

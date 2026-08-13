@@ -157,6 +157,29 @@ impl HistoryService {
         Ok(updated)
     }
 
+    /// Rename a single speaker turn by block index and persist the rewritten record.
+    /// Errors when the note is unknown or the index is out of range.
+    pub fn relabel_speaker_block(
+        &self,
+        save_folder: &str,
+        id: &str,
+        block_index: usize,
+        to_label: &str,
+    ) -> Result<HistoryRecord> {
+        let mut inner = self.inner.lock().unwrap();
+        self.ensure_loaded(&mut inner, save_folder)?;
+        let Some(&idx) = inner.index.get(id) else {
+            anyhow::bail!("note `{id}` not found");
+        };
+
+        let mut updated = inner.records[idx].clone();
+        relabel_speaker_block_at(&mut updated, block_index, to_label)?;
+
+        Self::append_line(save_folder, &updated)?;
+        inner.records[idx] = updated.clone();
+        Ok(updated)
+    }
+
     /// Update written body text — overwrites `{save_folder}/.notes/{id}/written.md` in place.
     /// Does not append to `history.jsonl` (high-frequency editor autosave).
     pub fn update_written_content(&self, save_folder: &str, id: &str, content: &str) -> Result<()> {
@@ -322,6 +345,29 @@ pub fn relabel_speaker_blocks(record: &mut HistoryRecord, from: &str, to: &str) 
     changed
 }
 
+/// Rename a single `speaker_blocks` turn by its index, leaving every other
+/// block (including other blocks sharing the same label) untouched. When the
+/// block links a legacy `chunk_id`, that one chunk's label follows too — but
+/// no other chunk or `session_speakers` entry cascades, unlike
+/// [`relabel_speaker_blocks`]'s rename-all.
+pub fn relabel_speaker_block_at(
+    record: &mut HistoryRecord,
+    block_index: usize,
+    to: &str,
+) -> Result<()> {
+    let block = record
+        .speaker_blocks
+        .get_mut(block_index)
+        .ok_or_else(|| anyhow::anyhow!("block index {block_index} out of range"))?;
+    block.label = to.to_string();
+    if let Some(chunk_id) = block.chunk_id.clone() {
+        if let Some(chunk) = record.speaker_chunks.iter_mut().find(|c| c.id == chunk_id) {
+            chunk.label = to.to_string();
+        }
+    }
+    Ok(())
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -464,6 +510,71 @@ mod tests {
     }
 
     #[test]
+    fn relabel_speaker_block_at_renames_only_that_index() {
+        let mut rec = record("hello");
+        rec.speaker_blocks = vec![
+            block("Speaker 1", 0, 1_000, "one"),
+            block("Speaker 1", 1_000, 2_000, "two"),
+            block("Speaker 1", 2_000, 3_000, "three"),
+        ];
+
+        relabel_speaker_block_at(&mut rec, 1, "Ben").expect("relabel");
+
+        assert_eq!(rec.speaker_blocks[0].label, "Speaker 1");
+        assert_eq!(rec.speaker_blocks[1].label, "Ben");
+        assert_eq!(rec.speaker_blocks[2].label, "Speaker 1");
+    }
+
+    #[test]
+    fn relabel_speaker_block_at_errors_on_out_of_range_index() {
+        let mut rec = record("hello");
+        rec.speaker_blocks = vec![block("Speaker 1", 0, 1_000, "one")];
+        assert!(relabel_speaker_block_at(&mut rec, 5, "Ben").is_err());
+        assert_eq!(rec.speaker_blocks[0].label, "Speaker 1");
+    }
+
+    #[test]
+    fn relabel_speaker_block_at_updates_linked_legacy_chunk_only() {
+        let mut rec = record("hello");
+        rec.speaker_blocks = vec![
+            crate::types::SpeakerBlock {
+                label: "Speaker 1".into(),
+                start_ms: Some(0),
+                end_ms: Some(1_000),
+                text: "one".into(),
+                chunk_id: Some("chunk-0001".into()),
+            },
+            block("Speaker 1", 1_000, 2_000, "two"),
+        ];
+        rec.speaker_chunks = vec![
+            crate::types::SpeakerChunk {
+                id: "chunk-0001".into(),
+                start_ms: 0,
+                end_ms: 1_000,
+                label: "Speaker 1".into(),
+                corrections: Vec::new(),
+            },
+            crate::types::SpeakerChunk {
+                id: "chunk-0002".into(),
+                start_ms: 1_000,
+                end_ms: 2_000,
+                label: "Speaker 1".into(),
+                corrections: Vec::new(),
+            },
+        ];
+
+        relabel_speaker_block_at(&mut rec, 0, "Ben").expect("relabel");
+
+        assert_eq!(rec.speaker_blocks[0].label, "Ben");
+        assert_eq!(rec.speaker_blocks[1].label, "Speaker 1");
+        assert_eq!(rec.speaker_chunks[0].label, "Ben");
+        assert_eq!(
+            rec.speaker_chunks[1].label, "Speaker 1",
+            "unlinked chunk must not cascade"
+        );
+    }
+
+    #[test]
     fn relabel_speaker_persists_across_reload() {
         let folder = temp_folder();
         let svc = HistoryService::new();
@@ -495,6 +606,41 @@ mod tests {
 
         assert!(svc.relabel_speaker(&folder, "missing", "Speaker 1", "Ben").is_err());
         assert!(svc.relabel_speaker(&folder, &id, "Speaker 9", "Ben").is_err());
+    }
+
+    #[test]
+    fn relabel_speaker_block_persists_across_reload() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let mut rec = record("hello");
+        rec.speaker_blocks = vec![
+            block("Speaker 1", 0, 1_000, "one"),
+            block("Speaker 1", 1_000, 2_000, "two"),
+        ];
+        let id = svc.append(&folder, rec).expect("append");
+
+        let updated = svc
+            .relabel_speaker_block(&folder, &id, 1, "Ben")
+            .expect("relabel block");
+        assert_eq!(updated.speaker_blocks[0].label, "Speaker 1");
+        assert_eq!(updated.speaker_blocks[1].label, "Ben");
+
+        let fresh = HistoryService::new();
+        let got = fresh.get(&folder, &id).unwrap().expect("present");
+        assert_eq!(got.speaker_blocks[0].label, "Speaker 1");
+        assert_eq!(got.speaker_blocks[1].label, "Ben");
+    }
+
+    #[test]
+    fn relabel_speaker_block_errors_on_unknown_note_or_index() {
+        let folder = temp_folder();
+        let svc = HistoryService::new();
+        let mut rec = record("hello");
+        rec.speaker_blocks = vec![block("Speaker 1", 0, 1_000, "one")];
+        let id = svc.append(&folder, rec).expect("append");
+
+        assert!(svc.relabel_speaker_block(&folder, "missing", 0, "Ben").is_err());
+        assert!(svc.relabel_speaker_block(&folder, &id, 5, "Ben").is_err());
     }
 
     #[test]

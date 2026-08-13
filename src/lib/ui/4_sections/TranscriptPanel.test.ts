@@ -78,18 +78,54 @@ describe('TranscriptPanel speaker relabeling', () => {
 		expect(screen.queryByRole('button', { name: 'Speaker 2' })).not.toBeInTheDocument();
 	});
 
-	it('relabels via note_relabel_speaker and re-renders from the returned record', async () => {
-		stubInvoke({ note_relabel_speaker: relabeledDetail() });
+	it('picking a name asks for this-turn vs all-turns scope before renaming', async () => {
 		await renderPanel();
 
 		await fireEvent.click(screen.getByRole('button', { name: '[Speaker 2]' }));
 		await fireEvent.click(screen.getByRole('button', { name: 'Alice' }));
 
+		expect(screen.getByText('Rename to "Alice"')).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'This turn' })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'All turns named Speaker 2' })).toBeInTheDocument();
+		// Nothing has been sent to the backend yet.
+		expect(mockedInvoke).not.toHaveBeenCalledWith('note_relabel_speaker', expect.anything());
+	});
+
+	it('relabels this turn only via scope "one" and a block index', async () => {
+		stubInvoke({ note_relabel_speaker: relabeledDetail() });
+		await renderPanel();
+
+		await fireEvent.click(screen.getByRole('button', { name: '[Speaker 2]' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Alice' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'This turn' }));
+
 		await waitFor(() => {
 			expect(mockedInvoke).toHaveBeenCalledWith('note_relabel_speaker', {
 				id: 'note-1',
-				fromLabel: 'Speaker 2',
 				toLabel: 'Alice',
+				scope: 'one',
+				blockIndex: 1,
+			});
+		});
+		await waitFor(() => {
+			expect(screen.getByRole('button', { name: '[Alice]' })).toBeInTheDocument();
+		});
+	});
+
+	it('relabels every matching turn via scope "all" and the current label', async () => {
+		stubInvoke({ note_relabel_speaker: relabeledDetail() });
+		await renderPanel();
+
+		await fireEvent.click(screen.getByRole('button', { name: '[Speaker 2]' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Alice' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'All turns named Speaker 2' }));
+
+		await waitFor(() => {
+			expect(mockedInvoke).toHaveBeenCalledWith('note_relabel_speaker', {
+				id: 'note-1',
+				toLabel: 'Alice',
+				scope: 'all',
+				fromLabel: 'Speaker 2',
 			});
 		});
 		await waitFor(() => {
@@ -104,15 +140,28 @@ describe('TranscriptPanel speaker relabeling', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '[Speaker 2]' }));
 		const field = screen.getByLabelText('New speaker');
 		await fireEvent.input(field, { target: { value: 'Ben' } });
-		await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'This turn' }));
 
 		await waitFor(() => {
 			expect(mockedInvoke).toHaveBeenCalledWith('note_relabel_speaker', {
 				id: 'note-1',
-				fromLabel: 'Speaker 2',
 				toLabel: 'Ben',
+				scope: 'one',
+				blockIndex: 1,
 			});
 		});
+	});
+
+	it('Back returns from the scope choice to the name picker', async () => {
+		await renderPanel();
+
+		await fireEvent.click(screen.getByRole('button', { name: '[Speaker 2]' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Alice' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+
+		expect(screen.getByText('Who is speaking?')).toBeInTheDocument();
+		expect(screen.queryByText('Rename to "Alice"')).not.toBeInTheDocument();
 	});
 
 	it('never calls voiceprint or learning IPC', async () => {
@@ -121,6 +170,7 @@ describe('TranscriptPanel speaker relabeling', () => {
 
 		await fireEvent.click(screen.getByRole('button', { name: '[Speaker 2]' }));
 		await fireEvent.click(screen.getByRole('button', { name: 'Alice' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'This turn' }));
 		await waitFor(() => {
 			expect(screen.getByRole('button', { name: '[Alice]' })).toBeInTheDocument();
 		});

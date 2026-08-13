@@ -54,10 +54,13 @@ plumbing are candidates, not the whole file.
   `controllers/transcribe.rs` (including `analysis.json` writing/reading and
   the `harvest_audio_analysis` helper).
 - Remove `speaker_change_cuts` from `SessionManifest`, `HistoryRecord`,
-  `TranscriptAttachment`, `PostCaptureInput`, `TranscriptResult` — check
-  `attach_transcript`'s offset-shifting logic and the legacy-record test in
-  `types.rs` for what needs updating vs. what stays as a serde-ignored legacy
-  field for old `history.jsonl` lines.
+  `TranscriptAttachment`, `PostCaptureInput`, `TranscriptResult` outright —
+  no migration/compaction needed. Single user (Ben), and none of these
+  structs use `#[serde(deny_unknown_fields)]`, so old `history.jsonl` lines
+  still carrying the key just get silently ignored on parse once the field
+  is gone from the struct. Update `attach_transcript`'s offset-shifting logic
+  and the legacy-record test in `types.rs` accordingly — no shim field to
+  preserve.
 - Keep `services/analysis.rs::rms()` (relocate or keep the file, hallucination
   gating depends on it).
 - Re-stamp `docs/adr/0013-live-pitch-analysis-and-change-cut-storage.md` to

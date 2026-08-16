@@ -1,3 +1,4 @@
+pub mod cli_link;
 pub mod dictate_focus;
 pub mod key_listener;
 pub mod paste_impl;
@@ -74,6 +75,31 @@ fn set_default_output_helper_path() -> Result<&'static Path, String> {
         .get()
         .map(|p| p.as_path())
         .ok_or_else(|| "set-default-output helper not initialized".to_string())
+}
+
+/// Path to the bundled `scribefloat-cli` sidecar (built by `scripts/prepare-cli-sidecar.sh`,
+/// registered as externalBin in tauri.conf.json — same convention as the
+/// `set-default-output` helper above, minus the build.rs compile step since it's plain Rust).
+#[cfg(target_os = "macos")]
+pub fn resolve_cli_binary() -> Option<PathBuf> {
+    let triple = env!("SCRIBEFLOAT_TARGET_TRIPLE");
+    let binary_name = format!("scribefloat-cli-{triple}");
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let bundled = dir.join(&binary_name);
+            if bundled.is_file() {
+                return Some(bundled);
+            }
+        }
+    }
+
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let dev = manifest.join("binaries").join(&binary_name);
+    if dev.is_file() {
+        return Some(dev);
+    }
+    None
 }
 
 #[cfg(target_os = "macos")]

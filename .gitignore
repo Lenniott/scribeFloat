@@ -11,6 +11,7 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 /target
 /src-tauri/binaries/set-default-output-*
+/src-tauri/binaries/scribefloat-cli-*
 /src-tauri/windows-resources/
 /src-tauri/bundled-models/
 /context.claude/worktrees/

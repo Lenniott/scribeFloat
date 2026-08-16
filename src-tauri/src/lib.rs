@@ -566,6 +566,10 @@ pub fn run() {
                     "set-default-output helper missing; speaker capture output restore may fail"
                 );
             }
+            #[cfg(target_os = "macos")]
+            if let Some(cli) = platform::resolve_cli_binary() {
+                platform::cli_link::ensure_cli_symlink(&cli);
+            }
             let config = services::config::ConfigService::load(data_dir.join("config.json"))?;
             app.manage(Arc::clone(&config));
             {

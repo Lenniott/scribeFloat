@@ -301,10 +301,18 @@ To build installers on your machine instead of CI:
 
 ```bash
 npm ci
+bash scripts/prepare-cli-sidecar.sh            # stage scribefloat-cli as a bundle sidecar
 cargo tauri build                              # native macOS
 cargo tauri build --target x86_64-apple-darwin # Intel slice from Apple Silicon host
 cargo tauri build --target x86_64-pc-windows-msvc --bundles nsis  # Windows cross-build
 ```
+
+`scribefloat-cli` (`src-tauri/src/bin/scribefloat.rs`) ships inside the app bundle as a
+[Tauri externalBin sidecar](https://tauri.app/develop/sidecar/) rather than as its own
+installer — `bundle.externalBin` in `tauri.conf.json` requires a triple-suffixed binary at
+`src-tauri/binaries/scribefloat-cli-<target-triple>` before `cargo tauri build`/`dev` runs;
+`prepare-cli-sidecar.sh` builds and stages it (pass a target triple to cross-build for a
+target other than the host). Pass a matching `--target` to the script when cross-building.
 
 macOS builds require Xcode command line tools; signed/notarized builds need local signing certificates equivalent to the CI secrets.
 

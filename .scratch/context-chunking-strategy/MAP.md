@@ -6,71 +6,65 @@ labels: [wayfinder:map]
 
 ## Destination
 
-Land a chunking strategy for `context_search.rs`'s embedding/vector pipeline that
-groups transcript text by speaker turn, timestamp, and size in a way that (a)
-produces coherent embedding vectors and (b) preserves enough line-level structure
-(speaker + timestamp + verbatim text) to support a future retrieval pipeline:
-query → vector match → LLM gate on the chunk's lines → LLM extracts the applicable
-lines → reduced, cited context. Nothing here is built yet — this map exists to
-carry the exploration forward across sessions.
+Land a chunking strategy for the CLI context index that treats the **Whisper line
+as the only stored transcript**, stamps speaker on that line, derives UI turns
+from consecutive same-speaker lines, and stores chunks as `note_id` + segment
+indexes plus a binary vector. Speaker is a search filter, not an embed prefix.
+Chunking runs only after Stop, when the Note is frozen — how ASR produced the
+lines does not matter.
 
-A related but independently-shippable idea surfaced in the same exploration:
-silence-triggered incremental Whisper transcription (chunk the audio itself at
-silence boundaries during capture, transcribe each span as it completes, instead
-of one full-buffer pass after stop).
+A future retrieval pipeline can hydrate those indexes, gate, and extract. LLM
+stages and in-app search IPC are not this effort.
 
 ## Notes
 
-- Entry point / seam: `chunk_records()` in `src-tauri/src/services/context_search.rs`.
-  Already a deep module (`chunk_records(save_folder, &[HistoryRecord]) ->
-  Vec<ContextChunk>`) driving `build_index`/`search_index`/`export_context_pack`.
-  Wired up today only via the `scribefloat-cli` binary (`index build` / `search` /
-  `context`) — not yet an in-app IPC command.
-- `SpeakerBlock` (identity/channel tier, `services/speaker_blocks.rs` +
-  `services/speaker_align.rs`) is the existing speaker+text grouping the frontend
-  (`TranscriptPanel.svelte`) already renders from. Chunking should reuse this same
-  grouping as its outer loop rather than inventing a second one.
-- Live PCM tap pattern (`Pcm16kTap` in `services/audio.rs`) is the proven plumbing
-  for anything that needs to observe audio in real time during capture — live
-  diarization (`LiveDiarization`) is the existing example to mirror for a silence
-  segmenter.
-- Whisper's Silero VAD (`services/model.rs`) only skips silence *inside* one
-  full-buffer `whisper_full()` pass — it does not split capture into independent
-  jobs. No live-during-recording silence-triggered transcription exists today.
+- Seam: `chunk_records` / `build_index` / `search_index` (CLI `index build` /
+  `search` / `context` today).
+- Alignment already maps each Whisper line to a diarization (or channel) label,
+  then copies the words into a parallel turn list. Tickets 02–05 stamp the label
+  on the line and stop duplicating the words.
+- Live PCM tap is the proven hook for a later silence segmenter (ticket 06);
+  diarization already uses absolute timestamps, so waves compose. Indexing still
+  waits until the Note is frozen.
 
 ## Decisions so far
 
-- None binding yet — this is pre-ADR exploration. Candidate directions discussed:
-  - Chunk boundary priority: speaker turn (primary) > silence gap (secondary,
-    inside a same-speaker run) > size ceiling in target words + hard char cap
-    (tertiary). Rationale: 2026-08-13 exploration session.
-  - `ContextChunk` schema fork: split `text: String` into `embed_text: String`
-    (what gets vectorized) + `lines: Vec<ChunkLine>` (speaker/timestamp/text per
-    original segment, the retrieval payload for a future LLM gate/extract stage).
-    Additive to the interface; `INDEX_SCHEMA_VERSION` bump + index rebuild.
-  - Silence-triggered ASR chunking would reuse the `Pcm16kTap` pattern as a new
-    consumer alongside live diarization; diarization alignment already works
-    purely off absolute timestamps so it composes with segments arriving in waves.
-    Open risk, not resolved: per-segment ASR passes lose cross-segment decoder
-    context, may hurt accuracy right at silence-boundary sentences — needs a
-    real accuracy check before committing.
-- Found during this exploration, not part of the destination but worth acting on
-  separately: `services/analysis.rs`'s `PitchAnalyzer`/`detect_cuts`/
-  `SpeakerChangeCut` (ADR-0013) had zero downstream consumers today (frontend,
-  chunking, and rendering all ignore it) — removed, see
-  `issues/01-remove-dead-pitch-loudness-analyzer.md` (done).
+- Binding: [ADR-0015](../../docs/adr/0015-whisper-line-is-the-transcript-atom.md)
+  (2026-08-18). Ticket 01 closed.
+  - Transcript atom = Whisper line with optional `speaker`. UI turns are a view.
+  - Chunk = `{id, note_id, segment_indexes}` + binary vector. Do not persist the
+    passage. Embed concatenated line text with no speaker names.
+  - Homogeneous packing: speaker change first, then size ceiling. Silence / ASR
+    job boundaries are **not** chunk cuts.
+  - Speaker filter at search time, resolved from live line labels (relabel
+    without rebuild still works).
+  - Freeze-after-Stop: chunk + embed only when capture and speaker stamp are
+    done. Incremental Whisper (ticket 06) may append waves; it must not change
+    this schema.
+  - Array index is the pointer because segments are append-only after freeze.
+    Replace/splice ⇒ index rebuild. Stable ids only if we later edit in the
+    middle.
+- Ticket 02 closed (2026-08-18): alignment/channel labeling stamps
+  `Segment.speaker`; `speaker_blocks` still written. Dictate / failed
+  diarization leave speaker unset. Relabel still edits the turn list.
+- Superseded candidate (2026-08-13): stored `embed_text` + `lines: Vec<ChunkLine>`
+  copy of the transcript. Replaced by indexes into the Note (ADR-0015).
+- Dead pitch/loudness analyzer (ADR-0013) removed — `issues/z_01-remove-dead-pitch-loudness-analyzer.md`.
 
 ## Frontier
 
-- `issues/01-remove-dead-pitch-loudness-analyzer.md` — done (2026-08-13).
-- No other tickets cut yet. Next session should turn "Decisions so far" into
-  concrete tickets (chunk boundary policy, `ContextChunk` schema fork, silence-
-  triggered ASR chunking) once the user is ready to move from exploring to
-  building.
+Work the first open ticket whose blockers are closed:
+
+1. [ADR — segment is the transcript atom](issues/01-adr-segment-is-the-transcript-atom.md) — **closed** (ADR-0015)
+2. [Stamp speaker on each segment](issues/02-stamp-speaker-on-segment.md) — **closed**
+3. [Transcript UI and relabel use segments](issues/03-derive-speaker-turns-from-segments.md) and [CLI index stores segment ranges not passage copies](issues/04-cli-index-chunks-as-segment-ranges.md) — **frontier**, parallel
+4. [Stop persisting speaker_blocks](issues/05-stop-persisting-speaker-blocks.md) — after 03 and 04
+5. [Silence-triggered Whisper (parked)](issues/06-silence-triggered-whisper.md) — **not** the frontier; needs an accuracy check first
 
 ## Out of scope
 
-- Anything past "vector match returns a chunk" — the LLM gate/extract stages are
-  explicitly future work, only mentioned here as the reason `lines` needs to exist.
-- Wiring `context_search.rs` up to an in-app IPC command (currently CLI-only) —
-  not discussed, may be a separate decision.
+- LLM gate (“is this chunk relevant?”) and extract-indexes — future; ticket 04
+  only has to return indexes so hydration works
+- Wiring search up as an in-app IPC command (CLI-only stays)
+- Treating silence as a chunk boundary
+- Replacing the segment array at Stop without an index rebuild

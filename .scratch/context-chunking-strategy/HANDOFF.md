@@ -1,18 +1,22 @@
 # Handoff — context-chunking-strategy
 
-**State right now**: `issues/01-remove-dead-pitch-loudness-analyzer.md` is
-done — the dead pitch/loudness cut-detection machinery (ADR-0013) is removed
-from `src-tauri/src`, ADR-0013 carries a removal note, `docs/adr/README.md`
-is updated. `cargo check` / `cargo clippy -p ScribeFloat -- -D warnings` /
-`cargo test -p ScribeFloat` all pass (347 passed, 5 ignored hardware-gated —
-ignore that count if it moves, it's unrelated hardware-gated tests). Not yet
-committed as of this handoff.
+**State right now:** Ticket 02 closed. Alignment and channel labeling stamp
+`Segment.speaker` (`Speaker N` / `Other`, or `In` / `Out`). `speaker_blocks` are
+still written. Dictate, no-evidence, and failed diarization leave speaker unset.
+**Frontier is tickets 03 and 04** (parallel). Ticket 06 remains parked.
 
-**What's next on the frontier**: everything else on `MAP.md`'s "Decisions so
-far" (chunk boundary policy, `ContextChunk` schema fork, silence-triggered
-ASR chunking) is still exploration-stage — needs a session to turn each into
-a concrete ticket before an agent should touch code.
+**What's next:** 03 (UI/relabel from consecutive same-speaker lines; fallback to
+stored turn list for old notes) and 04 (CLI index as `note_id` + segment indexes,
+not a passage copy) can run in parallel. Do not stop persisting `speaker_blocks`
+until 05.
 
-**Don't re-discover**: the grep evidence that motivated issue 01 (call sites,
-what was dead vs. what stayed live via `rms()`) doesn't need re-proving —
-that work is done and verified, not just planned.
+**Don't re-discover / re-litigate:**
+
+- Read ADR-0015; do not revive stored `embed_text` / `lines`.
+- Speaker in the embedding vs speaker as a filter — filter wins.
+- How Whisper is scheduled does not matter if chunking waits until Stop + stamp.
+- ASR job ≠ chunk. Do not change chunking in 03/04 except the index row shape in 04.
+- Duplicate turn list is expand (02 done) → UI (03) → contract (05). Do not delete
+  `speaker_blocks` until 05.
+- Relabel must start writing `segment.speaker` in 03; until then it still edits
+  the turn list only.

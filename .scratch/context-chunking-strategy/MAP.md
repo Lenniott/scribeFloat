@@ -63,8 +63,9 @@ Work the first open ticket whose blockers are closed:
 
 ## Out of scope
 
-- LLM gate (“is this chunk relevant?”) and extract-indexes — future; ticket 04
-  only has to return indexes so hydration works
+- LLM gate (“is this chunk relevant?”) and extract-indexes — future; see
+  [docs/ideas/chunk.md](../../docs/ideas/chunk.md). Ticket 04 only has to return
+  indexes so hydration works
 - Wiring search up as an in-app IPC command (CLI-only stays)
 - Treating silence as a chunk boundary
 - Replacing the segment array at Stop without an index rebuild

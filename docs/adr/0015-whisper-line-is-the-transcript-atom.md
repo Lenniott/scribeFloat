@@ -46,7 +46,7 @@ Whisper ↔ diarization **time overlap remains** the one-time stamp at write. Re
 - **Easier:** BGE sees semantics only; “things Alice said” is a prefilter, not a token in the passage.
 - **Harder / accepted:** until tickets 03–05 land, `speaker_blocks` still duplicates text (expand). Old notes without `speaker` on lines stay unlabeled and keep using the stored turn list as fallback.
 - **Accepted:** mixed-speaker chunks are not the design. A size split may still yield several chunks from one long monologue, all the same speaker.
-- **Accepted:** LLM gate/extract and in-app search IPC are out of this ADR. The index must return indexes so those stages can hydrate; they are not implemented here.
+- **Accepted:** LLM gate/extract and in-app search IPC are out of this ADR. The index must return indexes so those stages can hydrate; they are not implemented here. The two-LLM sequence lives in [docs/ideas/chunk.md](../ideas/chunk.md).
 - **Privacy:** no change to ADR-0014. Speaker values are plain names already on the Note. Vectors are local, derived from transcript text, never sent off-device.
 
 ## Ticket sequence

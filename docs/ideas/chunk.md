@@ -1,3 +1,49 @@
+# Retrieval after chunking (gate + extract indexes)
+
+Parked from [context-chunking-strategy](../../.scratch/context-chunking-strategy/MAP.md). The effort **stops after the index** (chunk = `note_id` + segment indexes + a vector). This note is the future pipeline those indexes exist for.
+
+Binding model: [ADR-0015](../adr/0015-whisper-line-is-the-transcript-atom.md). Do not relitigate speaker-on-the-line, freeze-after-Stop, or “don’t store the passage.”
+
+## Summary
+
+Local query → optional speaker filter → vector match → hydrate Whisper lines from the Note → LLM gate (relevant?) → LLM returns **segment indexes** → cited lines only.
+
+Vectors never copy the transcript. The Note’s `segments` array is the text. Speaker names are a **filter**, not part of the embedding. The LLM is allowed to see labels when it picks lines.
+
+## Why it's parked here
+
+Not this effort. Ticket 04 only has to make search return hydratable indexes. LLM gate/extract and in-app search IPC need their own wayfinder.
+
+## Flow (not built)
+
+```
+query (+ optional speaker=Alice)
+  → keep chunks whose live lines include Alice     // metadata, like today’s tag filter
+  → cosine on the vector                           // words only, no speaker prefix
+  → load history.jsonl by note_id
+  → take segments[chunk.segment_indexes]
+  → drop non-Alice lines                           // before the LLM, not after
+  → LLM: is this chunk relevant? true / false      // sees speaker + timestamp + text
+  → LLM: [0, 2]                                    // indexes in that (already filtered) window
+  → return those lines as cited context
+```
+
+Homogeneous chunks (one speaker, then a size ceiling) make the filter mean “this vector is Alice’s words.” If a window were mixed, matching on Bob then throwing Bob away is the leak this order avoids.
+
+Silence-triggered Whisper is a **capture** idea, not a chunk cut: [ticket 06](../../.scratch/context-chunking-strategy/issues/06-silence-triggered-whisper.md), also [streaming-dictate-transcription.md](streaming-dictate-transcription.md). Indexing still waits until Stop.
+
+## Suggested future destination
+
+1. Land tickets 03–05 so the index actually stores ranges (this effort).
+2. New effort: local LLM gate + extract-indexes on CLI search hits; measure latency on-device.
+3. Only then: in-app IPC / context pack that cites lines, not a flattened snippet.
+
+## Source dump (2026-08, exploration)
+
+Raw ask this note grew from:
+
 Assuming speaker segments and timestamps (I know currently in the front end we group these) I would like to explore how we can develop a chunking strategy that groups speaker and timestamps and characters to set up for embedding and vectorisation.
 
-A couple of things. So I just wanted to talk about this is really an exploration session to kind of make a plan. Don’t don’t do any kind of work to actually build anything. And when you make suggestions in terms of how to chunk or organize stuff, be sure to have examples of what the data structure would look like in some sort of schema feel free to use diagrams to, uh, illustrate things, uh, workflows, etcetera would be really helpful. Um, I Another thing that I’m thinking about, which may be useful to have context of that I want to do as well, is using silence as a way to break up the transcription processing of output. So we don’t have to wait for everything to be done at the end. We can kind of do it in silence chunks. Now I’m unsure if the current way of writing the audio to the file is doing that using silence as a checkpoint or not, but it seems to me that in between silences, we are essentially getting as much context as one would need in order to get an accurate enough transcript from Whisper because silence, in my head, is the same as pressing stop on the recording and starting a new one. So So that might be something in that. That worth having context of. The other thing is that I’ve done some experimentation, and the ultimate pipeline that I’m trying to get done, uh, the chunks or the vectors that are kind of semantically retrieved need to point back to, uh, the text that ultimately should include the speaker, but also the time stamps line by line that is originally captured in whisper so that we can assign turns to those time stamp lines of text and then get a large language model to select these lines that, uh, are most useful to the context needed for a query. So the query first gets matched to the vector, and the vector gets, uh, the vector text then gets gated by an LLM, which then another LLM will extract, uh, the applicable lines of text that relate to the query to reduce the noise getting pulled back. That’s all in the future. Right now, we’re just focusing on the chunking strategy and the considerations of, uh, how that will work with a new trans… transcription strategy that transcribes chunks of audio that aren’t silent for x amount of time. and how we then store, uh, vectors after these chunks get embedded. always looking for performance with a local pipeline.
+… silence as a way to break up transcription processing so we don’t wait until the end …
+
+… the vectors that are semantically retrieved need to point back to the text that includes the speaker and the timestamps line by line originally captured in Whisper … query first matched to the vector, then gated by an LLM, then another LLM extracts the applicable lines to reduce the noise. That’s all in the future. Right now we’re focusing on the chunking strategy …

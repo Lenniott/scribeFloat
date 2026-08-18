@@ -388,6 +388,7 @@ mod tests {
             end_ms: 1_000,
             text: text.to_string(),
             source: None,
+            speaker: None,
         }];
         HistoryRecord::from_dictate(&segs, text, "tiny".to_string())
     }
@@ -403,6 +404,7 @@ mod tests {
                 end_ms: (i + 1) * 1000,
                 text: format!("word{i} "),
                 source: None,
+                speaker: None,
             })
             .collect();
         rec.word_count = 200;
@@ -765,12 +767,14 @@ mod tests {
                 end_ms: 1_000,
                 text: "Hello".into(),
                 source: None,
+                speaker: Some("Speaker 1".into()),
             },
             Segment {
                 start_ms: 1_000,
                 end_ms: 2_500,
                 text: "world".into(),
                 source: None,
+                speaker: Some("Speaker 2".into()),
             },
         ];
 
@@ -779,6 +783,22 @@ mod tests {
             &id,
             crate::types::TranscriptAttachment {
                 segments,
+                speaker_blocks: vec![
+                    crate::types::SpeakerBlock {
+                        label: "Speaker 1".into(),
+                        start_ms: Some(0),
+                        end_ms: Some(1_000),
+                        text: "Hello".into(),
+                        chunk_id: None,
+                    },
+                    crate::types::SpeakerBlock {
+                        label: "Speaker 2".into(),
+                        start_ms: Some(1_000),
+                        end_ms: Some(2_500),
+                        text: "world".into(),
+                        chunk_id: None,
+                    },
+                ],
                 model: "base".into(),
                 ..Default::default()
             },
@@ -788,6 +808,10 @@ mod tests {
         let fresh = HistoryService::new();
         let got = fresh.get(&folder, &id).unwrap().expect("present");
         assert_eq!(got.segments.len(), 2);
+        assert_eq!(got.segments[0].speaker.as_deref(), Some("Speaker 1"));
+        assert_eq!(got.segments[1].speaker.as_deref(), Some("Speaker 2"));
+        assert_eq!(got.speaker_blocks.len(), 2);
+        assert_eq!(got.speaker_blocks[0].label, "Speaker 1");
         assert!(got.duration_ms > 0);
         assert_eq!(got.model, "base");
     }
@@ -808,6 +832,7 @@ mod tests {
                     end_ms: 1_000,
                     text: "first".into(),
                     source: None,
+                    speaker: None,
                 }],
                 notes: vec![crate::types::Note {
                     id: "note-1".into(),
@@ -829,6 +854,7 @@ mod tests {
                     end_ms: 2_000,
                     text: "second".into(),
                     source: None,
+                    speaker: None,
                 }],
                 session_speakers: vec![crate::types::SessionSpeaker {
                     session_speaker_id: "speaker-1".into(),

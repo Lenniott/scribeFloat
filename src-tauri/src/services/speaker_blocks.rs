@@ -40,11 +40,19 @@ pub(crate) fn block_from_segment(segment: &Segment, label: &str) -> SpeakerBlock
 /// Channel-tier blocks for dual-source captures: label purely by which track a
 /// segment came from (`In` = mic, `Out` = loopback), merging adjacent
 /// same-channel runs. No identity, no models.
-pub fn build_channel_blocks(segments: &[Segment]) -> Vec<SpeakerBlock> {
+pub fn build_channel_blocks(segments: &mut [Segment]) -> Vec<SpeakerBlock> {
+    for segment in segments.iter_mut() {
+        segment.speaker = Some(channel_label(segment.source).to_string());
+    }
     let blocks = segments
         .iter()
         .filter(|segment| !segment.text.trim().is_empty())
-        .map(|segment| block_from_segment(segment, channel_label(segment.source)))
+        .map(|segment| {
+            block_from_segment(
+                segment,
+                segment.speaker.as_deref().unwrap_or(CHANNEL_LABEL_IN),
+            )
+        })
         .collect();
     merge_blocks(blocks)
 }
@@ -70,36 +78,50 @@ mod tests {
 
     #[test]
     fn build_channel_blocks_labels_by_track_and_merges_adjacent() {
-        let segments = [
+        let mut segments = [
             sourced(0, 500, "me one", Some(SegmentSource::Mic)),
             sourced(500, 900, "me two", Some(SegmentSource::Mic)),
             sourced(900, 1_500, "them", Some(SegmentSource::Speaker)),
             sourced(1_500, 2_000, "me again", None),
         ];
-        let blocks = build_channel_blocks(&segments);
+        let blocks = build_channel_blocks(&mut segments);
         let labels: Vec<&str> = blocks.iter().map(|b| b.label.as_str()).collect();
         assert_eq!(labels, vec![CHANNEL_LABEL_IN, CHANNEL_LABEL_OUT, CHANNEL_LABEL_IN]);
         assert_eq!(blocks[0].text, "me one me two");
+        let speakers: Vec<Option<&str>> = segments.iter().map(|s| s.speaker.as_deref()).collect();
+        assert_eq!(
+            speakers,
+            vec![
+                Some(CHANNEL_LABEL_IN),
+                Some(CHANNEL_LABEL_IN),
+                Some(CHANNEL_LABEL_OUT),
+                Some(CHANNEL_LABEL_IN)
+            ]
+        );
     }
 
     #[test]
     fn build_channel_blocks_skips_whitespace_segments() {
-        let segments = [
+        let mut segments = [
             sourced(0, 500, "  ", Some(SegmentSource::Mic)),
             sourced(500, 900, "real", Some(SegmentSource::Speaker)),
         ];
-        let blocks = build_channel_blocks(&segments);
+        let blocks = build_channel_blocks(&mut segments);
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].label, CHANNEL_LABEL_OUT);
+        assert_eq!(segments[0].speaker.as_deref(), Some(CHANNEL_LABEL_IN));
+        assert_eq!(segments[1].speaker.as_deref(), Some(CHANNEL_LABEL_OUT));
     }
     #[test]
     fn adjacent_in_out_segments_never_merge() {
-        let segments = [
+        let mut segments = [
             sourced(0, 500, "mic", Some(SegmentSource::Mic)),
             sourced(600, 1_000, "speaker", Some(SegmentSource::Speaker)),
         ];
-        let blocks = build_channel_blocks(&segments);
+        let blocks = build_channel_blocks(&mut segments);
         assert_eq!(blocks.len(), 2);
+        assert_eq!(segments[0].speaker.as_deref(), Some(CHANNEL_LABEL_IN));
+        assert_eq!(segments[1].speaker.as_deref(), Some(CHANNEL_LABEL_OUT));
     }
 
     #[test]

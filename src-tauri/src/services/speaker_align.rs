@@ -26,16 +26,19 @@ pub fn speaker_label(speaker_id: u8) -> String {
 /// dominate. Ties break toward the lower `speaker_id` (deterministic regardless
 /// of range order). Whitespace-only segments are skipped.
 pub fn align_ranges_to_segments(
-    segments: &[Segment],
+    segments: &mut [Segment],
     ranges: &[DiarizationRange],
 ) -> Vec<SpeakerBlock> {
+    for segment in segments.iter_mut() {
+        segment.speaker = Some(label_for_segment(segment, ranges));
+    }
     let blocks = segments
         .iter()
         .filter(|segment| !segment.text.trim().is_empty())
         .map(|segment| {
             crate::services::speaker_blocks::block_from_segment(
                 segment,
-                &label_for_segment(segment, ranges),
+                segment.speaker.as_deref().unwrap_or(UNKNOWN_SPEAKER_LABEL),
             )
         })
         .collect();
@@ -88,6 +91,10 @@ mod tests {
         blocks.iter().map(|b| b.label.as_str()).collect()
     }
 
+    fn speakers(segments: &[Segment]) -> Vec<Option<&str>> {
+        segments.iter().map(|s| s.speaker.as_deref()).collect()
+    }
+
     #[test]
     fn speaker_label_is_one_based() {
         assert_eq!(speaker_label(0), "Speaker 1");
@@ -96,35 +103,44 @@ mod tests {
 
     #[test]
     fn empty_ranges_yield_single_merged_other_block() {
-        let segments = [seg(0, 1_000, "Hello."), seg(1_000, 2_000, "World.")];
-        let blocks = align_ranges_to_segments(&segments, &[]);
+        let mut segments = [seg(0, 1_000, "Hello."), seg(1_000, 2_000, "World.")];
+        let blocks = align_ranges_to_segments(&mut segments, &[]);
         assert_eq!(labels(&blocks), vec![UNKNOWN_SPEAKER_LABEL]);
         assert_eq!(blocks[0].text, "Hello. World.");
         assert_eq!(blocks[0].start_ms, Some(0));
         assert_eq!(blocks[0].end_ms, Some(2_000));
+        assert_eq!(
+            speakers(&segments),
+            vec![Some(UNKNOWN_SPEAKER_LABEL), Some(UNKNOWN_SPEAKER_LABEL)]
+        );
     }
 
     #[test]
     fn single_covering_range_labels_everything_speaker_one() {
-        let segments = [seg(0, 1_000, "Hello."), seg(1_000, 2_000, "World.")];
-        let blocks = align_ranges_to_segments(&segments, &[range(0, 0, 2_000)]);
+        let mut segments = [seg(0, 1_000, "Hello."), seg(1_000, 2_000, "World.")];
+        let blocks = align_ranges_to_segments(&mut segments, &[range(0, 0, 2_000)]);
         assert_eq!(labels(&blocks), vec!["Speaker 1"]);
         assert_eq!(blocks[0].text, "Hello. World.");
+        assert_eq!(speakers(&segments), vec![Some("Speaker 1"), Some("Speaker 1")]);
     }
 
     #[test]
     fn straddling_segment_takes_max_overlap_speaker() {
         // Segment 0-1000: 400 ms of speaker 1, 600 ms of speaker 2.
         let ranges = [range(0, 0, 400), range(1, 400, 1_000)];
-        let blocks = align_ranges_to_segments(&[seg(0, 1_000, "Mostly two.")], &ranges);
+        let mut segments = [seg(0, 1_000, "Mostly two.")];
+        let blocks = align_ranges_to_segments(&mut segments, &ranges);
         assert_eq!(labels(&blocks), vec!["Speaker 2"]);
+        assert_eq!(speakers(&segments), vec![Some("Speaker 2")]);
     }
 
     #[test]
     fn exact_tie_breaks_toward_lower_speaker_id() {
         let ranges = [range(1, 500, 1_000), range(0, 0, 500)];
-        let blocks = align_ranges_to_segments(&[seg(0, 1_000, "Even split.")], &ranges);
+        let mut segments = [seg(0, 1_000, "Even split.")];
+        let blocks = align_ranges_to_segments(&mut segments, &ranges);
         assert_eq!(labels(&blocks), vec!["Speaker 1"]);
+        assert_eq!(speakers(&segments), vec![Some("Speaker 1")]);
     }
 
     #[test]
@@ -135,55 +151,75 @@ mod tests {
             range(1, 300, 700),
             range(0, 700, 1_000),
         ];
-        let blocks = align_ranges_to_segments(&[seg(0, 1_000, "Scattered.")], &ranges);
+        let mut segments = [seg(0, 1_000, "Scattered.")];
+        let blocks = align_ranges_to_segments(&mut segments, &ranges);
         assert_eq!(labels(&blocks), vec!["Speaker 1"]);
+        assert_eq!(speakers(&segments), vec![Some("Speaker 1")]);
     }
 
     #[test]
     fn zero_overlap_segment_is_other() {
         let ranges = [range(0, 5_000, 6_000)];
-        let segments = [seg(0, 1_000, "Before any speech."), seg(5_000, 6_000, "Covered.")];
-        let blocks = align_ranges_to_segments(&segments, &ranges);
+        let mut segments = [seg(0, 1_000, "Before any speech."), seg(5_000, 6_000, "Covered.")];
+        let blocks = align_ranges_to_segments(&mut segments, &ranges);
         assert_eq!(labels(&blocks), vec![UNKNOWN_SPEAKER_LABEL, "Speaker 1"]);
+        assert_eq!(
+            speakers(&segments),
+            vec![Some(UNKNOWN_SPEAKER_LABEL), Some("Speaker 1")]
+        );
     }
 
     #[test]
     fn interleaved_speakers_produce_alternating_blocks_and_adjacent_merge() {
         let ranges = [range(0, 0, 2_000), range(1, 2_000, 3_000), range(0, 3_000, 4_000)];
-        let segments = [
+        let mut segments = [
             seg(0, 1_000, "A one."),
             seg(1_000, 2_000, "A two."),
             seg(2_000, 3_000, "B one."),
             seg(3_000, 4_000, "A three."),
         ];
-        let blocks = align_ranges_to_segments(&segments, &ranges);
+        let blocks = align_ranges_to_segments(&mut segments, &ranges);
         assert_eq!(labels(&blocks), vec!["Speaker 1", "Speaker 2", "Speaker 1"]);
         assert_eq!(blocks[0].text, "A one. A two.");
+        assert_eq!(
+            speakers(&segments),
+            vec![
+                Some("Speaker 1"),
+                Some("Speaker 1"),
+                Some("Speaker 2"),
+                Some("Speaker 1")
+            ]
+        );
     }
 
     #[test]
     fn whitespace_only_segments_are_skipped() {
-        let segments = [seg(0, 500, "   "), seg(500, 1_000, "Real.")];
-        let blocks = align_ranges_to_segments(&segments, &[range(2, 0, 1_000)]);
+        let mut segments = [seg(0, 500, "   "), seg(500, 1_000, "Real.")];
+        let blocks = align_ranges_to_segments(&mut segments, &[range(2, 0, 1_000)]);
         assert_eq!(labels(&blocks), vec!["Speaker 3"]);
         assert_eq!(blocks[0].text, "Real.");
+        assert_eq!(speakers(&segments), vec![Some("Speaker 3"), Some("Speaker 3")]);
     }
 
     #[test]
     fn negative_segment_times_clamp_to_zero() {
-        let blocks = align_ranges_to_segments(&[seg(-200, 500, "Early.")], &[range(0, 0, 500)]);
+        let mut segments = [seg(-200, 500, "Early.")];
+        let blocks = align_ranges_to_segments(&mut segments, &[range(0, 0, 500)]);
         assert_eq!(blocks[0].start_ms, Some(0));
         assert_eq!(labels(&blocks), vec!["Speaker 1"]);
+        assert_eq!(speakers(&segments), vec![Some("Speaker 1")]);
     }
 
     #[test]
     fn unsorted_ranges_give_same_result_as_sorted() {
         let sorted = [range(0, 0, 400), range(1, 400, 1_000)];
         let unsorted = [range(1, 400, 1_000), range(0, 0, 400)];
-        let segments = [seg(0, 1_000, "Order free.")];
+        let mut from_sorted = [seg(0, 1_000, "Order free.")];
+        let mut from_unsorted = [seg(0, 1_000, "Order free.")];
         assert_eq!(
-            labels(&align_ranges_to_segments(&segments, &sorted)),
-            labels(&align_ranges_to_segments(&segments, &unsorted)),
+            labels(&align_ranges_to_segments(&mut from_sorted, &sorted)),
+            labels(&align_ranges_to_segments(&mut from_unsorted, &unsorted)),
         );
+        assert_eq!(speakers(&from_sorted), speakers(&from_unsorted));
     }
 }

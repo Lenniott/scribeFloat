@@ -344,6 +344,7 @@ mod tests {
             end_ms: 14_000,
             text: "hello world".to_string(),
             source: None,
+            speaker: None,
         }];
         svc.write_transcript(&segments, &[], "Test", "tiny", true, &file)
             .expect("write transcript");
@@ -360,6 +361,7 @@ mod tests {
             end_ms: 14_000,
             text: "hello world".to_string(),
             source: None,
+            speaker: None,
         }];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &file)
             .expect("write transcript");
@@ -378,18 +380,21 @@ mod tests {
                 end_ms: 1_000,
                 text: "yeah".to_string(),
                 source: Some(SegmentSource::Mic),
+                speaker: None,
             },
             Segment {
                 start_ms: 1_200,
                 end_ms: 3_000,
                 text: "Hello there.".to_string(),
                 source: Some(SegmentSource::Speaker),
+                speaker: None,
             },
             Segment {
                 start_ms: 3_100,
                 end_ms: 4_000,
                 text: "How are you?".to_string(),
                 source: Some(SegmentSource::Speaker),
+                speaker: None,
             },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &file)
@@ -415,18 +420,21 @@ mod tests {
                 end_ms: 1_000,
                 text: "yeah".to_string(),
                 source: Some(SegmentSource::Mic),
+                speaker: None,
             },
             Segment {
                 start_ms: 2_000,
                 end_ms: 4_000,
                 text: "Thanks for sharing.".to_string(),
                 source: Some(SegmentSource::Speaker),
+                speaker: None,
             },
             Segment {
                 start_ms: 5_000,
                 end_ms: 6_000,
                 text: "Absolutely.".to_string(),
                 source: Some(SegmentSource::Mic),
+                speaker: None,
             },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &file)
@@ -452,12 +460,14 @@ mod tests {
                 end_ms: 2_000,
                 text: "First thought.".to_string(),
                 source: None,
+                speaker: None,
             },
             Segment {
                 start_ms: 12_000,
                 end_ms: 14_000,
                 text: "Second thought.".to_string(),
                 source: None,
+                speaker: None,
             },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &file)
@@ -479,12 +489,14 @@ mod tests {
                 end_ms: 500,
                 text: "Hello".to_string(),
                 source: None,
+                speaker: None,
             },
             Segment {
                 start_ms: 700,
                 end_ms: 1_200,
                 text: "world.".to_string(),
                 source: None,
+                speaker: None,
             },
         ];
         svc.write_transcript(&segments, &[], "Test", "tiny", false, &file)
@@ -505,6 +517,7 @@ mod tests {
             end_ms: 2_000,
             text: "hello world".to_string(),
             source: None,
+            speaker: None,
         }];
         svc.write_transcript(&segments, &[], "T", "tiny", false, &file)
             .expect("write");
@@ -744,12 +757,14 @@ mod tests {
                 end_ms: 1_000,
                 text: " hello world ".to_string(),
                 source: None,
+                speaker: None,
             },
             Segment {
                 start_ms: 1_000,
                 end_ms: 2_000,
                 text: "again".to_string(),
                 source: None,
+                speaker: None,
             },
         ];
         let result = svc.format_dictate_text(&segments);

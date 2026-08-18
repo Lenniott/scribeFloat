@@ -602,6 +602,7 @@ mod tests {
             end_ms: 1_000,
             text: text.to_string(),
             source: None,
+            speaker: None,
         }]
     }
 

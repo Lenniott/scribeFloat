@@ -81,6 +81,7 @@ mod tests {
             end_ms: 500,
             text: text.to_string(),
             source: None,
+            speaker: None,
         }
     }
 

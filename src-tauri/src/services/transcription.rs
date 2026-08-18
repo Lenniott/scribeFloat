@@ -198,7 +198,7 @@ where
             None,
         )
     };
-    let segments = segments?;
+    let mut segments = segments?;
     let model_label = model_label(input.model_path);
     if segments.is_empty() {
         return Ok(TranscriptResult {
@@ -220,7 +220,7 @@ where
         });
     }
 
-    let speaker_blocks = build_speaker_result(&input, &segments, dual_source, diarize_result);
+    let speaker_blocks = build_speaker_result(&input, &mut segments, dual_source, diarize_result);
     if will_diarize_after_asr {
         tail_progress(1.0);
     }
@@ -301,7 +301,7 @@ where
 /// such pass was dispatched (`LiveRanges`/no-evidence cases still resolve inline here).
 fn build_speaker_result(
     input: &PostCaptureInput<'_>,
-    segments: &[Segment],
+    segments: &mut [Segment],
     dual_source: bool,
     precomputed_diarize: Option<Result<Vec<DiarizationRange>>>,
 ) -> Vec<SpeakerBlock> {
@@ -531,6 +531,8 @@ mod tests {
         assert_eq!(result.segments.len(), 2);
         let labels: Vec<&str> = result.speaker_blocks.iter().map(|b| b.label.as_str()).collect();
         assert_eq!(labels, vec!["Speaker 1", "Speaker 2"]);
+        assert_eq!(result.segments[0].speaker.as_deref(), Some("Speaker 1"));
+        assert_eq!(result.segments[1].speaker.as_deref(), Some("Speaker 2"));
         assert!(!result.dual_source);
         assert_eq!(result.model_label, "model");
         assert!(result.dictate_text.is_none());
@@ -559,6 +561,7 @@ mod tests {
 
         assert_eq!(result.speaker_blocks.len(), 1);
         assert_eq!(result.speaker_blocks[0].label, "Other");
+        assert_eq!(result.segments[0].speaker.as_deref(), Some("Other"));
     }
 
     #[test]
@@ -584,6 +587,7 @@ mod tests {
 
         assert_eq!(result.segments[0].text, "plain transcript");
         assert!(result.speaker_blocks.is_empty());
+        assert!(result.segments[0].speaker.is_none());
     }
 
     #[test]
@@ -611,6 +615,7 @@ mod tests {
         assert_eq!(result.segments[0].text, "upload text");
         assert_eq!(result.model_label, "small.en-q5_1");
         assert_eq!(result.speaker_blocks[0].label, "Speaker 3");
+        assert_eq!(result.segments[0].speaker.as_deref(), Some("Speaker 3"));
         // Exactly one full pass, over the full mic PCM.
         assert_eq!(diarizer.calls(), vec![4 * 16_000]);
     }
@@ -639,6 +644,7 @@ mod tests {
 
         assert_eq!(result.segments[0].text, "still here");
         assert!(result.speaker_blocks.is_empty());
+        assert!(result.segments[0].speaker.is_none());
     }
 
     #[test]
@@ -700,6 +706,7 @@ mod tests {
         assert_eq!(result.segments.len(), 2);
         assert_eq!(result.dictate_text.as_deref(), Some("hello world"));
         assert!(result.speaker_blocks.is_empty());
+        assert!(result.segments.iter().all(|s| s.speaker.is_none()));
     }
 
     #[test]
@@ -732,6 +739,8 @@ mod tests {
         assert_eq!(result.segments.len(), 2);
         let labels: Vec<&str> = result.speaker_blocks.iter().map(|b| b.label.as_str()).collect();
         assert_eq!(labels, vec!["In", "Out"]);
+        assert_eq!(result.segments[0].speaker.as_deref(), Some("In"));
+        assert_eq!(result.segments[1].speaker.as_deref(), Some("Out"));
         assert!(diarizer.calls().is_empty(), "dual-source must not diarize");
     }
 

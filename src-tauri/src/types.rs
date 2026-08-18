@@ -228,6 +228,10 @@ pub struct Segment {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<SegmentSource>,
+    /// Identity (`Speaker N` / `Other`) or channel (`In` / `Out`) label.
+    /// Absent on Dictate, failed diarization, and notes from before this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speaker: Option<String>,
 }
 
 impl Segment {
@@ -237,6 +241,7 @@ impl Segment {
             end_ms,
             text: text.into(),
             source: None,
+            speaker: None,
         }
     }
 }
@@ -1125,12 +1130,14 @@ mod tests {
                 end_ms: 1_000,
                 text: "hi".to_string(),
                 source: Some(crate::types::SegmentSource::Mic),
+                speaker: None,
             },
             Segment {
                 start_ms: 1_200,
                 end_ms: 5_000,
                 text: "hello there".to_string(),
                 source: Some(crate::types::SegmentSource::Speaker),
+                speaker: None,
             },
         ];
         let rec = HistoryRecord::from_scribe(
@@ -1160,6 +1167,7 @@ mod tests {
             end_ms: 2_000,
             text: "mic only".to_string(),
             source: None,
+            speaker: None,
         }];
         let rec = HistoryRecord::from_scribe(
             "Call".to_string(),
@@ -1183,6 +1191,7 @@ mod tests {
             end_ms: 2_000,
             text: "raw".to_string(),
             source: None,
+            speaker: None,
         }];
         let rec = HistoryRecord::from_dictate(&segments, "hello there friend", "tiny".to_string());
         assert_eq!(rec.kind, HistoryKind::Dictate);
@@ -1199,6 +1208,7 @@ mod tests {
             end_ms: 3_000,
             text: "one two".to_string(),
             source: None,
+            speaker: None,
         }];
         let rec = HistoryRecord::from_transcribe(
             "clip".to_string(),
@@ -1233,9 +1243,48 @@ mod tests {
         assert!(rec.written_content.is_none());
     }
 
+    #[test]
+    fn segment_missing_speaker_deserializes_unlabeled() {
+        let seg: Segment =
+            serde_json::from_str(r#"{"start_ms":0,"end_ms":1000,"text":"hello"}"#).unwrap();
+        assert!(seg.speaker.is_none());
+        let json = serde_json::to_string(&seg).unwrap();
+        assert!(!json.contains("speaker"));
+    }
+
+    #[test]
+    fn new_record_json_includes_segment_speaker_and_speaker_blocks() {
+        let mut segment = Segment::new(0, 1_000, "hello");
+        segment.speaker = Some("Speaker 1".into());
+        let mut rec = HistoryRecord::from_scribe(
+            "Meeting".into(),
+            "tiny".into(),
+            vec![segment],
+            vec![],
+            false,
+            false,
+            None,
+            None,
+            None,
+        );
+        rec.speaker_blocks = vec![SpeakerBlock {
+            label: "Speaker 1".into(),
+            start_ms: Some(0),
+            end_ms: Some(1_000),
+            text: "hello".into(),
+            chunk_id: None,
+        }];
+        let json = serde_json::to_string(&rec).unwrap();
+        assert!(json.contains(r#""speaker":"Speaker 1""#));
+        assert!(json.contains(r#""speaker_blocks""#));
+        assert!(json.contains(r#""label":"Speaker 1""#));
+    }
+
     fn full_attachment() -> TranscriptAttachment {
+        let mut segment = Segment::new(0, 2_000, "second part");
+        segment.speaker = Some("You".into());
         TranscriptAttachment {
-            segments: vec![Segment::new(0, 2_000, "second part")],
+            segments: vec![segment],
             speaker_blocks: vec![SpeakerBlock {
                 label: "You".into(),
                 start_ms: Some(0),
@@ -1289,6 +1338,7 @@ mod tests {
         assert_eq!(rec.segments.len(), 2);
         assert_eq!(rec.segments[1].start_ms, 1_000);
         assert_eq!(rec.segments[1].end_ms, 3_000);
+        assert_eq!(rec.segments[1].speaker.as_deref(), Some("You"));
         assert_eq!(rec.speaker_blocks[0].start_ms, Some(1_000));
         assert_eq!(rec.speaker_blocks[0].end_ms, Some(3_000));
         assert_eq!(rec.speaker_chunks[0].start_ms, 1_000);

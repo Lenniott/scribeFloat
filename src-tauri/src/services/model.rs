@@ -782,6 +782,7 @@ impl ModelService {
                     end_ms: seg.end_timestamp() * 10,
                     text,
                     source: None,
+                    speaker: None,
                 });
             }
         }
@@ -860,6 +861,7 @@ impl ModelService {
                 } else {
                     crate::types::SegmentSource::Mic
                 }),
+                speaker: None,
             });
         }
         out
@@ -1125,12 +1127,14 @@ mod tests {
             end_ms: 2_500,
             text: "hello from mic".to_string(),
             source: None,
+            speaker: None,
         }];
         let speaker = vec![Segment {
             start_ms: 1_000,
             end_ms: 1_500,
             text: "hello from speaker".to_string(),
             source: None,
+            speaker: None,
         }];
         let merged = service.merge_dual_source(&mic, &speaker);
         assert_eq!(merged.len(), 2);

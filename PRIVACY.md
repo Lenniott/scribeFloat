@@ -1,6 +1,6 @@
 # Data Privacy & Security Policy — ScribeFloat
 
-**Version 1.1 | Last updated: 2026-07-19**
+**Version 1.2 | Last updated: 2026-08-18**
 
 This document is written for **security officers, IT auditors, and compliance teams** evaluating whether ScribeFloat can be deployed in their environment. It is intentionally comprehensive and direct.
 
@@ -19,6 +19,7 @@ This document is written for **security officers, IT auditors, and compliance te
 | Is an internet connection ever required? | **No — not for transcription. Optionally when the user manually clicks "Check for updates".** |
 | Where is all user data stored? | **Exclusively on the user's local device** |
 | What AI model runs the transcription? | **OpenAI Whisper Small (ggml format), bundled with the app and running locally** |
+| What labels speakers in a recording? | **NVIDIA Sortformer v2 (ONNX), bundled; anonymous "Speaker N" slots the user can rename** |
 | Does the AI model phone home? | **No — inference is fully offline; models are never downloaded at runtime** |
 | What OS permissions are required? | **Microphone (all platforms), Accessibility (macOS only for paste), Input Monitoring (macOS only for hotkey)** |
 | Can the app be used fully offline after install? | **Yes** |
@@ -29,7 +30,7 @@ This document is written for **security officers, IT auditors, and compliance te
 
 ### 1.1 Outbound requests
 
-Transcription models (Whisper Small, Silero VAD, and the voiceprint ONNX) **ship inside the application bundle**. They are seeded into the local app-data `models/` directory on first launch. The app never downloads models at runtime — not on launch, not from Settings, and not from Hugging Face.
+Transcription models (Whisper Small, Silero VAD, and Sortformer ONNX) **ship inside the application bundle**. They are seeded into the local app-data `models/` directory on first launch. The app never downloads models at runtime — not on launch, not from Settings, and not from Hugging Face.
 
 The only outbound network request the application can make is an **opt-in update check**:
 
@@ -149,6 +150,7 @@ Revoking a permission does not delete any existing data. The affected feature de
 |------|----------|--------|
 | App configuration | OS app-data dir (`config.json`) | JSON |
 | Whisper model files | OS app-data dir (`models/`) | Binary (ggml) |
+| Sortformer diarization model | OS app-data dir (`models/`) | Binary (ONNX) |
 | Transcripts | User save folder root (default: `~/Documents/transcripts_scribefloat/`) | Markdown (`.md`) |
 | Audio recordings | User save folder, inside per-session subfolders (when retained) | WAV |
 | Dictate history log | User save folder (`dictate.jsonl`) | JSONL |
@@ -239,6 +241,17 @@ The Voice Activity Detection model (`ggml-silero-v6.2.0.bin`) is also bundled an
 - Used by whisper.cpp to skip silence between speech segments on clips long enough for VAD
 - ~2 MB; required for normal-length transcription (missing/corrupt → offline/reinstall error; never re-fetched at runtime)
 - Loaded and run entirely in-process alongside Whisper; makes no network calls
+
+### Sortformer diarization model
+
+The app ships NVIDIA Sortformer v2 (`diar_streaming_sortformer_4spk-v2.onnx`) for anonymous "who spoke when" labels inside a single recording. Upstream weights are published on Hugging Face for packaging; **the installed app never contacts Hugging Face**. The file is:
+
+- Bundled in the release binary and seeded into the local app-data `models/` directory
+- Verified with a pinned SHA-256 before inference; missing or corrupt copies degrade to an unlabeled transcript (diarization never fails a note)
+- A static inference artifact — it does not update itself or make network calls
+- Run in-process via `parakeet-rs`; controllers never touch ONNX directly (`services/diarization.rs`)
+
+Sortformer does **not** identify people. It assigns anonymous slots (`Speaker 1`–`Speaker 4`) that the user can rename as plain text (`speaker_names.json`). No voice embeddings, enrollment clips, or biometric profiles are stored.
 
 ---
 

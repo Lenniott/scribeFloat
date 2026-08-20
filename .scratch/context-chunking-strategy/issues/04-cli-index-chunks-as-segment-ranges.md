@@ -2,7 +2,7 @@
 title: CLI index stores segment ranges not passage copies
 labels: [wayfinder:task, ready-for-agent]
 status: open
-assignee:
+assignee: agent-04
 blocked_by: ["02-stamp-speaker-on-segment.md"]
 parent: MAP.md
 ---

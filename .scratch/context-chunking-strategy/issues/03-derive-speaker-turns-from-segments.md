@@ -2,7 +2,7 @@
 title: Transcript UI and relabel use segments
 labels: [wayfinder:task, ready-for-agent]
 status: open
-assignee:
+assignee: agent-03
 blocked_by: ["02-stamp-speaker-on-segment.md"]
 parent: MAP.md
 ---

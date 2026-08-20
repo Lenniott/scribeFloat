@@ -3,12 +3,13 @@
 **State right now:** Ticket 02 closed. Alignment and channel labeling stamp
 `Segment.speaker` (`Speaker N` / `Other`, or `In` / `Out`). `speaker_blocks` are
 still written. Dictate, no-evidence, and failed diarization leave speaker unset.
-**Frontier is tickets 03 and 04** (parallel). Ticket 06 remains parked.
+**Frontier is tickets 03 and 04, both in flight in parallel** (isolated worktrees).
+Ticket 06 remains parked.
 
-**What's next:** 03 (UI/relabel from consecutive same-speaker lines; fallback to
-stored turn list for old notes) and 04 (CLI index as `note_id` + segment indexes,
-not a passage copy) can run in parallel. Do not stop persisting `speaker_blocks`
-until 05.
+**What's next:** Wait for 03 (UI/relabel from consecutive same-speaker lines;
+fallback to stored turn list for old notes) and 04 (CLI index as `note_id` +
+segment indexes, not a passage copy). Orchestrator merges both, then 05 can
+start. Do not stop persisting `speaker_blocks` until 05.
 
 **Don't re-discover / re-litigate:**
 

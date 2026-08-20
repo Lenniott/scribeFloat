@@ -28,7 +28,7 @@
 
 | Source type | Origin |
 |---|---|
-| `transcript` | Audio capture via Scribe or Dictate — Whisper output |
+| `transcript` | Audio capture via Record or Dictate — Whisper output |
 | `upload_audio` | Imported audio file — Whisper output |
 | `written` | User-typed markdown text |
 | `web` | Scraped text from a URL (future) |
@@ -59,7 +59,7 @@ Capture methods are ways of creating a Note. They are not distinct object types 
 
 ## App navigation & UI taxonomy
 
-The full UI taxonomy lives in `ui-taxonomy.md`. Summary of levels relevant to app structure:
+The full UI taxonomy lives in `skills/ui-taxonomy/SKILL.md`. Summary of levels relevant to app structure:
 
 | Taxonomy level | Definition | Examples in ScribeFloat |
 |---|---|---|
@@ -70,22 +70,24 @@ The full UI taxonomy lives in `ui-taxonomy.md`. Summary of levels relevant to ap
 | **Section** | A contained mental model — about one clearly-named thing | Note detail, Filter panel, Settings group |
 | **Region** | A fixed structural area of the layout, regardless of content | Sidebar, title bar, main content area |
 
-**App Areas** (top-level routed Regions):
+**App Areas** (top-level routed Regions). Sidebar today: Home, Notes, Upload, Settings. Float is not a sidebar Area yet.
 
 | Area | Purpose |
 |---|---|
 | **App** | The single persistent window. Sidebar Region + title bar Region + content Region. Previously called "Shell" — too technical. |
-| **Home** | Summary landing Area. Recent Notes, stats, quick actions, Triage inbox. Previously called "Dashboard." |
-| **Notes** | Browse all Notes. Filterable by tags, Layer Items, Triage status, capture method. |
+| **Home** | Summary landing Area. Recent Notes, stats, quick actions. Previously called "Dashboard." (Triage inbox is not built — see Triage.) |
+| **Notes** | Browse all Notes. Filterable by capture method. (Filter by tags, Layer Items, and Triage status is not built.) |
 | **Upload** | Bulk Note creation from external sources: audio files, markdown files, URLs, video URLs. |
-| **Float** | Build and manage Layers, Steps, Flows, Vocabulary. |
+| **Float** | Not shipped. Glossary-only — build and manage Layers, Steps, Flows, Vocabulary when it lands. |
 | **Settings** | Config, permissions, hotkeys, help. |
 
-Record is not a sidebar Area — accessed via a persistent "New Note" action in the title bar. Dictate is a persistent hotkey-triggered action in the title bar, available from any Area.
+Record is not a sidebar Area — accessed via a persistent "New Note" action in the title bar (creates a note; does not auto-start recording). Dictate is a persistent hotkey-triggered action in the title bar, available from any Area. On an open note the title bar action is "Record" and starts capture.
 
 ---
 
 ## Float (AI enrichment) domain
+
+Float is a future phase. It is not yet built. There is no Float sidebar Area, no Layers / Steps / Flows UI, and no vocabulary store. The terms below are the agreed glossary for when it lands (ADR-0004 and ADR-0005 are Aspirational). Do not add a Float Area or triage inbox from this section.
 
 | Term | Definition |
 |---|---|
@@ -101,6 +103,8 @@ Record is not a sidebar Area — accessed via a persistent "New Note" action in 
 
 ## Triage
 
+Triage is part of Float. It is not yet built. Home is stats + recent Notes; there is no triage inbox. The terms below are the agreed glossary (ADR-0004 Aspirational). Do not implement a triage queue from this section.
+
 | Term | Definition |
 |---|---|
 | **Triage** | The review queue for Notes with pending Agent Actions. Triage is per-Note — you review the Note's full pending state in one pass, not individual Flows or Steps. |
@@ -114,7 +118,7 @@ Record is not a sidebar Area — accessed via a persistent "New Note" action in 
 - Once a Note has been triaged, subsequent Float runs on it are applied directly — no second Triage cycle.
 - Triage is universal: it is not specific to any capture method.
 
-**Where Triage surfaces** — it is not a separate Area:
+**Where Triage will surface** — it is not a separate Area, and none of these surfaces exist yet:
 - **Home**: primary triage surface, the inbox. Where the user actions pending Notes.
 - **Notes Area**: filterable by Triage status so the user can find pending Notes.
 - **Note view**: inline triage — the Note's status is visible and the user can approve or reject without leaving the Note.

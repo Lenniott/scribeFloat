@@ -32,6 +32,8 @@ There is no separate architecture / action-flows / engineering / backlog / explo
 
 Working memory for an effort lives under `.scratch/<effort-slug>/` (maps, tickets, Known issues). See `docs/agents/issue-tracker.md`.
 
+`docs/ideas/` is a **parked archive** (closed-effort Known issues dumps and future destinations). It is not Binding and not a spec. Do not implement from it without a wayfinder ticket. See `docs/README.md`.
+
 ---
 
 ## Skills
@@ -58,13 +60,22 @@ cargo check                        # Fast compile check
 
 ### Bundled models
 
-Release builds bundle the Whisper Small, Silero VAD, and voiceprint ONNX models
-(`tauri.conf.json` → `bundle.resources`). **Run `scripts/fetch-bundled-models.sh`
-before `cargo tauri build`** to download them into `src-tauri/bundled-models/`
-(gitignored). The Tauri build script requires those three paths to exist even for
-`cargo check` — on a fresh clone either run the fetch script or create 0-byte
-placeholders (`touch src-tauri/bundled-models/<name>`). Startup seeding skips
-empty files, so dev builds with placeholders simply run without the models.
+Release builds bundle the Whisper Small, Silero VAD, and Sortformer ONNX models
+(`tauri.conf.json` → `bundle.resources`):
+
+- `ggml-small.en-q5_1.bin`
+- `ggml-silero-v6.2.0.bin`
+- `diar_streaming_sortformer_4spk-v2.onnx`
+
+Speaker labelling is anonymous Sortformer diarization
+([ADR-0014](docs/adr/0014-anonymous-diarization-replaces-voiceprint-identity.md)).
+
+**Run `scripts/fetch-bundled-models.sh` before `cargo tauri build`** to download
+them into `src-tauri/bundled-models/` (gitignored). The Tauri build script
+requires those three paths to exist even for `cargo check` — on a fresh clone
+either run the fetch script or create 0-byte placeholders (`touch` the three
+filenames above). Startup seeding skips empty files, so dev builds with
+placeholders simply run without the models.
 
 ### Hardware-gated tests
 

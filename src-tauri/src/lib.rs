@@ -817,7 +817,8 @@ pub fn run() {
                         Err(e) => tracing::warn!(error = %e, "scribe session scan failed"),
                     }
                     if let Some(temp_dir) = temp_dir_bg {
-                        match output_bg.scan_and_salvage_dictate_temp_wavs(&temp_dir, &save_folder_bg)
+                        match output_bg
+                            .scan_and_salvage_dictate_temp_wavs(&temp_dir, &save_folder_bg)
                         {
                             Ok(salvaged) => {
                                 for path in salvaged {

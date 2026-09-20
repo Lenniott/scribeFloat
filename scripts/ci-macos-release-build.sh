@@ -66,6 +66,9 @@ bash "$ROOT/scripts/fetch-bundled-models.sh"
 echo "==> npm ci"
 npm ci
 
+echo "==> build CLI sidecar"
+bash "$ROOT/scripts/prepare-cli-sidecar.sh" "$TAURI_BUILD_TARGET"
+
 echo "==> tauri build (same command as Actions macOS job)"
 npm run tauri -- build --target "$TAURI_BUILD_TARGET"
 

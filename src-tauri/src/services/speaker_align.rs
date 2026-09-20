@@ -121,7 +121,10 @@ mod tests {
         let blocks = align_ranges_to_segments(&mut segments, &[range(0, 0, 2_000)]);
         assert_eq!(labels(&blocks), vec!["Speaker 1"]);
         assert_eq!(blocks[0].text, "Hello. World.");
-        assert_eq!(speakers(&segments), vec![Some("Speaker 1"), Some("Speaker 1")]);
+        assert_eq!(
+            speakers(&segments),
+            vec![Some("Speaker 1"), Some("Speaker 1")]
+        );
     }
 
     #[test]
@@ -146,11 +149,7 @@ mod tests {
     #[test]
     fn overlap_sums_across_a_speakers_scattered_ranges() {
         // Speaker 1 has 300+300=600 ms inside the segment; speaker 2 has 400 ms.
-        let ranges = [
-            range(0, 0, 300),
-            range(1, 300, 700),
-            range(0, 700, 1_000),
-        ];
+        let ranges = [range(0, 0, 300), range(1, 300, 700), range(0, 700, 1_000)];
         let mut segments = [seg(0, 1_000, "Scattered.")];
         let blocks = align_ranges_to_segments(&mut segments, &ranges);
         assert_eq!(labels(&blocks), vec!["Speaker 1"]);
@@ -160,7 +159,10 @@ mod tests {
     #[test]
     fn zero_overlap_segment_is_other() {
         let ranges = [range(0, 5_000, 6_000)];
-        let mut segments = [seg(0, 1_000, "Before any speech."), seg(5_000, 6_000, "Covered.")];
+        let mut segments = [
+            seg(0, 1_000, "Before any speech."),
+            seg(5_000, 6_000, "Covered."),
+        ];
         let blocks = align_ranges_to_segments(&mut segments, &ranges);
         assert_eq!(labels(&blocks), vec![UNKNOWN_SPEAKER_LABEL, "Speaker 1"]);
         assert_eq!(
@@ -171,7 +173,11 @@ mod tests {
 
     #[test]
     fn interleaved_speakers_produce_alternating_blocks_and_adjacent_merge() {
-        let ranges = [range(0, 0, 2_000), range(1, 2_000, 3_000), range(0, 3_000, 4_000)];
+        let ranges = [
+            range(0, 0, 2_000),
+            range(1, 2_000, 3_000),
+            range(0, 3_000, 4_000),
+        ];
         let mut segments = [
             seg(0, 1_000, "A one."),
             seg(1_000, 2_000, "A two."),
@@ -198,7 +204,10 @@ mod tests {
         let blocks = align_ranges_to_segments(&mut segments, &[range(2, 0, 1_000)]);
         assert_eq!(labels(&blocks), vec!["Speaker 3"]);
         assert_eq!(blocks[0].text, "Real.");
-        assert_eq!(speakers(&segments), vec![Some("Speaker 3"), Some("Speaker 3")]);
+        assert_eq!(
+            speakers(&segments),
+            vec![Some("Speaker 3"), Some("Speaker 3")]
+        );
     }
 
     #[test]

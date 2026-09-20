@@ -357,10 +357,15 @@ mod tests {
             .unwrap()
             .as_nanos() as u64;
         let size = meta.len();
-        let cache_path = dir.path().join(format!(".{SORTFORMER_MODEL_FILENAME}.integrity"));
+        let cache_path = dir
+            .path()
+            .join(format!(".{SORTFORMER_MODEL_FILENAME}.integrity"));
         std::fs::write(
             &cache_path,
-            format!("{mtime}:{size}:{}", SORTFORMER_MODEL_SHA256.to_ascii_lowercase()),
+            format!(
+                "{mtime}:{size}:{}",
+                SORTFORMER_MODEL_SHA256.to_ascii_lowercase()
+            ),
         )
         .unwrap();
 
@@ -402,10 +407,7 @@ mod tests {
         std::fs::write(dir.path().join(SORTFORMER_MODEL_FILENAME), b"not-onnx").unwrap();
         let svc = service_in(dir.path());
         let err = svc.diarize(&[0.0; 16_000]).unwrap_err();
-        assert!(
-            err.to_string().contains("integrity check"),
-            "{err}"
-        );
+        assert!(err.to_string().contains("integrity check"), "{err}");
     }
 
     /// Scripted streaming diarizer: one canned response per feed, then a
@@ -443,7 +445,8 @@ mod tests {
         }
 
         fn flush(&mut self) -> Result<Vec<DiarizationRange>> {
-            self.flushed.store(true, std::sync::atomic::Ordering::SeqCst);
+            self.flushed
+                .store(true, std::sync::atomic::Ordering::SeqCst);
             self.flush.lock().unwrap().take().unwrap_or(Ok(Vec::new()))
         }
     }
@@ -459,7 +462,11 @@ mod tests {
     #[test]
     fn worker_loop_accumulates_feeds_then_flush() {
         let (mut fake, _) = FakeStreaming::new(
-            vec![Ok(vec![r(0, 0, 900)]), Ok(vec![]), Ok(vec![r(1, 900, 2_000)])],
+            vec![
+                Ok(vec![r(0, 0, 900)]),
+                Ok(vec![]),
+                Ok(vec![r(1, 900, 2_000)]),
+            ],
             Ok(vec![r(0, 2_000, 2_500)]),
         );
         let (tx, rx) = std::sync::mpsc::channel();
@@ -468,7 +475,10 @@ mod tests {
         }
         drop(tx);
         let ranges = run_worker_loop(&mut fake, rx).unwrap();
-        assert_eq!(ranges, vec![r(0, 0, 900), r(1, 900, 2_000), r(0, 2_000, 2_500)]);
+        assert_eq!(
+            ranges,
+            vec![r(0, 0, 900), r(1, 900, 2_000), r(0, 2_000, 2_500)]
+        );
     }
 
     #[test]
@@ -499,11 +509,7 @@ mod tests {
     #[test]
     fn live_session_tap_feeds_worker_and_finish_returns_ranges() {
         let live = LiveDiarization::spawn(|| {
-            Ok(FakeStreaming::new(
-                vec![Ok(vec![r(0, 0, 500)])],
-                Ok(vec![r(1, 500, 900)]),
-            )
-            .0)
+            Ok(FakeStreaming::new(vec![Ok(vec![r(0, 0, 500)])], Ok(vec![r(1, 500, 900)])).0)
         });
         let tap = live.tap();
         tap(&[0.0f32; 160]);
@@ -525,8 +531,7 @@ mod tests {
 
     #[test]
     fn live_session_finish_is_none_when_model_load_fails() {
-        let live =
-            LiveDiarization::spawn(|| -> Result<FakeStreaming> { Err(anyhow!("no model")) });
+        let live = LiveDiarization::spawn(|| -> Result<FakeStreaming> { Err(anyhow!("no model")) });
         // PCM sent while the loader is failing must not panic or block.
         let tap = live.tap();
         tap(&[0.0f32; 160]);

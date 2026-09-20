@@ -538,11 +538,20 @@ fn write_resampled_chunk(
     if let Some(tap) = on_pcm_16k {
         tap(&resampled);
     }
-    let samples: Vec<i16> = resampled
-        .iter()
-        .map(|&s| (s * 32767.0).clamp(-32768.0, 32767.0) as i16)
-        .collect();
+    let samples: Vec<i16> = resampled.iter().map(|&s| quantize_wav_sample(s)).collect();
     streaming.write_i16_samples(&samples)
+}
+
+fn quantize_wav_sample(sample: f32) -> i16 {
+    (sample * 32767.0).clamp(-32768.0, 32767.0) as i16
+}
+
+/// Match the PCM obtained by saving capture audio to our int16 WAV and reading
+/// it back. Live ASR uses this so scheduling alone does not change its input.
+pub fn pcm_as_saved_wav(pcm: &[f32]) -> Vec<f32> {
+    pcm.iter()
+        .map(|&s| quantize_wav_sample(s) as f32 / 32768.0)
+        .collect()
 }
 
 /// Read a 16 kHz mono i16 WAV file (the format `MicSession` writes) into f32 PCM in
@@ -596,7 +605,7 @@ fn level_from_mono(mono: &[f32]) -> f32 {
 }
 
 /// Linear interpolation resampler. Good enough for speech at 16 kHz target.
-pub(crate) fn resample_linear(input: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
+pub fn resample_linear(input: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
     if from_rate == to_rate || input.is_empty() {
         return input.to_vec();
     }
@@ -748,6 +757,11 @@ mod tests {
 
         let tapped = tapped.lock().unwrap();
         let wav = read_wav_mono_f32(&path).expect("read wav");
+        assert_eq!(
+            pcm_as_saved_wav(&tapped),
+            wav,
+            "live ASR must receive exactly the saved WAV values"
+        );
         assert_eq!(
             tapped.len(),
             wav.len(),

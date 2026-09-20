@@ -1,6 +1,8 @@
 use crate::services::audio::read_wav_mono_f32;
+use crate::services::streaming_transcription::StreamingTranscription;
 use crate::services::transcription::{
-    run_post_capture_transcription, CaptureAudio, CaptureProfile, PostCaptureInput,
+    finish_dictate_transcription, run_post_capture_transcription, CaptureAudio, CaptureProfile,
+    PostCaptureInput,
 };
 use crate::services::{
     audio::{AudioService, MicSession, WHISPER_SAMPLE_RATE},
@@ -239,6 +241,7 @@ impl DictateKeyTracker {
 
 struct DictateMicSession {
     mic: MicSession,
+    live: Option<StreamingTranscription>,
 }
 
 struct Inner {
@@ -377,9 +380,7 @@ impl DictateController {
         #[cfg(target_os = "macos")]
         {
             if !crate::platform::permissions_impl::permission_granted("input_monitoring") {
-                tracing::debug!(
-                    "dictate key listener deferred — Input Monitoring not granted yet"
-                );
+                tracing::debug!("dictate key listener deferred — Input Monitoring not granted yet");
                 return;
             }
         }
@@ -482,8 +483,7 @@ impl DictateController {
             let clear_in_flight = || {
                 this.hold_start_in_flight.store(false, Ordering::SeqCst);
             };
-            let open_result =
-                Self::capture_paste_target_then_open_overlay(Arc::clone(&this)).await;
+            let open_result = Self::capture_paste_target_then_open_overlay(Arc::clone(&this)).await;
             if this.hold_start_cancel.load(Ordering::SeqCst) {
                 clear_in_flight();
                 this.hide_window();
@@ -529,8 +529,7 @@ impl DictateController {
         this: &Arc<Self>,
         source: DictateStartSource,
     ) {
-        let open_result =
-            Self::capture_paste_target_then_open_overlay(Arc::clone(this)).await;
+        let open_result = Self::capture_paste_target_then_open_overlay(Arc::clone(this)).await;
         if open_result.is_err() {
             return;
         }
@@ -583,6 +582,9 @@ impl DictateController {
         }
 
         let wav_path = dictate_temp_wav_path(&self.app)?;
+        let live = StreamingTranscription::start(Arc::clone(&self.model), self.model.default_model_path())
+            .map_err(|error| tracing::warn!(%error, "live ASR unavailable; using post-capture transcription"))
+            .ok();
         let app = self.app.clone();
         let last_level_emit = Arc::new(Mutex::new(None::<Instant>));
         let mic = self.audio.start_mic(
@@ -607,7 +609,7 @@ impl DictateController {
                 let _ = app.emit(DICTATE_AUDIO_LEVEL_EVENT, level);
             })),
             None,
-            None,
+            live.as_ref().map(StreamingTranscription::tap),
         )?;
 
         let mut inner = self.lock();
@@ -617,7 +619,7 @@ impl DictateController {
             ));
         }
         inner.state = DictateState::Recording;
-        inner.session = Some(DictateMicSession { mic });
+        inner.session = Some(DictateMicSession { mic, live });
         inner.last_gesture = Some(source);
         self.emit_state_event(&inner);
         Ok(())
@@ -654,6 +656,9 @@ impl DictateController {
             inner.session.take()
         };
         if let Some(session) = session {
+            if let Some(live) = &session.live {
+                live.cancel_flag().store(true, Ordering::SeqCst);
+            }
             let _ = session.mic.stop_and_finalize();
         }
         self.clear_restore_paste_target_pid();
@@ -690,6 +695,9 @@ impl DictateController {
             s
         };
         if let Some(session) = session {
+            if let Some(live) = &session.live {
+                live.cancel_flag().store(true, Ordering::SeqCst);
+            }
             // Finalize the WAV writer so the file's RIFF header is well-formed, then
             // delete it — cancel discards audio. Without this the temp file would leak
             // every time the user cancels mid-dictate.
@@ -762,9 +770,9 @@ impl DictateController {
     /// Transition Recording → Transcribing → Done (or Error/Idle for edge cases).
     /// Returns immediately; all heavy work runs in spawn_blocking.
     pub fn stop_and_transcribe(this: Arc<Self>) -> Result<()> {
+        let stop_started = Instant::now();
         this.bump_dismiss_generation();
-        let abort_flag = Arc::new(AtomicBool::new(false));
-        let session = {
+        let (session, abort_flag) = {
             let mut inner = this.lock();
             if matches!(
                 inner.state,
@@ -777,7 +785,6 @@ impl DictateController {
                 return Err(anyhow!("cannot stop dictate: not recording"));
             }
             inner.state = DictateState::Transcribing;
-            inner.transcription_abort = Some(Arc::clone(&abort_flag));
             this.app
                 .emit(
                     DICTATE_STATE_EVENT,
@@ -794,15 +801,24 @@ impl DictateController {
                 .session
                 .take()
                 .ok_or_else(|| anyhow!("session missing in Recording state"))?;
+            let abort_flag = session
+                .live
+                .as_ref()
+                .map(StreamingTranscription::cancel_flag)
+                .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+            inner.transcription_abort = Some(Arc::clone(&abort_flag));
             inner.processing_wav_path = Some(session.mic.wav_path().to_path_buf());
-            session
+            (session, abort_flag)
         };
 
         tauri::async_runtime::spawn(async move {
             let ctrl = Arc::clone(&this);
-            let result =
-                tokio::task::spawn_blocking(move || ctrl.do_transcription(session, abort_flag))
-                    .await;
+            let result = tokio::task::spawn_blocking(move || {
+                let span = tracing::info_span!("dictate_timing", run_id = %uuid::Uuid::new_v4());
+                let _entered = span.enter();
+                ctrl.do_transcription(session, abort_flag, stop_started)
+            })
+            .await;
 
             match result {
                 Ok(Ok(_)) => {
@@ -834,12 +850,44 @@ impl DictateController {
         &self,
         session: DictateMicSession,
         abort_flag: Arc<AtomicBool>,
+        stop_started: Instant,
     ) -> Result<bool> {
         let config = self.config.get();
 
         let wav_path = session.mic.wav_path().to_path_buf();
         session.mic.stop_and_finalize()?;
-        let pcm_16k = match read_wav_mono_f32(&wav_path) {
+        if session.live.is_some() && !abort_flag.load(Ordering::SeqCst) {
+            self.app
+                .emit(
+                    DICTATE_STATE_EVENT,
+                    DictateStateEvent {
+                        progress: Some(0.0),
+                        processing_stage: Some(ProcessingStage::TranscribingAudio),
+                        ..DictateStateEvent::new(DictateState::Transcribing)
+                    },
+                )
+                .ok();
+        }
+        let live_result = session.live.map(StreamingTranscription::finish);
+        if abort_flag.load(Ordering::SeqCst) {
+            self.delete_dictate_wav(&wav_path);
+            return Ok(false); // Abort already returned the controller to Idle.
+        }
+        let (precomputed, live_samples) = match live_result {
+            Some(Ok(result)) => (Some(result.segments), result.audio_samples),
+            Some(Err(error)) => {
+                tracing::warn!(%error, "live ASR failed; transcribing complete WAV");
+                (None, 0)
+            }
+            None => (None, 0),
+        };
+        // The live tap has exactly the resampled samples written to the WAV.
+        // Only reopen and decode it if the live result could not be completed.
+        let pcm_16k = match precomputed
+            .as_ref()
+            .map(|_| Ok(Vec::new()))
+            .unwrap_or_else(|| read_wav_mono_f32(&wav_path))
+        {
             Ok(pcm) => pcm,
             Err(e) => {
                 let salvaged = self.salvage_dictate_wav(&wav_path);
@@ -849,7 +897,7 @@ impl DictateController {
         };
 
         const MIN_PCM_SAMPLES_16K: usize = WHISPER_SAMPLE_RATE as usize / 10; // 100 ms
-        if pcm_16k.len() < MIN_PCM_SAMPLES_16K {
+        if pcm_16k.len().max(live_samples) < MIN_PCM_SAMPLES_16K {
             self.delete_dictate_wav(&wav_path);
             self.set_error_state("Recording too short — try again.".to_string(), None);
             return Ok(false);
@@ -880,26 +928,29 @@ impl DictateController {
                 )
                 .ok();
         };
-        let result = match run_post_capture_transcription(
-            &self.model,
-            PostCaptureInput {
-                profile: CaptureProfile::Dictate,
-                audio: CaptureAudio {
-                    mic_pcm_16k: &pcm_16k,
-                    speaker_pcm_16k: None,
-                },
-                model_path: &model_path,
-                speaker_evidence: None,
-                abort: None,
-                on_model_loaded: None,
-            },
-            progress_reporter,
-        ) {
+        let result = match precomputed
+            .map(|segments| Ok(finish_dictate_transcription(&model_path, segments)))
+            .unwrap_or_else(|| {
+                run_post_capture_transcription(
+                    &self.model,
+                    PostCaptureInput {
+                        profile: CaptureProfile::Dictate,
+                        audio: CaptureAudio {
+                            mic_pcm_16k: &pcm_16k,
+                            speaker_pcm_16k: None,
+                        },
+                        model_path: &model_path,
+                        speaker_evidence: None,
+                        abort: Some(Arc::clone(&abort_flag)),
+                        on_model_loaded: None,
+                    },
+                    progress_reporter,
+                )
+            }) {
             Ok(result) => result,
             Err(e) => {
                 if abort_flag.load(Ordering::SeqCst) {
                     self.delete_dictate_wav(&wav_path);
-                    self.transition_to_idle();
                     return Ok(false);
                 }
                 let salvaged = self.salvage_dictate_wav(&wav_path);
@@ -916,7 +967,6 @@ impl DictateController {
 
         if abort_flag.load(Ordering::SeqCst) {
             self.delete_dictate_wav(&wav_path);
-            self.transition_to_idle();
             return Ok(false);
         }
 
@@ -930,7 +980,6 @@ impl DictateController {
 
         if abort_flag.load(Ordering::SeqCst) {
             self.delete_dictate_wav(&wav_path);
-            self.transition_to_idle();
             return Ok(false);
         }
 
@@ -953,7 +1002,6 @@ impl DictateController {
 
         if abort_flag.load(Ordering::SeqCst) {
             self.delete_dictate_wav(&wav_path);
-            self.transition_to_idle();
             return Ok(false);
         }
 
@@ -962,8 +1010,8 @@ impl DictateController {
         // now instead of leaving it gated on paste completing.
         self.delete_dictate_wav(&wav_path);
 
-        // Clipboard write gates the user-visible paste, so it runs ahead of the history
-        // append (which is not user-visible and doesn't gate anything downstream).
+        // Clipboard and paste must both finish before history persistence: a slow
+        // history load/write must not hold the transcript out of the target app.
         if let Err(e) = self.app.clipboard().write_text(text.clone()) {
             tracing::error!(error = %e, "dictate failed to write clipboard");
             self.set_error_state(
@@ -974,15 +1022,6 @@ impl DictateController {
         }
 
         let record = HistoryRecord::from_dictate(&segments, &text, model_label);
-        let history_write_failed = if let Err(e) = self.history.append(&config.save_folder, record)
-        {
-            tracing::warn!(error = %e, "dictate failed to write history");
-            true
-        } else {
-            self.app.emit("note://item-added", ()).ok();
-            false
-        };
-
         let mut paste_failed = false;
         if config.dictate_auto_paste {
             if self
@@ -1012,6 +1051,30 @@ impl DictateController {
         } else {
             self.clear_restore_paste_target_pid();
         }
+
+        tracing::info!(
+            stop_elapsed_ms = stop_started.elapsed().as_millis() as u64,
+            auto_paste = config.dictate_auto_paste,
+            paste_failed,
+            "dictate output complete (paste dispatch acknowledged)"
+        );
+
+        // Keep persistence in this worker so completion and failure reporting retain
+        // their existing lifecycle. Even a failed paste must still create the Note.
+        let history_started = Instant::now();
+        let history_write_failed = if let Err(e) = self.history.append(&config.save_folder, record)
+        {
+            tracing::warn!(error = %e, "dictate failed to write history");
+            true
+        } else {
+            self.app.emit("note://item-added", ()).ok();
+            false
+        };
+        tracing::info!(
+            elapsed_ms = history_started.elapsed().as_millis() as u64,
+            history_write_failed,
+            "dictate history write finished"
+        );
 
         if paste_failed {
             {
@@ -1365,7 +1428,10 @@ mod tests {
 
     #[test]
     fn hold_immediate_stop_source_labels_as_hold() {
-        assert_eq!(DictateStartSource::HoldImmediateStop.gesture_label(), "hold");
+        assert_eq!(
+            DictateStartSource::HoldImmediateStop.gesture_label(),
+            "hold"
+        );
     }
 
     // ── Toggle mode ──────────────────────────────────────────────────────────

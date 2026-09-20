@@ -312,8 +312,7 @@ impl HistoryService {
         {
             let mut file = std::fs::File::create(&tmp).context("create history.jsonl.tmp")?;
             for record in &live {
-                let line =
-                    serde_json::to_string(*record).context("serialize history record")?;
+                let line = serde_json::to_string(*record).context("serialize history record")?;
                 file.write_all(line.as_bytes())?;
                 file.write_all(b"\n")?;
             }
@@ -367,7 +366,6 @@ pub fn relabel_speaker_block_at(
     }
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -606,8 +604,12 @@ mod tests {
         rec.speaker_blocks = vec![block("Speaker 1", 0, 1_000, "one")];
         let id = svc.append(&folder, rec).expect("append");
 
-        assert!(svc.relabel_speaker(&folder, "missing", "Speaker 1", "Ben").is_err());
-        assert!(svc.relabel_speaker(&folder, &id, "Speaker 9", "Ben").is_err());
+        assert!(svc
+            .relabel_speaker(&folder, "missing", "Speaker 1", "Ben")
+            .is_err());
+        assert!(svc
+            .relabel_speaker(&folder, &id, "Speaker 9", "Ben")
+            .is_err());
     }
 
     #[test]
@@ -641,7 +643,9 @@ mod tests {
         rec.speaker_blocks = vec![block("Speaker 1", 0, 1_000, "one")];
         let id = svc.append(&folder, rec).expect("append");
 
-        assert!(svc.relabel_speaker_block(&folder, "missing", 0, "Ben").is_err());
+        assert!(svc
+            .relabel_speaker_block(&folder, "missing", 0, "Ben")
+            .is_err());
         assert!(svc.relabel_speaker_block(&folder, &id, 5, "Ben").is_err());
     }
 

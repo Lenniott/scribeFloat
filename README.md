@@ -312,7 +312,10 @@ cargo tauri build --target x86_64-pc-windows-msvc --bundles nsis  # Windows cros
 installer — `bundle.externalBin` in `tauri.conf.json` requires a triple-suffixed binary at
 `src-tauri/binaries/scribefloat-cli-<target-triple>` before `cargo tauri build`/`dev` runs;
 `prepare-cli-sidecar.sh` builds and stages it (pass a target triple to cross-build for a
-target other than the host). Pass a matching `--target` to the script when cross-building.
+target other than the host, for example `bash scripts/prepare-cli-sidecar.sh x86_64-apple-darwin`).
+The bootstrap build temporarily disables sidecar validation; the subsequent app build
+validates the staged binaries. Inside the installed macOS app, Tauri names the CLI
+`Contents/MacOS/scribefloat-cli` (without the target suffix).
 
 macOS builds require Xcode command line tools; signed/notarized builds need local signing certificates equivalent to the CI secrets.
 

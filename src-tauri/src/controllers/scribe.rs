@@ -1,7 +1,8 @@
 use crate::services::audio::{read_wav_mono_f32, WHISPER_SAMPLE_RATE};
 use crate::services::diarization::{DiarizationService, LiveDiarization};
+use crate::services::streaming_transcription::StreamingTranscription;
 use crate::services::transcription::{
-    run_post_capture_transcription, CaptureAudio, CaptureProfile, PostCaptureInput,
+    run_post_capture_with_mic_segments, CaptureAudio, CaptureProfile, PostCaptureInput,
     SpeakerEvidenceInput, TranscriptResult,
 };
 use crate::services::{
@@ -66,6 +67,7 @@ struct ActiveSession {
     /// after `stop_and_finalize` joins the writer (which drops the tap's channel
     /// sender — joining earlier would deadlock the worker's recv loop).
     live_diarization: Option<LiveDiarization>,
+    live_transcription: Option<StreamingTranscription>,
 }
 
 /// Intermediate state produced by prepare_audio and consumed by run_transcription / write_outputs.
@@ -76,6 +78,7 @@ struct PreparedAudio {
     /// Anonymous speaker spans from the live diarization worker; `None` when the
     /// model is missing or the worker failed (plain transcript).
     diarization_ranges: Option<Vec<DiarizationRange>>,
+    live_transcription: Option<StreamingTranscription>,
 }
 
 enum ProgressMessage {
@@ -178,6 +181,15 @@ impl ScribeController {
         // to start we still have live speaker evidence for the mic track.
         let live_diarization = this.diarization.start_live_session();
         let diar_tap = live_diarization.as_ref().map(|live| live.tap());
+        let live_transcription = StreamingTranscription::start(
+            Arc::clone(&this.model),
+            this.model.default_model_path(),
+        )
+        .map_err(
+            |err| tracing::warn!(error = %err, "Record live ASR unavailable; using WAV at Stop"),
+        )
+        .ok();
+        let asr_tap = live_transcription.as_ref().map(|live| live.tap());
         let mic = this.audio.start_mic(
             preferred_mic.as_deref(),
             true,
@@ -188,6 +200,9 @@ impl ScribeController {
             Some(on_mic_error),
             Some(Arc::new(move |pcm_16k: &[f32]| {
                 if let Some(tap) = &diar_tap {
+                    tap(pcm_16k);
+                }
+                if let Some(tap) = &asr_tap {
                     tap(pcm_16k);
                 }
             })),
@@ -251,6 +266,7 @@ impl ScribeController {
             started_at: Instant::now(),
             started_at_iso: started_at.clone(),
             live_diarization,
+            live_transcription,
         });
         inner.notes.clear();
         this.emit_state(&inner);
@@ -368,8 +384,10 @@ impl ScribeController {
             previous_output_device,
             session_dir,
             started_at_iso,
+            live_transcription,
             ..
         } = session;
+        drop(live_transcription);
         let _ = mic.stop_and_finalize();
         if let Some((_, stream)) = speaker_accum.active.take() {
             let _ = stream.stop_and_finalize();
@@ -450,8 +468,10 @@ impl ScribeController {
                 previous_output_device,
                 session_dir,
                 live_diarization,
+                live_transcription,
                 ..
             } = session;
+            drop(live_transcription);
             let _ = mic
                 .stop_and_finalize()
                 .map_err(|e| tracing::debug!(error = %e, "cancel finalize mic"));
@@ -493,8 +513,10 @@ impl ScribeController {
             previous_output_device,
             session_dir,
             live_diarization,
+            live_transcription,
             ..
         } = session;
+        drop(live_transcription);
         // mic.wav was streamed to disk during capture; finalize and we're done. Speaker
         // segments aren't kept by save-recording-only (the original behavior).
         let wav_path = mic.stop_and_finalize()?;
@@ -541,21 +563,25 @@ impl ScribeController {
     /// Transition RECORDING → TRANSCRIBING then → DONE / NO_MODEL.
     /// Returns immediately; heavy work runs in a background spawn_blocking task.
     pub fn stop_and_save(this: Arc<Self>, title: Option<String>) -> Result<()> {
-        let abort_flag = Arc::new(AtomicBool::new(false));
-        // Extract session under lock then release immediately.
-        let (session, notes) = {
+        // Use the worker's cancellation token through final assembly and fallback.
+        let (session, notes, abort_flag) = {
             let _capture = this.capture_guard();
             let mut inner = this.lock();
             if inner.state != ScribeState::Recording {
                 return Err(anyhow!("cannot stop: not recording"));
             }
             inner.state = ScribeState::Transcribing;
-            inner.transcription_abort = Some(Arc::clone(&abort_flag));
             let session = inner
                 .session
                 .take()
                 .ok_or_else(|| anyhow!("session missing in Recording state"))?;
-            (session, inner.notes.clone())
+            let abort_flag = session
+                .live_transcription
+                .as_ref()
+                .map(StreamingTranscription::cancel_flag)
+                .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+            inner.transcription_abort = Some(Arc::clone(&abort_flag));
+            (session, inner.notes.clone(), abort_flag)
         };
 
         // prepare_audio finalizes and merges WAVs — seconds of I/O on long
@@ -658,11 +684,14 @@ impl ScribeController {
     /// Whisper + transcript write. Capture is already stopped (`prepare_audio` ran in `stop_and_save`).
     fn do_transcription(
         &self,
-        prepared: PreparedAudio,
+        mut prepared: PreparedAudio,
         notes: Vec<Note>,
         title: &str,
         abort_flag: Arc<AtomicBool>,
     ) -> Result<()> {
+        if abort_flag.load(Ordering::SeqCst) {
+            return Ok(());
+        }
         let config = self.config.get();
 
         let model_path = self.model.default_model_path();
@@ -689,13 +718,14 @@ impl ScribeController {
             return Ok(());
         }
 
-        let result = match self.run_transcription(&model_path, &prepared, &abort_flag) {
+        let result = match self.run_transcription(&model_path, &mut prepared, &abort_flag) {
             Ok(result) => result,
             Err(e) => {
                 // An abort interrupting `full()` can surface as an Err; treat that as a clean
                 // stop rather than a transcription error.
                 if abort_flag.load(Ordering::SeqCst) {
-                    self.clear_transcription_tracking();
+                    // Abort already cleared its tracking; a new recording may
+                    // now own the controller, so don't clear that session.
                     return Ok(());
                 }
                 let _ = self.write_session_manifest(
@@ -710,7 +740,6 @@ impl ScribeController {
             }
         };
         if abort_flag.load(Ordering::SeqCst) {
-            self.clear_transcription_tracking();
             return Ok(());
         }
 
@@ -766,6 +795,7 @@ impl ScribeController {
             previous_output_device,
             session_dir,
             live_diarization,
+            live_transcription,
             ..
         } = session;
 
@@ -840,6 +870,7 @@ impl ScribeController {
             wav_path,
             speaker_pcm_16k,
             diarization_ranges,
+            live_transcription,
         })
     }
 
@@ -847,9 +878,43 @@ impl ScribeController {
     fn run_transcription(
         &self,
         model_path: &Path,
-        prepared: &PreparedAudio,
+        prepared: &mut PreparedAudio,
         abort_flag: &Arc<AtomicBool>,
     ) -> Result<TranscriptResult> {
+        self.app
+            .emit(
+                "scribe://state-changed",
+                ScribeStateEvent {
+                    progress: Some(0.0),
+                    processing_stage: Some(ProcessingStage::TranscribingAudio),
+                    ..ScribeStateEvent::new(ScribeState::Transcribing)
+                },
+            )
+            .ok();
+        let mic_segments = match prepared.live_transcription.take() {
+            Some(live) => match live.finish() {
+                Ok(result) => {
+                    tracing::info!(
+                        audio_samples = result.audio_samples,
+                        "Record capture-time ASR finished"
+                    );
+                    Some(result.segments)
+                }
+                Err(err) => {
+                    tracing::warn!(error = %err, "Record live ASR failed; replaying complete mic WAV");
+                    None
+                }
+            },
+            None => None,
+        };
+        if abort_flag.load(Ordering::SeqCst) {
+            return Err(anyhow!("Record transcription cancelled"));
+        }
+        let pcm_16k = if mic_segments.is_none() {
+            read_wav_mono_f32(&prepared.wav_path)?
+        } else {
+            Vec::new()
+        };
         let (progress_tx, progress_rx) = mpsc::channel::<ProgressMessage>();
         let progress_app = self.app.clone();
         let progress_thread = std::thread::spawn(move || {
@@ -884,9 +949,6 @@ impl ScribeController {
             }
         });
 
-        // Re-read mic.wav on the blocking thread (same as Dictate) so transcription
-        // always sees the finalized file, not a buffer prepared on the async runtime.
-        let pcm_16k = read_wav_mono_f32(&prepared.wav_path)?;
         let model_loaded_tx = progress_tx.clone();
         let on_model_loaded = move || {
             model_loaded_tx.send(ProgressMessage::ModelLoaded).ok();
@@ -897,7 +959,7 @@ impl ScribeController {
                 tx.send(ProgressMessage::Progress(p)).ok();
             }
         };
-        let result = run_post_capture_transcription(
+        let result = run_post_capture_with_mic_segments(
             &self.model,
             PostCaptureInput {
                 profile: CaptureProfile::Record,
@@ -913,6 +975,7 @@ impl ScribeController {
                 abort: Some(Arc::clone(abort_flag)),
                 on_model_loaded: Some(Box::new(on_model_loaded)),
             },
+            mic_segments,
             progress_reporter,
         );
 

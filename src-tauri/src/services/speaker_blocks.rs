@@ -86,7 +86,10 @@ mod tests {
         ];
         let blocks = build_channel_blocks(&mut segments);
         let labels: Vec<&str> = blocks.iter().map(|b| b.label.as_str()).collect();
-        assert_eq!(labels, vec![CHANNEL_LABEL_IN, CHANNEL_LABEL_OUT, CHANNEL_LABEL_IN]);
+        assert_eq!(
+            labels,
+            vec![CHANNEL_LABEL_IN, CHANNEL_LABEL_OUT, CHANNEL_LABEL_IN]
+        );
         assert_eq!(blocks[0].text, "me one me two");
         let speakers: Vec<Option<&str>> = segments.iter().map(|s| s.speaker.as_deref()).collect();
         assert_eq!(

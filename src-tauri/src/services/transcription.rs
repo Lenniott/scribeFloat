@@ -79,6 +79,16 @@ pub struct TranscriptResult {
     pub dictate_text: Option<String>,
 }
 
+/// Final Dictate assembly is identical for full-buffer and capture-time ASR.
+pub fn finish_dictate_transcription(model_path: &Path, segments: Vec<Segment>) -> TranscriptResult {
+    TranscriptResult {
+        dictate_text: (!segments.is_empty()).then(|| format_dictate_segments(&segments)),
+        segments,
+        model_label: model_label(model_path),
+        ..TranscriptResult::default()
+    }
+}
+
 struct TranscriptionPass<'a> {
     model_path: &'a Path,
     pcm_16k: &'a [f32],
@@ -139,15 +149,49 @@ where
     run_post_capture_transcription_with_inference(model, input, on_progress)
 }
 
+/// Reuse capture-time mic ASR; system audio still follows the ordinary channel
+/// merge, and speaker stamping happens only after capture and diarization finish.
+pub fn run_post_capture_with_mic_segments<F>(
+    model: &ModelService,
+    input: PostCaptureInput<'_>,
+    mic_segments: Option<Vec<Segment>>,
+    on_progress: F,
+) -> Result<TranscriptResult>
+where
+    F: FnMut(f32) + Send + Clone + 'static,
+{
+    assemble_capture_with_inference(model, input, mic_segments, on_progress)
+}
+
 fn run_post_capture_transcription_with_inference<F, I>(
     inference: &I,
-    mut input: PostCaptureInput<'_>,
+    input: PostCaptureInput<'_>,
     on_progress: F,
 ) -> Result<TranscriptResult>
 where
     F: FnMut(f32) + Send + Clone + 'static,
     I: SpeechInference,
 {
+    assemble_capture_with_inference(inference, input, None, on_progress)
+}
+
+fn assemble_capture_with_inference<F, I>(
+    inference: &I,
+    mut input: PostCaptureInput<'_>,
+    mic_segments: Option<Vec<Segment>>,
+    on_progress: F,
+) -> Result<TranscriptResult>
+where
+    F: FnMut(f32) + Send + Clone + 'static,
+    I: SpeechInference,
+{
+    if input
+        .abort
+        .as_ref()
+        .is_some_and(|flag| flag.load(Ordering::SeqCst))
+    {
+        return Err(anyhow::anyhow!("transcription cancelled"));
+    }
     let dual_source = input.audio.speaker_pcm_16k.is_some();
     // An on-demand diarization pass follows ASR, so ASR progress is compressed
     // to leave visible headroom; live ranges arrive pre-computed and need none.
@@ -180,6 +224,7 @@ where
                 inference,
                 &input,
                 &mut on_model_loaded,
+                mic_segments,
                 asr_progress,
             );
             let diarize_result = handle
@@ -193,6 +238,7 @@ where
                 inference,
                 &input,
                 &mut on_model_loaded,
+                mic_segments,
                 asr_progress,
             ),
             None,
@@ -210,14 +256,9 @@ where
     }
 
     if input.profile == CaptureProfile::Dictate {
-        let dictate_text = Some(format_dictate_segments(&segments));
-        return Ok(TranscriptResult {
-            segments,
-            dual_source,
-            model_label,
-            dictate_text,
-            ..TranscriptResult::default()
-        });
+        let mut result = finish_dictate_transcription(input.model_path, segments);
+        result.dual_source = dual_source;
+        return Ok(result);
     }
 
     let speaker_blocks = build_speaker_result(&input, &mut segments, dual_source, diarize_result);
@@ -238,6 +279,7 @@ fn transcribe_capture_with_inference<F, I>(
     inference: &I,
     input: &PostCaptureInput<'_>,
     on_model_loaded: &mut Option<Box<dyn FnOnce() + Send>>,
+    mic_segments: Option<Vec<Segment>>,
     on_progress: F,
 ) -> Result<Vec<Segment>>
 where
@@ -248,16 +290,24 @@ where
     let mic_source = format!("{source}/mic");
     if let Some(speaker_pcm) = input.audio.speaker_pcm_16k {
         let mut mic_progress = on_progress.clone();
-        let mic_segments = inference.transcribe_pass(
-            TranscriptionPass {
-                model_path: input.model_path,
-                pcm_16k: input.audio.mic_pcm_16k,
-                abort: input.abort.clone(),
-                source: mic_source,
-                on_model_loaded: on_model_loaded.take(),
-            },
-            Box::new(move |p: f32| mic_progress(p * 0.5)),
-        )?;
+        let mic_segments = if let Some(segments) = mic_segments {
+            if let Some(cb) = on_model_loaded.take() {
+                cb();
+            }
+            mic_progress(0.5);
+            segments
+        } else {
+            inference.transcribe_pass(
+                TranscriptionPass {
+                    model_path: input.model_path,
+                    pcm_16k: input.audio.mic_pcm_16k,
+                    abort: input.abort.clone(),
+                    source: mic_source,
+                    on_model_loaded: on_model_loaded.take(),
+                },
+                Box::new(move |p: f32| mic_progress(p * 0.5)),
+            )?
+        };
         if input
             .abort
             .as_ref()
@@ -280,6 +330,13 @@ where
         let mic_segments = filter_hallucination_phrases(&mic_segments);
         let speaker_segments = filter_hallucination_phrases(&speaker_segments);
         Ok(inference.merge_dual_source(&mic_segments, &speaker_segments))
+    } else if let Some(segments) = mic_segments {
+        if let Some(cb) = on_model_loaded.take() {
+            cb();
+        }
+        let mut on_progress = on_progress;
+        on_progress(1.0);
+        Ok(filter_hallucination_phrases(&segments))
     } else {
         inference
             .transcribe_pass(
@@ -504,6 +561,134 @@ mod tests {
     }
 
     #[test]
+    fn record_reuses_live_mic_and_stamps_speakers_on_absolute_times() {
+        let inference = FakeInference::new(vec![]);
+        let ranges = [range(0, 0, 31_000), range(1, 31_000, 65_000)];
+        let result = assemble_capture_with_inference(
+            &inference,
+            post_capture_input(
+                CaptureProfile::Record,
+                Path::new("model.bin"),
+                &[],
+                None,
+                Some(SpeakerEvidenceInput::LiveRanges(&ranges)),
+                None,
+            ),
+            Some(vec![
+                Segment::new(1_000, 2_000, "first phrase"),
+                Segment::new(32_000, 34_000, "second phrase"),
+            ]),
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(
+            inference.call_count(),
+            0,
+            "must not repeat completed ASR after Stop"
+        );
+        assert_eq!(result.segments[0].speaker.as_deref(), Some("Speaker 1"));
+        assert_eq!(result.segments[1].speaker.as_deref(), Some("Speaker 2"));
+        assert_eq!(result.segments[1].start_ms, 32_000);
+        assert_eq!(result.speaker_blocks.len(), 2);
+    }
+
+    #[test]
+    fn record_live_mic_merges_system_audio_with_channel_labels() {
+        let inference =
+            FakeInference::new(vec![vec![Segment::new(20_000, 21_000, "remote voice")]]);
+        let result = assemble_capture_with_inference(
+            &inference,
+            post_capture_input(
+                CaptureProfile::Record,
+                Path::new("model.bin"),
+                &[],
+                Some(&[0.1]),
+                Some(SpeakerEvidenceInput::LiveRanges(&[range(3, 0, 60_000)])),
+                None,
+            ),
+            Some(vec![Segment::new(32_000, 33_000, "local voice")]),
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(*inference.calls.lock().unwrap(), vec!["scribe/speaker"]);
+        assert!(result.dual_source);
+        assert_eq!(result.segments[0].text, "remote voice");
+        assert_eq!(result.segments[0].speaker.as_deref(), Some("Out"));
+        assert_eq!(result.segments[1].speaker.as_deref(), Some("In"));
+        assert_eq!(result.segments[1].start_ms, 32_000);
+    }
+
+    #[test]
+    fn record_missing_live_result_replays_full_mic_and_keeps_speakers() {
+        let inference = FakeInference::new(vec![vec![Segment::new(0, 900, "recovered words")]]);
+        let result = assemble_capture_with_inference(
+            &inference,
+            post_capture_input(
+                CaptureProfile::Record,
+                Path::new("model.bin"),
+                &[0.1],
+                None,
+                Some(SpeakerEvidenceInput::LiveRanges(&[range(1, 0, 1000)])),
+                None,
+            ),
+            None,
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(*inference.calls.lock().unwrap(), vec!["scribe/mic"]);
+        assert_eq!(result.segments[0].speaker.as_deref(), Some("Speaker 2"));
+    }
+
+    #[test]
+    fn cancelled_record_neither_reuses_live_text_nor_runs_system_asr() {
+        let inference = FakeInference::new(vec![]);
+        let result = assemble_capture_with_inference(
+            &inference,
+            post_capture_input(
+                CaptureProfile::Record,
+                Path::new("model.bin"),
+                &[],
+                Some(&[0.1]),
+                None,
+                Some(Arc::new(AtomicBool::new(true))),
+            ),
+            Some(vec![Segment::new(0, 900, "discard me")]),
+            |_| {},
+        );
+        assert!(result.is_err());
+        assert_eq!(inference.call_count(), 0);
+    }
+
+    #[test]
+    fn empty_live_result_is_success_and_diarization_failure_keeps_plain_text() {
+        for segments in [vec![], vec![Segment::new(0, 900, "plain words")]] {
+            let expected_len = segments.len();
+            let inference = FakeInference::new(vec![]);
+            let result = assemble_capture_with_inference(
+                &inference,
+                post_capture_input(
+                    CaptureProfile::Record,
+                    Path::new("model.bin"),
+                    &[],
+                    None,
+                    None,
+                    None,
+                ),
+                Some(segments),
+                |_| {},
+            )
+            .unwrap();
+            assert_eq!(inference.call_count(), 0);
+            assert_eq!(result.segments.len(), expected_len);
+            assert!(result.speaker_blocks.is_empty());
+            assert!(result
+                .segments
+                .iter()
+                .all(|segment| segment.speaker.is_none()));
+        }
+    }
+
+    #[test]
     fn record_with_live_ranges_yields_aligned_speaker_blocks() {
         let tmp = tempfile::tempdir().unwrap();
         let model_path = tmp.path().join("model.bin");
@@ -529,7 +714,11 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.segments.len(), 2);
-        let labels: Vec<&str> = result.speaker_blocks.iter().map(|b| b.label.as_str()).collect();
+        let labels: Vec<&str> = result
+            .speaker_blocks
+            .iter()
+            .map(|b| b.label.as_str())
+            .collect();
         assert_eq!(labels, vec!["Speaker 1", "Speaker 2"]);
         assert_eq!(result.segments[0].speaker.as_deref(), Some("Speaker 1"));
         assert_eq!(result.segments[1].speaker.as_deref(), Some("Speaker 2"));
@@ -573,14 +762,7 @@ mod tests {
 
         let result = run_post_capture_transcription_with_inference(
             &inference,
-            post_capture_input(
-                CaptureProfile::Record,
-                &model_path,
-                &pcm,
-                None,
-                None,
-                None,
-            ),
+            post_capture_input(CaptureProfile::Record, &model_path, &pcm, None, None, None),
             |_p| {},
         )
         .unwrap();
@@ -691,14 +873,7 @@ mod tests {
 
         let result = run_post_capture_transcription_with_inference(
             &inference,
-            post_capture_input(
-                CaptureProfile::Dictate,
-                &model_path,
-                &pcm,
-                None,
-                None,
-                None,
-            ),
+            post_capture_input(CaptureProfile::Dictate, &model_path, &pcm, None, None, None),
             |_p| {},
         )
         .unwrap();
@@ -737,7 +912,11 @@ mod tests {
 
         assert!(result.dual_source);
         assert_eq!(result.segments.len(), 2);
-        let labels: Vec<&str> = result.speaker_blocks.iter().map(|b| b.label.as_str()).collect();
+        let labels: Vec<&str> = result
+            .speaker_blocks
+            .iter()
+            .map(|b| b.label.as_str())
+            .collect();
         assert_eq!(labels, vec!["In", "Out"]);
         assert_eq!(result.segments[0].speaker.as_deref(), Some("In"));
         assert_eq!(result.segments[1].speaker.as_deref(), Some("Out"));
@@ -753,14 +932,7 @@ mod tests {
 
         let result = run_post_capture_transcription_with_inference(
             &inference,
-            post_capture_input(
-                CaptureProfile::Dictate,
-                &model_path,
-                &pcm,
-                None,
-                None,
-                None,
-            ),
+            post_capture_input(CaptureProfile::Dictate, &model_path, &pcm, None, None, None),
             |_p| {},
         )
         .unwrap();

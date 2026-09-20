@@ -325,4 +325,3 @@ pub fn settings_set_user_display_name(
 ) -> Result<(), AppError> {
     ctrl.set_user_display_name(name).map_err(AppError::from)
 }
-

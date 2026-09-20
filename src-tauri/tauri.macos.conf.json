@@ -1,5 +1,5 @@
 {
   "bundle": {
-    "externalBin": ["binaries/set-default-output"]
+    "externalBin": ["binaries/set-default-output", "binaries/scribefloat-cli"]
   }
 }

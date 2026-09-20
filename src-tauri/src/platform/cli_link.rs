@@ -7,9 +7,23 @@
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
-/// Where the symlink should live. `~/.local/bin` needs no sudo and is on PATH by default
-/// in most modern shell setups (zsh via `.zprofile`, fish, many Linux distros); it's the
-/// same default VS Code's shell-command installer uses on macOS/Linux.
+/// Tauri removes the target suffix when packaging; development staging keeps it.
+pub fn resolve_sidecar_at(
+    executable_dir: &Path,
+    staging_dir: &Path,
+    triple: &str,
+    name: &str,
+) -> Option<PathBuf> {
+    [
+        executable_dir.join(name),
+        staging_dir.join(format!("{name}-{triple}")),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+}
+
+/// Where the symlink should live. `~/.local/bin` needs no sudo and is on PATH in
+/// some shell setups. Users whose PATH omits it must add this directory themselves.
 pub fn link_dir() -> Option<PathBuf> {
     std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/bin"))
 }
@@ -40,7 +54,8 @@ pub enum LinkAction {
 /// A real file at `link_path` is left alone unconditionally: it's not ours to overwrite,
 /// even if it happens to already point at a scribefloat-cli binary via some other means.
 /// Only a *symlink* we can attribute to a previous run of this same function — one whose
-/// target lives inside a `.app` bundle and is itself named `scribefloat-cli-<triple>` — is
+/// target is the current CLI or an app-bundled `scribefloat-cli` (including the
+/// old target-suffixed name) — is
 /// treated as ours to replace (covers version upgrades, moved/renamed .app, and dangling
 /// links left behind by an uninstalled older build).
 pub fn plan_cli_symlink(
@@ -48,15 +63,24 @@ pub fn plan_cli_symlink(
     cli_target: &Path,
     existing_link_target: Option<&Path>,
 ) -> LinkAction {
-    let _ = cli_target; // not needed for the decision, kept for symmetry/future use
     match existing_link_target {
         None if !link_path.exists() => LinkAction::Create,
         None => LinkAction::Skip, // exists and isn't a symlink: a real file, leave it
         Some(prev) => {
-            let is_ours = prev
+            let cli_name = prev
                 .file_name()
                 .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with("scribefloat-cli-"));
+                .is_some_and(|n| n == "scribefloat-cli" || n.starts_with("scribefloat-cli-"));
+            let app_binary = prev.parent().is_some_and(|dir| {
+                dir.file_name().is_some_and(|name| name == "MacOS")
+                    && dir.parent().is_some_and(|contents| {
+                        contents.file_name().is_some_and(|name| name == "Contents")
+                            && contents
+                                .parent()
+                                .is_some_and(|app| app.extension().is_some_and(|ext| ext == "app"))
+                    })
+            });
+            let is_ours = prev == cli_target || (cli_name && app_binary);
             if is_ours {
                 LinkAction::Replace
             } else {
@@ -115,6 +139,78 @@ mod tests {
     use super::*;
 
     #[test]
+    fn resolves_packaged_name_without_source_checkout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bundled = tmp.path().join("scribefloat-cli");
+        std::fs::write(&bundled, b"binary").unwrap();
+        assert_eq!(
+            resolve_sidecar_at(
+                tmp.path(),
+                &tmp.path().join("missing"),
+                "test-target",
+                "scribefloat-cli"
+            ),
+            Some(bundled)
+        );
+    }
+
+    #[test]
+    fn resolves_packaged_audio_helper_without_source_checkout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let helper = tmp.path().join("set-default-output");
+        std::fs::write(&helper, b"binary").unwrap();
+        assert_eq!(
+            resolve_sidecar_at(
+                tmp.path(),
+                &tmp.path().join("missing"),
+                "test-target",
+                "set-default-output"
+            ),
+            Some(helper)
+        );
+    }
+
+    #[test]
+    fn resolves_staged_name_in_development() {
+        let tmp = tempfile::tempdir().unwrap();
+        let staged = tmp.path().join("scribefloat-cli-test-target");
+        std::fs::write(&staged, b"binary").unwrap();
+        assert_eq!(
+            resolve_sidecar_at(
+                &tmp.path().join("missing"),
+                tmp.path(),
+                "test-target",
+                "scribefloat-cli"
+            ),
+            Some(staged)
+        );
+    }
+
+    #[test]
+    fn upgrades_unsuffixed_app_link_but_preserves_unrelated_same_name() {
+        let link = Path::new("/unused/scribefloat");
+        let target = Path::new("/Applications/New.app/Contents/MacOS/scribefloat-cli");
+        assert_eq!(
+            plan_cli_symlink(
+                link,
+                target,
+                Some(Path::new(
+                    "/Applications/Old.app/Contents/MacOS/scribefloat-cli"
+                ))
+            ),
+            LinkAction::Replace
+        );
+        assert_eq!(
+            plan_cli_symlink(link, target, Some(Path::new("/custom/bin/scribefloat-cli"))),
+            LinkAction::Skip
+        );
+        assert_eq!(
+            plan_cli_symlink(link, target, Some(target)),
+            LinkAction::Replace
+        );
+    }
+
+    #[test]
     fn creates_when_nothing_exists() {
         let link = PathBuf::from("/Users/x/.local/bin/scribefloat");
         let target = PathBuf::from(
@@ -141,8 +237,7 @@ mod tests {
     #[test]
     fn skips_a_symlink_pointing_somewhere_unrelated() {
         let link = PathBuf::from("/Users/x/.local/bin/scribefloat");
-        let target =
-            PathBuf::from("/Applications/ScribeFloat.app/Contents/MacOS/scribefloat-cli");
+        let target = PathBuf::from("/Applications/ScribeFloat.app/Contents/MacOS/scribefloat-cli");
         let unrelated = PathBuf::from("/Users/x/bin/my-own-scribefloat-script");
         assert_eq!(
             plan_cli_symlink(&link, &target, Some(&unrelated)),

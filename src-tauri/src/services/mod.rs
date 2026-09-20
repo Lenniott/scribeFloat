@@ -13,6 +13,7 @@ pub mod permissions;
 pub mod speaker_align;
 pub mod speaker_blocks;
 pub mod speaker_names;
+pub mod streaming_transcription;
 pub mod transcribe_input;
 pub mod transcription;
 pub mod update;

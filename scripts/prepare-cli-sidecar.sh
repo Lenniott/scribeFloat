@@ -19,7 +19,13 @@ EXT=""
 [[ "$TARGET" == *windows* ]] && EXT=".exe"
 
 echo "Building scribefloat-cli for $TARGET..."
-cargo build --release --manifest-path "$SRC_TAURI/Cargo.toml" --bin scribefloat-cli --target "$TARGET"
+# Bootstrap the CLI without validating/copying sidecars that this build creates.
+# The normal app build still validates the real, staged external binaries.
+# Run here so Cargo also reads src-tauri/.cargo/config.toml (Accelerate settings).
+(
+  cd "$SRC_TAURI"
+  TAURI_CONFIG='{"bundle":{"externalBin":[]}}' cargo build --release --bin scribefloat-cli --target "$TARGET"
+)
 
 BUNDLE_DIR="$SRC_TAURI/binaries"
 mkdir -p "$BUNDLE_DIR"

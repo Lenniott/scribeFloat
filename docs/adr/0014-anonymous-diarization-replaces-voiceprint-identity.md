@@ -72,4 +72,6 @@ Speaker identity is removed from the product. Diarization replaces it:
   chunk-cascade correction machinery is gone.
 - ADR-0011 is superseded; its `[You]`/`[Other]` binary-verification model and
   the 0.75 similarity threshold no longer exist. ADR-0013's pitch/loudness
-  cuts remain as identity-free timeline enrichment.
+  cuts were intended to remain as identity-free timeline enrichment, but that
+  enrichment was never built — see [ADR-0013](0013-live-pitch-analysis-and-change-cut-storage.md)
+  (superseded 2026-08-13): the analyzer has no downstream consumer today.

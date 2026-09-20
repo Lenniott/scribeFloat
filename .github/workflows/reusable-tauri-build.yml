@@ -111,6 +111,12 @@ jobs:
           mkdir -p src-tauri/windows-resources
           cp "${OPENBLAS_BIN}/libopenblas.dll" src-tauri/windows-resources/libopenblas.dll
 
+      # Sidecar for bundle.externalBin (tauri.conf.json). Must run before any cargo-tauri
+      # step: the Tauri build script validates externalBin paths exist (see script comment).
+      - name: Build CLI sidecar
+        shell: bash
+        run: bash scripts/prepare-cli-sidecar.sh "${{ inputs.target }}"
+
       - name: Check formatting
         working-directory: src-tauri
         run: cargo fmt --check

@@ -228,6 +228,10 @@ pub struct Segment {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<SegmentSource>,
+    /// Identity (`Speaker N` / `Other`) or channel (`In` / `Out`) label.
+    /// Absent on Dictate, failed diarization, and notes from before this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speaker: Option<String>,
 }
 
 impl Segment {
@@ -237,6 +241,7 @@ impl Segment {
             end_ms,
             text: text.into(),
             source: None,
+            speaker: None,
         }
     }
 }
@@ -306,7 +311,7 @@ pub struct Note {
     pub recorded_at_ms: u64,
 }
 
-// ── Live audio analysis (pitch / loudness change cuts) ──────────────────────────
+// ── Live audio analysis (loudness) ──────────────────────────────────────────────
 
 /// Windowed pitch/loudness timeline over the 16 kHz mono mic stream.
 /// Frame `i` is centered at `(i * hop_samples + window_samples / 2) / sample_rate`
@@ -320,28 +325,6 @@ pub struct AudioAnalysis {
     /// `None` = unvoiced frame (no pitch in the 65–400 Hz voice band).
     pub f0_hz: Vec<Option<f32>>,
     pub rms: Vec<f32>,
-}
-
-/// Why a change cut fired. Ordering matters: `BTreeSet<CutReason>` keeps
-/// serialized reason lists deterministic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum CutReason {
-    Pitch,
-    Loudness,
-    Silence,
-}
-
-/// A detected voice-change boundary. Says "the voice changed here" — spans between
-/// cuts are NOT speaker identities (anonymous slots come from Sortformer diarization).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SpeakerChangeCut {
-    pub time_s: f32,
-    /// Last merged candidate's time; equals `time_s` for an unmerged cut.
-    pub end_s: f32,
-    /// Observed jump / threshold, so >= 1.0 by construction; max over merged candidates.
-    pub score: f32,
-    pub reasons: std::collections::BTreeSet<CutReason>,
 }
 
 /// Anonymous "who spoke when" span from Sortformer diarization, in ms since
@@ -514,10 +497,6 @@ pub struct SessionManifest {
     pub transcript_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    /// Voice-change cuts detected live during recording; populated from the
-    /// Transcribing state onward so crash recovery keeps them.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub speaker_change_cuts: Vec<SpeakerChangeCut>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -620,10 +599,6 @@ pub struct HistoryRecord {
     pub segments: Vec<Segment>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub speaker_blocks: Vec<SpeakerBlock>,
-    /// Voice-change cuts from live pitch/loudness analysis. The full frame
-    /// timeline lives in `{session_dir}/analysis.json`, not here (size).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub speaker_change_cuts: Vec<SpeakerChangeCut>,
     /// Voice-turn chunks used for chunked Whisper and chunk-level speaker
     /// matching. Empty for legacy records and paths that do not run speaker
     /// analysis.
@@ -668,7 +643,6 @@ pub struct HistoryRecord {
 pub struct TranscriptAttachment {
     pub segments: Vec<Segment>,
     pub speaker_blocks: Vec<SpeakerBlock>,
-    pub speaker_change_cuts: Vec<SpeakerChangeCut>,
     pub speaker_chunks: Vec<SpeakerChunk>,
     pub session_speakers: Vec<SessionSpeaker>,
     pub notes: Vec<Note>,
@@ -749,7 +723,6 @@ impl HistoryRecord {
             model,
             segments,
             speaker_blocks: Vec::new(),
-            speaker_change_cuts: Vec::new(),
             speaker_chunks: Vec::new(),
             session_speakers: Vec::new(),
             notes,
@@ -865,7 +838,6 @@ impl HistoryRecord {
         let TranscriptAttachment {
             segments,
             speaker_blocks,
-            speaker_change_cuts,
             speaker_chunks,
             session_speakers,
             notes,
@@ -878,7 +850,6 @@ impl HistoryRecord {
         } = attachment;
         let offset_ms = self.duration_ms.max(0);
         let offset_u64 = offset_ms as u64;
-        let offset_s = offset_ms as f32 / 1000.0;
 
         self.segments
             .extend(segments.into_iter().map(|mut segment| {
@@ -891,12 +862,6 @@ impl HistoryRecord {
                 block.start_ms = block.start_ms.map(|ms| ms.saturating_add(offset_u64));
                 block.end_ms = block.end_ms.map(|ms| ms.saturating_add(offset_u64));
                 block
-            }));
-        self.speaker_change_cuts
-            .extend(speaker_change_cuts.into_iter().map(|mut cut| {
-                cut.time_s += offset_s;
-                cut.end_s += offset_s;
-                cut
             }));
         self.speaker_chunks
             .extend(speaker_chunks.into_iter().map(|mut chunk| {
@@ -1056,22 +1021,6 @@ mod tests {
     }
 
     #[test]
-    fn speaker_change_cut_serializes_lowercase_reasons() {
-        let cut = SpeakerChangeCut {
-            time_s: 7.5,
-            end_s: 7.9,
-            score: 1.4,
-            reasons: [CutReason::Pitch, CutReason::Loudness]
-                .into_iter()
-                .collect(),
-        };
-        let json = serde_json::to_value(&cut).expect("serialize");
-        assert_eq!(json["reasons"], serde_json::json!(["pitch", "loudness"]));
-        let parsed: SpeakerChangeCut = serde_json::from_value(json).expect("parse");
-        assert_eq!(parsed, cut);
-    }
-
-    #[test]
     fn session_manifest_without_cuts_field_still_parses() {
         // Manifests written before speaker_change_cuts existed must keep loading.
         let legacy = r#"{
@@ -1081,10 +1030,7 @@ mod tests {
             "mic_wav": "mic.wav"
         }"#;
         let manifest: SessionManifest = serde_json::from_str(legacy).expect("parse legacy");
-        assert!(manifest.speaker_change_cuts.is_empty());
-        // And empty cuts stay off the wire.
-        let json = serde_json::to_value(&manifest).expect("serialize");
-        assert!(json.get("speaker_change_cuts").is_none());
+        assert_eq!(manifest.mic_wav, "mic.wav");
     }
 
     #[test]
@@ -1101,7 +1047,6 @@ mod tests {
             "word_count": 0
         }"#;
         let record: HistoryRecord = serde_json::from_str(legacy).expect("parse legacy");
-        assert!(record.speaker_change_cuts.is_empty());
         assert!(record.speaker_chunks.is_empty());
         assert!(record.session_speakers.is_empty());
     }
@@ -1185,12 +1130,14 @@ mod tests {
                 end_ms: 1_000,
                 text: "hi".to_string(),
                 source: Some(crate::types::SegmentSource::Mic),
+                speaker: None,
             },
             Segment {
                 start_ms: 1_200,
                 end_ms: 5_000,
                 text: "hello there".to_string(),
                 source: Some(crate::types::SegmentSource::Speaker),
+                speaker: None,
             },
         ];
         let rec = HistoryRecord::from_scribe(
@@ -1220,6 +1167,7 @@ mod tests {
             end_ms: 2_000,
             text: "mic only".to_string(),
             source: None,
+            speaker: None,
         }];
         let rec = HistoryRecord::from_scribe(
             "Call".to_string(),
@@ -1243,6 +1191,7 @@ mod tests {
             end_ms: 2_000,
             text: "raw".to_string(),
             source: None,
+            speaker: None,
         }];
         let rec = HistoryRecord::from_dictate(&segments, "hello there friend", "tiny".to_string());
         assert_eq!(rec.kind, HistoryKind::Dictate);
@@ -1259,6 +1208,7 @@ mod tests {
             end_ms: 3_000,
             text: "one two".to_string(),
             source: None,
+            speaker: None,
         }];
         let rec = HistoryRecord::from_transcribe(
             "clip".to_string(),
@@ -1293,21 +1243,54 @@ mod tests {
         assert!(rec.written_content.is_none());
     }
 
+    #[test]
+    fn segment_missing_speaker_deserializes_unlabeled() {
+        let seg: Segment =
+            serde_json::from_str(r#"{"start_ms":0,"end_ms":1000,"text":"hello"}"#).unwrap();
+        assert!(seg.speaker.is_none());
+        let json = serde_json::to_string(&seg).unwrap();
+        assert!(!json.contains("speaker"));
+    }
+
+    #[test]
+    fn new_record_json_includes_segment_speaker_and_speaker_blocks() {
+        let mut segment = Segment::new(0, 1_000, "hello");
+        segment.speaker = Some("Speaker 1".into());
+        let mut rec = HistoryRecord::from_scribe(
+            "Meeting".into(),
+            "tiny".into(),
+            vec![segment],
+            vec![],
+            false,
+            false,
+            None,
+            None,
+            None,
+        );
+        rec.speaker_blocks = vec![SpeakerBlock {
+            label: "Speaker 1".into(),
+            start_ms: Some(0),
+            end_ms: Some(1_000),
+            text: "hello".into(),
+            chunk_id: None,
+        }];
+        let json = serde_json::to_string(&rec).unwrap();
+        assert!(json.contains(r#""speaker":"Speaker 1""#));
+        assert!(json.contains(r#""speaker_blocks""#));
+        assert!(json.contains(r#""label":"Speaker 1""#));
+    }
+
     fn full_attachment() -> TranscriptAttachment {
+        let mut segment = Segment::new(0, 2_000, "second part");
+        segment.speaker = Some("You".into());
         TranscriptAttachment {
-            segments: vec![Segment::new(0, 2_000, "second part")],
+            segments: vec![segment],
             speaker_blocks: vec![SpeakerBlock {
                 label: "You".into(),
                 start_ms: Some(0),
                 end_ms: Some(2_000),
                 text: "second part".into(),
                 chunk_id: Some("chunk-1".into()),
-            }],
-            speaker_change_cuts: vec![SpeakerChangeCut {
-                time_s: 0.5,
-                end_s: 0.5,
-                score: 1.5,
-                reasons: [CutReason::Pitch].into_iter().collect(),
             }],
             speaker_chunks: vec![SpeakerChunk {
                 id: "chunk-1".into(),
@@ -1355,10 +1338,9 @@ mod tests {
         assert_eq!(rec.segments.len(), 2);
         assert_eq!(rec.segments[1].start_ms, 1_000);
         assert_eq!(rec.segments[1].end_ms, 3_000);
+        assert_eq!(rec.segments[1].speaker.as_deref(), Some("You"));
         assert_eq!(rec.speaker_blocks[0].start_ms, Some(1_000));
         assert_eq!(rec.speaker_blocks[0].end_ms, Some(3_000));
-        assert!((rec.speaker_change_cuts[0].time_s - 1.5).abs() < 1e-6);
-        assert!((rec.speaker_change_cuts[0].end_s - 1.5).abs() < 1e-6);
         assert_eq!(rec.speaker_chunks[0].start_ms, 1_000);
         assert_eq!(rec.speaker_chunks[0].end_ms, 3_000);
         assert_eq!(rec.session_speakers[0].start_ms, 1_000);
@@ -1379,7 +1361,6 @@ mod tests {
         rec.attach_transcript(full_attachment());
         assert_eq!(rec.segments[0].start_ms, 0);
         assert_eq!(rec.segments[0].end_ms, 2_000);
-        assert!((rec.speaker_change_cuts[0].time_s - 0.5).abs() < 1e-6);
         assert_eq!(rec.notes[0].recorded_at_ms, 250);
         assert_eq!(rec.duration_ms, 2_000);
     }

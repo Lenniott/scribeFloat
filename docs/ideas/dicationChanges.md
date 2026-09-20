@@ -1,5 +1,9 @@
 # Dictate Activation Save Policy
 
+Parked idea — **not scheduled work**. Do not implement without a wayfinder
+ticket. Hold vs double-tap already exists (`DictateKeyTracker`); the save-policy
+split, settings commands, and Settings toggles below do **not**.
+
 ## Summary
 - Difficulty: **medium**. The audio/transcription path does not need major changes, but the Dictate keyboard state machine and settings/config surface both need careful updates.
 - Change hold activation from **tap, then hold Control** to **hold Control** after a calibrated threshold.

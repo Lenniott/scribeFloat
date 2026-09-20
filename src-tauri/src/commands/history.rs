@@ -201,7 +201,6 @@ pub fn note_set_tags(
     Ok(())
 }
 
-
 /// `scope: "all"` renames every turn labeled `from_label` (required for that scope);
 /// `scope: "one"` renames only the turn at `block_index` (required for that scope).
 #[tauri::command]
@@ -221,9 +220,6 @@ pub fn note_relabel_speaker(
     emit_note_item_updated(&app, &id);
     Ok(updated)
 }
-
-
-
 
 #[tauri::command]
 pub fn note_attach_transcript(

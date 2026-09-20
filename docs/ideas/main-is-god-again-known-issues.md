@@ -1,5 +1,10 @@
 # Known issues — Main is God again
 
+Parked dump from a closed effort (moved wholesale, no curation). **Not specs.**
+Several items were later done — read
+[`.scratch/main-is-god-known-issues/MAP.md`](../../.scratch/main-is-god-known-issues/MAP.md)
+before reopening anything.
+
 Non-blocking debt dump. Capture anything that should not redefine the merge destination.
 
 Format per item:

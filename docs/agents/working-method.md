@@ -16,11 +16,13 @@ ticket inside a Managing session, or a `/wayfinder` "chart the map" pass. See
 
 The keep-set decided during the "Main is God again" thin-docs cut (closed effort)
 is permanent: `CONTEXT.md`, `PRIVACY.md`, `AGENTS.md`, `docs/adr/`, `docs/agents/`,
-`docs/assets/`, `docs/README.md`. Everything that was cut (`architecture.md`,
-`action-flows.md`, `components.md`, `engineering/`, `backlog/`, `explorations/`,
-`audits/`, `features/`, standalone UI review essays) does **not** come back without
-an ADR and explicit human sign-off. Prefer code + ADRs + `.scratch/` over inventing
-a replacement essay.
+`docs/assets/`, `docs/README.md`. `docs/ideas/` is the parked dump destination for
+closed-effort Known issues — it is **not** Binding and **not** a spec. Do not
+implement from it without a wayfinder ticket. Everything that was cut
+(`architecture.md`, `action-flows.md`, `components.md`, `engineering/`,
+`backlog/`, `explorations/`, `audits/`, `features/`, standalone UI review essays)
+does **not** come back without an ADR and explicit human sign-off. Prefer code +
+ADRs + `.scratch/` over inventing a replacement essay.
 
 ## Known issues
 

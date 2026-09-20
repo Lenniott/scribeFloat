@@ -1,5 +1,10 @@
 # Record Edge Glow Overlay
 
+Parked from [main-is-god-known-issues](../../.scratch/main-is-god-known-issues/MAP.md)
+ticket 09 (related surface of the Dictate overlay experiment). **Not scheduled
+work.** Do not implement without a wayfinder ticket. There is no glow window,
+`?view=recording-glow` route, or capability set in the code today.
+
 ## Summary
 - Difficulty: **medium-high**, mostly because macOS full-screen Spaces are fussy.
 - Build a dedicated, transparent, click-through overlay window shown only while **Record** is actively recording.

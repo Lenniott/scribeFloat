@@ -24,6 +24,7 @@
       "bundled-models/ggml-silero-v6.2.0.bin": "ggml-silero-v6.2.0.bin",
       "bundled-models/diar_streaming_sortformer_4spk-v2.onnx": "diar_streaming_sortformer_4spk-v2.onnx"
     },
+    "externalBin": ["binaries/scribefloat-cli"],
     "windows": {
       "nsis": {
         "installMode": "perMachine"

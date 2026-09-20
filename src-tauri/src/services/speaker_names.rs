@@ -46,9 +46,9 @@ pub fn is_reserved_speaker_label(label: &str) -> bool {
         return true;
     }
     // "Speaker N" with N a positive integer without leading zero.
-    label
-        .strip_prefix("Speaker ")
-        .is_some_and(|n| !n.is_empty() && !n.starts_with('0') && n.bytes().all(|b| b.is_ascii_digit()))
+    label.strip_prefix("Speaker ").is_some_and(|n| {
+        !n.is_empty() && !n.starts_with('0') && n.bytes().all(|b| b.is_ascii_digit())
+    })
 }
 
 fn validated(name: &str) -> Result<(String, String)> {
@@ -184,10 +184,26 @@ mod tests {
 
     #[test]
     fn reserved_labels_cover_auto_assigned_names_only() {
-        for reserved in ["Other", "You", "In", "Out", "Speaker 1", "Speaker 4", "Speaker 10"] {
+        for reserved in [
+            "Other",
+            "You",
+            "In",
+            "Out",
+            "Speaker 1",
+            "Speaker 4",
+            "Speaker 10",
+        ] {
             assert!(is_reserved_speaker_label(reserved), "{reserved}");
         }
-        for free in ["Ben", "other", "speaker 1", "Speaker 0", "Speaker 01", "Speaker", "Speaker one"] {
+        for free in [
+            "Ben",
+            "other",
+            "speaker 1",
+            "Speaker 0",
+            "Speaker 01",
+            "Speaker",
+            "Speaker one",
+        ] {
             assert!(!is_reserved_speaker_label(free), "{free}");
         }
     }
@@ -300,7 +316,10 @@ mod tests {
         svc.save("Adam", None).unwrap();
         svc.save("ben", None).unwrap();
         let names: Vec<String> = svc.list().into_iter().map(|n| n.name).collect();
-        assert_eq!(names, vec!["Adam".to_string(), "ben".to_string(), "zoe".to_string()]);
+        assert_eq!(
+            names,
+            vec!["Adam".to_string(), "ben".to_string(), "zoe".to_string()]
+        );
     }
 
     #[test]

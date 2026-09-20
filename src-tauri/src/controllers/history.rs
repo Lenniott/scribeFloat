@@ -543,8 +543,23 @@ fn markdown_to_safe_html(markdown: &str) -> String {
     ammonia::Builder::default()
         .tags(
             [
-                "p", "br", "strong", "em", "b", "i", "ul", "ol", "li", "h1", "h2", "h3", "a",
-                "blockquote", "code", "pre", "hr",
+                "p",
+                "br",
+                "strong",
+                "em",
+                "b",
+                "i",
+                "ul",
+                "ol",
+                "li",
+                "h1",
+                "h2",
+                "h3",
+                "a",
+                "blockquote",
+                "code",
+                "pre",
+                "hr",
             ]
             .into_iter()
             .collect(),
@@ -602,6 +617,7 @@ mod tests {
             end_ms: 1_000,
             text: text.to_string(),
             source: None,
+            speaker: None,
         }]
     }
 

@@ -198,6 +198,7 @@ mod tests {
             end_ms: 14_000,
             text: "hello world".to_string(),
             source: None,
+            speaker: None,
         }];
         assert_eq!(count_words(&segments), 2);
     }
@@ -231,18 +232,21 @@ mod tests {
                 end_ms: 1_000,
                 text: "hello brave world".to_string(),
                 source: Some(SegmentSource::Mic),
+                speaker: None,
             },
             Segment {
                 start_ms: 1_200,
                 end_ms: 3_000,
                 text: "How are you?".to_string(),
                 source: Some(SegmentSource::Speaker),
+                speaker: None,
             },
             Segment {
                 start_ms: 3_100,
                 end_ms: 4_000,
                 text: "I am well.".to_string(),
                 source: Some(SegmentSource::Speaker),
+                speaker: None,
             },
         ];
         let notes = vec![Note {

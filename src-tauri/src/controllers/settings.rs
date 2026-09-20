@@ -368,7 +368,6 @@ impl SettingsController {
             .update(|cfg| cfg.user_display_name = name.to_string())
             .map_err(|e| format!("failed to persist user display name: {e}"))
     }
-
 }
 
 #[cfg(test)]
@@ -561,7 +560,6 @@ mod tests {
         assert!(ctrl.set_theme_mode("sepia".to_string()).is_err());
     }
 
-
     #[test]
     fn onboarding_starts_incomplete_and_completes() {
         let tmp = tempfile::tempdir().unwrap();
@@ -642,8 +640,6 @@ mod tests {
             assert_eq!(dictate, "Ctrl+D");
         }
     }
-
-
 
     #[cfg(target_os = "windows")]
     #[test]

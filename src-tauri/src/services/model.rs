@@ -431,6 +431,12 @@ impl ModelService {
             .inference_gate
             .lock()
             .unwrap_or_else(|p| p.into_inner());
+        if abort
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::SeqCst))
+        {
+            return Ok(Vec::new());
+        }
         self.reset_gpu_preference(model_path);
 
         if let Some(expected) = self.bundled_sha256_for_path(model_path) {
@@ -782,6 +788,7 @@ impl ModelService {
                     end_ms: seg.end_timestamp() * 10,
                     text,
                     source: None,
+                    speaker: None,
                 });
             }
         }
@@ -860,6 +867,7 @@ impl ModelService {
                 } else {
                     crate::types::SegmentSource::Mic
                 }),
+                speaker: None,
             });
         }
         out
@@ -1010,6 +1018,23 @@ fn inference_thread_count() -> usize {
 mod tests {
     use super::*;
 
+    #[test]
+    fn cancelled_inference_skips_model_loading_after_acquiring_gate() {
+        let svc = ModelService::new(temp_models_dir());
+        let segments = svc
+            .transcribe_pcm_with_progress(
+                Path::new("missing-model.bin"),
+                &[0.0; 1600],
+                None,
+                Some(Arc::new(AtomicBool::new(true))),
+                "test/cancelled",
+                |_| {},
+                None,
+            )
+            .unwrap();
+        assert!(segments.is_empty());
+    }
+
     fn temp_models_dir() -> PathBuf {
         let dir =
             std::env::temp_dir().join(format!("liscribe-model-tests-{}", uuid::Uuid::new_v4()));
@@ -1125,12 +1150,14 @@ mod tests {
             end_ms: 2_500,
             text: "hello from mic".to_string(),
             source: None,
+            speaker: None,
         }];
         let speaker = vec![Segment {
             start_ms: 1_000,
             end_ms: 1_500,
             text: "hello from speaker".to_string(),
             source: None,
+            speaker: None,
         }];
         let merged = service.merge_dual_source(&mic, &speaker);
         assert_eq!(merged.len(), 2);
@@ -1274,7 +1301,9 @@ mod tests {
         let svc = ModelService::new(models_dir);
         let pcm = read_wav_mono_f32(&wav).expect("read scribe mic.wav");
         eprintln!("pcm samples = {}", pcm.len());
-        let vad = svc.vad_path_for_pcm(pcm.len()).expect("resolve VAD for test wav");
+        let vad = svc
+            .vad_path_for_pcm(pcm.len())
+            .expect("resolve VAD for test wav");
         let result = svc.transcribe_pcm_with_progress(
             &model_path,
             &pcm,

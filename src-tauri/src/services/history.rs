@@ -312,8 +312,7 @@ impl HistoryService {
         {
             let mut file = std::fs::File::create(&tmp).context("create history.jsonl.tmp")?;
             for record in &live {
-                let line =
-                    serde_json::to_string(*record).context("serialize history record")?;
+                let line = serde_json::to_string(*record).context("serialize history record")?;
                 file.write_all(line.as_bytes())?;
                 file.write_all(b"\n")?;
             }
@@ -368,7 +367,6 @@ pub fn relabel_speaker_block_at(
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -388,6 +386,7 @@ mod tests {
             end_ms: 1_000,
             text: text.to_string(),
             source: None,
+            speaker: None,
         }];
         HistoryRecord::from_dictate(&segs, text, "tiny".to_string())
     }
@@ -403,6 +402,7 @@ mod tests {
                 end_ms: (i + 1) * 1000,
                 text: format!("word{i} "),
                 source: None,
+                speaker: None,
             })
             .collect();
         rec.word_count = 200;
@@ -604,8 +604,12 @@ mod tests {
         rec.speaker_blocks = vec![block("Speaker 1", 0, 1_000, "one")];
         let id = svc.append(&folder, rec).expect("append");
 
-        assert!(svc.relabel_speaker(&folder, "missing", "Speaker 1", "Ben").is_err());
-        assert!(svc.relabel_speaker(&folder, &id, "Speaker 9", "Ben").is_err());
+        assert!(svc
+            .relabel_speaker(&folder, "missing", "Speaker 1", "Ben")
+            .is_err());
+        assert!(svc
+            .relabel_speaker(&folder, &id, "Speaker 9", "Ben")
+            .is_err());
     }
 
     #[test]
@@ -639,7 +643,9 @@ mod tests {
         rec.speaker_blocks = vec![block("Speaker 1", 0, 1_000, "one")];
         let id = svc.append(&folder, rec).expect("append");
 
-        assert!(svc.relabel_speaker_block(&folder, "missing", 0, "Ben").is_err());
+        assert!(svc
+            .relabel_speaker_block(&folder, "missing", 0, "Ben")
+            .is_err());
         assert!(svc.relabel_speaker_block(&folder, &id, 5, "Ben").is_err());
     }
 
@@ -765,12 +771,14 @@ mod tests {
                 end_ms: 1_000,
                 text: "Hello".into(),
                 source: None,
+                speaker: Some("Speaker 1".into()),
             },
             Segment {
                 start_ms: 1_000,
                 end_ms: 2_500,
                 text: "world".into(),
                 source: None,
+                speaker: Some("Speaker 2".into()),
             },
         ];
 
@@ -779,6 +787,22 @@ mod tests {
             &id,
             crate::types::TranscriptAttachment {
                 segments,
+                speaker_blocks: vec![
+                    crate::types::SpeakerBlock {
+                        label: "Speaker 1".into(),
+                        start_ms: Some(0),
+                        end_ms: Some(1_000),
+                        text: "Hello".into(),
+                        chunk_id: None,
+                    },
+                    crate::types::SpeakerBlock {
+                        label: "Speaker 2".into(),
+                        start_ms: Some(1_000),
+                        end_ms: Some(2_500),
+                        text: "world".into(),
+                        chunk_id: None,
+                    },
+                ],
                 model: "base".into(),
                 ..Default::default()
             },
@@ -788,6 +812,10 @@ mod tests {
         let fresh = HistoryService::new();
         let got = fresh.get(&folder, &id).unwrap().expect("present");
         assert_eq!(got.segments.len(), 2);
+        assert_eq!(got.segments[0].speaker.as_deref(), Some("Speaker 1"));
+        assert_eq!(got.segments[1].speaker.as_deref(), Some("Speaker 2"));
+        assert_eq!(got.speaker_blocks.len(), 2);
+        assert_eq!(got.speaker_blocks[0].label, "Speaker 1");
         assert!(got.duration_ms > 0);
         assert_eq!(got.model, "base");
     }
@@ -808,6 +836,7 @@ mod tests {
                     end_ms: 1_000,
                     text: "first".into(),
                     source: None,
+                    speaker: None,
                 }],
                 notes: vec![crate::types::Note {
                     id: "note-1".into(),
@@ -829,12 +858,7 @@ mod tests {
                     end_ms: 2_000,
                     text: "second".into(),
                     source: None,
-                }],
-                speaker_change_cuts: vec![crate::types::SpeakerChangeCut {
-                    time_s: 0.5,
-                    end_s: 0.5,
-                    score: 1.5,
-                    reasons: [crate::types::CutReason::Pitch].into_iter().collect(),
+                    speaker: None,
                 }],
                 session_speakers: vec![crate::types::SessionSpeaker {
                     session_speaker_id: "speaker-1".into(),
@@ -863,9 +887,6 @@ mod tests {
         assert_eq!(got.notes.len(), 2);
         assert_eq!(got.notes[1].recorded_at_ms, 1_250);
         assert_eq!(got.duration_ms, 3_000);
-        // Cut attached in the second recording shifts by the 1 s offset.
-        assert_eq!(got.speaker_change_cuts.len(), 1);
-        assert!((got.speaker_change_cuts[0].time_s - 1.5).abs() < 1e-6);
         assert_eq!(got.session_speakers.len(), 1);
         assert_eq!(got.session_speakers[0].start_ms, 1_000);
         assert_eq!(got.session_speakers[0].end_ms, 3_000);

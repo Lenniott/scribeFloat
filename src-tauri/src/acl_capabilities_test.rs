@@ -34,9 +34,8 @@ mod tests {
     }
 
     fn read(rel: &str) -> String {
-        fs::read_to_string(manifest_dir().join(rel)).unwrap_or_else(|e| {
-            panic!("read {}: {e}", manifest_dir().join(rel).display())
-        })
+        fs::read_to_string(manifest_dir().join(rel))
+            .unwrap_or_else(|e| panic!("read {}: {e}", manifest_dir().join(rel).display()))
     }
 
     /// Permission ids are `allow-<kebab-cmd>`; return snake_case command names.
@@ -122,11 +121,7 @@ mod tests {
         for line in block.lines() {
             if let Some(name) = line.split("::").last() {
                 let name = name.trim().trim_end_matches(',');
-                if !name.is_empty()
-                    && name
-                        .chars()
-                        .all(|c| c.is_ascii_lowercase() || c == '_')
-                {
+                if !name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
                     handler.insert(name.to_string());
                 }
             }
@@ -138,10 +133,7 @@ mod tests {
             .expect("APP_COMMANDS in build.rs");
         let rest = &build[start..];
         // Skip past `&[&str] = &[` so we do not stop at the type's `]`.
-        let list_start = rest
-            .find("= &[")
-            .expect("APP_COMMANDS array literal")
-            + 4;
+        let list_start = rest.find("= &[").expect("APP_COMMANDS array literal") + 4;
         let list = &rest[list_start..];
         let end = list.find(']').expect("closing ] for APP_COMMANDS");
         let block = &list[..end];
@@ -149,10 +141,7 @@ mod tests {
         for line in block.lines() {
             let line = line.trim().trim_end_matches(',');
             if let Some(inner) = line.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
-                if inner
-                    .chars()
-                    .all(|c| c.is_ascii_lowercase() || c == '_')
-                {
+                if inner.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
                     app.insert(inner.to_string());
                 }
             }
@@ -177,11 +166,7 @@ mod tests {
         for line in block.lines() {
             if let Some(name) = line.split("::").last() {
                 let name = name.trim().trim_end_matches(',');
-                if !name.is_empty()
-                    && name
-                        .chars()
-                        .all(|c| c.is_ascii_lowercase() || c == '_')
-                {
+                if !name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
                     handler.insert(name.to_string());
                 }
             }

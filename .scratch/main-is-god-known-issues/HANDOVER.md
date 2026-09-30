@@ -8,7 +8,7 @@ Wayfinder map: [MAP.md](MAP.md). Destination: triage all 25 items from the archi
 
 ## State as of 2026-08-09
 
-**20/25 closed**, none assigned.
+**20 closed**, none assigned. Original dump was 25 items; **26** was added 2026-08-22 (new bug found in-app).
 
 - Closed earlier: 01–05, 11, 12, 17, 19–22, 25 (builds + no-action Laters).
 - **Closed 2026-08-09 (earlier)**:
@@ -17,15 +17,16 @@ Wayfinder map: [MAP.md](MAP.md). Destination: triage all 25 items from the archi
   - **16** — **Later** / no action: no live Models-screen mentions.
 - **Closed 2026-08-09 (this session)**:
   - **23** — **Now**: `.github/dependabot.yml` (npm + cargo + github-actions, weekly).
-- **Still open (5)**: 07, 10, 13, 18, 24 — no Now/Later call yet (except ticket-local suggestions).
+- **Still open (6)**: 07, 10, 13, 18, 24, 26 — no Now/Later call yet (except ticket-local suggestions).
 
 ## Remaining tickets, grouped
 
-### User-facing (4)
+### User-facing (5)
 - **07** — Speaker rename edge cases (can't scope a rename to one occurrence)
 - **10** — Opening main window from tray can land on a full-screen Space
 - **13** — Dual audio recordings get no real per-speaker diarization
 - **24** — Bring back spoken triggers as a narrower Dictate-only feature
+- **26** — Leave a new note during Record processing: written to JSON, missing from the app
 
 ### Maintenance / optimization (1)
 - **18** — Upload accepts any OS-readable path with no dialog-scoped confinement (security hardening)
@@ -56,3 +57,4 @@ Update this file's Session log before ending a session, even if nothing closed.
 - **2026-08-09**: Benjamin call — park experiments/large items to idea docs, close #08 as already-fixed. Closed **08** (Done already). Closed **06, 09, 14, 15** as Later → new idea docs under `docs/ideas/`. Human framed this batch as "done here" for the session; **7 tickets still open** (07, 10, 13, 16, 18, 23, 24) if the effort continues. No commit this session unless asked.
 - **2026-08-09 (later)**: Closed **16** as Later / no action — final re-grep of `skills/`/`docs/`/`src/` found no live Models-screen references. **6 open** (07, 10, 13, 18, 23, 24). Next candidate if continuing: **23** (Dependabot — trivial Now).
 - **2026-08-09 (evening)**: Closed **23** as Now — added `.github/dependabot.yml` (npm `/`, cargo `/src-tauri`, github-actions; weekly; grouped minor/patch). Skipped custom `cargo audit` CI for now. **5 open** (07, 10, 13, 18, 24).
+- **2026-08-22**: Added **26** from live repro (create note → Record → leave Notes Area while processing → disk JSON has the capture, app list does not). First-pass findings on the ticket: leave-guard auto-deletes empty notes once `phase` is `'transcribing'` because `isRecordingToNote` is recording-only; `scribeAwaitingAttach` exists but is unused. **6 open** (07, 10, 13, 18, 24, 26). No Now/Later call yet — confirm before building.

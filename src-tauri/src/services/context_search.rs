@@ -833,8 +833,10 @@ fn read_index(
         .chunks_exact(manifest.embedding_dim * std::mem::size_of::<f32>())
         .map(|chunk| {
             chunk
-                .chunks_exact(std::mem::size_of::<f32>())
-                .map(|bytes| f32::from_le_bytes(bytes.try_into().expect("f32 byte chunk")))
+                .as_chunks::<{ std::mem::size_of::<f32>() }>()
+                .0
+                .iter()
+                .map(|bytes| f32::from_le_bytes(*bytes))
                 .collect::<Vec<f32>>()
         })
         .collect();

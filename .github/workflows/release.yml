@@ -23,7 +23,9 @@ jobs:
       artifact_name: macos-arm-dmg
       # Native Apple Silicon. whisper-rs `metal` only — no BLAS (Metal handles everything).
 
+  # Temporarily off — restore by removing `if: false`.
   build-macos-intel:
+    if: false
     uses: ./.github/workflows/reusable-tauri-build.yml
     secrets: inherit
     with:
@@ -36,7 +38,9 @@ jobs:
       extra_cmake_args: '-DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=Apple -DGGML_ACCELERATE=ON'
       timeout_minutes: 120
 
+  # Temporarily off — restore by removing `if: false`.
   build-windows:
+    if: false
     uses: ./.github/workflows/reusable-tauri-build.yml
     secrets: inherit
     with:
@@ -85,7 +89,7 @@ jobs:
               echo "**macOS (Apple Silicon — M1/M2/M3/M4):** download the \`apple-silicon.dmg\` below, open it, and drag ScribeFloat to Applications."
               echo
             fi
-            echo "**macOS (Intel):** download the \`intel.dmg\` below. It is built separately — if not yet attached, check back shortly."
+            echo "**macOS (Intel):** not included in this release."
             echo
             if [[ "${{ needs.build-windows.result }}" == "success" ]]; then
               echo "**Windows:** run the \`.exe\` installer below. If SmartScreen warns you, click **More info → Run anyway**."
@@ -96,7 +100,7 @@ jobs:
             echo "| Platform | Status |"
             echo "|----------|--------|"
             echo "| macOS Apple Silicon | ${{ needs.build-macos-arm.result }} |"
-            echo "| macOS Intel | pending (see attach-macos-intel job) |"
+            echo "| macOS Intel | skipped |"
             echo "| Windows | ${{ needs.build-windows.result }} |"
           } > release-notes.md
 

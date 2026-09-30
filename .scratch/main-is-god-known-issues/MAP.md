@@ -15,6 +15,7 @@ Every item in the archived [known-issues dump](../../docs/ideas/main-is-god-agai
 - A triage ticket resolves with either: **Now** (state the concrete fix, then do it before closing) or **Later** (state why, and whether it needs its own future wayfinder).
 - Items that are already effectively resolved (e.g. informational/no-action) triage straight to Later with a one-line "no action needed" — don't force manufactured work.
 - once done a ticket prefix z_ to the title file, then give clear breif but none compressed manual test instructions
+- New bugs found while working this effort are ticketed the same way (next number, Now/Later, build if Now) — they are not parked only because they missed the original dump. Added: [Triage: Leaving a note during Record processing drops it from the app](issues/26-leave-during-record-processing-drops-note.md).
 
 ## Decisions so far
 

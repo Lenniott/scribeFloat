@@ -2,6 +2,8 @@
 
 **Local-first AI transcription. No cloud. No accounts. No telemetry.**
 
+[website](https://www.scribefloat.com)
+
 **macOS silicon**.
 <img width="972" height="645" alt="image" src="https://github.com/user-attachments/assets/35af8867-a30a-44c0-9cac-a42c5e940a1c" />
 

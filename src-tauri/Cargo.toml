@@ -57,7 +57,7 @@ sha2 = "0.10"
 # Sortformer streaming diarization only (ASR stays whisper-rs); shares ort with fastembed.
 # Pinned: 0.3.8 targets Nemotron-3 and rejects the bundled Sortformer v2 ONNX
 # (and drops DiarizationConfig::callhome).
-parakeet-rs = { version = "=0.3.6", features = ["sortformer"] }
+parakeet-rs = { version = "=0.3.8", features = ["sortformer"] }
 fastembed = "5.17"
 
 [target.'cfg(target_os = "macos")'.dependencies]
